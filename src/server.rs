@@ -1,3 +1,4 @@
+use crate::User;
 use anyhow::Context;
 use axum::http::StatusCode;
 use std::net::SocketAddr;
