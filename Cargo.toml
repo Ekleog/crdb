@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 license = "AGPL3"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 client = []
 server = ["axum", "sqlx", "tokio", "tracing"]
