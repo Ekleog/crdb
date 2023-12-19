@@ -25,8 +25,8 @@ pub mod server {
 macro_rules! db {
     ( mod $module:ident auth $authenticator:ty { $($object:ty),* $(,)* } ) => {
         mod $module {
-            $crate::client::generate_client!($authenticator / $($object),*);
-            $crate::server::generate_server!($authenticator / $($object),*);
+            $crate::generate_client!($authenticator / $($object),*);
+            $crate::generate_server!($authenticator / $($object),*);
         }
     }
 }
