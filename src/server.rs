@@ -9,6 +9,7 @@ pub trait Authenticator: for<'a> serde::Deserialize<'a> + serde::Serialize {
 
 pub trait Config {}
 
+#[macro_export]
 macro_rules! generate {
     () => {
         // TODO: generate a Config impl and a (static) Db impl
@@ -21,7 +22,7 @@ pub struct Server<C: Config> {
 }
 
 impl<C: Config> Server<C> {
-    pub async fn new(db_url: &str) -> anyhow::Result<Server> {
+    pub async fn new(db_url: &str) -> anyhow::Result<Self> {
         Ok(Server {
             _db: sqlx::postgres::PgPoolOptions::new()
                 .max_connections(50) // TODO: make configurable (builder pattern?)

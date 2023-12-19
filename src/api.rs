@@ -37,11 +37,11 @@ impl<T: Object> DbPtr<T> {
         }
     }
 
-    pub fn get<D: Db>(&self, db: &Db) -> anyhow::Result<Arc<T>> {
+    pub fn get<D: Db>(&self, db: &D) -> anyhow::Result<Arc<T>> {
         db.get(self)
     }
 }
 
 pub trait Db {
-    pub fn get(&self, ptr: &DbPtr<T>) -> anyhow::Result<Arc<T>>;
+    fn get<T: Object>(&self, ptr: &DbPtr<T>) -> anyhow::Result<Arc<T>>;
 }
