@@ -14,7 +14,7 @@ pub trait Config {}
 #[macro_export]
 macro_rules! generate_server {
     () => {
-        struct ServerConfig;
+        pub struct ServerConfig;
 
         impl $crate::server::Config for ServerConfig {}
     };
