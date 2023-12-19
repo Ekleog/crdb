@@ -10,8 +10,13 @@ pub trait Object: Default + for<'a> serde::Deserialize<'a> + serde::Serialize {
     type Event: for<'a> serde::Deserialize<'a> + serde::Serialize;
 
     fn uuid() -> &'static Uuid;
-    fn snapshot_version() -> u64;
-    fn from_old_snapshot(version: u64, data: serde_json::Value) -> Self;
+    fn snapshot_version() -> u64 {
+        0
+    }
+    #[allow(unused_variables)]
+    fn from_old_snapshot(version: u64, data: serde_json::Value) -> Self {
+        unimplemented!()
+    }
 
     fn can_apply(&self, user: &User, event: &Self::Event) -> anyhow::Result<bool>;
     fn apply(&mut self, event: &Self::Event, force_snapshot: impl Fn()) -> anyhow::Result<()>;
