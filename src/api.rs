@@ -6,7 +6,13 @@ pub struct User {
     pub id: Uuid,
 }
 
+/// Note that due to postgresql limitations reasons, this type MUST NOT include any
+/// null byte in the serialized JSON. Including them will result in internal server
+/// errors.
 pub trait Object: Default + for<'a> serde::Deserialize<'a> + serde::Serialize {
+    /// Note that due to postgresql limitations reasons, this type MUST NOT include any
+    /// null byte in the serialized JSON. Trying to submit one such event will result
+    /// in the event being rejected by the server.
     type Event: for<'a> serde::Deserialize<'a> + serde::Serialize;
 
     fn uuid() -> &'static Uuid;
