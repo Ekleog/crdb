@@ -1,5 +1,5 @@
 mod api;
-#[cfg(feature = "server")]
-mod server;
+pub use api::{DbPtr, Event, Object, User};
 
-pub use api::{Authenticator, Event, Object, User};
+#[cfg(feature = "server")]
+pub mod server;

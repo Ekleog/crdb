@@ -1,5 +1,10 @@
 use anyhow::Context;
+use axum::http::StatusCode;
 use std::net::SocketAddr;
+
+pub trait Authenticator: for<'a> serde::Deserialize<'a> + serde::Serialize {
+    fn authenticate(&self) -> Result<User, (StatusCode, String)>;
+}
 
 pub struct Server {
     _db: sqlx::PgPool,
