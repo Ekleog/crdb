@@ -26,13 +26,14 @@ struct Db {
 // TODO: impl (Can)ApplyCallbacks for Db
 
 pub struct Server<C: Config> {
+    _config: C,
     _db: Db,
-    _phantom: PhantomData<C>,
 }
 
 impl<C: Config> Server<C> {
-    pub async fn new(db_url: &str) -> anyhow::Result<Self> {
+    pub async fn new(config: C, db_url: &str) -> anyhow::Result<Self> {
         Ok(Server {
+            _config: config,
             _db: Db {
                 _db: sqlx::postgres::PgPoolOptions::new()
                     .max_connections(50) // TODO: make configurable (builder pattern?)
@@ -40,7 +41,6 @@ impl<C: Config> Server<C> {
                     .await
                     .with_context(|| format!("opening database {db_url:?}"))?,
             },
-            _phantom: PhantomData,
         })
     }
 
