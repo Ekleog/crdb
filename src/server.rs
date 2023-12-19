@@ -12,7 +12,7 @@ pub trait Config {}
 #[macro_export]
 macro_rules! generate {
     () => {
-        // TODO: generate a Config impl and a (static) Db impl
+        // TODO: generate a Config impl and a (static, non-exposed) Db impl
     };
 }
 

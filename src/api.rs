@@ -6,6 +6,16 @@ pub struct User {
     pub id: Uuid,
 }
 
+pub trait CanApplyCallbacks {
+    fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
+}
+
+pub trait ApplyCallbacks {
+    fn force_snapshot(&mut self);
+    fn create_subsequent<T: Object>(&mut self, object: T);
+    fn submit_subsequent<T: Object>(&mut self, object: DbPtr<T>, event: T::Event);
+}
+
 /// Note that due to postgresql limitations reasons, this type MUST NOT include any
 /// null byte in the serialized JSON. Including them will result in internal server
 /// errors.
@@ -24,8 +34,13 @@ pub trait Object: Default + for<'a> serde::Deserialize<'a> + serde::Serialize {
         unimplemented!()
     }
 
-    fn can_apply(&self, user: &User, event: &Self::Event) -> anyhow::Result<bool>;
-    fn apply(&mut self, event: &Self::Event, force_snapshot: impl Fn()) -> anyhow::Result<()>;
+    fn can_apply<C: CanApplyCallbacks>(
+        &self,
+        user: &User,
+        event: &Self::Event,
+        db: &C,
+    ) -> anyhow::Result<bool>;
+    fn apply<C: ApplyCallbacks>(&mut self, event: &Self::Event, db: &mut C) -> anyhow::Result<()>;
     fn is_heavy(&self) -> anyhow::Result<bool>;
 }
 
@@ -42,12 +57,10 @@ impl<T: Object> DbPtr<T> {
             _phantom: PhantomData,
         }
     }
-
-    pub fn get<D: Db>(&self, db: &D) -> anyhow::Result<Arc<T>> {
-        db.get(self)
-    }
 }
 
 pub trait Db {
-    fn get<T: Object>(&self, ptr: &DbPtr<T>) -> anyhow::Result<Arc<T>>;
+    fn create<T: Object>(&self, object: T) -> anyhow::Result<DbPtr<T>>;
+    fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
+    fn submit<T: Object>(&self, object: DbPtr<T>, event: T::Event) -> anyhow::Result<()>;
 }
