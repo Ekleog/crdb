@@ -13,8 +13,8 @@ pub mod client {
 
 #[cfg(feature = "server")]
 pub mod server;
-#[cfg(not(feature = "client"))]
-pub mod client {
+#[cfg(not(feature = "server"))]
+pub mod server {
     #[macro_export]
     macro_rules! generate_server {
         ($($_:tt)*) => {};
@@ -23,10 +23,10 @@ pub mod client {
 
 #[macro_export]
 macro_rules! db {
-    ( $module:ident : $($object:ty),* $(,)* ) => {
+    ( mod $module:ident auth $authenticator:ty { $($object:ty),* $(,)* } ) => {
         mod $module {
-            $crate::client::generate_client!($($object),*);
-            $crate::server::generate_server!($($object),*);
+            $crate::client::generate_client!($authenticator / $($object),*);
+            $crate::server::generate_server!($authenticator / $($object),*);
         }
     }
 }

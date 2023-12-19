@@ -1,7 +1,7 @@
 use crate::User;
 use anyhow::Context;
 use axum::http::StatusCode;
-use std::{marker::PhantomData, net::SocketAddr};
+use std::net::SocketAddr;
 
 pub trait Authenticator: for<'a> serde::Deserialize<'a> + serde::Serialize {
     fn authenticate(&self) -> Result<User, (StatusCode, String)>;
