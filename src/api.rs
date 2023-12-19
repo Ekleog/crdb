@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use uuid::Uuid;
 
@@ -36,4 +36,12 @@ impl<T: Object> DbPtr<T> {
             _phantom: PhantomData,
         }
     }
+
+    pub fn get<D: Db>(&self, db: &Db) -> anyhow::Result<Arc<T>> {
+        db.get(self)
+    }
+}
+
+pub trait Db {
+    pub fn get(&self, ptr: &DbPtr<T>) -> anyhow::Result<Arc<T>>;
 }
