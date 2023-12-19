@@ -10,9 +10,9 @@ pub trait Authenticator: for<'a> serde::Deserialize<'a> + serde::Serialize {
 pub trait Config {}
 
 #[macro_export]
-macro_rules! generate {
+macro_rules! generate_server {
     () => {
-        // TODO: generate a Config impl and a (static, non-exposed) Db impl
+        // TODO: generate a Config impl and a (Can)ApplyCallbacks impl
     };
 }
 

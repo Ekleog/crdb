@@ -58,9 +58,3 @@ impl<T: Object> DbPtr<T> {
         }
     }
 }
-
-pub trait Db {
-    fn create<T: Object>(&self, object: T) -> anyhow::Result<DbPtr<T>>;
-    fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
-    fn submit<T: Object>(&self, object: DbPtr<T>, event: T::Event) -> anyhow::Result<()>;
-}
