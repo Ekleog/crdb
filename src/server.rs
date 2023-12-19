@@ -9,7 +9,7 @@ impl Server {
     pub async fn new(db_url: &str) -> anyhow::Result<Server> {
         Ok(Server {
             _db: sqlx::postgres::PgPoolOptions::new()
-                .max_connections(50)
+                .max_connections(50) // TODO: make configurable (builder pattern?)
                 .connect(&db_url)
                 .await
                 .with_context(|| format!("opening database {db_url:?}"))?,

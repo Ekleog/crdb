@@ -1,6 +1,12 @@
 use uuid::Uuid;
 
-pub struct User(Uuid);
+pub struct User {
+    pub id: Uuid,
+}
+
+pub trait Authenticator: for<'a> serde::Deserialize<'a> + serde::Serialize {
+    fn authenticate(&self) -> anyhow::Result<User>;
+}
 
 pub trait Event: for<'a> serde::Deserialize<'a> + serde::Serialize {}
 

@@ -2,6 +2,4 @@ mod api;
 #[cfg(feature = "server")]
 mod server;
 
-pub use api::Object;
-#[cfg(feature = "server")]
-pub use server::Server;
+pub use api::{Authenticator, Event, Object, User};
