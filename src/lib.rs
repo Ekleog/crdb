@@ -7,7 +7,7 @@ pub mod client;
 pub mod client {
     #[macro_export]
     macro_rules! generate_client {
-        ($($_:tt)*) => {}
+        ($($_:tt)*) => {};
     }
 }
 
@@ -17,7 +17,7 @@ pub mod server;
 pub mod client {
     #[macro_export]
     macro_rules! generate_server {
-        ($($_:tt)*) => {}
+        ($($_:tt)*) => {};
     }
 }
 

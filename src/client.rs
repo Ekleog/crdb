@@ -7,6 +7,7 @@ pub trait Db {
     fn submit<T: Object>(&self, object: DbPtr<T>, event: T::Event) -> anyhow::Result<()>;
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! generate_client {
     () => {

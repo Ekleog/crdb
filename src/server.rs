@@ -7,28 +7,39 @@ pub trait Authenticator: for<'a> serde::Deserialize<'a> + serde::Serialize {
     fn authenticate(&self) -> Result<User, (StatusCode, String)>;
 }
 
+/// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait Config {}
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! generate_server {
     () => {
-        // TODO: generate a Config impl and a (Can)ApplyCallbacks impl
+        struct ServerConfig;
+
+        impl $crate::server::Config for ServerConfig {}
     };
 }
 
-pub struct Server<C: Config> {
+struct Db {
     _db: sqlx::PgPool,
+}
+// TODO: impl (Can)ApplyCallbacks for Db
+
+pub struct Server<C: Config> {
+    _db: Db,
     _phantom: PhantomData<C>,
 }
 
 impl<C: Config> Server<C> {
     pub async fn new(db_url: &str) -> anyhow::Result<Self> {
         Ok(Server {
-            _db: sqlx::postgres::PgPoolOptions::new()
-                .max_connections(50) // TODO: make configurable (builder pattern?)
-                .connect(&db_url)
-                .await
-                .with_context(|| format!("opening database {db_url:?}"))?,
+            _db: Db {
+                _db: sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(50) // TODO: make configurable (builder pattern?)
+                    .connect(&db_url)
+                    .await
+                    .with_context(|| format!("opening database {db_url:?}"))?,
+            },
             _phantom: PhantomData,
         })
     }
