@@ -5,11 +5,14 @@ edition = "2021"
 license = "AGPL3"
 
 [features]
-server = ["anyhow", "axum", "sqlx", "tokio", "tracing"]
+server = ["axum", "sqlx", "tokio", "tracing"]
 
 [dependencies]
+anyhow = "1.0"
+serde = "1.0"
+uuid = "1.6"
+
 # Server dependencies
-anyhow = { version = "1.0", optional = true }
 axum = { version = "0.7.2", optional = true }
 sqlx = { version = "0.7.3", features = ["postgres"], optional = true }
 tokio = { version = "1.35", optional = true }
