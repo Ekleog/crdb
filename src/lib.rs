@@ -38,15 +38,19 @@ trait Db {
     fn set_new_object_cb(&mut self, cb: Box<dyn Fn(ObjectId, TypeId, serde_json::Value)>);
     fn set_new_event_cb(&mut self, cb: Box<dyn Fn(ObjectId, EventId, TypeId, serde_json::Value)>);
 
-    fn create<T: Object>(&self, object_id: ObjectId, object: MaybeParsed<T>) -> anyhow::Result<()>;
-    fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>>;
-    fn submit<T: Object>(
+    async fn create<T: Object>(
+        &self,
+        object_id: ObjectId,
+        object: MaybeParsed<T>,
+    ) -> anyhow::Result<()>;
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>>;
+    async fn submit<T: Object>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: MaybeParsed<T::Event>,
     ) -> anyhow::Result<()>;
-    fn snapshot(&self, object: ObjectId) -> anyhow::Result<()>;
+    async fn snapshot(&self, object: ObjectId) -> anyhow::Result<()>;
 }
 
 #[macro_export]

@@ -31,7 +31,7 @@ impl crate::Db for Db {
         self.new_event_cb = cb;
     }
 
-    fn create<T: crate::Object>(
+    async fn create<T: crate::Object>(
         &self,
         object_id: crate::ObjectId,
         object: crate::MaybeParsed<T>,
@@ -39,11 +39,14 @@ impl crate::Db for Db {
         todo!()
     }
 
-    fn get<T: crate::Object>(&self, ptr: crate::ObjectId) -> anyhow::Result<crate::MaybeParsed<T>> {
+    async fn get<T: crate::Object>(
+        &self,
+        ptr: crate::ObjectId,
+    ) -> anyhow::Result<crate::MaybeParsed<T>> {
         todo!()
     }
 
-    fn submit<T: crate::Object>(
+    async fn submit<T: crate::Object>(
         &self,
         object: crate::ObjectId,
         event_id: crate::EventId,
@@ -52,7 +55,7 @@ impl crate::Db for Db {
         todo!()
     }
 
-    fn snapshot(&self, object: crate::ObjectId) -> anyhow::Result<()> {
+    async fn snapshot(&self, object: crate::ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 }
