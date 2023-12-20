@@ -1,20 +1,23 @@
 use crate::{Db, EventId, MaybeParsed, ObjectId, Timestamp, TypeId};
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{
+    any::Any,
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 enum MaybeParsedAny {
     Json(serde_json::Value),
     Parsed(Arc<dyn Any + Send + Sync>),
 }
 
-struct Cache<D: Db> {
+pub(crate) struct Cache<D: Db> {
     db: D,
-    object_creations: HashMap<ObjectId, MaybeParsedAny>,
-    object_snapshots: HashMap<ObjectId, MaybeParsedAny>,
-    events: HashMap<EventId, MaybeParsedAny>,
+    cache: HashMap<ObjectId, CachedObject>,
     new_object_cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
     new_event_cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
 }
 
+#[allow(unused_variables)] // TODO: remove once impl'd
 impl<D: Db> Db for Cache<D> {
     fn set_new_object_cb(
         &mut self,
@@ -56,4 +59,12 @@ impl<D: Db> Db for Cache<D> {
     async fn snapshot(&self, time: crate::Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
+}
+
+struct CachedObject {
+    creation_time: Timestamp,
+    creation: MaybeParsedAny,
+    last_snapshot_time: Timestamp,
+    last_snapshot: MaybeParsedAny,
+    events: BTreeMap<Timestamp, Vec<MaybeParsedAny>>,
 }

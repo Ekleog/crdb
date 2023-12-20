@@ -22,6 +22,7 @@ impl Db {
     }
 }
 
+#[allow(unused_variables)] // TODO: remove once impl'd
 impl crate::Db for Db {
     fn set_new_object_cb(
         &mut self,
