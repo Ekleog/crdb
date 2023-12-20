@@ -34,23 +34,33 @@ enum MaybeParsed<T: for<'a> serde::Deserialize<'a> + serde::Serialize> {
     Parsed(T),
 }
 
+struct Timestamp(u64); // Nanoseconds since UNIX_EPOCH divided by 10
+
 trait Db {
-    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(ObjectId, TypeId, serde_json::Value)>);
-    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(ObjectId, EventId, TypeId, serde_json::Value)>);
+    fn set_new_object_cb(
+        &mut self,
+        cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
+    );
+    fn set_new_event_cb(
+        &mut self,
+        cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
+    );
 
     async fn create<T: Object>(
         &self,
+        time: Timestamp,
         object_id: ObjectId,
         object: MaybeParsed<T>,
     ) -> anyhow::Result<()>;
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>>;
     async fn submit<T: Object>(
         &self,
+        time: Timestamp,
         object: ObjectId,
         event_id: EventId,
         event: MaybeParsed<T::Event>,
     ) -> anyhow::Result<()>;
-    async fn snapshot(&self, object: ObjectId) -> anyhow::Result<()>;
+    async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()>;
 }
 
 #[macro_export]

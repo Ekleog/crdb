@@ -1,10 +1,10 @@
-use crate::{EventId, ObjectId, TypeId};
+use crate::{EventId, ObjectId, Timestamp, TypeId};
 use anyhow::Context;
 
 pub(crate) struct Db {
     _db: sqlx::PgPool,
-    new_object_cb: Box<dyn Fn(ObjectId, TypeId, serde_json::Value)>,
-    new_event_cb: Box<dyn Fn(ObjectId, EventId, TypeId, serde_json::Value)>,
+    new_object_cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
+    new_event_cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
 }
 // TODO: impl (Can)ApplyCallbacks for Db
 
@@ -16,46 +16,51 @@ impl Db {
                 .connect(&db_url)
                 .await
                 .with_context(|| format!("opening database {db_url:?}"))?,
-            new_object_cb: Box::new(|_, _, _| ()),
-            new_event_cb: Box::new(|_, _, _, _| ()),
+            new_object_cb: Box::new(|_, _, _, _| ()),
+            new_event_cb: Box::new(|_, _, _, _, _| ()),
         })
     }
 }
 
 impl crate::Db for Db {
-    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(ObjectId, TypeId, serde_json::Value)>) {
+    fn set_new_object_cb(
+        &mut self,
+        cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
+    ) {
         self.new_object_cb = cb;
     }
 
-    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(ObjectId, EventId, TypeId, serde_json::Value)>) {
+    fn set_new_event_cb(
+        &mut self,
+        cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
+    ) {
         self.new_event_cb = cb;
     }
 
     async fn create<T: crate::Object>(
         &self,
-        object_id: crate::ObjectId,
+        time: crate::Timestamp,
+        object_id: ObjectId,
         object: crate::MaybeParsed<T>,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn get<T: crate::Object>(
-        &self,
-        ptr: crate::ObjectId,
-    ) -> anyhow::Result<crate::MaybeParsed<T>> {
+    async fn get<T: crate::Object>(&self, ptr: ObjectId) -> anyhow::Result<crate::MaybeParsed<T>> {
         todo!()
     }
 
     async fn submit<T: crate::Object>(
         &self,
-        object: crate::ObjectId,
-        event_id: crate::EventId,
+        time: crate::Timestamp,
+        object: ObjectId,
+        event_id: EventId,
         event: crate::MaybeParsed<T::Event>,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn snapshot(&self, object: crate::ObjectId) -> anyhow::Result<()> {
+    async fn snapshot(&self, time: crate::Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 }
