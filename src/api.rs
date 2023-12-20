@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, any::Any};
 
 use uuid::Uuid;
 
@@ -23,11 +23,11 @@ pub trait ApplyCallbacks: private::Sealed {
 /// Note that due to postgresql limitations reasons, this type MUST NOT include any
 /// null byte in the serialized JSON. Including them will result in internal server
 /// errors.
-pub trait Object: Default + for<'a> serde::Deserialize<'a> + serde::Serialize {
+pub trait Object: Any + Default + Send + Sync + for<'a> serde::Deserialize<'a> + serde::Serialize {
     /// Note that due to postgresql limitations reasons, this type MUST NOT include any
     /// null byte in the serialized JSON. Trying to submit one such event will result
     /// in the event being rejected by the server.
-    type Event: for<'a> serde::Deserialize<'a> + serde::Serialize;
+    type Event: Any + Send + Sync + for<'a> serde::Deserialize<'a> + serde::Serialize;
 
     fn uuid() -> &'static Uuid;
     fn snapshot_version() -> u64 {
