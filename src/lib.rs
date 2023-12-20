@@ -26,8 +26,8 @@ pub mod server {
 }
 
 trait Db {
-    fn set_new_object_cb(&mut self, cb: Box<dyn FnMut(Uuid, serde_json::Value)>);
-    fn set_new_event_cb(&mut self, cb: Box<dyn FnMut(Uuid, Uuid, serde_json::Value)>);
+    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(Uuid, serde_json::Value)>);
+    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(Uuid, Uuid, serde_json::Value)>);
 
     fn create(&self, object_id: Uuid, object: serde_json::Value) -> anyhow::Result<()>;
     fn get(&self, ptr: Uuid) -> anyhow::Result<serde_json::Value>;
