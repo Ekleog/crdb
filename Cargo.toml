@@ -8,7 +8,7 @@ license = "AGPL3"
 all-features = true
 
 [features]
-client = []
+client = ["uuid/v4"]
 server = ["axum", "sqlx", "tokio", "tracing"]
 
 [dependencies]

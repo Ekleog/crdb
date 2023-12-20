@@ -1,5 +1,9 @@
+use uuid::Uuid;
+
 mod api;
 pub use api::{DbPtr, Object, User};
+
+mod cache;
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -19,6 +23,16 @@ pub mod server {
     macro_rules! generate_server {
         ($($_:tt)*) => {};
     }
+}
+
+trait Db {
+    fn set_new_object_cb(&mut self, cb: Box<dyn FnMut(Uuid, serde_json::Value)>);
+    fn set_new_event_cb(&mut self, cb: Box<dyn FnMut(Uuid, Uuid, serde_json::Value)>);
+
+    fn create(&self, object_id: Uuid, object: serde_json::Value) -> anyhow::Result<()>;
+    fn get(&self, ptr: Uuid) -> anyhow::Result<serde_json::Value>;
+    fn submit(&self, object: Uuid, event_id: Uuid, event: serde_json::Value) -> anyhow::Result<()>;
+    fn snapshot(&self, object: Uuid) -> anyhow::Result<()>;
 }
 
 #[macro_export]
