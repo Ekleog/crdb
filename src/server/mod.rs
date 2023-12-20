@@ -26,6 +26,7 @@ macro_rules! generate_server {
     ( $auth:ty | $name:ident | $($object:ty),* ) => {
         pub struct $name;
 
+        impl $crate::server::private::Sealed for $name {}
         impl $crate::server::Config<$auth> for $name {}
     };
 }
