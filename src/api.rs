@@ -6,11 +6,15 @@ pub struct User {
     pub id: Uuid,
 }
 
-pub trait CanApplyCallbacks {
+mod private {
+    pub trait Sealed {}
+}
+
+pub trait CanApplyCallbacks: private::Sealed {
     fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
 }
 
-pub trait ApplyCallbacks {
+pub trait ApplyCallbacks: private::Sealed {
     fn force_snapshot(&mut self);
     fn create_subsequent<T: Object>(&mut self, object: T);
     fn submit_subsequent<T: Object>(&mut self, object: DbPtr<T>, event: T::Event);
