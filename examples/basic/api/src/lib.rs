@@ -1,11 +1,11 @@
-struct Authenticator;
+pub struct Authenticator;
 
-struct Foo;
-struct Bar;
-struct Baz;
+pub struct Foo;
+pub struct Bar;
+pub struct Baz;
 
 crdb::db! {
-    mod db {
+    pub mod db {
         auth: super::Authenticator,
         server_config: ServerConfig,
         client_db: Db,

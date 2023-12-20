@@ -38,14 +38,14 @@ trait Db {
 #[macro_export]
 macro_rules! db {
     (
-        mod $module:ident {
+        $v:vis mod $module:ident {
             auth: $authenticator:ty,
             server_config: $server_config:ident,
             client_db: $client_db:ident,
             objects: [ $($object:ty),* $(,)* ],
         }
     ) => {
-        mod $module {
+        $v mod $module {
             $crate::generate_client!($authenticator | $client_db | $($object),*);
             $crate::generate_server!($authenticator | $server_config | $($object),*);
         }
