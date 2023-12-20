@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use uuid::Uuid;
 
 mod api;
@@ -25,15 +26,18 @@ pub mod server {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct ObjectId(Uuid);
 struct EventId(Uuid);
 struct TypeId(Uuid);
 
-enum MaybeParsed<T: for<'a> serde::Deserialize<'a> + serde::Serialize> {
-    Json(serde_json::Value),
-    Parsed(T),
+#[derive(Clone, Eq, PartialEq)]
+enum MaybeParsed<T> {
+    Json(Arc<serde_json::Value>),
+    Parsed(Arc<T>),
 }
 
+#[derive(Clone, Copy)]
 struct Timestamp(u64); // Nanoseconds since UNIX_EPOCH divided by 10
 
 trait Db {
