@@ -29,17 +29,22 @@ struct ObjectId(Uuid);
 struct EventId(Uuid);
 struct TypeId(Uuid);
 
+enum MaybeParsed<T: for<'a> serde::Deserialize<'a> + serde::Serialize> {
+    Json(serde_json::Value),
+    Parsed(T),
+}
+
 trait Db {
     fn set_new_object_cb(&mut self, cb: Box<dyn Fn(ObjectId, TypeId, serde_json::Value)>);
     fn set_new_event_cb(&mut self, cb: Box<dyn Fn(ObjectId, EventId, TypeId, serde_json::Value)>);
 
-    fn create(&self, object_id: ObjectId, object: serde_json::Value) -> anyhow::Result<()>;
-    fn get(&self, ptr: ObjectId) -> anyhow::Result<serde_json::Value>;
-    fn submit(
+    fn create<T: Object>(&self, object_id: ObjectId, object: MaybeParsed<T>) -> anyhow::Result<()>;
+    fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>>;
+    fn submit<T: Object>(
         &self,
         object: ObjectId,
         event_id: EventId,
-        event: serde_json::Value,
+        event: MaybeParsed<T::Event>,
     ) -> anyhow::Result<()>;
     fn snapshot(&self, object: ObjectId) -> anyhow::Result<()>;
 }
