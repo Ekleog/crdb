@@ -1,10 +1,10 @@
 use crate::User;
 use anyhow::Context;
 use axum::http::StatusCode;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, marker::PhantomData};
 
-pub trait Authenticator: for<'a> serde::Deserialize<'a> + serde::Serialize {
-    fn authenticate(&self) -> Result<User, (StatusCode, String)>;
+pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
+    fn authenticate(data: Auth) -> Result<User, (StatusCode, String)>;
 }
 
 // This module needs to actually be public, because `generate_server!` needs to be
@@ -18,15 +18,15 @@ pub mod private {
 }
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
-pub trait Config: private::Sealed {}
+pub trait Config<Auth>: private::Sealed {}
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_server {
-    () => {
+    ( $auth:ty | $($object:ty),* ) => {
         pub struct ServerConfig;
 
-        impl $crate::server::Config for ServerConfig {}
+        impl $crate::server::Config<$auth> for ServerConfig {}
     };
 }
 
@@ -35,12 +35,13 @@ struct Db {
 }
 // TODO: impl (Can)ApplyCallbacks for Db
 
-pub struct Server<C: Config> {
+pub struct Server<Auth, C: Config<Auth>> {
     _config: C,
     _db: Db,
+    _phantom: PhantomData<Auth>,
 }
 
-impl<C: Config> Server<C> {
+impl<Auth, C: Config<Auth>> Server<Auth, C> {
     pub async fn new(config: C, db_url: &str) -> anyhow::Result<Self> {
         Ok(Server {
             _config: config,
@@ -51,6 +52,7 @@ impl<C: Config> Server<C> {
                     .await
                     .with_context(|| format!("opening database {db_url:?}"))?,
             },
+            _phantom: PhantomData,
         })
     }
 
