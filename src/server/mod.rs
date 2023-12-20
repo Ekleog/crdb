@@ -23,10 +23,10 @@ pub trait Config<Auth>: private::Sealed {}
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_server {
-    ( $auth:ty | $($object:ty),* ) => {
-        pub struct ServerConfig;
+    ( $auth:ty | $name:ident | $($object:ty),* ) => {
+        pub struct $name;
 
-        impl $crate::server::Config<$auth> for ServerConfig {}
+        impl $crate::server::Config<$auth> for $name {}
     };
 }
 

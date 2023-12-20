@@ -37,10 +37,17 @@ trait Db {
 
 #[macro_export]
 macro_rules! db {
-    ( mod $module:ident auth $authenticator:ty { $($object:ty),* $(,)* } ) => {
+    (
+        mod $module:ident {
+            auth: $authenticator:ty,
+            server_config: $server_config:ident,
+            client_db: $client_db:ident,
+            objects: [ $($object:ty),* $(,)* ],
+        }
+    ) => {
         mod $module {
-            $crate::generate_client!($authenticator | $($object),*);
-            $crate::generate_server!($authenticator | $($object),*);
+            $crate::generate_client!($authenticator | $client_db | $($object),*);
+            $crate::generate_server!($authenticator | $server_config | $($object),*);
         }
     }
 }

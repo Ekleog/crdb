@@ -5,9 +5,14 @@ struct Bar;
 struct Baz;
 
 crdb::db! {
-    mod db auth Authenticator {
-        Foo,
-        Bar,
-        Baz,
+    mod db {
+        auth: super::Authenticator,
+        server_config: ServerConfig,
+        client_db: Db,
+        objects: [
+            Foo,
+            Bar,
+            Baz,
+        ],
     }
 }
