@@ -25,14 +25,23 @@ pub mod server {
     }
 }
 
-trait Db {
-    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(Uuid, serde_json::Value)>);
-    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(Uuid, Uuid, serde_json::Value)>);
+struct ObjectId(Uuid);
+struct EventId(Uuid);
+struct TypeId(Uuid);
 
-    fn create(&self, object_id: Uuid, object: serde_json::Value) -> anyhow::Result<()>;
-    fn get(&self, ptr: Uuid) -> anyhow::Result<serde_json::Value>;
-    fn submit(&self, object: Uuid, event_id: Uuid, event: serde_json::Value) -> anyhow::Result<()>;
-    fn snapshot(&self, object: Uuid) -> anyhow::Result<()>;
+trait Db {
+    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(ObjectId, TypeId, serde_json::Value)>);
+    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(ObjectId, EventId, TypeId, serde_json::Value)>);
+
+    fn create(&self, object_id: ObjectId, object: serde_json::Value) -> anyhow::Result<()>;
+    fn get(&self, ptr: ObjectId) -> anyhow::Result<serde_json::Value>;
+    fn submit(
+        &self,
+        object: ObjectId,
+        event_id: EventId,
+        event: serde_json::Value,
+    ) -> anyhow::Result<()>;
+    fn snapshot(&self, object: ObjectId) -> anyhow::Result<()>;
 }
 
 #[macro_export]
