@@ -1,20 +1,18 @@
 use crate::User;
 use anyhow::Context;
 use axum::http::StatusCode;
-use std::{net::SocketAddr, marker::PhantomData};
+use std::{marker::PhantomData, net::SocketAddr};
 
 #[doc(hidden)] // See comment on config::private::Sealed for why this is public
 pub mod config;
 pub use config::Config;
 
+mod db;
+use db::Db;
+
 pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
     fn authenticate(data: Auth) -> Result<User, (StatusCode, String)>;
 }
-
-struct Db {
-    _db: sqlx::PgPool,
-}
-// TODO: impl (Can)ApplyCallbacks for Db
 
 pub struct Server<Auth, C: Config<Auth>> {
     _config: C,
@@ -26,13 +24,7 @@ impl<Auth, C: Config<Auth>> Server<Auth, C> {
     pub async fn new(config: C, db_url: &str) -> anyhow::Result<Self> {
         Ok(Server {
             _config: config,
-            _db: Db {
-                _db: sqlx::postgres::PgPoolOptions::new()
-                    .max_connections(50) // TODO: make configurable (builder pattern?)
-                    .connect(&db_url)
-                    .await
-                    .with_context(|| format!("opening database {db_url:?}"))?,
-            },
+            _db: Db::connect(db_url).await?,
             _phantom: PhantomData,
         })
     }
