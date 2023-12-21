@@ -38,31 +38,28 @@ impl<D: Db> Db for Cache<D> {
         object_id: ObjectId,
         object: MaybeParsed<T>,
     ) -> anyhow::Result<()> {
-        {
-            // Restrict the lock lifetime
-            let mut cache = self.cache.write().await;
-            let cache_entry = cache.entry(object_id);
-            let object_any = MaybeParsedAny::from(object.clone());
-            match cache_entry {
-                hash_map::Entry::Occupied(o) => {
-                    debug_assert!(
-                        o.get().creation.clone().downcast::<T>()? == object,
-                        "Object {object_id:?} was already created with a different initial value"
-                    );
-                    return Ok(());
-                }
-                hash_map::Entry::Vacant(v) => {
-                    v.insert(FullObject {
-                        creation_time: time,
-                        creation: object_any.clone(),
-                        last_snapshot_time: time,
-                        last_snapshot: object_any,
-                        events: Arc::new(BTreeMap::new()),
-                    });
-                }
+        let mut cache = self.cache.write().await;
+        let cache_entry = cache.entry(object_id);
+        match cache_entry {
+            hash_map::Entry::Occupied(o) => {
+                anyhow::ensure!(
+                    o.get().creation.clone().downcast::<T>()? == object,
+                    "Object {object_id:?} was already created with a different initial value"
+                );
+            }
+            hash_map::Entry::Vacant(v) => {
+                let object_any = MaybeParsedAny::from(object.clone());
+                self.db.create(time, object_id, object).await?;
+                v.insert(FullObject {
+                    creation_time: time,
+                    creation: object_any.clone(),
+                    last_snapshot_time: time,
+                    last_snapshot: object_any,
+                    events: Arc::new(BTreeMap::new()),
+                });
             }
         }
-        self.db.create(time, object_id, object).await
+        Ok(())
     }
 
     async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
