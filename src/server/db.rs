@@ -1,5 +1,5 @@
 use crate::{
-    traits::{EventId, MaybeParsed, ObjectId, Timestamp, TypeId},
+    traits::{EventId, FullObject, MaybeParsed, ObjectId, Timestamp, TypeId},
     Object,
 };
 use anyhow::Context;
@@ -50,7 +50,7 @@ impl crate::traits::Db for Db {
         todo!()
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>> {
+    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
         todo!()
     }
 

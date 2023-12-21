@@ -1,13 +1,16 @@
 use crate::{
-    traits::{CachedObject, Db, EventId, MaybeParsed, MaybeParsedAny, ObjectId, Timestamp, TypeId},
+    traits::{Db, EventId, FullObject, MaybeParsed, MaybeParsedAny, ObjectId, Timestamp, TypeId},
     Object,
 };
-use std::collections::{hash_map, BTreeMap, HashMap};
+use std::{
+    collections::{hash_map, BTreeMap, HashMap},
+    sync::Arc,
+};
 use tokio::sync::RwLock;
 
 pub(crate) struct Cache<D: Db> {
     db: D,
-    cache: RwLock<HashMap<ObjectId, CachedObject>>,
+    cache: RwLock<HashMap<ObjectId, FullObject>>,
     new_object_cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
     new_event_cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
 }
@@ -47,12 +50,12 @@ impl<D: Db> Db for Cache<D> {
                     );
                 }
                 hash_map::Entry::Vacant(v) => {
-                    v.insert(CachedObject {
+                    v.insert(FullObject {
                         creation_time: time,
                         creation: object_any.clone(),
                         last_snapshot_time: time,
                         last_snapshot: object_any,
-                        events: BTreeMap::new(),
+                        events: Arc::new(BTreeMap::new()),
                     });
                 }
             }
@@ -60,19 +63,19 @@ impl<D: Db> Db for Cache<D> {
         self.db.create(time, object_id, object).await
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>> {
+    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
         {
             // Restrict the lock lifetime
             let cache = self.cache.read().await;
             if let Some(res) = cache.get(&ptr) {
-                return Ok(res.last_snapshot.clone().downcast()?);
+                return Ok(res.clone());
             }
         }
         let res = self.db.get(ptr).await?;
         {
             // Restrict the lock lifetime
             let mut cache = self.cache.write().await;
-            cache.insert(ptr, todo!());
+            cache.insert(ptr, res.clone());
         }
         Ok(res)
     }
