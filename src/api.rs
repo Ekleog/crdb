@@ -6,6 +6,40 @@ pub struct User {
     pub id: Uuid,
 }
 
+#[non_exhaustive]
+pub enum JsonPathItem {
+    Key(String),
+    Id(usize),
+}
+
+#[non_exhaustive]
+pub enum JsonNumber {
+    F64(f64),
+    I64(i64),
+    U64(u64),
+}
+
+#[non_exhaustive]
+pub enum Query {
+    // Logic operators
+    And(Vec<Query>),
+    Or(Vec<Query>),
+    Not(Box<Query>),
+
+    // JSON tests
+    Eq(Vec<JsonPathItem>, serde_json::Value),
+    Ne(Vec<JsonPathItem>, serde_json::Value),
+
+    // Integers
+    Le(Vec<JsonPathItem>, JsonNumber),
+    Lt(Vec<JsonPathItem>, JsonNumber),
+    Ge(Vec<JsonPathItem>, JsonNumber),
+    Gt(Vec<JsonPathItem>, JsonNumber),
+
+    // Arrays and object subscripting
+    Contains(Vec<JsonPathItem>, serde_json::Value),
+}
+
 mod private {
     pub trait Sealed {}
 }
@@ -48,6 +82,7 @@ pub trait Object:
         unimplemented!()
     }
 
+    fn can_create<C: CanDoCallbacks>(&self, user: User, db: &C) -> anyhow::Result<bool>;
     fn can_apply<C: CanDoCallbacks>(
         &self,
         user: &User,

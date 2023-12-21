@@ -1,4 +1,5 @@
 use crate::{
+    api::Query,
     traits::{Db, EventId, FullObject, MaybeParsed, MaybeParsedAny, ObjectId, Timestamp, TypeId},
     Object,
 };
@@ -62,6 +63,16 @@ impl<D: Db> Db for Cache<D> {
         Ok(())
     }
 
+    async fn submit<T: Object>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        event_id: EventId,
+        event: MaybeParsed<T::Event>,
+    ) -> anyhow::Result<()> {
+        todo!()
+    }
+
     async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
         {
             let cache = self.cache.read().await;
@@ -79,14 +90,13 @@ impl<D: Db> Db for Cache<D> {
         Ok(res)
     }
 
-    async fn submit<T: Object>(
+    async fn query(
         &self,
-        time: Timestamp,
-        object: ObjectId,
-        event_id: EventId,
-        event: MaybeParsed<T::Event>,
-    ) -> anyhow::Result<()> {
-        todo!()
+        type_id: TypeId,
+        q: Query,
+    ) -> anyhow::Result<impl futures::Stream<Item = FullObject>> {
+        todo!();
+        Ok(futures::stream::empty())
     }
 
     async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {

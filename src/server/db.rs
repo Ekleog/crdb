@@ -1,4 +1,5 @@
 use crate::{
+    api::Query,
     traits::{EventId, FullObject, MaybeParsed, ObjectId, Timestamp, TypeId},
     Object,
 };
@@ -13,6 +14,7 @@ pub(crate) struct Db {
 
 impl Db {
     pub async fn connect(db_url: &str) -> anyhow::Result<Db> {
+        // TODO: switch to surrealdb?
         Ok(Db {
             _db: sqlx::postgres::PgPoolOptions::new()
                 .max_connections(50) // TODO: make configurable (builder pattern?)
@@ -50,10 +52,6 @@ impl crate::traits::Db for Db {
         todo!()
     }
 
-    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
-        todo!()
-    }
-
     async fn submit<T: Object>(
         &self,
         time: Timestamp,
@@ -62,6 +60,19 @@ impl crate::traits::Db for Db {
         event: MaybeParsed<T::Event>,
     ) -> anyhow::Result<()> {
         todo!()
+    }
+
+    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
+        todo!()
+    }
+
+    async fn query(
+        &self,
+        type_id: TypeId,
+        q: Query,
+    ) -> anyhow::Result<impl futures::Stream<Item = FullObject>> {
+        todo!();
+        Ok(futures::stream::empty())
     }
 
     async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {

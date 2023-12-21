@@ -1,5 +1,5 @@
 mod api;
-pub use api::{DbPtr, Object, User};
+pub use api::{DbPtr, JsonPathItem, Object, Query, User};
 
 mod cache;
 mod traits;

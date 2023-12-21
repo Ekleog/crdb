@@ -1,7 +1,7 @@
-use uuid::Uuid;
-
-use crate::Object;
+use crate::{api::Query, Object};
+use futures::Stream;
 use std::{any::Any, collections::BTreeMap, sync::Arc};
+use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ObjectId(pub(crate) Uuid);
@@ -69,7 +69,6 @@ pub(crate) trait Db {
         object_id: ObjectId,
         object: MaybeParsed<T>,
     ) -> anyhow::Result<()>;
-    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject>;
     async fn submit<T: Object>(
         &self,
         time: Timestamp,
@@ -77,5 +76,13 @@ pub(crate) trait Db {
         event_id: EventId,
         event: MaybeParsed<T::Event>,
     ) -> anyhow::Result<()>;
+
+    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject>;
+    async fn query(
+        &self,
+        type_id: TypeId,
+        q: Query,
+    ) -> anyhow::Result<impl Stream<Item = FullObject>>;
+
     async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()>;
 }
