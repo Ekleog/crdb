@@ -10,7 +10,7 @@ mod private {
     pub trait Sealed {}
 }
 
-pub trait CanApplyCallbacks: private::Sealed {
+pub trait CanDoCallbacks: private::Sealed {
     fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
 }
 
@@ -48,12 +48,13 @@ pub trait Object:
         unimplemented!()
     }
 
-    fn can_apply<C: CanApplyCallbacks>(
+    fn can_apply<C: CanDoCallbacks>(
         &self,
         user: &User,
         event: &Self::Event,
         db: &C,
     ) -> anyhow::Result<bool>;
+    fn users_who_can_read<C: CanDoCallbacks>(&self) -> anyhow::Result<Vec<User>>;
     fn apply<C: ApplyCallbacks>(&mut self, event: &Self::Event, db: &mut C) -> anyhow::Result<()>;
     fn is_heavy(&self) -> anyhow::Result<bool>;
 }

@@ -64,15 +64,15 @@ impl<D: Db> Db for Cache<D> {
 
     async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
         {
-            // Restrict the lock lifetime
             let cache = self.cache.read().await;
             if let Some(res) = cache.get(&ptr) {
                 return Ok(res.clone());
             }
         }
+        // TODO: subscribe to new events on ptr
+        // TODO: clients must also start by populating the cache with all non-heavy objects?
         let res = self.db.get(ptr).await?;
         {
-            // Restrict the lock lifetime
             let mut cache = self.cache.write().await;
             cache.insert(ptr, res.clone());
         }
