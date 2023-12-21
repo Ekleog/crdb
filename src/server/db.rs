@@ -1,4 +1,7 @@
-use crate::{EventId, ObjectId, Timestamp, TypeId};
+use crate::{
+    traits::{EventId, MaybeParsed, ObjectId, Timestamp, TypeId},
+    Object,
+};
 use anyhow::Context;
 
 pub(crate) struct Db {
@@ -23,7 +26,7 @@ impl Db {
 }
 
 #[allow(unused_variables)] // TODO: remove once impl'd
-impl crate::Db for Db {
+impl crate::traits::Db for Db {
     fn set_new_object_cb(
         &mut self,
         cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
@@ -38,30 +41,30 @@ impl crate::Db for Db {
         self.new_event_cb = cb;
     }
 
-    async fn create<T: crate::Object>(
+    async fn create<T: Object>(
         &self,
-        time: crate::Timestamp,
+        time: Timestamp,
         object_id: ObjectId,
-        object: crate::MaybeParsed<T>,
+        object: MaybeParsed<T>,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn get<T: crate::Object>(&self, ptr: ObjectId) -> anyhow::Result<crate::MaybeParsed<T>> {
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>> {
         todo!()
     }
 
-    async fn submit<T: crate::Object>(
+    async fn submit<T: Object>(
         &self,
-        time: crate::Timestamp,
+        time: Timestamp,
         object: ObjectId,
         event_id: EventId,
-        event: crate::MaybeParsed<T::Event>,
+        event: MaybeParsed<T::Event>,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn snapshot(&self, time: crate::Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 }

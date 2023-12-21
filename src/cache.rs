@@ -1,5 +1,6 @@
 use crate::{
-    CachedObject, Db, EventId, MaybeParsed, MaybeParsedAny, Object, ObjectId, Timestamp, TypeId,
+    traits::{CachedObject, Db, EventId, MaybeParsed, MaybeParsedAny, ObjectId, Timestamp, TypeId},
+    Object,
 };
 use std::collections::{hash_map, BTreeMap, HashMap};
 use tokio::sync::RwLock;
