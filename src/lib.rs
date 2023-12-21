@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{any::Any, collections::BTreeMap, sync::Arc};
 use uuid::Uuid;
 
 mod api;
@@ -35,6 +35,41 @@ struct TypeId(Uuid);
 enum MaybeParsed<T> {
     Json(Arc<serde_json::Value>),
     Parsed(Arc<T>),
+}
+
+#[derive(Clone)]
+enum MaybeParsedAny {
+    Json(Arc<serde_json::Value>),
+    Parsed(Arc<dyn Any + Send + Sync>),
+}
+
+impl<T: Any + Send + Sync> From<MaybeParsed<T>> for MaybeParsedAny {
+    fn from(value: MaybeParsed<T>) -> Self {
+        match value {
+            MaybeParsed::Json(v) => MaybeParsedAny::Json(v),
+            MaybeParsed::Parsed(v) => MaybeParsedAny::Parsed(v),
+        }
+    }
+}
+
+impl MaybeParsedAny {
+    fn downcast<T: Any + Send + Sync>(self) -> anyhow::Result<MaybeParsed<T>> {
+        Ok(match self {
+            MaybeParsedAny::Json(v) => MaybeParsed::Json(v),
+            MaybeParsedAny::Parsed(v) => MaybeParsed::Parsed(
+                v.downcast()
+                    .map_err(|_| anyhow::anyhow!("Failed downcasting to expected type"))?,
+            ),
+        })
+    }
+}
+
+struct CachedObject {
+    creation_time: Timestamp,
+    creation: MaybeParsedAny,
+    last_snapshot_time: Timestamp,
+    last_snapshot: MaybeParsedAny,
+    events: BTreeMap<Timestamp, Vec<MaybeParsedAny>>,
 }
 
 #[derive(Clone, Copy)]

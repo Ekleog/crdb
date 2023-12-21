@@ -1,37 +1,8 @@
-use crate::{Db, EventId, MaybeParsed, Object, ObjectId, Timestamp, TypeId};
-use std::{
-    any::Any,
-    collections::{hash_map, BTreeMap, HashMap},
-    sync::Arc,
+use crate::{
+    CachedObject, Db, EventId, MaybeParsed, MaybeParsedAny, Object, ObjectId, Timestamp, TypeId,
 };
+use std::collections::{hash_map, BTreeMap, HashMap};
 use tokio::sync::RwLock;
-
-#[derive(Clone)]
-enum MaybeParsedAny {
-    Json(Arc<serde_json::Value>),
-    Parsed(Arc<dyn Any + Send + Sync>),
-}
-
-impl<T: Any + Send + Sync> From<MaybeParsed<T>> for MaybeParsedAny {
-    fn from(value: MaybeParsed<T>) -> Self {
-        match value {
-            MaybeParsed::Json(v) => MaybeParsedAny::Json(v),
-            MaybeParsed::Parsed(v) => MaybeParsedAny::Parsed(v),
-        }
-    }
-}
-
-impl MaybeParsedAny {
-    fn downcast<T: Any + Send + Sync>(self) -> anyhow::Result<MaybeParsed<T>> {
-        Ok(match self {
-            MaybeParsedAny::Json(v) => MaybeParsed::Json(v),
-            MaybeParsedAny::Parsed(v) => MaybeParsed::Parsed(
-                v.downcast()
-                    .map_err(|_| anyhow::anyhow!("Failed downcasting to expected type"))?,
-            ),
-        })
-    }
-}
 
 pub(crate) struct Cache<D: Db> {
     db: D,
@@ -89,7 +60,20 @@ impl<D: Db> Db for Cache<D> {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<MaybeParsed<T>> {
-        todo!()
+        {
+            // Restrict the lock lifetime
+            let cache = self.cache.read().await;
+            if let Some(res) = cache.get(&ptr) {
+                return Ok(res.last_snapshot.clone().downcast()?);
+            }
+        }
+        let res = self.db.get(ptr).await?;
+        {
+            // Restrict the lock lifetime
+            let mut cache = self.cache.write().await;
+            cache.insert(ptr, todo!());
+        }
+        Ok(res)
     }
 
     async fn submit<T: Object>(
@@ -105,12 +89,4 @@ impl<D: Db> Db for Cache<D> {
     async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
-}
-
-struct CachedObject {
-    creation_time: Timestamp,
-    creation: MaybeParsedAny,
-    last_snapshot_time: Timestamp,
-    last_snapshot: MaybeParsedAny,
-    events: BTreeMap<Timestamp, Vec<MaybeParsedAny>>,
 }
