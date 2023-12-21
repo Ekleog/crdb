@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 
 pub(crate) struct Cache<D: Db> {
     db: D,
+    // TODO: figure out how to purge from cache (LRU-style)
     cache: RwLock<HashMap<ObjectId, FullObject>>,
     new_object_cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
     new_event_cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
