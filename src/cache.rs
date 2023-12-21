@@ -44,10 +44,11 @@ impl<D: Db> Db for Cache<D> {
             let object_any = MaybeParsedAny::from(object.clone());
             match cache_entry {
                 hash_map::Entry::Occupied(o) => {
-                    anyhow::ensure!(
+                    debug_assert!(
                         o.get().creation.clone().downcast::<T>()? == object,
                         "Object {object_id:?} was already created with a different initial value"
                     );
+                    return Ok(());
                 }
                 hash_map::Entry::Vacant(v) => {
                     v.insert(FullObject {
