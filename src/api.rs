@@ -1,9 +1,9 @@
 use std::{any::Any, marker::PhantomData, sync::Arc};
 
-use uuid::Uuid;
+use ulid::Ulid;
 
 pub struct User {
-    pub id: Uuid,
+    pub id: Ulid,
 }
 
 #[non_exhaustive]
@@ -67,7 +67,7 @@ pub trait Object:
     /// in the event being rejected by the server.
     type Event: Any + Send + Sync + for<'a> serde::Deserialize<'a> + serde::Serialize;
 
-    fn uuid() -> &'static Uuid;
+    fn ulid() -> &'static Ulid;
     fn snapshot_version() -> u64 {
         0
     }
@@ -95,15 +95,6 @@ pub trait Object:
 
 pub struct DbPtr<T: Object> {
     #[doc(hidden)]
-    pub id: Uuid,
+    pub id: Ulid,
     _phantom: PhantomData<T>,
-}
-
-impl<T: Object> DbPtr<T> {
-    pub fn from_uuid_unchecked(id: Uuid) -> DbPtr<T> {
-        DbPtr {
-            id,
-            _phantom: PhantomData,
-        }
-    }
 }

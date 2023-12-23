@@ -1,12 +1,12 @@
 use crate::{api::Query, Object};
 use futures::Stream;
 use std::{any::Any, collections::BTreeMap, sync::Arc};
-use uuid::Uuid;
+use ulid::Ulid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct ObjectId(pub(crate) Uuid);
-pub(crate) struct EventId(pub(crate) Uuid);
-pub(crate) struct TypeId(pub(crate) Uuid);
+pub(crate) struct ObjectId(pub(crate) Ulid);
+pub(crate) struct EventId(pub(crate) Ulid);
+pub(crate) struct TypeId(pub(crate) Ulid);
 
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) enum MaybeParsed<T> {
