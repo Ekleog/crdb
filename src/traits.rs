@@ -8,23 +8,28 @@ pub(crate) struct ObjectId(pub(crate) Ulid);
 pub(crate) struct EventId(pub(crate) Ulid);
 pub(crate) struct TypeId(pub(crate) Ulid);
 
-#[derive(Clone, Eq, PartialEq)]
-pub(crate) enum MaybeParsed<T> {
+#[derive(Eq, PartialEq)]
+pub(crate) enum MaybeParsed<T: ?Sized> {
     Json(Arc<serde_json::Value>),
     Parsed(Arc<T>),
 }
 
-#[derive(Clone)]
-pub(crate) enum MaybeParsedAny {
-    Json(Arc<serde_json::Value>),
-    Parsed(Arc<dyn Any + Send + Sync>),
+pub(crate) type MaybeParsedAny = MaybeParsed<dyn Any + Send + Sync>;
+
+impl<T: ?Sized> Clone for MaybeParsed<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Json(v) => Self::Json(v.clone()),
+            Self::Parsed(v) => Self::Parsed(v.clone()),
+        }
+    }
 }
 
 impl<T: Any + Send + Sync> From<MaybeParsed<T>> for MaybeParsedAny {
     fn from(value: MaybeParsed<T>) -> Self {
         match value {
-            MaybeParsed::Json(v) => MaybeParsedAny::Json(v),
-            MaybeParsed::Parsed(v) => MaybeParsedAny::Parsed(v),
+            MaybeParsed::Json(v) => MaybeParsed::Json(v),
+            MaybeParsed::Parsed(v) => MaybeParsed::Parsed(v),
         }
     }
 }
@@ -51,7 +56,7 @@ pub(crate) struct FullObject {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Timestamp(u64); // Nanoseconds since UNIX_EPOCH divided by 10
+pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 pub(crate) trait Db {
     fn set_new_object_cb(
