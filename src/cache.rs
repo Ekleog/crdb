@@ -54,8 +54,7 @@ impl<D: Db> Db for Cache<D> {
                 v.insert(FullObject {
                     creation_time: time,
                     creation: object_any.clone(),
-                    snapshots: Arc::new(BTreeMap::new()),
-                    events: Arc::new(BTreeMap::new()),
+                    changes: Arc::new(BTreeMap::new()),
                 });
             }
         }

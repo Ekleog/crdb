@@ -47,11 +47,16 @@ impl MaybeParsedAny {
 }
 
 #[derive(Clone)]
+pub(crate) struct Changes {
+    events: Vec<MaybeParsedAny>,
+    snapshot_after: Option<MaybeParsedAny>,
+}
+
+#[derive(Clone)]
 pub(crate) struct FullObject {
     pub(crate) creation_time: Timestamp,
     pub(crate) creation: MaybeParsedAny,
-    pub(crate) snapshots: Arc<BTreeMap<Timestamp, MaybeParsedAny>>,
-    pub(crate) events: Arc<BTreeMap<Timestamp, Vec<MaybeParsedAny>>>,
+    pub(crate) changes: Arc<BTreeMap<Timestamp, Changes>>,
 }
 
 #[derive(Clone, Copy)]
