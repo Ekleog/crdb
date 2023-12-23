@@ -48,12 +48,6 @@ pub trait CanDoCallbacks: private::Sealed {
     fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
 }
 
-pub trait ApplyCallbacks: private::Sealed {
-    fn force_snapshot(&mut self);
-    fn create_subsequent<T: Object>(&mut self, object: T);
-    fn submit_subsequent<T: Object>(&mut self, object: DbPtr<T>, event: T::Event);
-}
-
 /// Note that due to postgresql limitations reasons, this type MUST NOT include any
 /// null byte in the serialized JSON. Including them will result in internal server
 /// errors.
@@ -83,6 +77,11 @@ pub trait Object:
     }
 
     fn can_create<C: CanDoCallbacks>(&self, user: User, db: &C) -> anyhow::Result<bool>;
+    /// Note that permissions are always checked with the latest version of the object on the server.
+    /// So, due to this, CRDB objects are not strictly speaking a CRDT. However, it is required to do
+    /// so for security, because otherwise a user who lost permissions would still be allowed to
+    /// submit events antidated to before the permission loss, which would be bad as users could
+    /// re-grant themselves permissions.
     fn can_apply<C: CanDoCallbacks>(
         &self,
         user: &User,
@@ -90,7 +89,7 @@ pub trait Object:
         db: &C,
     ) -> anyhow::Result<bool>;
     fn users_who_can_read<C: CanDoCallbacks>(&self) -> anyhow::Result<Vec<User>>;
-    fn apply<C: ApplyCallbacks>(&mut self, event: &Self::Event, db: &mut C) -> anyhow::Result<()>;
+    fn apply(&mut self, event: &Self::Event) -> anyhow::Result<()>;
     fn is_heavy(&self) -> anyhow::Result<bool>;
 }
 
