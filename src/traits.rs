@@ -50,8 +50,7 @@ impl MaybeParsedAny {
 pub(crate) struct FullObject {
     pub(crate) creation_time: Timestamp,
     pub(crate) creation: MaybeParsedAny,
-    pub(crate) last_snapshot_time: Timestamp,
-    pub(crate) last_snapshot: MaybeParsedAny,
+    pub(crate) snapshots: Arc<BTreeMap<Timestamp, MaybeParsedAny>>,
     pub(crate) events: Arc<BTreeMap<Timestamp, Vec<MaybeParsedAny>>>,
 }
 
