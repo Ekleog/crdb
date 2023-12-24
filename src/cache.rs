@@ -8,7 +8,7 @@ use std::{
     collections::{hash_map, BTreeMap, HashMap},
     sync::Arc,
 };
-use tokio::sync::RwLock;
+use tokio::sync::RwLock; // TODO: make sure this is wasm-compatible
 
 pub(crate) struct Cache<D: Db> {
     db: D,
@@ -75,7 +75,11 @@ impl<D: Db> Db for Cache<D> {
             .await?;
         match cache.entry(object_id) {
             hash_map::Entry::Occupied(mut object) => {
-                object.get_mut().apply(event_id, event).await;
+                object
+                    .get_mut()
+                    .apply::<T>(event_id, event)
+                    .await
+                    .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
             }
             hash_map::Entry::Vacant(v) => {
                 let o = self

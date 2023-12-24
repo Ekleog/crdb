@@ -2,8 +2,9 @@ use crate::{
     api::{BinPtr, Query},
     Object,
 };
+use anyhow::anyhow;
 use futures::Stream;
-use std::{any::Any, collections::BTreeMap, sync::Arc};
+use std::{any::Any, collections::BTreeMap, ops::Bound, sync::Arc};
 use ulid::Ulid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -42,8 +43,37 @@ pub(crate) struct FullObject {
 }
 
 impl FullObject {
-    pub(crate) async fn apply(&mut self, id: EventId, event: Arc<dyn Any + Send + Sync>) {
-        todo!()
+    pub(crate) async fn apply<T: Object>(
+        &mut self,
+        id: EventId,
+        event: Arc<T::Event>,
+    ) -> anyhow::Result<()> {
+        let time = id.time();
+        anyhow::ensure!(
+            time > self.creation_time,
+            "Submitted event {id:?} before object's creation time"
+        );
+        // Find the last snapshot before the time of this event
+        let changes_before = self.changes.range(..time);
+        let mut last_snapshot = None;
+        for c in changes_before.rev() {
+            if let Some(s) = c.1.snapshot_after.as_ref() {
+                last_snapshot = Some((c.0, s.clone()));
+            }
+        }
+        let (last_snapshot_time, last_snapshot) = match last_snapshot {
+            Some((t, s)) => (*t, s),
+            None => (self.creation_time, self.creation.clone()),
+        };
+        let last_snapshot = last_snapshot.downcast::<T>().map_err(|_| {
+            anyhow!("Tried submitting event {id:?} to an object with the wrong type")
+        })?;
+        // Iterate through the changes since the last snapshot to just before the event
+        let to_apply = self
+            .changes
+            .range((Bound::Excluded(last_snapshot_time), Bound::Excluded(time)));
+        todo!();
+        Ok(())
     }
 }
 
@@ -62,7 +92,7 @@ pub(crate) struct NewEvent {
     value: Arc<dyn Any + Send + Sync>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 pub(crate) trait Db {
