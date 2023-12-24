@@ -8,11 +8,13 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::RwLock;
+use ulid::Ulid;
 
 pub(crate) struct Cache<D: Db> {
     db: D,
     // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
     cache: RwLock<HashMap<ObjectId, FullObject>>,
+    binaries: RwLock<HashMap<BinPtr, Arc<Vec<u8>>>>,
 }
 
 impl<D: Db> Cache<D> {
@@ -20,6 +22,7 @@ impl<D: Db> Cache<D> {
         Self {
             db,
             cache: RwLock::new(HashMap::new()),
+            binaries: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -112,8 +115,10 @@ impl<D: Db> Db for Cache<D> {
         todo!()
     }
 
-    async fn create_binary(&self, id: ulid::Ulid, value: &[u8]) -> anyhow::Result<BinPtr> {
-        todo!()
+    async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+        let mut binaries = self.binaries.write().await;
+        binaries.insert(id, value.clone());
+        self.db.create_binary(id, value).await
     }
 
     async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Vec<u8>> {

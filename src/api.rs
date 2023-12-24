@@ -102,6 +102,7 @@ pub struct DbPtr<T: Object> {
     _phantom: PhantomData<T>,
 }
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct BinPtr {
     id: Ulid,
 }
