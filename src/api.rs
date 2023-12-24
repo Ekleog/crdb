@@ -22,8 +22,8 @@ pub enum JsonNumber {
 #[non_exhaustive]
 pub enum Query {
     // Logic operators
-    And(Vec<Query>),
-    Or(Vec<Query>),
+    All(Vec<Query>),
+    Any(Vec<Query>),
     Not(Box<Query>),
 
     // JSON tests
@@ -38,6 +38,9 @@ pub enum Query {
 
     // Arrays and object subscripting
     Contains(Vec<JsonPathItem>, serde_json::Value),
+
+    // Full text search
+    ContainsStr(Vec<JsonPathItem>, String),
 }
 
 mod private {
