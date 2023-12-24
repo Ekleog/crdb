@@ -1,4 +1,4 @@
-use crate::{DbPtr, Object};
+use crate::{api::BinPtr, DbPtr, Object};
 use std::sync::Arc;
 use ulid::Ulid;
 
@@ -17,6 +17,9 @@ trait Db {
 
     /// `at_time` is the number of milliseconds since unix epoch, at which the object should be snapshotted
     fn snapshot<T: Object>(&self, object: DbPtr<T>, at_time: u64) -> anyhow::Result<()>;
+
+    fn create_binary(&self, id: Ulid, value: &[u8]) -> anyhow::Result<BinPtr>;
+    fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Vec<u8>>;
 }
 
 #[doc(hidden)]

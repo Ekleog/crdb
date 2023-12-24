@@ -1,5 +1,5 @@
 use crate::{
-    api::Query,
+    api::{BinPtr, Query},
     traits::{EventId, FullObject, MaybeParsed, ObjectId, Timestamp, TypeId},
     Object,
 };
@@ -76,6 +76,14 @@ impl crate::traits::Db for Db {
     }
 
     async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn create_binary(&self, id: ulid::Ulid, value: &[u8]) -> anyhow::Result<BinPtr> {
+        todo!()
+    }
+
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Vec<u8>> {
         todo!()
     }
 }

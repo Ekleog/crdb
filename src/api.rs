@@ -101,3 +101,7 @@ pub struct DbPtr<T: Object> {
     pub id: Ulid,
     _phantom: PhantomData<T>,
 }
+
+pub struct BinPtr {
+    id: Ulid,
+}

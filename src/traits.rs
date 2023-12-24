@@ -1,4 +1,7 @@
-use crate::{api::Query, Object};
+use crate::{
+    api::{BinPtr, Query},
+    Object,
+};
 use futures::Stream;
 use std::{any::Any, collections::BTreeMap, sync::Arc};
 use ulid::Ulid;
@@ -94,4 +97,7 @@ pub(crate) trait Db {
     ) -> anyhow::Result<impl Stream<Item = FullObject>>;
 
     async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()>;
+
+    async fn create_binary(&self, id: Ulid, value: &[u8]) -> anyhow::Result<BinPtr>;
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Vec<u8>>;
 }
