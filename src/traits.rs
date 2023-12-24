@@ -61,5 +61,5 @@ pub(crate) trait Db {
     async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()>;
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()>;
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Vec<u8>>;
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>>;
 }
