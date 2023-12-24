@@ -2,7 +2,7 @@ use crate::{
     api::{BinPtr, Query},
     Object,
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use futures::Stream;
 use std::{any::Any, collections::BTreeMap, ops::Bound, sync::Arc};
 use ulid::Ulid;
@@ -54,35 +54,10 @@ impl FullObject {
             self.id,
         );
 
-        // Find the last snapshot before the time of this event
-        let changes_before = self.changes.range(..id);
-        let mut last_snapshot = None;
-        for c in changes_before.rev() {
-            if let Some(s) = c.1.snapshot_after.as_ref() {
-                last_snapshot = Some((c.0, s.clone()));
-            }
-        }
-        let (last_snapshot_time, last_snapshot) = match last_snapshot {
-            Some((t, s)) => (*t, s),
-            // Note: Casting ObjectId to EventId here because ordering is the same anyway
-            None => (EventId(self.id.0), self.creation.clone()),
-        };
-        let mut last_snapshot = last_snapshot.downcast::<T>().map_err(|_| {
-            anyhow!("Tried submitting event {id:?} to an object with the wrong type")
-        })?;
-        let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
-
-        // Iterate through the changes since the last snapshot to just before the event
-        let to_apply = self
-            .changes
-            .range((Bound::Excluded(last_snapshot_time), Bound::Excluded(id)));
-        for c in to_apply {
-            last_snapshot_mut.apply(
-                c.1.event
-                    .downcast_ref()
-                    .expect("Event with different type than object type"),
-            );
-        }
+        // Get the snapshot to just before the event
+        let mut last_snapshot = self
+            .get_snapshot_at::<T>(Bound::Excluded(id))
+            .with_context(|| format!("applying event {id:?}"))?;
 
         // Apply the new event
         let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
@@ -105,6 +80,41 @@ impl FullObject {
         }
 
         Ok(())
+    }
+
+    fn get_snapshot_at<T: Object>(&mut self, at: Bound<EventId>) -> anyhow::Result<Arc<T>> {
+        // Find the last snapshot before `at`
+        let changes_before = self.changes.range((Bound::Unbounded, at));
+        let mut last_snapshot = None;
+        for c in changes_before.rev() {
+            if let Some(s) = c.1.snapshot_after.as_ref() {
+                last_snapshot = Some((c.0, s.clone()));
+                break;
+            }
+        }
+        let (last_snapshot_time, last_snapshot) = match last_snapshot {
+            Some((t, s)) => (*t, s),
+            // Note: Casting ObjectId to EventId here because ordering is the same anyway
+            None => (EventId(self.id.0), self.creation.clone()),
+        };
+        let mut last_snapshot = last_snapshot
+            .downcast::<T>()
+            .map_err(|_| anyhow!("Failed downcasting {:?} to type {:?}", self.id, T::ulid()))?;
+        let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
+
+        // Iterate through the changes since the last snapshot to just before the event
+        let to_apply = self
+            .changes
+            .range((Bound::Excluded(last_snapshot_time), at));
+        for c in to_apply {
+            last_snapshot_mut.apply(
+                c.1.event
+                    .downcast_ref()
+                    .expect("Event with different type than object type"),
+            );
+        }
+
+        Ok(last_snapshot)
     }
 }
 
