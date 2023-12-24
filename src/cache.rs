@@ -54,7 +54,7 @@ impl<D: Db> Db for Cache<D> {
             hash_map::Entry::Vacant(v) => {
                 self.db.create(object_id, object.clone()).await?;
                 v.insert(FullObject {
-                    creation_time: object_id.time(),
+                    id: object_id,
                     creation: object,
                     changes: Arc::new(BTreeMap::new()),
                 });

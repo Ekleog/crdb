@@ -7,11 +7,11 @@ use futures::Stream;
 use std::{any::Any, collections::BTreeMap, ops::Bound, sync::Arc};
 use ulid::Ulid;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct ObjectId(pub(crate) Ulid);
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct EventId(pub(crate) Ulid);
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct TypeId(pub(crate) Ulid);
 
 macro_rules! impl_for_id {
@@ -30,16 +30,16 @@ impl_for_id!(EventId);
 impl_for_id!(TypeId);
 
 #[derive(Clone)]
-pub(crate) struct Changes {
-    events: Vec<Arc<dyn Any + Send + Sync>>,
+pub(crate) struct Change {
+    event: Arc<dyn Any + Send + Sync>,
     snapshot_after: Option<Arc<dyn Any + Send + Sync>>,
 }
 
 #[derive(Clone)]
 pub(crate) struct FullObject {
-    pub(crate) creation_time: Timestamp,
+    pub(crate) id: ObjectId,
     pub(crate) creation: Arc<dyn Any + Send + Sync>,
-    pub(crate) changes: Arc<BTreeMap<Timestamp, Changes>>,
+    pub(crate) changes: Arc<BTreeMap<EventId, Change>>,
 }
 
 impl FullObject {
@@ -48,13 +48,14 @@ impl FullObject {
         id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
-        let time = id.time();
         anyhow::ensure!(
-            time > self.creation_time,
-            "Submitted event {id:?} before object's creation time"
+            id.0 > self.id.0,
+            "Submitted event {id:?} before object's creation time {:?}",
+            self.id,
         );
+
         // Find the last snapshot before the time of this event
-        let changes_before = self.changes.range(..time);
+        let changes_before = self.changes.range(..id);
         let mut last_snapshot = None;
         for c in changes_before.rev() {
             if let Some(s) = c.1.snapshot_after.as_ref() {
@@ -63,16 +64,46 @@ impl FullObject {
         }
         let (last_snapshot_time, last_snapshot) = match last_snapshot {
             Some((t, s)) => (*t, s),
-            None => (self.creation_time, self.creation.clone()),
+            // Note: Casting ObjectId to EventId here because ordering is the same anyway
+            None => (EventId(self.id.0), self.creation.clone()),
         };
-        let last_snapshot = last_snapshot.downcast::<T>().map_err(|_| {
+        let mut last_snapshot = last_snapshot.downcast::<T>().map_err(|_| {
             anyhow!("Tried submitting event {id:?} to an object with the wrong type")
         })?;
+        let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
+
         // Iterate through the changes since the last snapshot to just before the event
         let to_apply = self
             .changes
-            .range((Bound::Excluded(last_snapshot_time), Bound::Excluded(time)));
-        todo!();
+            .range((Bound::Excluded(last_snapshot_time), Bound::Excluded(id)));
+        for c in to_apply {
+            last_snapshot_mut.apply(
+                c.1.event
+                    .downcast_ref()
+                    .expect("Event with different type than object type"),
+            );
+        }
+
+        // Apply the new event
+        let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
+        last_snapshot_mut.apply(&*event);
+        let new_change = Change {
+            event,
+            snapshot_after: Some(last_snapshot),
+        };
+        let changes_mut = Arc::make_mut(&mut self.changes);
+        anyhow::ensure!(
+            changes_mut.insert(id, new_change).is_none(),
+            "Object {:?} already had an event with id {id:?}",
+            self.id,
+        );
+
+        // Finally, invalidate all snapshots since the event
+        let to_invalidate = changes_mut.range_mut((Bound::Excluded(id), Bound::Unbounded));
+        for c in to_invalidate {
+            c.1.snapshot_after = None;
+        }
+
         Ok(())
     }
 }
