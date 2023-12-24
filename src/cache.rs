@@ -3,6 +3,7 @@ use crate::{
     traits::{Db, EventId, FullObject, NewEvent, NewObject, ObjectId, Timestamp, TypeId},
     Object,
 };
+use anyhow::Context;
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
     sync::Arc,
@@ -70,11 +71,32 @@ impl<D: Db> Db for Cache<D> {
     async fn submit<T: Object>(
         &self,
         time: Timestamp,
-        object: ObjectId,
+        object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
-        todo!()
+        let mut cache = self.cache.write().await;
+        self.db
+            .submit::<T>(time, object_id, event_id, event.clone())
+            .await?;
+        match cache.entry(object_id) {
+            hash_map::Entry::Occupied(mut object) => {
+                object
+                    .get_mut()
+                    .apply(time, event)
+                    .await
+                    .with_context(|| format!("applying {event_id:?} to {object_id:?}"))?;
+            }
+            hash_map::Entry::Vacant(v) => {
+                let o = self
+                    .db
+                    .get(object_id)
+                    .await
+                    .with_context(|| format!("getting {object_id:?} from database"))?;
+                v.insert(o);
+            }
+        };
+        Ok(())
     }
 
     async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {

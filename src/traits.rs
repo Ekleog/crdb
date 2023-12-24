@@ -8,7 +8,9 @@ use ulid::Ulid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ObjectId(pub(crate) Ulid);
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct EventId(pub(crate) Ulid);
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct TypeId(pub(crate) Ulid);
 
 #[derive(Clone)]
@@ -22,6 +24,16 @@ pub(crate) struct FullObject {
     pub(crate) creation_time: Timestamp,
     pub(crate) creation: Arc<dyn Any + Send + Sync>,
     pub(crate) changes: Arc<BTreeMap<Timestamp, Changes>>,
+}
+
+impl FullObject {
+    pub(crate) async fn apply(
+        &mut self,
+        time: Timestamp,
+        event: Arc<dyn Any + Send + Sync>,
+    ) -> anyhow::Result<()> {
+        todo!()
+    }
 }
 
 pub(crate) struct NewObject {
@@ -43,6 +55,8 @@ pub(crate) struct NewEvent {
 pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 pub(crate) trait Db {
+    /// These functions are called whenever another user submitted a new object or event.
+    /// Note that they are NOT called when you yourself called create or submit.
     fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject)>);
     fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent)>);
 
