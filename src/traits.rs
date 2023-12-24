@@ -24,18 +24,27 @@ pub(crate) struct FullObject {
     pub(crate) changes: Arc<BTreeMap<Timestamp, Changes>>,
 }
 
+pub(crate) struct NewObject {
+    time: Timestamp,
+    type_id: TypeId,
+    id: ObjectId,
+    value: Arc<dyn Any + Send + Sync>,
+}
+
+pub(crate) struct NewEvent {
+    time: Timestamp,
+    type_id: TypeId,
+    object_id: ObjectId,
+    id: EventId,
+    value: Arc<dyn Any + Send + Sync>,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 pub(crate) trait Db {
-    fn set_new_object_cb(
-        &mut self,
-        cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
-    );
-    fn set_new_event_cb(
-        &mut self,
-        cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
-    );
+    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject)>);
+    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent)>);
 
     async fn create<T: Object>(
         &self,

@@ -1,6 +1,6 @@
 use crate::{
     api::{BinPtr, Query},
-    traits::{Db, EventId, FullObject, ObjectId, Timestamp, TypeId},
+    traits::{Db, EventId, FullObject, NewEvent, NewObject, ObjectId, Timestamp, TypeId},
     Object,
 };
 use std::{
@@ -8,7 +8,6 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::RwLock;
-use ulid::Ulid;
 
 pub(crate) struct Cache<D: Db> {
     db: D,
@@ -27,19 +26,12 @@ impl<D: Db> Cache<D> {
     }
 }
 
-#[allow(unused_variables)] // TODO: remove once impl'd
 impl<D: Db> Db for Cache<D> {
-    fn set_new_object_cb(
-        &mut self,
-        cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
-    ) {
+    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject)>) {
         self.db.set_new_object_cb(cb)
     }
 
-    fn set_new_event_cb(
-        &mut self,
-        cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
-    ) {
+    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent)>) {
         self.db.set_new_event_cb(cb)
     }
 
