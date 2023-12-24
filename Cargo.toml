@@ -9,17 +9,17 @@ all-features = true
 
 [features]
 client = []
-server = ["axum", "sqlx", "tokio", "tracing"]
+server = ["axum", "sqlx", "tracing"]
 
 [dependencies]
 anyhow = "1.0"
 futures = "0.3.29"
 serde = "1.0"
 serde_json = "1.0"
+tokio = { version = "1.35", features = ["sync"] }
 ulid = "1.1"
 
 # Server dependencies
 axum = { version = "0.7.2", optional = true }
 sqlx = { version = "0.7.3", features = ["postgres"], optional = true }
-tokio = { version = "1.35", optional = true }
 tracing = { version = "0.1.40", optional = true }
