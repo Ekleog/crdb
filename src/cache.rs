@@ -1,6 +1,6 @@
 use crate::{
     api::{BinPtr, Query},
-    traits::{Db, EventId, FullObject, MaybeParsed, MaybeParsedAny, ObjectId, Timestamp, TypeId},
+    traits::{Db, EventId, FullObject, ObjectId, Timestamp, TypeId},
     Object,
 };
 use std::{
@@ -11,10 +11,17 @@ use tokio::sync::RwLock;
 
 pub(crate) struct Cache<D: Db> {
     db: D,
-    // TODO: figure out how to purge from cache (LRU-style)
+    // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
     cache: RwLock<HashMap<ObjectId, FullObject>>,
-    new_object_cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
-    new_event_cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
+}
+
+impl<D: Db> Cache<D> {
+    pub(crate) fn new(db: D) -> Cache<D> {
+        Self {
+            db,
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
 }
 
 #[allow(unused_variables)] // TODO: remove once impl'd
@@ -23,37 +30,41 @@ impl<D: Db> Db for Cache<D> {
         &mut self,
         cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
     ) {
-        self.new_object_cb = cb;
+        self.db.set_new_object_cb(cb)
     }
 
     fn set_new_event_cb(
         &mut self,
         cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
     ) {
-        self.new_event_cb = cb;
+        self.db.set_new_event_cb(cb)
     }
 
     async fn create<T: Object>(
         &self,
         time: Timestamp,
         object_id: ObjectId,
-        object: MaybeParsed<T>,
+        object: Arc<T>,
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
         let cache_entry = cache.entry(object_id);
         match cache_entry {
             hash_map::Entry::Occupied(o) => {
                 anyhow::ensure!(
-                    o.get().creation.clone().downcast::<T>()? == object,
+                    o.get()
+                        .creation
+                        .clone()
+                        .downcast::<T>()
+                        .map(|v| v == object)
+                        .unwrap_or(false),
                     "Object {object_id:?} was already created with a different initial value"
                 );
             }
             hash_map::Entry::Vacant(v) => {
-                let object_any = MaybeParsedAny::from(object.clone());
-                self.db.create(time, object_id, object).await?;
+                self.db.create(time, object_id, object.clone()).await?;
                 v.insert(FullObject {
                     creation_time: time,
-                    creation: object_any.clone(),
+                    creation: object,
                     changes: Arc::new(BTreeMap::new()),
                 });
             }
@@ -66,7 +77,7 @@ impl<D: Db> Db for Cache<D> {
         time: Timestamp,
         object: ObjectId,
         event_id: EventId,
-        event: MaybeParsed<T::Event>,
+        event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
         todo!()
     }

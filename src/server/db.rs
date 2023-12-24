@@ -1,14 +1,10 @@
-use crate::{
-    api::{BinPtr, Query},
-    traits::{EventId, FullObject, MaybeParsed, ObjectId, Timestamp, TypeId},
-    Object,
-};
+use crate::traits::{EventId, ObjectId, Timestamp, TypeId};
 use anyhow::Context;
 
 pub(crate) struct Db {
     _db: sqlx::PgPool,
-    new_object_cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
-    new_event_cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
+    _new_object_cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
+    _new_event_cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
 }
 // TODO: impl (Can)ApplyCallbacks for Db
 
@@ -21,69 +17,8 @@ impl Db {
                 .connect(&db_url)
                 .await
                 .with_context(|| format!("opening database {db_url:?}"))?,
-            new_object_cb: Box::new(|_, _, _, _| ()),
-            new_event_cb: Box::new(|_, _, _, _, _| ()),
+            _new_object_cb: Box::new(|_, _, _, _| ()),
+            _new_event_cb: Box::new(|_, _, _, _, _| ()),
         })
-    }
-}
-
-#[allow(unused_variables)] // TODO: remove once impl'd
-impl crate::traits::Db for Db {
-    fn set_new_object_cb(
-        &mut self,
-        cb: Box<dyn Fn(Timestamp, ObjectId, TypeId, serde_json::Value)>,
-    ) {
-        self.new_object_cb = cb;
-    }
-
-    fn set_new_event_cb(
-        &mut self,
-        cb: Box<dyn Fn(Timestamp, ObjectId, EventId, TypeId, serde_json::Value)>,
-    ) {
-        self.new_event_cb = cb;
-    }
-
-    async fn create<T: Object>(
-        &self,
-        time: Timestamp,
-        object_id: ObjectId,
-        object: MaybeParsed<T>,
-    ) -> anyhow::Result<()> {
-        todo!()
-    }
-
-    async fn submit<T: Object>(
-        &self,
-        time: Timestamp,
-        object: ObjectId,
-        event_id: EventId,
-        event: MaybeParsed<T::Event>,
-    ) -> anyhow::Result<()> {
-        todo!()
-    }
-
-    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
-        todo!()
-    }
-
-    async fn query(
-        &self,
-        type_id: TypeId,
-        q: Query,
-    ) -> anyhow::Result<impl futures::Stream<Item = FullObject>> {
-        todo!();
-        Ok(futures::stream::empty())
-    }
-
-    async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
-        todo!()
-    }
-
-    async fn create_binary(&self, id: ulid::Ulid, value: &[u8]) -> anyhow::Result<BinPtr> {
-        todo!()
-    }
-
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Vec<u8>> {
-        todo!()
     }
 }

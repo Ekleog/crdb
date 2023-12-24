@@ -11,54 +11,16 @@ pub(crate) struct ObjectId(pub(crate) Ulid);
 pub(crate) struct EventId(pub(crate) Ulid);
 pub(crate) struct TypeId(pub(crate) Ulid);
 
-#[derive(Eq, PartialEq)]
-pub(crate) enum MaybeParsed<T: ?Sized> {
-    Json(Arc<serde_json::Value>),
-    Parsed(Arc<T>),
-}
-
-pub(crate) type MaybeParsedAny = MaybeParsed<dyn Any + Send + Sync>;
-
-impl<T: ?Sized> Clone for MaybeParsed<T> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Json(v) => Self::Json(v.clone()),
-            Self::Parsed(v) => Self::Parsed(v.clone()),
-        }
-    }
-}
-
-impl<T: Any + Send + Sync> From<MaybeParsed<T>> for MaybeParsedAny {
-    fn from(value: MaybeParsed<T>) -> Self {
-        match value {
-            MaybeParsed::Json(v) => MaybeParsed::Json(v),
-            MaybeParsed::Parsed(v) => MaybeParsed::Parsed(v),
-        }
-    }
-}
-
-impl MaybeParsedAny {
-    pub(crate) fn downcast<T: Any + Send + Sync>(self) -> anyhow::Result<MaybeParsed<T>> {
-        Ok(match self {
-            MaybeParsedAny::Json(v) => MaybeParsed::Json(v),
-            MaybeParsedAny::Parsed(v) => MaybeParsed::Parsed(
-                v.downcast()
-                    .map_err(|_| anyhow::anyhow!("Failed downcasting to expected type"))?,
-            ),
-        })
-    }
-}
-
 #[derive(Clone)]
 pub(crate) struct Changes {
-    events: Vec<MaybeParsedAny>,
-    snapshot_after: Option<MaybeParsedAny>,
+    events: Vec<Arc<dyn Any + Send + Sync>>,
+    snapshot_after: Option<Arc<dyn Any + Send + Sync>>,
 }
 
 #[derive(Clone)]
 pub(crate) struct FullObject {
     pub(crate) creation_time: Timestamp,
-    pub(crate) creation: MaybeParsedAny,
+    pub(crate) creation: Arc<dyn Any + Send + Sync>,
     pub(crate) changes: Arc<BTreeMap<Timestamp, Changes>>,
 }
 
@@ -79,14 +41,14 @@ pub(crate) trait Db {
         &self,
         time: Timestamp,
         object_id: ObjectId,
-        object: MaybeParsed<T>,
+        object: Arc<T>,
     ) -> anyhow::Result<()>;
     async fn submit<T: Object>(
         &self,
         time: Timestamp,
         object: ObjectId,
         event_id: EventId,
-        event: MaybeParsed<T::Event>,
+        event: Arc<T::Event>,
     ) -> anyhow::Result<()>;
 
     async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject>;
