@@ -75,11 +75,7 @@ impl<D: Db> Db for Cache<D> {
             .await?;
         match cache.entry(object_id) {
             hash_map::Entry::Occupied(mut object) => {
-                object
-                    .get_mut()
-                    .apply(event_id, event)
-                    .await
-                    .with_context(|| format!("applying {event_id:?} to {object_id:?}"))?;
+                object.get_mut().apply(event_id, event).await;
             }
             hash_map::Entry::Vacant(v) => {
                 let o = self

@@ -92,7 +92,7 @@ pub trait Object:
         db: &C,
     ) -> anyhow::Result<bool>;
     fn users_who_can_read<C: CanDoCallbacks>(&self) -> anyhow::Result<Vec<User>>;
-    fn apply(&mut self, event: &Self::Event) -> anyhow::Result<()>;
+    fn apply(&mut self, event: &Self::Event);
     fn is_heavy(&self) -> anyhow::Result<bool>;
 }
 

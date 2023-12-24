@@ -42,11 +42,7 @@ pub(crate) struct FullObject {
 }
 
 impl FullObject {
-    pub(crate) async fn apply(
-        &mut self,
-        id: EventId,
-        event: Arc<dyn Any + Send + Sync>,
-    ) -> anyhow::Result<()> {
+    pub(crate) async fn apply(&mut self, id: EventId, event: Arc<dyn Any + Send + Sync>) {
         todo!()
     }
 }
