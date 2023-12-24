@@ -36,12 +36,7 @@ impl<D: Db> Db for Cache<D> {
         self.db.set_new_event_cb(cb)
     }
 
-    async fn create<T: Object>(
-        &self,
-        time: Timestamp,
-        object_id: ObjectId,
-        object: Arc<T>,
-    ) -> anyhow::Result<()> {
+    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
         let cache_entry = cache.entry(object_id);
         match cache_entry {
@@ -57,9 +52,9 @@ impl<D: Db> Db for Cache<D> {
                 );
             }
             hash_map::Entry::Vacant(v) => {
-                self.db.create(time, object_id, object.clone()).await?;
+                self.db.create(object_id, object.clone()).await?;
                 v.insert(FullObject {
-                    creation_time: time,
+                    creation_time: object_id.time(),
                     creation: object,
                     changes: Arc::new(BTreeMap::new()),
                 });
@@ -70,20 +65,19 @@ impl<D: Db> Db for Cache<D> {
 
     async fn submit<T: Object>(
         &self,
-        time: Timestamp,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
         self.db
-            .submit::<T>(time, object_id, event_id, event.clone())
+            .submit::<T>(object_id, event_id, event.clone())
             .await?;
         match cache.entry(object_id) {
             hash_map::Entry::Occupied(mut object) => {
                 object
                     .get_mut()
-                    .apply(time, event)
+                    .apply(event_id, event)
                     .await
                     .with_context(|| format!("applying {event_id:?} to {object_id:?}"))?;
             }

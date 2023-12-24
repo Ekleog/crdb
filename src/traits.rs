@@ -13,6 +13,21 @@ pub(crate) struct EventId(pub(crate) Ulid);
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct TypeId(pub(crate) Ulid);
 
+macro_rules! impl_for_id {
+    ($type:ty) => {
+        impl $type {
+            #[allow(dead_code)]
+            pub(crate) fn time(&self) -> Timestamp {
+                Timestamp(self.0.timestamp_ms())
+            }
+        }
+    };
+}
+
+impl_for_id!(ObjectId);
+impl_for_id!(EventId);
+impl_for_id!(TypeId);
+
 #[derive(Clone)]
 pub(crate) struct Changes {
     events: Vec<Arc<dyn Any + Send + Sync>>,
@@ -29,7 +44,7 @@ pub(crate) struct FullObject {
 impl FullObject {
     pub(crate) async fn apply(
         &mut self,
-        time: Timestamp,
+        id: EventId,
         event: Arc<dyn Any + Send + Sync>,
     ) -> anyhow::Result<()> {
         todo!()
@@ -60,15 +75,9 @@ pub(crate) trait Db {
     fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject)>);
     fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent)>);
 
-    async fn create<T: Object>(
-        &self,
-        time: Timestamp,
-        object_id: ObjectId,
-        object: Arc<T>,
-    ) -> anyhow::Result<()>;
+    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()>;
     async fn submit<T: Object>(
         &self,
-        time: Timestamp,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
