@@ -1,8 +1,9 @@
 mod api;
-pub use api::{CanDoCallbacks, DbPtr, JsonPathItem, Object, Query, User};
+pub use api::{BinPtr, CanDoCallbacks, DbPtr, JsonPathItem, Object, Query, User};
 
 mod cache;
 mod db_trait;
+pub use db_trait::Timestamp;
 
 #[cfg(feature = "client")]
 mod client;
@@ -32,7 +33,7 @@ pub mod crdb_internal {
     pub use crate::{
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, NewEvent, NewObject, NewSnapshot},
-        server, DbPtr, Object,
+        server, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
     pub use futures::{self, Stream};

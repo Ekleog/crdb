@@ -33,8 +33,16 @@ macro_rules! generate_client {
         }
 
         impl $client_db {
-            pub async fn connect(_base_url: String, auth: &$authenticator) -> $client_db {
-                todo!()
+            pub fn connect(_base_url: String, auth: &$authenticator) -> impl Send + crdb::Future<Output = $client_db> {
+                async move { todo!() }
+            }
+
+            pub fn create_binary(&self, id: crdb::BinPtr, value: crdb::Arc<Vec<u8>>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+                async move { todo!() }
+            }
+
+            pub fn get_binary(&self, id: crdb::BinPtr) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::Arc<Vec<u8>>>> {
+                async move { todo!() }
             }
 
             $(crdb::paste! {
@@ -59,15 +67,28 @@ macro_rules! generate_client {
                     }
                 }
 
-                // TODO: unsubscribe needs to be able to unsubscribe a single consumer
-                // TODO: think some more about how to subscribe consumers to objects on the server too
-
                 pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move { todo!() }
                 }
 
                 pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: <$object as crdb::Object>::Event) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
                     async move { todo!() }
+                }
+
+                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::Arc<$object>>> {
+                    async move { todo!() }
+                }
+
+                pub fn [< query_ $name >](
+                    &self,
+                    include_heavy: bool,
+                    ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
+                    q: crdb::Query,
+                ) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<impl crdb::Stream<Item = crdb::Arc<$object>>>> {
+                    async move {
+                        // todo!()
+                        Ok(crdb::futures::stream::empty())
+                    }
                 }
             })*
         }
