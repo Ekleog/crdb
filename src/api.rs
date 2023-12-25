@@ -2,7 +2,7 @@ use crate::{
     db_trait::{EventId, ObjectId, TypeId},
     Timestamp,
 };
-use std::{any::Any, marker::PhantomData, sync::Arc};
+use std::{any::Any, collections::HashSet, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
 pub struct User {
@@ -136,6 +136,7 @@ pub enum NewThing {
 #[doc(hidden)]
 #[allow(dead_code)] // TODO: remove
 pub enum Request {
+    Subscribe(HashSet<ObjectId>),
     // TODO
 }
 

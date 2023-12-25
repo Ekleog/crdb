@@ -1,7 +1,12 @@
-use crate::User;
+use crate::{api::ServerMessage, db_trait::ObjectId, User};
 use anyhow::Context;
 use axum::http::StatusCode;
-use std::net::SocketAddr;
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+};
+use tokio::sync::mpsc;
+use ulid::Ulid;
 
 #[doc(hidden)] // See comment on config::private::Sealed for why this is public
 pub mod config;
@@ -14,9 +19,13 @@ pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize
     fn authenticate(data: Auth) -> Result<User, (StatusCode, String)>;
 }
 
+struct Session(Ulid);
+
 pub struct Server<C: Config> {
     _config: C,
     _db: Db,
+    _watchers: HashMap<ObjectId, HashSet<Session>>,
+    _sessions: HashMap<Session, mpsc::UnboundedSender<ServerMessage>>,
 }
 
 impl<C: Config> Server<C> {
@@ -24,6 +33,8 @@ impl<C: Config> Server<C> {
         Ok(Server {
             _config: config,
             _db: Db::connect(db_url).await?,
+            _watchers: HashMap::new(),
+            _sessions: HashMap::new(),
         })
     }
 
