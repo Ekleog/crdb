@@ -145,6 +145,15 @@ macro_rules! generate_api {
                 )*
                 anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
+
+            fn snapshot(cache: &mut ObjectCache, s: NewSnapshot) -> anyhow::Result<()> {
+                $(
+                    if s.type_id.0 == *<$object as Object>::ulid() {
+                        return cache.snapshot::<$object>(s.object_id, s.time);
+                    }
+                )*
+                anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
+            }
         }
     };
 }

@@ -155,6 +155,7 @@ impl FullObject {
 }
 
 #[doc(hidden)]
+#[derive(Clone)]
 pub struct NewObject {
     pub type_id: TypeId,
     pub id: ObjectId,
@@ -162,11 +163,20 @@ pub struct NewObject {
 }
 
 #[doc(hidden)]
+#[derive(Clone)]
 pub struct NewEvent {
     pub type_id: TypeId,
     pub object_id: ObjectId,
     pub id: EventId,
     pub event: Arc<dyn Any + Send + Sync>,
+}
+
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct NewSnapshot {
+    pub type_id: TypeId,
+    pub object_id: ObjectId,
+    pub time: Timestamp,
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
@@ -183,6 +193,7 @@ pub trait Db: 'static + Send + Sync {
     /// objects received through `new_objects`, excluding objects explicitly unsubscribed
     /// from
     fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewEvent>>;
+    fn new_snapshots(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewSnapshot>>;
     fn unsubscribe(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<()>>;
 
     fn create<T: Object>(
