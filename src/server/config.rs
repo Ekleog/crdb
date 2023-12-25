@@ -19,8 +19,8 @@ macro_rules! generate_server {
     ( $auth:ty | $api_config:ident | $name:ident | $($object:ty),* ) => {
         pub struct $name;
 
-        impl crdb::server::config::private::Sealed for $name {}
-        impl crdb::server::Config for $name {
+        impl crdb::ServerConfigSeal for $name {}
+        impl crdb::ServerConfig for $name {
             type Auth = $auth;
         }
     };

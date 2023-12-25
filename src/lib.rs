@@ -7,6 +7,8 @@ pub use db_trait::Timestamp;
 
 #[cfg(feature = "client")]
 mod client;
+#[cfg(feature = "client")]
+pub use client::{NewEvent, NewObject, NewSnapshot};
 #[cfg(not(feature = "client"))]
 mod client {
     #[macro_export]
@@ -14,13 +16,13 @@ mod client {
         ($($_:tt)*) => {};
     }
 }
-#[cfg(feature = "client")]
-pub use client::{NewEvent, NewObject, NewSnapshot};
 
 #[cfg(feature = "server")]
-pub mod server;
+mod server;
+#[cfg(feature = "server")]
+pub use server::{Authenticator, Server};
 #[cfg(not(feature = "server"))]
-pub mod server {
+mod server {
     #[macro_export]
     macro_rules! generate_server {
         ($($_:tt)*) => {};
@@ -33,7 +35,8 @@ pub mod crdb_internal {
     pub use crate::{
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, NewEvent, NewObject, NewSnapshot},
-        server, BinPtr, DbPtr, Object, Query, Timestamp,
+        server::{config::private::Sealed as ServerConfigSeal, Config as ServerConfig},
+        BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
     pub use futures::{self, Stream};
