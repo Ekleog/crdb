@@ -1,5 +1,4 @@
 use std::{any::Any, marker::PhantomData, sync::Arc};
-
 use ulid::Ulid;
 
 pub struct User {
@@ -124,11 +123,27 @@ macro_rules! generate_api {
 
         impl CacheConfig for $config {
             fn create(cache: &mut ObjectCache, o: NewObject) -> anyhow::Result<bool> {
-                todo!()
+                $(
+                    if o.type_id.0 == *<$object as Object>::ulid() {
+                        let object = o.object
+                            .downcast::<$object>()
+                            .expect("got new object that could not be downcast to its type_id");
+                        return cache.create::<$object>(o.id, object);
+                    }
+                )*
+                anyhow::bail!("got new object with unknown type {:?}", o.type_id)
             }
 
-            async fn submit(cache: &mut ObjectCache, e: NewEvent) -> anyhow::Result<bool> {
-                todo!()
+            async fn submit<D: Db>(db: &D, cache: &mut ObjectCache, e: NewEvent) -> anyhow::Result<bool> {
+                $(
+                    if e.type_id.0 == *<$object as Object>::ulid() {
+                        let event = e.event
+                            .downcast::<<$object as Object>::Event>()
+                            .expect("got new event that could not be downcast to its type_id");
+                        return cache.submit::<D, $object>(db, e.object_id, e.id, event).await;
+                    }
+                )*
+                anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
         }
     };

@@ -1,5 +1,5 @@
 mod api;
-pub use api::{DbPtr, JsonPathItem, Object, Query, User};
+pub use api::{CanDoCallbacks, DbPtr, JsonPathItem, Object, Query, User};
 
 mod cache;
 mod db_trait;
@@ -27,8 +27,11 @@ pub mod server {
 // Stuff used by macros
 #[doc(hidden)]
 pub mod crdb_internal {
-    pub use crate::cache::{CacheConfig, ObjectCache};
-    pub use crate::db_trait::{NewEvent, NewObject};
+    pub use crate::{
+        cache::{CacheConfig, ObjectCache},
+        db_trait::{Db, NewEvent, NewObject},
+        Object,
+    };
     pub use anyhow;
 }
 

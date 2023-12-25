@@ -8,11 +8,11 @@ use std::{any::Any, collections::BTreeMap, future::Future, ops::Bound, sync::Arc
 use ulid::Ulid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct ObjectId(pub(crate) Ulid);
+pub struct ObjectId(pub(crate) Ulid);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct EventId(pub(crate) Ulid);
+pub struct EventId(pub(crate) Ulid);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct TypeId(pub(crate) Ulid);
+pub struct TypeId(pub Ulid);
 
 macro_rules! impl_for_id {
     ($type:ty) => {
@@ -156,23 +156,24 @@ impl FullObject {
 
 #[doc(hidden)]
 pub struct NewObject {
-    pub(crate) type_id: TypeId,
-    pub(crate) id: ObjectId,
-    pub(crate) value: Arc<dyn Any + Send + Sync>,
+    pub type_id: TypeId,
+    pub id: ObjectId,
+    pub object: Arc<dyn Any + Send + Sync>,
 }
 
 #[doc(hidden)]
 pub struct NewEvent {
-    pub(crate) type_id: TypeId,
-    pub(crate) object_id: ObjectId,
-    pub(crate) id: EventId,
-    pub(crate) value: Arc<dyn Any + Send + Sync>,
+    pub type_id: TypeId,
+    pub object_id: ObjectId,
+    pub id: EventId,
+    pub event: Arc<dyn Any + Send + Sync>,
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
+pub struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
-pub(crate) trait Db: 'static + Send + Sync {
+#[doc(hidden)]
+pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
     fn new_objects(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewObject>>;
@@ -182,30 +183,42 @@ pub(crate) trait Db: 'static + Send + Sync {
     /// objects received through `new_objects`, excluding objects explicitly unsubscribed
     /// from
     fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewEvent>>;
-    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()>;
+    fn unsubscribe(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<()>>;
 
-    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()>;
-    async fn submit<T: Object>(
+    fn create<T: Object>(
+        &self,
+        object_id: ObjectId,
+        object: Arc<T>,
+    ) -> impl Send + Future<Output = anyhow::Result<()>>;
+    fn submit<T: Object>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-    ) -> anyhow::Result<()>;
+    ) -> impl Send + Future<Output = anyhow::Result<()>>;
 
-    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject>;
+    fn get(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<FullObject>>;
     /// Note: this function can also be used to populate the cache, as the cache will include
     /// any item returned by this function.
-    async fn query(
+    fn query(
         &self,
         type_id: TypeId,
         user: User,
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = FullObject>>;
+    ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = FullObject>>>;
 
-    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()>;
+    fn snapshot<T: Object>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+    ) -> impl Send + Future<Output = anyhow::Result<()>>;
 
-    async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()>;
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>>;
+    fn create_binary(
+        &self,
+        id: BinPtr,
+        value: Arc<Vec<u8>>,
+    ) -> impl Send + Future<Output = anyhow::Result<()>>;
+    fn get_binary(&self, ptr: BinPtr) -> impl Send + Future<Output = anyhow::Result<Arc<Vec<u8>>>>;
 }
