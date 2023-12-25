@@ -67,6 +67,10 @@ macro_rules! generate_client {
                     }
                 }
 
+                pub fn [< unsubscribe_from_ $name >](&self) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+                    async move { todo!() }
+                }
+
                 pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move { todo!() }
                 }
