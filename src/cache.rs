@@ -137,6 +137,7 @@ impl<D: Db> Db for Cache<D> {
         type_id: TypeId,
         user: User,
         include_heavy: bool,
+        ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl futures::Stream<Item = FullObject>> {
         // We cannot use the object cache here, because it is not guaranteed to even
@@ -144,7 +145,15 @@ impl<D: Db> Db for Cache<D> {
         // delegate to the underlying database, which should forward to either PostgreSQL
         // for the server, or IndexedDB or the API for the client, depending on whether
         // `include_heavy` is set.
-        self.db.query(type_id, user, include_heavy, q).await
+        self.db
+            .query(
+                type_id,
+                user,
+                include_heavy,
+                ignore_not_modified_on_server_since,
+                q,
+            )
+            .await
     }
 
     async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {

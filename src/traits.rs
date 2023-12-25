@@ -193,6 +193,7 @@ pub(crate) trait Db: 'static + Send + Sync {
         type_id: TypeId,
         user: User,
         include_heavy: bool,
+        ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl Stream<Item = FullObject>>;
 
