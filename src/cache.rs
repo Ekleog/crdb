@@ -243,7 +243,8 @@ impl<D: Db> Db for Cache<D> {
         // delegate to the underlying database, which should forward to either PostgreSQL
         // for the server, or IndexedDB or the API for the client, depending on whether
         // `include_heavy` is set.
-        self.db
+        Ok(self
+            .db
             .query(
                 type_id,
                 user,
@@ -251,7 +252,12 @@ impl<D: Db> Db for Cache<D> {
                 ignore_not_modified_on_server_since,
                 q,
             )
-            .await
+            .await?
+            .then(|o| async {
+                let mut cache = self.cache.write().await;
+                cache.insert(o.id, o.clone());
+                o
+            }))
     }
 
     async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
