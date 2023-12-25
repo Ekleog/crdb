@@ -137,6 +137,7 @@ pub enum NewThing {
 #[allow(dead_code)] // TODO: remove
 pub enum Request {
     Subscribe(HashSet<ObjectId>),
+    Unsubscribe(HashSet<ObjectId>),
     // TODO
 }
 

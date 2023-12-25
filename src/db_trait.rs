@@ -194,6 +194,8 @@ pub trait Db: 'static + Send + Sync {
     /// from
     fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewEvent>>;
     fn new_snapshots(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewSnapshot>>;
+    /// Note that this function unsubscribes ALL the streams that have ever been taken from this
+    /// database; and purges it from the local database.
     fn unsubscribe(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<()>>;
 
     fn create<T: Object>(
