@@ -1,5 +1,9 @@
 use super::Authenticator;
-use crate::db_trait::Db;
+use crate::{
+    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
+    BinPtr, Object, Query, Timestamp, User,
+};
+use futures::Stream;
 use std::sync::Arc;
 
 pub struct ApiDb<A: Authenticator> {
@@ -18,83 +22,62 @@ impl<A: Authenticator> ApiDb<A> {
 
 #[allow(unused_variables)] // TODO: remove
 impl<A: Authenticator> Db for ApiDb<A> {
-    async fn new_objects(
-        &self,
-    ) -> impl Send + futures::Stream<Item = crate::crdb_internal::NewObject> {
+    async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_events(
-        &self,
-    ) -> impl Send + futures::Stream<Item = crate::crdb_internal::NewEvent> {
+    async fn new_events(&self) -> impl Send + Stream<Item = NewEvent> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_snapshots(
-        &self,
-    ) -> impl Send + futures::Stream<Item = crate::crdb_internal::NewSnapshot> {
+    async fn new_snapshots(&self) -> impl Send + Stream<Item = NewSnapshot> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn unsubscribe(&self, ptr: crate::db_trait::ObjectId) -> anyhow::Result<()> {
+    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn create<T: crate::Object>(
+    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn submit<T: Object>(
         &self,
-        object_id: crate::db_trait::ObjectId,
-        object: std::sync::Arc<T>,
+        object: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn submit<T: crate::Object>(
-        &self,
-        object: crate::db_trait::ObjectId,
-        event_id: crate::db_trait::EventId,
-        event: std::sync::Arc<T::Event>,
-    ) -> anyhow::Result<()> {
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
         todo!()
     }
 
-    async fn get<T: crate::Object>(
+    async fn query<T: Object>(
         &self,
-        ptr: crate::db_trait::ObjectId,
-    ) -> anyhow::Result<crate::db_trait::FullObject> {
-        todo!()
-    }
-
-    async fn query<T: crate::Object>(
-        &self,
-        user: crate::User,
+        user: User,
         include_heavy: bool,
-        ignore_not_modified_on_server_since: Option<crate::Timestamp>,
-        q: crate::Query,
-    ) -> anyhow::Result<impl futures::Stream<Item = crate::db_trait::FullObject>> {
+        ignore_not_modified_on_server_since: Option<Timestamp>,
+        q: Query,
+    ) -> anyhow::Result<impl Stream<Item = FullObject>> {
         // todo!()
         Ok(futures::stream::empty())
     }
 
-    async fn snapshot<T: crate::Object>(
-        &self,
-        time: crate::Timestamp,
-        object: crate::db_trait::ObjectId,
-    ) -> anyhow::Result<()> {
+    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn create_binary(
-        &self,
-        id: crate::BinPtr,
-        value: std::sync::Arc<Vec<u8>>,
-    ) -> anyhow::Result<()> {
+    async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn get_binary(&self, ptr: crate::BinPtr) -> anyhow::Result<std::sync::Arc<Vec<u8>>> {
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>> {
         todo!()
     }
 }

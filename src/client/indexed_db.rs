@@ -1,4 +1,3 @@
-use super::{ApiDb, Authenticator, IndexedDb};
 use crate::{
     db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
     BinPtr, Object, Query, Timestamp, User,
@@ -6,28 +5,19 @@ use crate::{
 use futures::Stream;
 use std::sync::Arc;
 
-#[doc(hidden)]
-pub struct ClientDb<A: Authenticator> {
-    api: ApiDb<A>,
-    _db: IndexedDb,
+pub struct IndexedDb {
+    // TODO
 }
 
-impl<A: Authenticator> ClientDb<A> {
-    pub async fn connect(base_url: Arc<String>, auth: Arc<A>) -> anyhow::Result<ClientDb<A>> {
-        Ok(ClientDb {
-            api: ApiDb::connect(base_url, auth).await?,
-            _db: IndexedDb::new(),
-        })
-    }
-
-    pub async fn disconnect(self) -> anyhow::Result<()> {
-        self.api.disconnect().await
+impl IndexedDb {
+    pub fn new() -> IndexedDb {
+        todo!()
     }
 }
 
 #[allow(unused_variables)] // TODO: remove
-impl<A: Authenticator> Db for ClientDb<A> {
-    async fn new_objects(&self) -> impl Stream<Item = NewObject> {
+impl Db for IndexedDb {
+    async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
         // todo!()
         futures::stream::empty()
     }

@@ -1,10 +1,12 @@
 mod api_db;
 mod client_db;
 mod config;
+mod indexed_db;
 
 pub use api_db::ApiDb;
 pub use client_db::ClientDb;
 pub use config::{NewEvent, NewObject, NewSnapshot};
+pub use indexed_db::IndexedDb;
 
 #[doc(hidden)]
 pub trait Authenticator:

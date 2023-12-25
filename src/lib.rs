@@ -43,6 +43,7 @@ pub mod crdb_internal {
     };
     pub use anyhow;
     pub use futures::{self, Stream};
+    #[cfg(feature = "client")]
     pub use paste::paste;
     pub use std::{future::Future, sync::Arc};
 }
