@@ -1,6 +1,6 @@
 use crate::{
     api::{BinPtr, Query},
-    Object,
+    Object, User,
 };
 use anyhow::{anyhow, Context};
 use futures::Stream;
@@ -171,9 +171,13 @@ pub(crate) trait Db {
     ) -> anyhow::Result<()>;
 
     async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject>;
+    /// Note: this function can also be used to populate the cache, as the cache will include
+    /// any item returned by this function.
     async fn query(
         &self,
         type_id: TypeId,
+        user: User,
+        include_heavy: bool,
         q: Query,
     ) -> anyhow::Result<impl Stream<Item = FullObject>>;
 

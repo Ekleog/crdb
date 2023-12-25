@@ -1,14 +1,14 @@
 use crate::{
     api::{BinPtr, Query},
     traits::{Db, EventId, FullObject, NewEvent, NewObject, ObjectId, Timestamp, TypeId},
-    Object,
+    Object, User,
 };
 use anyhow::Context;
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
     sync::Arc,
 };
-use tokio::sync::RwLock; // TODO: make sure this is wasm-compatible
+use tokio::sync::RwLock;
 
 pub(crate) struct Cache<D: Db> {
     db: D,
@@ -102,7 +102,6 @@ impl<D: Db> Db for Cache<D> {
             }
         }
         // TODO: subscribe to new events on ptr
-        // TODO: clients must also start by populating the cache with all non-heavy objects?
         let res = self.db.get(ptr).await?;
         {
             let mut cache = self.cache.write().await;
@@ -114,6 +113,8 @@ impl<D: Db> Db for Cache<D> {
     async fn query(
         &self,
         type_id: TypeId,
+        user: User,
+        include_heavy: bool,
         q: Query,
     ) -> anyhow::Result<impl futures::Stream<Item = FullObject>> {
         todo!();
