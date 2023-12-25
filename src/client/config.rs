@@ -33,7 +33,7 @@ macro_rules! generate_client {
         }
 
         impl $client_db {
-            pub fn connect(base_url: String, auth: crdb::Arc<$authenticator>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<$client_db>> {
+            pub fn connect(base_url: crdb::Arc<String>, auth: crdb::Arc<$authenticator>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<$client_db>> {
                 async move {
                     Ok($client_db {
                         db: crdb::ClientDb::connect(base_url, auth).await?,

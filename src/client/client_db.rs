@@ -1,3 +1,4 @@
+use super::{ApiDb, Authenticator};
 use crate::{
     db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
     BinPtr, Object, Query, Timestamp, User,
@@ -6,23 +7,15 @@ use futures::Stream;
 use std::sync::Arc;
 
 #[doc(hidden)]
-pub trait Authenticator:
-    'static + Send + Sync + for<'de> serde::Deserialize<'de> + serde::Serialize
-{
-}
-impl<T: 'static + Send + Sync + for<'de> serde::Deserialize<'de> + serde::Serialize> Authenticator
-    for T
-{
-}
-
-#[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
-    _auth: Arc<A>,
+    _api: ApiDb<A>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
-    pub async fn connect(_base_url: String, _auth: Arc<A>) -> anyhow::Result<ClientDb<A>> {
-        todo!()
+    pub async fn connect(base_url: Arc<String>, auth: Arc<A>) -> anyhow::Result<ClientDb<A>> {
+        Ok(ClientDb {
+            _api: ApiDb::connect(base_url, auth).await?,
+        })
     }
 }
 
