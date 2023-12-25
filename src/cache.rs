@@ -4,6 +4,7 @@ use crate::{
     Object, User,
 };
 use anyhow::Context;
+use futures::{pin_mut, StreamExt};
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
     sync::Arc,
@@ -11,35 +12,50 @@ use std::{
 use tokio::sync::RwLock;
 
 pub(crate) struct Cache<D: Db> {
-    db: D,
+    db: Arc<D>,
     // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
-    cache: RwLock<HashMap<ObjectId, FullObject>>,
-    binaries: RwLock<HashMap<BinPtr, Arc<Vec<u8>>>>,
+    cache: Arc<RwLock<HashMap<ObjectId, FullObject>>>,
+    binaries: Arc<RwLock<HashMap<BinPtr, Arc<Vec<u8>>>>>,
 }
 
 impl<D: Db> Cache<D> {
-    pub(crate) fn new(db: D) -> Cache<D> {
+    pub(crate) fn new(db: Arc<D>) -> Cache<D> {
+        let cache = Arc::new(RwLock::new(HashMap::new()));
+
+        // Watch new objects
+        tokio::task::spawn({
+            let db = db.clone();
+            async move {
+                let new_objects = db.new_objects().await;
+                pin_mut!(new_objects);
+                while let Some(o) = new_objects.next().await {}
+            }
+        });
+
+        // Watch new events
+
+        // Return the cache
         Self {
             db,
-            cache: RwLock::new(HashMap::new()),
-            binaries: RwLock::new(HashMap::new()),
+            cache,
+            binaries: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
 
 impl<D: Db> Db for Cache<D> {
-    fn new_objects(&self) -> impl futures::Stream<Item = NewObject> {
-        todo!();
-        futures::stream::empty()
+    async fn new_objects(&self) -> impl futures::Stream<Item = NewObject> {
+        self.db.new_objects().await
     }
 
-    fn new_events(&self) -> impl futures::Stream<Item = NewEvent> {
-        todo!();
-        futures::stream::empty()
+    async fn new_events(&self) -> impl futures::Stream<Item = NewEvent> {
+        self.db.new_events().await
     }
 
-    fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
-        todo!()
+    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
+        let mut cache = self.cache.write().await;
+        cache.remove(&ptr);
+        self.db.unsubscribe(ptr).await
     }
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {

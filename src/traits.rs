@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use futures::Stream;
-use std::{any::Any, collections::BTreeMap, ops::Bound, sync::Arc};
+use std::{any::Any, collections::BTreeMap, future::Future, ops::Bound, sync::Arc};
 use ulid::Ulid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -165,17 +165,17 @@ pub(crate) struct NewEvent {
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
-pub(crate) trait Db {
+pub(crate) trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
-    fn new_objects(&self) -> impl Stream<Item = NewObject>;
+    fn new_objects(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewObject>>;
     /// This function returns all new events for events on objects that have been
     /// subscribed on. Objects subscribed on are all the objects that have ever been
     /// created with `created`, or obtained with `get` or `query`, as well as all
     /// objects received through `new_objects`, excluding objects explicitly unsubscribed
     /// from
-    fn new_events(&self) -> impl Stream<Item = NewEvent>;
-    fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()>;
+    fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewEvent>>;
+    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()>;
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()>;
     async fn submit<T: Object>(
