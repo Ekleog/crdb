@@ -139,14 +139,12 @@ impl FullObject {
 }
 
 pub(crate) struct NewObject {
-    time: Timestamp,
     type_id: TypeId,
     id: ObjectId,
     value: Arc<dyn Any + Send + Sync>,
 }
 
 pub(crate) struct NewEvent {
-    time: Timestamp,
     type_id: TypeId,
     object_id: ObjectId,
     id: EventId,
@@ -159,8 +157,13 @@ pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 pub(crate) trait Db {
     /// These functions are called whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
-    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject)>);
-    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent)>);
+    /// They return `true` if the subscriber wants to stay subscribed to updates to this
+    /// object, and `false` otherwise.
+    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject) -> bool>);
+    /// This function returns all new events for events on objects that have been
+    /// subscribed on. Objects subscribed on are all the objects that have ever been
+    /// created with `created`, or obtained with `get` or `query`.
+    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent) -> bool>);
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()>;
     async fn submit<T: Object>(

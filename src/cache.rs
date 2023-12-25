@@ -28,12 +28,14 @@ impl<D: Db> Cache<D> {
 }
 
 impl<D: Db> Db for Cache<D> {
-    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject)>) {
-        self.db.set_new_object_cb(cb)
+    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject) -> bool>) {
+        self.db.set_new_object_cb(cb);
+        todo!()
     }
 
-    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent)>) {
-        self.db.set_new_event_cb(cb)
+    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent) -> bool>) {
+        self.db.set_new_event_cb(cb);
+        todo!()
     }
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
