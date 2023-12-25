@@ -8,14 +8,18 @@ use std::sync::Arc;
 
 #[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
-    _api: ApiDb<A>,
+    api: ApiDb<A>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
     pub async fn connect(base_url: Arc<String>, auth: Arc<A>) -> anyhow::Result<ClientDb<A>> {
         Ok(ClientDb {
-            _api: ApiDb::connect(base_url, auth).await?,
+            api: ApiDb::connect(base_url, auth).await?,
         })
+    }
+
+    pub async fn disconnect(self) -> anyhow::Result<()> {
+        self.api.disconnect().await
     }
 }
 

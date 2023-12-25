@@ -10,6 +10,10 @@ impl<A: Authenticator> ApiDb<A> {
     pub async fn connect(_base_url: Arc<String>, _auth: Arc<A>) -> anyhow::Result<ApiDb<A>> {
         todo!()
     }
+
+    pub async fn disconnect(self) -> anyhow::Result<()> {
+        todo!()
+    }
 }
 
 #[allow(unused_variables)] // TODO: remove
