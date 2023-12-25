@@ -11,24 +11,113 @@ use std::{
 };
 use tokio::sync::RwLock;
 
+#[derive(Clone)]
+struct ObjectCache {
+    objects: HashMap<ObjectId, FullObject>,
+}
+
+impl ObjectCache {
+    fn new() -> ObjectCache {
+        ObjectCache {
+            objects: HashMap::new(),
+        }
+    }
+
+    /// Returns `true` if the object was newly inserted in the cache, and `false` if
+    /// the object was already present in the cache. Errors if the object id was already
+    /// in the cache with a different value.
+    fn create<T: Object>(&mut self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<bool> {
+        let cache_entry = self.objects.entry(object_id);
+        match cache_entry {
+            hash_map::Entry::Occupied(o) => {
+                anyhow::ensure!(
+                    o.get()
+                        .creation
+                        .clone()
+                        .downcast::<T>()
+                        .map(|v| v == object)
+                        .unwrap_or(false),
+                    "Object {object_id:?} was already created with a different initial value"
+                );
+                Ok(false)
+            }
+            hash_map::Entry::Vacant(v) => {
+                v.insert(FullObject {
+                    id: object_id,
+                    created_at: EventId(object_id.0),
+                    creation: object,
+                    changes: Arc::new(BTreeMap::new()),
+                });
+                Ok(true)
+            }
+        }
+    }
+
+    fn remove(&mut self, object_id: &ObjectId) {
+        self.objects.remove(object_id);
+    }
+
+    async fn submit<D: Db, T: Object>(
+        &mut self,
+        db: &D,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+    ) -> anyhow::Result<bool> {
+        match self.objects.entry(object_id) {
+            hash_map::Entry::Occupied(mut object) => object
+                .get_mut()
+                .apply::<T>(event_id, event)
+                .await
+                .with_context(|| format!("applying {event_id:?} on {object_id:?}")),
+            hash_map::Entry::Vacant(v) => {
+                let o = db
+                    .get(object_id)
+                    .await
+                    .with_context(|| format!("getting {object_id:?} from database"))?;
+                let o = v.insert(o);
+                o.apply::<T>(event_id, event)
+                    .await
+                    .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
+            }
+        }
+    }
+
+    fn get(&self, id: &ObjectId) -> Option<&FullObject> {
+        self.objects.get(id)
+    }
+
+    fn get_mut(&mut self, id: &ObjectId) -> Option<&mut FullObject> {
+        self.objects.get_mut(id)
+    }
+
+    fn insert(&mut self, id: ObjectId, o: FullObject) {
+        self.objects.insert(id, o);
+    }
+}
+
 pub(crate) struct Cache<D: Db> {
     db: Arc<D>,
     // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
-    cache: Arc<RwLock<HashMap<ObjectId, FullObject>>>,
+    cache: Arc<RwLock<ObjectCache>>,
     binaries: Arc<RwLock<HashMap<BinPtr, Arc<Vec<u8>>>>>,
 }
 
 impl<D: Db> Cache<D> {
     pub(crate) fn new(db: Arc<D>) -> Cache<D> {
-        let cache = Arc::new(RwLock::new(HashMap::new()));
+        let cache = Arc::new(RwLock::new(ObjectCache::new()));
 
         // Watch new objects
         tokio::task::spawn({
             let db = db.clone();
+            let cache = cache.clone();
             async move {
                 let new_objects = db.new_objects().await;
                 pin_mut!(new_objects);
-                while let Some(o) = new_objects.next().await {}
+                while let Some(o) = new_objects.next().await {
+                    let cache = cache.write().await;
+                    todo!()
+                }
             }
         });
 
@@ -60,28 +149,8 @@ impl<D: Db> Db for Cache<D> {
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        let cache_entry = cache.entry(object_id);
-        match cache_entry {
-            hash_map::Entry::Occupied(o) => {
-                anyhow::ensure!(
-                    o.get()
-                        .creation
-                        .clone()
-                        .downcast::<T>()
-                        .map(|v| v == object)
-                        .unwrap_or(false),
-                    "Object {object_id:?} was already created with a different initial value"
-                );
-            }
-            hash_map::Entry::Vacant(v) => {
-                self.db.create(object_id, object.clone()).await?;
-                v.insert(FullObject {
-                    id: object_id,
-                    created_at: EventId(object_id.0),
-                    creation: object,
-                    changes: Arc::new(BTreeMap::new()),
-                });
-            }
+        if cache.create(object_id, object.clone())? {
+            self.db.create(object_id, object).await?;
         }
         Ok(())
     }
@@ -93,26 +162,12 @@ impl<D: Db> Db for Cache<D> {
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        self.db
-            .submit::<T>(object_id, event_id, event.clone())
-            .await?;
-        match cache.entry(object_id) {
-            hash_map::Entry::Occupied(mut object) => {
-                object
-                    .get_mut()
-                    .apply::<T>(event_id, event)
-                    .await
-                    .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
-            }
-            hash_map::Entry::Vacant(v) => {
-                let o = self
-                    .db
-                    .get(object_id)
-                    .await
-                    .with_context(|| format!("getting {object_id:?} from database"))?;
-                v.insert(o);
-            }
-        };
+        if cache
+            .submit::<D, T>(&*self.db, object_id, event_id, event.clone())
+            .await?
+        {
+            self.db.submit::<T>(object_id, event_id, event).await?;
+        }
         Ok(())
     }
 

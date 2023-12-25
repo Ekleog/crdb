@@ -44,11 +44,14 @@ pub(crate) struct FullObject {
 }
 
 impl FullObject {
+    /// Returns `true` if the event was newly applied. Returns `false` if the same event had
+    /// already been applied. Returned an error if another event with the same id had already
+    /// been applied.
     pub(crate) async fn apply<T: Object>(
         &mut self,
         id: EventId,
         event: Arc<T::Event>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
         anyhow::ensure!(
             id > self.created_at,
             "Submitted event {id:?} before the last recreation time ({:?}) of object {:?}",
@@ -65,6 +68,7 @@ impl FullObject {
                 "Event {id:?} was already pushed to object {:?} with a different value",
                 self.id,
             );
+            return Ok(false);
         }
 
         // Get the snapshot to just before the new event
@@ -92,7 +96,7 @@ impl FullObject {
             c.1.snapshot_after = None;
         }
 
-        Ok(())
+        Ok(true)
     }
 
     pub(crate) fn snapshot<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
