@@ -1,3 +1,7 @@
+use crate::{
+    db_trait::{EventId, ObjectId, TypeId},
+    Timestamp,
+};
 use std::{any::Any, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
@@ -114,6 +118,43 @@ pub struct DbPtr<T: Object> {
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct BinPtr {
     id: Ulid,
+}
+
+#[doc(hidden)]
+#[allow(dead_code)] // TODO: remove
+pub struct RequestId(Ulid);
+
+#[doc(hidden)]
+#[allow(dead_code)] // TODO: remove
+pub enum NewThing {
+    Object(TypeId, ObjectId, serde_json::Value),
+    Event(TypeId, ObjectId, EventId, serde_json::Value),
+    Snapshot(TypeId, ObjectId, Timestamp),
+    Binary(BinPtr, Vec<u8>),
+}
+
+#[doc(hidden)]
+#[allow(dead_code)] // TODO: remove
+pub enum Request {
+    // TODO
+}
+
+/// One ServerMessage is supposed to hold as many NewThings as possible
+/// without delaying updates, but still avoiding going too far above
+/// than 1M / message, to allow for better resumability.
+#[doc(hidden)]
+#[allow(dead_code)] // TODO: remove
+pub struct ServerMessage {
+    updates_on_server_until: Timestamp,
+    as_answer_to: Option<RequestId>,
+    new_things: Vec<NewThing>,
+}
+
+#[doc(hidden)]
+#[allow(dead_code)] // TODO: remove
+pub struct ClientMessage {
+    request_id: RequestId,
+    request: Request,
 }
 
 #[doc(hidden)]
