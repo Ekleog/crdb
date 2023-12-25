@@ -38,6 +38,7 @@ pub(crate) struct Change {
 #[derive(Clone)]
 pub(crate) struct FullObject {
     pub(crate) id: ObjectId,
+    pub(crate) created_at: EventId,
     pub(crate) creation: Arc<dyn Any + Send + Sync>,
     pub(crate) changes: Arc<BTreeMap<EventId, Change>>,
 }
@@ -49,13 +50,14 @@ impl FullObject {
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(
-            id.0 > self.id.0,
-            "Submitted event {id:?} before object's creation time {:?}",
+            id > self.created_at,
+            "Submitted event {id:?} before the last recreation time ({:?}) of object {:?}",
+            self.created_at,
             self.id,
         );
 
         // Get the snapshot to just before the event
-        let mut last_snapshot = self
+        let (_, mut last_snapshot) = self
             .get_snapshot_at::<T>(Bound::Excluded(id))
             .with_context(|| format!("applying event {id:?}"))?;
 
@@ -82,7 +84,22 @@ impl FullObject {
         Ok(())
     }
 
-    fn get_snapshot_at<T: Object>(&mut self, at: Bound<EventId>) -> anyhow::Result<Arc<T>> {
+    pub(crate) fn snapshot<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
+        let max_new_created_at = EventId(Ulid::from_parts(at.0 + 1, 0));
+        let (new_created_at, snapshot) =
+            self.get_snapshot_at::<T>(Bound::Excluded(max_new_created_at))?;
+        self.created_at = new_created_at;
+        self.creation = snapshot;
+        let changes = Arc::make_mut(&mut self.changes);
+        *changes = changes.split_off(&new_created_at);
+        changes.pop_first();
+        Ok(())
+    }
+
+    fn get_snapshot_at<T: Object>(
+        &mut self,
+        at: Bound<EventId>,
+    ) -> anyhow::Result<(EventId, Arc<T>)> {
         // Find the last snapshot before `at`
         let changes_before = self.changes.range((Bound::Unbounded, at));
         let mut last_snapshot = None;
@@ -95,7 +112,7 @@ impl FullObject {
         let (last_snapshot_time, last_snapshot) = match last_snapshot {
             Some((t, s)) => (*t, s),
             // Note: Casting ObjectId to EventId here because ordering is the same anyway
-            None => (EventId(self.id.0), self.creation.clone()),
+            None => (self.created_at, self.creation.clone()),
         };
         let mut last_snapshot = last_snapshot
             .downcast::<T>()
@@ -106,15 +123,18 @@ impl FullObject {
         let to_apply = self
             .changes
             .range((Bound::Excluded(last_snapshot_time), at));
-        for c in to_apply {
+        let mut last_event_time = last_snapshot_time;
+        for (id, change) in to_apply {
+            last_event_time = *id;
             last_snapshot_mut.apply(
-                c.1.event
+                change
+                    .event
                     .downcast_ref()
                     .expect("Event with different type than object type"),
             );
         }
 
-        Ok(last_snapshot)
+        Ok((last_event_time, last_snapshot))
     }
 }
 
@@ -157,7 +177,7 @@ pub(crate) trait Db {
         q: Query,
     ) -> anyhow::Result<impl Stream<Item = FullObject>>;
 
-    async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()>;
+    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()>;
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()>;
     async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>>;

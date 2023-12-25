@@ -55,6 +55,7 @@ impl<D: Db> Db for Cache<D> {
                 self.db.create(object_id, object.clone()).await?;
                 v.insert(FullObject {
                     id: object_id,
+                    created_at: EventId(object_id.0),
                     creation: object,
                     changes: Arc::new(BTreeMap::new()),
                 });
@@ -119,8 +120,12 @@ impl<D: Db> Db for Cache<D> {
         Ok(futures::stream::empty())
     }
 
-    async fn snapshot(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
-        todo!()
+    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+        let mut cache = self.cache.write().await;
+        if let Some(o) = cache.get_mut(&object) {
+            o.snapshot::<T>(time)?;
+        }
+        self.db.snapshot::<T>(time, object).await
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
