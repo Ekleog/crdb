@@ -5,14 +5,16 @@ mod cache;
 mod db_trait;
 
 #[cfg(feature = "client")]
-pub mod client;
+mod client;
 #[cfg(not(feature = "client"))]
-pub mod client {
+mod client {
     #[macro_export]
     macro_rules! generate_client {
         ($($_:tt)*) => {};
     }
 }
+#[cfg(feature = "client")]
+pub use client::{NewEvent, NewObject, NewSnapshot};
 
 #[cfg(feature = "server")]
 pub mod server;

@@ -1,3 +1,25 @@
+use crate::{
+    db_trait::{EventId, Timestamp},
+    DbPtr, Object,
+};
+use std::sync::Arc;
+
+pub struct NewObject<T: Object> {
+    pub ptr: DbPtr<T>,
+    pub object: Arc<T>,
+}
+
+pub struct NewEvent<T: Object> {
+    pub object: DbPtr<T>,
+    pub id: EventId,
+    pub event: Arc<T::Event>,
+}
+
+pub struct NewSnapshot<T: Object> {
+    pub object: DbPtr<T>,
+    pub time: Timestamp,
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_client {
@@ -16,7 +38,21 @@ macro_rules! generate_client {
             }
 
             $(crdb_internal::paste! {
-                pub fn [<new_ $name _objects >](&self) -> impl Send + crdb_internal::Future<Output = impl Send + crdb_internal::Stream<Item = $object>> {
+                pub fn [< new_ $name _objects >](&self) -> impl Send + crdb_internal::Future<Output = impl Send + crdb_internal::Stream<Item = $crate::NewObject<$object>>> {
+                    async move {
+                        // todo!()
+                        crdb_internal::futures::stream::empty()
+                    }
+                }
+
+                pub fn [< new_ $name _events >](&self) -> impl Send + crdb_internal::Future<Output = impl Send + crdb_internal::Stream<Item = $crate::NewEvent<$object>>> {
+                    async move {
+                        // todo!()
+                        crdb_internal::futures::stream::empty()
+                    }
+                }
+
+                pub fn [< new_ $name _snapshots >](&self) -> impl Send + crdb_internal::Future<Output = impl Send + crdb_internal::Stream<Item = $crate::NewSnapshot<$object>>> {
                     async move {
                         // todo!()
                         crdb_internal::futures::stream::empty()
