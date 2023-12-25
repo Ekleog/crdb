@@ -1,16 +1,33 @@
-use std::sync::Arc;
-
-use futures::Stream;
-
 use crate::{
     db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
     BinPtr, Object, Query, Timestamp, User,
 };
+use futures::Stream;
+use std::sync::Arc;
 
-struct ClientDb;
+#[doc(hidden)]
+pub trait Authenticator:
+    'static + Send + Sync + for<'de> serde::Deserialize<'de> + serde::Serialize
+{
+}
+impl<T: 'static + Send + Sync + for<'de> serde::Deserialize<'de> + serde::Serialize> Authenticator
+    for T
+{
+}
+
+#[doc(hidden)]
+pub struct ClientDb<A: Authenticator> {
+    _auth: Arc<A>,
+}
+
+impl<A: Authenticator> ClientDb<A> {
+    pub async fn connect(_base_url: String, _auth: Arc<A>) -> anyhow::Result<ClientDb<A>> {
+        todo!()
+    }
+}
 
 #[allow(unused_variables)] // TODO: remove
-impl Db for ClientDb {
+impl<A: Authenticator> Db for ClientDb<A> {
     async fn new_objects(&self) -> impl Stream<Item = NewObject> {
         // todo!()
         futures::stream::empty()

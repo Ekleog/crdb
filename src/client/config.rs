@@ -28,12 +28,20 @@ macro_rules! generate_client {
         // set_new_* MUST be replaced by one function for each object/event type, so that the user can properly handle them.
         // TODO: also have a way to force a server round-trip NOW, for eg. permissions change
         // TODO: use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
-        struct $client_db {
-            // TODO
+        pub struct $client_db {
+            db: crdb::ClientDb<$authenticator>,
         }
 
         impl $client_db {
-            pub fn connect(_base_url: String, auth: &$authenticator) -> impl Send + crdb::Future<Output = $client_db> {
+            pub fn connect(base_url: String, auth: crdb::Arc<$authenticator>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<$client_db>> {
+                async move {
+                    Ok($client_db {
+                        db: crdb::ClientDb::connect(base_url, auth).await?,
+                    })
+                }
+            }
+
+            pub fn disconnect(&self) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
                 async move { todo!() }
             }
 

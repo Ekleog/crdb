@@ -35,8 +35,9 @@ pub(crate) struct Change {
     snapshot_after: Option<Arc<dyn Any + Send + Sync>>,
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub(crate) struct FullObject {
+pub struct FullObject {
     pub(crate) id: ObjectId,
     pub(crate) created_at: EventId,
     pub(crate) creation: Arc<dyn Any + Send + Sync>,

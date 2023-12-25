@@ -1,6 +1,7 @@
 use crdb::{CanDoCallbacks, User};
 use ulid::Ulid;
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Authenticator;
 
 #[derive(Clone, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]

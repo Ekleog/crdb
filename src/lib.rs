@@ -34,6 +34,7 @@ mod server {
 pub mod crdb_internal {
     pub use crate::{
         cache::{CacheConfig, ObjectCache},
+        client::ClientDb,
         db_trait::{Db, NewEvent, NewObject, NewSnapshot},
         server::{config::private::Sealed as ServerConfigSeal, Config as ServerConfig},
         BinPtr, DbPtr, Object, Query, Timestamp,
