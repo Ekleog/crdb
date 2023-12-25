@@ -222,7 +222,6 @@ impl<D: Db> Db for Cache<D> {
                 return Ok(res.clone());
             }
         }
-        // TODO: subscribe to new events on ptr
         let res = self.db.get(ptr).await?;
         {
             let mut cache = self.cache.write().await;

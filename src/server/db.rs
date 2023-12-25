@@ -10,7 +10,6 @@ pub(crate) struct Db {
 
 impl Db {
     pub async fn connect(db_url: &str) -> anyhow::Result<Db> {
-        // TODO: switch to surrealdb?
         Ok(Db {
             _db: sqlx::postgres::PgPoolOptions::new()
                 .max_connections(50) // TODO: make configurable (builder pattern?)
