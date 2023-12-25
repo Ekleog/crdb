@@ -32,11 +32,13 @@ mod server {
 // Stuff used by macros
 #[doc(hidden)]
 pub mod crdb_internal {
+    #[cfg(feature = "client")]
+    pub use crate::client::ClientDb;
+    #[cfg(feature = "server")]
+    pub use crate::server::{config::private::Sealed as ServerConfigSeal, Config as ServerConfig};
     pub use crate::{
         cache::{CacheConfig, ObjectCache},
-        client::ClientDb,
         db_trait::{Db, NewEvent, NewObject, NewSnapshot},
-        server::{config::private::Sealed as ServerConfigSeal, Config as ServerConfig},
         BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
