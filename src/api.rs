@@ -121,38 +121,38 @@ macro_rules! generate_api {
     ( $authenticator:ty | $config:ident | $($object:ty),* ) => {
         struct $config;
 
-        impl CacheConfig for $config {
-            fn create(cache: &mut ObjectCache, o: NewObject) -> anyhow::Result<bool> {
+        impl crdb_internal::CacheConfig for $config {
+            fn create(cache: &mut crdb_internal::ObjectCache, o: crdb_internal::NewObject) -> crdb_internal::anyhow::Result<bool> {
                 $(
-                    if o.type_id.0 == *<$object as Object>::ulid() {
+                    if o.type_id.0 == *<$object as crdb_internal::Object>::ulid() {
                         let object = o.object
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
                         return cache.create::<$object>(o.id, object);
                     }
                 )*
-                anyhow::bail!("got new object with unknown type {:?}", o.type_id)
+                crdb_internal::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
             }
 
-            async fn submit<D: Db>(db: &D, cache: &mut ObjectCache, e: NewEvent) -> anyhow::Result<bool> {
+            async fn submit<D: crdb_internal::Db>(db: &D, cache: &mut crdb_internal::ObjectCache, e: crdb_internal::NewEvent) -> crdb_internal::anyhow::Result<bool> {
                 $(
-                    if e.type_id.0 == *<$object as Object>::ulid() {
+                    if e.type_id.0 == *<$object as crdb_internal::Object>::ulid() {
                         let event = e.event
-                            .downcast::<<$object as Object>::Event>()
+                            .downcast::<<$object as crdb_internal::Object>::Event>()
                             .expect("got new event that could not be downcast to its type_id");
                         return cache.submit::<D, $object>(db, e.object_id, e.id, event).await;
                     }
                 )*
-                anyhow::bail!("got new event with unknown type {:?}", e.type_id)
+                crdb_internal::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
 
-            fn snapshot(cache: &mut ObjectCache, s: NewSnapshot) -> anyhow::Result<()> {
+            fn snapshot(cache: &mut crdb_internal::ObjectCache, s: crdb_internal::NewSnapshot) -> crdb_internal::anyhow::Result<()> {
                 $(
-                    if s.type_id.0 == *<$object as Object>::ulid() {
+                    if s.type_id.0 == *<$object as crdb_internal::Object>::ulid() {
                         return cache.snapshot::<$object>(s.object_id, s.time);
                     }
                 )*
-                anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
+                crdb_internal::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
             }
         }
     };

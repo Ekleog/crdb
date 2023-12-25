@@ -8,7 +8,7 @@ license = "AGPL3"
 all-features = true
 
 [features]
-client = []
+client = ["paste"]
 server = ["axum", "sqlx", "tracing"]
 
 [dependencies]
@@ -23,3 +23,6 @@ ulid = "1.1"
 axum = { version = "0.7.2", optional = true }
 sqlx = { version = "0.7.3", features = ["postgres"], optional = true }
 tracing = { version = "0.1.40", optional = true }
+
+# Client dependencies
+paste = { version = "1.0", optional = true }

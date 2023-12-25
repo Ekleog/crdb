@@ -111,10 +111,6 @@ impl ObjectCache {
         self.objects.get(id)
     }
 
-    fn get_mut(&mut self, id: &ObjectId) -> Option<&mut FullObject> {
-        self.objects.get_mut(id)
-    }
-
     fn insert<T: Object>(&mut self, object_id: ObjectId, o: FullObject) -> anyhow::Result<()> {
         debug_assert!(object_id == o.id, "inserting an object with wrong id");
         // Do not directly insert into the hashmap, because the hashmap could already contain more

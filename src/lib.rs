@@ -33,6 +33,9 @@ pub mod crdb_internal {
         server, Object,
     };
     pub use anyhow;
+    pub use futures::{self, Stream};
+    pub use paste::paste;
+    pub use std::future::Future;
 }
 
 #[macro_export]
@@ -43,15 +46,16 @@ macro_rules! db {
             api_config: $api_config:ident,
             server_config: $server_config:ident,
             client_db: $client_db:ident,
-            objects: [ $($object:ty),* $(,)* ],
+            objects: {
+                $( $name:ident : $object:ty, )*
+            },
         }
     ) => {
         $v mod $module {
-            use $crate::crdb_internal::*;
-            use std::future::Future;
+            use $crate::crdb_internal;
 
             $crate::generate_api!($authenticator | $api_config | $($object),*);
-            $crate::generate_client!($authenticator | $api_config | $client_db | $($object),*);
+            $crate::generate_client!($authenticator | $api_config | $client_db | $($name: $object),*);
             $crate::generate_server!($authenticator | $api_config | $server_config | $($object),*);
         }
     }

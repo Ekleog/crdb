@@ -49,8 +49,8 @@ crdb::db! {
         api_config: ApiConfig,
         server_config: ServerConfig,
         client_db: Db,
-        objects: [
-            super::Foo,
-        ],
+        objects: {
+            foo: super::Foo,
+        },
     }
 }
