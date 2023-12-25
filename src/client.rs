@@ -58,6 +58,14 @@ macro_rules! generate_client {
                         crdb_internal::futures::stream::empty()
                     }
                 }
+
+                pub fn [< create_ $name >](&self, object: crdb_internal::Arc<$object>) -> impl Send + crdb_internal::Future<Output = crdb_internal::anyhow::Result<crdb_internal::DbPtr<$object>>> {
+                    async move { todo!() }
+                }
+
+                pub fn [< submit_to_ $name >](&self, object: crdb_internal::DbPtr<$object>, event: <$object as crdb_internal::Object>::Event) -> impl Send + crdb_internal::Future<Output = crdb_internal::anyhow::Result<()>> {
+                    async move { todo!() }
+                }
             })*
         }
     };

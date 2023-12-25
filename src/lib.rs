@@ -32,12 +32,12 @@ pub mod crdb_internal {
     pub use crate::{
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, NewEvent, NewObject, NewSnapshot},
-        server, Object,
+        server, DbPtr, Object,
     };
     pub use anyhow;
     pub use futures::{self, Stream};
     pub use paste::paste;
-    pub use std::future::Future;
+    pub use std::{future::Future, sync::Arc};
 }
 
 #[macro_export]
