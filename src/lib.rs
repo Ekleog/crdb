@@ -54,7 +54,7 @@ macro_rules! db {
         }
     ) => {
         $v mod $module {
-            use $crate::crdb_internal;
+            use $crate::crdb_internal as crdb;
 
             $crate::generate_api!($authenticator | $api_config | $($object),*);
             $crate::generate_client!($authenticator | $api_config | $client_db | $($name: $object),*);

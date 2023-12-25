@@ -37,33 +37,36 @@ macro_rules! generate_client {
                 todo!()
             }
 
-            $(crdb_internal::paste! {
-                pub fn [< new_ $name _objects >](&self) -> impl Send + crdb_internal::Future<Output = impl Send + crdb_internal::Stream<Item = $crate::NewObject<$object>>> {
+            $(crdb::paste! {
+                pub fn [< new_ $name _objects >](&self) -> impl Send + crdb::Future<Output = impl Send + crdb::Stream<Item = $crate::NewObject<$object>>> {
                     async move {
                         // todo!()
-                        crdb_internal::futures::stream::empty()
+                        crdb::futures::stream::empty()
                     }
                 }
 
-                pub fn [< new_ $name _events >](&self) -> impl Send + crdb_internal::Future<Output = impl Send + crdb_internal::Stream<Item = $crate::NewEvent<$object>>> {
+                pub fn [< new_ $name _events >](&self) -> impl Send + crdb::Future<Output = impl Send + crdb::Stream<Item = $crate::NewEvent<$object>>> {
                     async move {
                         // todo!()
-                        crdb_internal::futures::stream::empty()
+                        crdb::futures::stream::empty()
                     }
                 }
 
-                pub fn [< new_ $name _snapshots >](&self) -> impl Send + crdb_internal::Future<Output = impl Send + crdb_internal::Stream<Item = $crate::NewSnapshot<$object>>> {
+                pub fn [< new_ $name _snapshots >](&self) -> impl Send + crdb::Future<Output = impl Send + crdb::Stream<Item = $crate::NewSnapshot<$object>>> {
                     async move {
                         // todo!()
-                        crdb_internal::futures::stream::empty()
+                        crdb::futures::stream::empty()
                     }
                 }
 
-                pub fn [< create_ $name >](&self, object: crdb_internal::Arc<$object>) -> impl Send + crdb_internal::Future<Output = crdb_internal::anyhow::Result<crdb_internal::DbPtr<$object>>> {
+                // TODO: unsubscribe needs to be able to unsubscribe a single consumer
+                // TODO: think some more about how to subscribe consumers to objects on the server too
+
+                pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move { todo!() }
                 }
 
-                pub fn [< submit_to_ $name >](&self, object: crdb_internal::DbPtr<$object>, event: <$object as crdb_internal::Object>::Event) -> impl Send + crdb_internal::Future<Output = crdb_internal::anyhow::Result<()>> {
+                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: <$object as crdb::Object>::Event) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
                     async move { todo!() }
                 }
             })*
