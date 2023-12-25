@@ -76,9 +76,12 @@ impl ObjectCache {
     /// with the same id had already been applied, if the event is earlier than the
     /// object's last recreation time, if the provided `T` is wrong or if the database
     /// failed to return the pre-event object.
+    ///
+    /// If `db` is `Some`, then this will automatically fetch the contents for `object_id`
+    /// if it is not in the cache yet.
     pub async fn submit<D: Db, T: Object>(
         &mut self,
-        db: &D,
+        db: Option<&D>,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
@@ -89,13 +92,17 @@ impl ObjectCache {
                 .apply::<T>(event_id, event)
                 .with_context(|| format!("applying {event_id:?} on {object_id:?}")),
             hash_map::Entry::Vacant(v) => {
-                let o = db
-                    .get::<T>(object_id)
-                    .await
-                    .with_context(|| format!("getting {object_id:?} from database"))?;
-                let o = v.insert(o);
-                o.apply::<T>(event_id, event)
-                    .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
+                if let Some(db) = db {
+                    let o = db
+                        .get::<T>(object_id)
+                        .await
+                        .with_context(|| format!("getting {object_id:?} from database"))?;
+                    let o = v.insert(o);
+                    o.apply::<T>(event_id, event)
+                        .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
+                } else {
+                    Ok(false)
+                }
             }
         }
     }
@@ -152,7 +159,7 @@ pub trait CacheConfig {
     ///
     /// Calls `cache`'s `submit` method with the proper type and the fields from `o`.
     fn submit<D: Db>(
-        db: &D,
+        db: Option<&D>,
         cache: &mut ObjectCache,
         e: NewEvent,
     ) -> impl Send + Future<Output = anyhow::Result<bool>>;
@@ -202,7 +209,10 @@ impl<D: Db> Cache<D> {
                     let mut cache = cache.write().await;
                     let object = e.object_id;
                     let event = e.id;
-                    if let Err(error) = C::submit(&*db, &mut *cache, e).await {
+                    // DO NOT re-fetch object when receiving an event not in cache for it.
+                    // Without this, users would risk unsubscribing from an object, then receiving
+                    // an event on this object (as a race condition), and then staying subscribed.
+                    if let Err(error) = C::submit::<D>(None, &mut *cache, e).await {
                         tracing::error!(
                             ?error,
                             ?object,
@@ -279,7 +289,7 @@ impl<D: Db> Db for Cache<D> {
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
         if cache
-            .submit::<D, T>(&*self.db, object_id, event_id, event.clone())
+            .submit::<D, T>(Some(&*self.db), object_id, event_id, event.clone())
             .await?
         {
             self.db.submit::<T>(object_id, event_id, event).await?;

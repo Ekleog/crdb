@@ -176,7 +176,7 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
             }
 
-            async fn submit<D: crdb::Db>(db: &D, cache: &mut crdb::ObjectCache, e: crdb::NewEvent) -> crdb::anyhow::Result<bool> {
+            async fn submit<D: crdb::Db>(db: Option<&D>, cache: &mut crdb::ObjectCache, e: crdb::NewEvent) -> crdb::anyhow::Result<bool> {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let event = e.event
