@@ -163,7 +163,7 @@ pub struct ClientMessage {
 #[macro_export]
 macro_rules! generate_api {
     ( $authenticator:ty | $config:ident | $($object:ty),* ) => {
-        struct $config;
+        pub struct $config;
 
         impl crdb::CacheConfig for $config {
             fn create(cache: &mut crdb::ObjectCache, o: crdb::NewObject) -> crdb::anyhow::Result<bool> {

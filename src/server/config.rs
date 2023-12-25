@@ -1,3 +1,5 @@
+use crate::cache::CacheConfig;
+
 // This module needs to actually be public, because `generate_server!` needs to be
 // able to implement Config. However, making it doc(hidden) makes it look as though
 // it is actually sealed in the documentation, which is good because we don't want
@@ -10,7 +12,11 @@ pub mod private {
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait Config: private::Sealed {
+    #[doc(hidden)]
     type Auth;
+
+    #[doc(hidden)]
+    type ApiConfig: CacheConfig;
 }
 
 #[doc(hidden)]
@@ -22,6 +28,7 @@ macro_rules! generate_server {
         impl crdb::ServerConfigSeal for $name {}
         impl crdb::ServerConfig for $name {
             type Auth = $auth;
+            type ApiConfig = $api_config;
         }
     };
 }
