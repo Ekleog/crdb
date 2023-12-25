@@ -45,8 +45,9 @@ pub(crate) struct FullObject {
 
 impl FullObject {
     /// Returns `true` if the event was newly applied. Returns `false` if the same event had
-    /// already been applied. Returned an error if another event with the same id had already
-    /// been applied.
+    /// already been applied. Returns an error if another event with the same id had already
+    /// been applied, if the event is earlier than the object's last recreation time, or if
+    /// the provided `T` is wrong.
     pub(crate) async fn apply<T: Object>(
         &mut self,
         id: EventId,
@@ -84,9 +85,9 @@ impl FullObject {
             snapshot_after: Some(last_snapshot),
         };
         let changes_mut = Arc::make_mut(&mut self.changes);
-        anyhow::ensure!(
+        assert!(
             changes_mut.insert(id, new_change).is_none(),
-            "Object {:?} already had an event with id {id:?}",
+            "Object {:?} already had an event with id {id:?} despite earlier check",
             self.id,
         );
 
@@ -154,16 +155,16 @@ impl FullObject {
 }
 
 pub(crate) struct NewObject {
-    type_id: TypeId,
-    id: ObjectId,
-    value: Arc<dyn Any + Send + Sync>,
+    pub(crate) type_id: TypeId,
+    pub(crate) id: ObjectId,
+    pub(crate) value: Arc<dyn Any + Send + Sync>,
 }
 
 pub(crate) struct NewEvent {
-    type_id: TypeId,
-    object_id: ObjectId,
-    id: EventId,
-    value: Arc<dyn Any + Send + Sync>,
+    pub(crate) type_id: TypeId,
+    pub(crate) object_id: ObjectId,
+    pub(crate) id: EventId,
+    pub(crate) value: Arc<dyn Any + Send + Sync>,
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
