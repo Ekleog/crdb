@@ -30,7 +30,7 @@ pub mod crdb_internal {
     pub use crate::{
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, NewEvent, NewObject},
-        Object,
+        server, Object,
     };
     pub use anyhow;
 }

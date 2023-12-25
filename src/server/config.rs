@@ -9,7 +9,9 @@ pub mod private {
 }
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
-pub trait Config<Auth>: private::Sealed {}
+pub trait Config: private::Sealed {
+    type Auth;
+}
 
 #[doc(hidden)]
 #[macro_export]
@@ -17,7 +19,9 @@ macro_rules! generate_server {
     ( $auth:ty | $api_config:ident | $name:ident | $($object:ty),* ) => {
         pub struct $name;
 
-        impl $crate::server::config::private::Sealed for $name {}
-        impl $crate::server::Config<$auth> for $name {}
+        impl server::config::private::Sealed for $name {}
+        impl server::Config for $name {
+            type Auth = $auth;
+        }
     };
 }
