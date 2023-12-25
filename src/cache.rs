@@ -28,13 +28,17 @@ impl<D: Db> Cache<D> {
 }
 
 impl<D: Db> Db for Cache<D> {
-    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject) -> bool>) {
-        self.db.set_new_object_cb(cb);
-        todo!()
+    fn new_objects(&self) -> impl futures::Stream<Item = NewObject> {
+        todo!();
+        futures::stream::empty()
     }
 
-    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent) -> bool>) {
-        self.db.set_new_event_cb(cb);
+    fn new_events(&self) -> impl futures::Stream<Item = NewEvent> {
+        todo!();
+        futures::stream::empty()
+    }
+
+    fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 

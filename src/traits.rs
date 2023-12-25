@@ -166,15 +166,16 @@ pub(crate) struct NewEvent {
 pub(crate) struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 pub(crate) trait Db {
-    /// These functions are called whenever another user submitted a new object or event.
+    /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
-    /// They return `true` if the subscriber wants to stay subscribed to updates to this
-    /// object, and `false` otherwise.
-    fn set_new_object_cb(&mut self, cb: Box<dyn Fn(NewObject) -> bool>);
+    fn new_objects(&self) -> impl Stream<Item = NewObject>;
     /// This function returns all new events for events on objects that have been
     /// subscribed on. Objects subscribed on are all the objects that have ever been
-    /// created with `created`, or obtained with `get` or `query`.
-    fn set_new_event_cb(&mut self, cb: Box<dyn Fn(NewEvent) -> bool>);
+    /// created with `created`, or obtained with `get` or `query`, as well as all
+    /// objects received through `new_objects`, excluding objects explicitly unsubscribed
+    /// from
+    fn new_events(&self) -> impl Stream<Item = NewEvent>;
+    fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()>;
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()>;
     async fn submit<T: Object>(
