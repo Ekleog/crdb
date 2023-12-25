@@ -31,7 +31,7 @@ impl_for_id!(TypeId);
 
 #[derive(Clone)]
 pub(crate) struct Change {
-    event: Arc<dyn Any + Send + Sync>,
+    pub(crate) event: Arc<dyn Any + Send + Sync>,
     snapshot_after: Option<Arc<dyn Any + Send + Sync>>,
 }
 
@@ -48,7 +48,7 @@ impl FullObject {
     /// already been applied. Returns an error if another event with the same id had already
     /// been applied, if the event is earlier than the object's last recreation time, or if
     /// the provided `T` is wrong.
-    pub(crate) async fn apply<T: Object>(
+    pub(crate) fn apply<T: Object>(
         &mut self,
         id: EventId,
         event: Arc<T::Event>,
@@ -197,12 +197,14 @@ pub trait Db: 'static + Send + Sync {
         event: Arc<T::Event>,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
 
-    fn get(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<FullObject>>;
+    fn get<T: Object>(
+        &self,
+        ptr: ObjectId,
+    ) -> impl Send + Future<Output = anyhow::Result<FullObject>>;
     /// Note: this function can also be used to populate the cache, as the cache will include
     /// any item returned by this function.
-    fn query(
+    fn query<T: Object>(
         &self,
-        type_id: TypeId,
         user: User,
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,

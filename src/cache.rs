@@ -1,9 +1,9 @@
 use crate::{
     api::{BinPtr, Query},
-    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, ObjectId, Timestamp, TypeId},
+    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, ObjectId, Timestamp},
     Object, User,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use futures::{pin_mut, StreamExt};
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
@@ -25,14 +25,11 @@ impl ObjectCache {
         }
     }
 
-    /// Returns `true` if the object was newly inserted in the cache, and `false` if
-    /// the object was already present in the cache. Errors if the object id was already
-    /// in the cache with a different value.
-    pub fn create<T: Object>(
+    fn create_impl<T: Object>(
         &mut self,
         object_id: ObjectId,
         object: Arc<T>,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<(bool, &mut FullObject)> {
         let cache_entry = self.objects.entry(object_id);
         match cache_entry {
             hash_map::Entry::Occupied(o) => {
@@ -45,18 +42,29 @@ impl ObjectCache {
                         .unwrap_or(false),
                     "Object {object_id:?} was already created with a different initial value"
                 );
-                Ok(false)
+                Ok((false, o.into_mut()))
             }
             hash_map::Entry::Vacant(v) => {
-                v.insert(FullObject {
+                let res = v.insert(FullObject {
                     id: object_id,
                     created_at: EventId(object_id.0),
                     creation: object,
                     changes: Arc::new(BTreeMap::new()),
                 });
-                Ok(true)
+                Ok((true, res))
             }
         }
+    }
+
+    /// Returns `true` if the object was newly inserted in the cache, and `false` if
+    /// the object was already present in the cache. Errors if the object id was already
+    /// in the cache with a different value.
+    pub fn create<T: Object>(
+        &mut self,
+        object_id: ObjectId,
+        object: Arc<T>,
+    ) -> anyhow::Result<bool> {
+        self.create_impl(object_id, object).map(|r| r.0)
     }
 
     fn remove(&mut self, object_id: &ObjectId) {
@@ -79,16 +87,14 @@ impl ObjectCache {
             hash_map::Entry::Occupied(mut object) => object
                 .get_mut()
                 .apply::<T>(event_id, event)
-                .await
                 .with_context(|| format!("applying {event_id:?} on {object_id:?}")),
             hash_map::Entry::Vacant(v) => {
                 let o = db
-                    .get(object_id)
+                    .get::<T>(object_id)
                     .await
                     .with_context(|| format!("getting {object_id:?} from database"))?;
                 let o = v.insert(o);
                 o.apply::<T>(event_id, event)
-                    .await
                     .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
             }
         }
@@ -102,8 +108,33 @@ impl ObjectCache {
         self.objects.get_mut(id)
     }
 
-    fn insert(&mut self, id: ObjectId, o: FullObject) {
-        self.objects.insert(id, o);
+    fn insert<T: Object>(&mut self, object_id: ObjectId, o: FullObject) -> anyhow::Result<()> {
+        debug_assert!(object_id == o.id, "inserting an object with wrong id");
+        // Do not directly insert into the hashmap, because the hashmap could already contain more
+        // recent events for this object. Instead, pass the object and all the events one by one,
+        // to merge with anything that would already exist.
+        let (_, created) = self
+            .create_impl(
+                object_id,
+                o.creation
+                    .downcast::<T>()
+                    .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
+            )
+            .with_context(|| format!("creating object {object_id:?}"))?;
+        for (event_id, c) in o.changes.iter() {
+            created
+                .apply::<T>(
+                    *event_id,
+                    c.event.clone().downcast::<T::Event>().map_err(|_| {
+                        anyhow!(
+                            "Failed to downcast an event to {:?}'s event type",
+                            T::ulid()
+                        )
+                    })?,
+                )
+                .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
+        }
+        Ok(())
     }
 }
 
@@ -215,24 +246,25 @@ impl<D: Db> Db for Cache<D> {
         Ok(())
     }
 
-    async fn get(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
         {
             let cache = self.cache.read().await;
             if let Some(res) = cache.get(&ptr) {
                 return Ok(res.clone());
             }
         }
-        let res = self.db.get(ptr).await?;
+        let res = self.db.get::<T>(ptr).await?;
         {
             let mut cache = self.cache.write().await;
-            cache.insert(ptr, res.clone());
+            cache
+                .insert::<T>(ptr, res.clone())
+                .with_context(|| format!("inserting object {ptr:?} in the cache"))?;
         }
         Ok(res)
     }
 
-    async fn query(
+    async fn query<T: Object>(
         &self,
-        type_id: TypeId,
         user: User,
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
@@ -245,17 +277,14 @@ impl<D: Db> Db for Cache<D> {
         // `include_heavy` is set.
         Ok(self
             .db
-            .query(
-                type_id,
-                user,
-                include_heavy,
-                ignore_not_modified_on_server_since,
-                q,
-            )
+            .query::<T>(user, include_heavy, ignore_not_modified_on_server_since, q)
             .await?
             .then(|o| async {
                 let mut cache = self.cache.write().await;
-                cache.insert(o.id, o.clone());
+                if let Err(error) = cache.insert::<T>(o.id, o.clone()) {
+                    tracing::error!(id = ?o.id, ?error, "failed inserting queried object in cache");
+                    cache.remove(&o.id);
+                }
                 o
             }))
     }
