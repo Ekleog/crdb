@@ -1,4 +1,5 @@
 use crate::{
+    cache::CacheConfig,
     db_trait::{EventId, ObjectId, TypeId},
     Timestamp,
 };
@@ -159,11 +160,16 @@ pub struct ClientMessage {
     request: Request,
 }
 
+pub trait Config: crate::private::Sealed + CacheConfig {}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_api {
     ( $authenticator:ty | $config:ident | $($object:ty),* ) => {
         pub struct $config;
+
+        impl crdb::private::Sealed for $config {}
+        impl crdb::ApiConfig for $config {}
 
         impl crdb::CacheConfig for $config {
             fn create(cache: &mut crdb::ObjectCache, o: crdb::NewObject) -> crdb::anyhow::Result<bool> {

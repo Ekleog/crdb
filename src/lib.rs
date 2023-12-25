@@ -35,17 +35,27 @@ pub mod crdb_internal {
     #[cfg(feature = "client")]
     pub use crate::client::ClientDb;
     #[cfg(feature = "server")]
-    pub use crate::server::{config::private::Sealed as ServerConfigSeal, Config as ServerConfig};
+    pub use crate::server::Config as ServerConfig;
     pub use crate::{
+        api::Config as ApiConfig,
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, NewEvent, NewObject, NewSnapshot},
-        BinPtr, DbPtr, Object, Query, Timestamp,
+        private, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
     pub use futures::{self, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
     pub use std::{future::Future, sync::Arc};
+}
+
+// This module needs to actually be public, because the `generate` macros need to be
+// able to implement the traits. However, making it doc(hidden) makes it look as though
+// it is actually sealed in the documentation, which is good because we don't want
+// users to rely on any stability guarantees there.
+#[doc(hidden)]
+pub mod private {
+    pub trait Sealed {}
 }
 
 #[macro_export]

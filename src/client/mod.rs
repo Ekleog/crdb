@@ -6,6 +6,7 @@ mod indexed_db;
 pub use api_db::ApiDb;
 pub use client_db::ClientDb;
 pub use config::{NewEvent, NewObject, NewSnapshot};
+// TODO: use only on wasm32-unknown-unknown, use sqlite otherwise
 pub use indexed_db::IndexedDb;
 
 #[doc(hidden)]

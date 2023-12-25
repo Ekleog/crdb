@@ -1,5 +1,7 @@
 use super::{ApiDb, Authenticator, IndexedDb};
 use crate::{
+    api,
+    cache::Cache,
     db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
     BinPtr, Object, Query, Timestamp, User,
 };
@@ -9,14 +11,17 @@ use std::sync::Arc;
 #[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
     api: ApiDb<A>,
-    _db: IndexedDb,
+    _db: Cache<IndexedDb>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
-    pub async fn connect(base_url: Arc<String>, auth: Arc<A>) -> anyhow::Result<ClientDb<A>> {
+    pub async fn connect<C: api::Config>(
+        base_url: Arc<String>,
+        auth: Arc<A>,
+    ) -> anyhow::Result<ClientDb<A>> {
         Ok(ClientDb {
             api: ApiDb::connect(base_url, auth).await?,
-            _db: IndexedDb::new(),
+            _db: Cache::new::<C>(Arc::new(IndexedDb::new())),
         })
     }
 
