@@ -119,8 +119,12 @@ impl<D: Db> Db for Cache<D> {
         include_heavy: bool,
         q: Query,
     ) -> anyhow::Result<impl futures::Stream<Item = FullObject>> {
-        todo!();
-        Ok(futures::stream::empty())
+        // We cannot use the object cache here, because it is not guaranteed to even
+        // contain all the non-heavy objects, due to being an LRU cache. So, immediately
+        // delegate to the underlying database, which should forward to either PostgreSQL
+        // for the server, or IndexedDB or the API for the client, depending on whether
+        // `include_heavy` is set.
+        self.db.query(type_id, user, include_heavy, q).await
     }
 
     async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
