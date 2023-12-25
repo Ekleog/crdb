@@ -29,14 +29,16 @@ macro_rules! db {
     (
         $v:vis mod $module:ident {
             auth: $authenticator:ty,
+            api_config: $api_config:ident,
             server_config: $server_config:ident,
             client_db: $client_db:ident,
             objects: [ $($object:ty),* $(,)* ],
         }
     ) => {
         $v mod $module {
-            $crate::generate_client!($authenticator | $client_db | $($object),*);
-            $crate::generate_server!($authenticator | $server_config | $($object),*);
+            $crate::generate_api!($authenticator | $api_config | $($object),*);
+            $crate::generate_client!($authenticator | $api_config | $client_db | $($object),*);
+            $crate::generate_server!($authenticator | $api_config | $server_config | $($object),*);
         }
     }
 }

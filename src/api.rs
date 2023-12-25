@@ -116,3 +116,10 @@ pub struct DbPtr<T: Object> {
 pub struct BinPtr {
     id: Ulid,
 }
+
+#[macro_export]
+macro_rules! generate_api {
+    ( $authenticator:ty | $config:ident | $($object:ty),* ) => {
+        struct $config {}
+    };
+}
