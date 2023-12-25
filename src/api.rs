@@ -120,6 +120,16 @@ pub struct BinPtr {
 #[macro_export]
 macro_rules! generate_api {
     ( $authenticator:ty | $config:ident | $($object:ty),* ) => {
-        struct $config {}
+        struct $config;
+
+        impl CacheConfig for $config {
+            fn create(cache: &mut ObjectCache, o: NewObject) -> anyhow::Result<bool> {
+                todo!()
+            }
+
+            async fn submit(cache: &mut ObjectCache, e: NewEvent) -> anyhow::Result<bool> {
+                todo!()
+            }
+        }
     };
 }

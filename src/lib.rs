@@ -2,7 +2,7 @@ mod api;
 pub use api::{DbPtr, JsonPathItem, Object, Query, User};
 
 mod cache;
-mod traits;
+mod db_trait;
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -24,6 +24,14 @@ pub mod server {
     }
 }
 
+// Stuff used by macros
+#[doc(hidden)]
+pub mod crdb_internal {
+    pub use crate::cache::{CacheConfig, ObjectCache};
+    pub use crate::db_trait::{NewEvent, NewObject};
+    pub use anyhow;
+}
+
 #[macro_export]
 macro_rules! db {
     (
@@ -36,6 +44,9 @@ macro_rules! db {
         }
     ) => {
         $v mod $module {
+            use $crate::crdb_internal::*;
+            use std::future::Future;
+
             $crate::generate_api!($authenticator | $api_config | $($object),*);
             $crate::generate_client!($authenticator | $api_config | $client_db | $($object),*);
             $crate::generate_server!($authenticator | $api_config | $server_config | $($object),*);

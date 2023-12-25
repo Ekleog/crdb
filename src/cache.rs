@@ -1,6 +1,6 @@
 use crate::{
     api::{BinPtr, Query},
-    traits::{Db, EventId, FullObject, NewEvent, NewObject, ObjectId, Timestamp, TypeId},
+    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, ObjectId, Timestamp, TypeId},
     Object, User,
 };
 use anyhow::Context;

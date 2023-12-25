@@ -154,13 +154,15 @@ impl FullObject {
     }
 }
 
-pub(crate) struct NewObject {
+#[doc(hidden)]
+pub struct NewObject {
     pub(crate) type_id: TypeId,
     pub(crate) id: ObjectId,
     pub(crate) value: Arc<dyn Any + Send + Sync>,
 }
 
-pub(crate) struct NewEvent {
+#[doc(hidden)]
+pub struct NewEvent {
     pub(crate) type_id: TypeId,
     pub(crate) object_id: ObjectId,
     pub(crate) id: EventId,

@@ -1,4 +1,4 @@
-use crate::traits::{EventId, ObjectId, Timestamp, TypeId};
+use crate::db_trait::{EventId, ObjectId, Timestamp, TypeId};
 use anyhow::Context;
 
 pub(crate) struct Db {
