@@ -23,6 +23,9 @@ impl SqlDb {
     }
 }
 
+// TODO: add a mechanism to auto-recreate all objects after some time elapsed
+// TODO: add a mechanism to GC binaries that are no longer required after object re-creation
+
 #[allow(unused_variables)] // TODO: remove
 impl Db for SqlDb {
     async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
@@ -46,6 +49,7 @@ impl Db for SqlDb {
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
         todo!()
+        // TODO: create a new snapshot with is_creation = true
     }
 
     async fn submit<T: Object>(
@@ -55,7 +59,12 @@ impl Db for SqlDb {
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
         todo!()
+        // TODO: add the event, create a new snapshot with is_creation = false for just after `event`,
+        // and the last snapshot should be is_last = true. Also remove is_last from no-longer-last
+        // snapshot
     }
+    // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is
+    // properly present in the same transaction as we're adding the event, reject if not.
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
         todo!()

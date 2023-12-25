@@ -107,7 +107,9 @@ pub trait Object:
     ) -> anyhow::Result<bool>;
     fn users_who_can_read<C: CanDoCallbacks>(&self) -> anyhow::Result<Vec<User>>;
     fn apply(&mut self, event: &Self::Event);
+
     fn is_heavy(&self) -> anyhow::Result<bool>;
+    fn required_binaries(&self) -> Vec<BinPtr>;
 }
 
 pub struct DbPtr<T: Object> {
@@ -116,9 +118,9 @@ pub struct DbPtr<T: Object> {
     _phantom: PhantomData<T>,
 }
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct BinPtr {
-    id: Ulid,
+    pub(crate) id: Ulid,
 }
 
 #[doc(hidden)]

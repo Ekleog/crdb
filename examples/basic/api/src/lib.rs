@@ -39,6 +39,9 @@ impl crdb::Object for Foo {
     fn is_heavy(&self) -> anyhow::Result<bool> {
         todo!()
     }
+    fn required_binaries(&self) -> Vec<crdb::BinPtr> {
+        todo!()
+    }
 }
 
 #[derive(Eq, PartialEq, serde::Deserialize, serde::Serialize)]

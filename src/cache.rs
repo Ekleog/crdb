@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use futures::{pin_mut, Stream, StreamExt};
+use sha3::{Digest, Sha3_224};
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
     future::Future,
@@ -347,6 +348,14 @@ impl<D: Db> Db for Cache<D> {
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+        debug_assert!(
+            id.id.to_bytes() == {
+                let mut hasher = Sha3_224::new();
+                hasher.update(&*value);
+                &hasher.finalize()[..16]
+            },
+            "Provided id {id:?} does not match value hash"
+        );
         let mut binaries = self.binaries.write().await;
         binaries.insert(id, value.clone());
         self.db.create_binary(id, value).await

@@ -45,7 +45,8 @@ macro_rules! generate_client {
                 async move { todo!() }
             }
 
-            pub fn create_binary(&self, id: crdb::BinPtr, value: crdb::Arc<Vec<u8>>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+            pub fn create_binary(&self, value: crdb::Arc<Vec<u8>>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+                // TODO: compute sha224 limited to 16 bytes for BinPtr
                 async move { todo!() }
             }
 
