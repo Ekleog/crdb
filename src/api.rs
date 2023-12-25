@@ -72,7 +72,13 @@ pub trait Object:
     /// Note that due to postgresql limitations reasons, this type MUST NOT include any
     /// null byte in the serialized JSON. Trying to submit one such event will result
     /// in the event being rejected by the server.
-    type Event: Any + Send + Sync + for<'a> serde::Deserialize<'a> + serde::Serialize;
+    type Event: Any
+        + Eq
+        + PartialEq
+        + Send
+        + Sync
+        + for<'a> serde::Deserialize<'a>
+        + serde::Serialize;
 
     fn ulid() -> &'static Ulid;
     fn snapshot_version() -> u64 {

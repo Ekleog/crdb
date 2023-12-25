@@ -55,8 +55,19 @@ impl FullObject {
             self.created_at,
             self.id,
         );
+        if let Some(c) = self.changes.get(&id) {
+            anyhow::ensure!(
+                c.event
+                    .clone()
+                    .downcast::<T::Event>()
+                    .map(|e| e == event)
+                    .unwrap_or(false),
+                "Event {id:?} was already pushed to object {:?} with a different value",
+                self.id,
+            );
+        }
 
-        // Get the snapshot to just before the event
+        // Get the snapshot to just before the new event
         let (_, mut last_snapshot) = self
             .get_snapshot_at::<T>(Bound::Excluded(id))
             .with_context(|| format!("applying event {id:?}"))?;
