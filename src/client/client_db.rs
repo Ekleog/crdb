@@ -1,4 +1,4 @@
-use super::{ApiDb, Authenticator, IndexedDb};
+use super::{ApiDb, Authenticator, LocalDb};
 use crate::{
     api,
     cache::Cache,
@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
     api: ApiDb<A>,
-    db: Arc<Cache<IndexedDb>>,
+    db: Arc<Cache<LocalDb>>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
@@ -21,7 +21,7 @@ impl<A: Authenticator> ClientDb<A> {
     ) -> anyhow::Result<ClientDb<A>> {
         Ok(ClientDb {
             api: ApiDb::connect(base_url, auth).await?,
-            db: Arc::new(Cache::new::<C>(Arc::new(IndexedDb::new()))),
+            db: Arc::new(Cache::new::<C>(Arc::new(LocalDb::new()))),
         })
     }
 
