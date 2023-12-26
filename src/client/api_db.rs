@@ -54,7 +54,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         todo!()
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
         todo!()
     }
 

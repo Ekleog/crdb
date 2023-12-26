@@ -214,7 +214,7 @@ pub trait Db: 'static + Send + Sync {
     fn get<T: Object>(
         &self,
         ptr: ObjectId,
-    ) -> impl Send + Future<Output = anyhow::Result<FullObject>>;
+    ) -> impl Send + Future<Output = anyhow::Result<Option<FullObject>>>;
     /// Note: this function can also be used to populate the cache, as the cache will include
     /// any item returned by this function.
     fn query<T: Object>(

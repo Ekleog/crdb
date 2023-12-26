@@ -59,11 +59,13 @@ impl<A: Authenticator> Db for ClientDb<A> {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
-        self.api.create(object_id, object.clone()).await?;
-        self.db.create(object_id, object).await
+        self.api
+            .submit::<T>(object, event_id, event.clone())
+            .await?;
+        self.db.submit::<T>(object, event_id, event).await
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
         match self.db.get::<T>(ptr).await {
             Ok(res) => Ok(res),
             Err(_) => todo!(),

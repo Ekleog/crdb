@@ -96,7 +96,8 @@ impl ObjectCache {
                     let o = db
                         .get::<T>(object_id)
                         .await
-                        .with_context(|| format!("getting {object_id:?} from database"))?;
+                        .with_context(|| format!("getting {object_id:?} from database"))?
+                        .ok_or_else(|| anyhow!("Submitted an event to object {object_id:?} that does not exist in the db"))?;
                     let o = v.insert(o);
                     o.apply::<T>(event_id, event)
                         .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
@@ -297,21 +298,23 @@ impl<D: Db> Db for Cache<D> {
         Ok(())
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
         {
             let cache = self.cache.read().await;
             if let Some(res) = cache.get(&ptr) {
-                return Ok(res.clone());
+                return Ok(Some(res.clone()));
             }
         }
-        let res = self.db.get::<T>(ptr).await?;
+        let Some(res) = self.db.get::<T>(ptr).await? else {
+            return Ok(None);
+        };
         {
             let mut cache = self.cache.write().await;
             cache
                 .insert::<T>(ptr, res.clone())
                 .with_context(|| format!("inserting object {ptr:?} in the cache"))?;
         }
-        Ok(res)
+        Ok(Some(res))
     }
 
     async fn query<T: Object>(

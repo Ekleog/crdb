@@ -66,7 +66,7 @@ impl Db for SqlDb {
     // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is
     // properly present in the same transaction as we're adding the event, reject if not.
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
         todo!()
     }
 
