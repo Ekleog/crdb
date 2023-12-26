@@ -5,14 +5,13 @@ use crate::{
     db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
     BinPtr, Object, Query, Timestamp, User,
 };
-use anyhow::anyhow;
-use futures::Stream;
+use futures::{future, Stream, StreamExt};
 use std::sync::Arc;
 
 #[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
     api: ApiDb<A>,
-    db: Cache<IndexedDb>,
+    db: Arc<Cache<IndexedDb>>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
@@ -22,7 +21,7 @@ impl<A: Authenticator> ClientDb<A> {
     ) -> anyhow::Result<ClientDb<A>> {
         Ok(ClientDb {
             api: ApiDb::connect(base_url, auth).await?,
-            db: Cache::new::<C>(Arc::new(IndexedDb::new())),
+            db: Arc::new(Cache::new::<C>(Arc::new(IndexedDb::new()))),
         })
     }
 
@@ -78,28 +77,7 @@ impl<A: Authenticator> Db for ClientDb<A> {
         let Some(o) = self.api.get::<T>(ptr).await? else {
             return Ok(None);
         };
-        self.db
-            .create::<T>(
-                o.id,
-                o.created_at,
-                o.creation
-                    .clone()
-                    .downcast::<T>()
-                    .map_err(|_| anyhow!("API returned object of unexpected type"))?,
-            )
-            .await?;
-        for (event_id, c) in o.changes.iter() {
-            self.db
-                .submit::<T>(
-                    o.id,
-                    *event_id,
-                    c.event
-                        .clone()
-                        .downcast::<T::Event>()
-                        .map_err(|_| anyhow!("API returned object of unexpected type"))?,
-                )
-                .await?;
-        }
+        self.db.create_all::<T>(o.clone()).await?;
         Ok(Some(o))
     }
 
@@ -109,9 +87,30 @@ impl<A: Authenticator> Db for ClientDb<A> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = FullObject>> {
-        // todo!()
-        Ok(futures::stream::empty())
+    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+        if !include_heavy {
+            return self
+                .db
+                .query::<T>(user, include_heavy, ignore_not_modified_on_server_since, q)
+                .await
+                .map(future::Either::Left);
+        }
+        Ok(future::Either::Right(
+            self.api
+                .query::<T>(user, include_heavy, ignore_not_modified_on_server_since, q)
+                .await?
+                .then({
+                    let db = self.db.clone();
+                    move |o| {
+                        let db = db.clone();
+                        async move {
+                            let o = o?;
+                            db.create_all::<T>(o.clone()).await?;
+                            Ok(o)
+                        }
+                    }
+                }),
+        ))
     }
 
     async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {

@@ -212,6 +212,34 @@ pub trait Db: 'static + Send + Sync {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
+    fn create_all<T: Object>(
+        &self,
+        o: FullObject,
+    ) -> impl Send + Future<Output = anyhow::Result<()>> {
+        async move {
+            self.create::<T>(
+                o.id,
+                o.created_at,
+                o.creation
+                    .clone()
+                    .downcast::<T>()
+                    .map_err(|_| anyhow!("API returned object of unexpected type"))?,
+            )
+            .await?;
+            for (event_id, c) in o.changes.iter() {
+                self.submit::<T>(
+                    o.id,
+                    *event_id,
+                    c.event
+                        .clone()
+                        .downcast::<T::Event>()
+                        .map_err(|_| anyhow!("API returned object of unexpected type"))?,
+                )
+                .await?;
+            }
+            Ok(())
+        }
+    }
 
     fn get<T: Object>(
         &self,
@@ -225,7 +253,7 @@ pub trait Db: 'static + Send + Sync {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = FullObject>>>;
+    ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>>>;
 
     fn snapshot<T: Object>(
         &self,

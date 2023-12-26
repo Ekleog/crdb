@@ -333,7 +333,7 @@ impl<D: Db> Db for Cache<D> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = FullObject>> {
+    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
         // We cannot use the object cache here, because it is not guaranteed to even
         // contain all the non-heavy objects, due to being an LRU cache. So, immediately
         // delegate to the underlying database, which should forward to either PostgreSQL
@@ -344,12 +344,13 @@ impl<D: Db> Db for Cache<D> {
             .query::<T>(user, include_heavy, ignore_not_modified_on_server_since, q)
             .await?
             .then(|o| async {
+                let o = o?;
                 let mut cache = self.cache.write().await;
                 if let Err(error) = cache.insert::<T>(o.id, o.clone()) {
                     tracing::error!(id = ?o.id, ?error, "failed inserting queried object in cache");
                     cache.remove(&o.id);
                 }
-                o
+                Ok(o)
             }))
     }
 

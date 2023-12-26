@@ -64,7 +64,7 @@ impl Db for IndexedDb {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = FullObject>> {
+    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
         // todo!()
         Ok(futures::stream::empty())
     }
