@@ -114,7 +114,7 @@ impl ObjectCache {
 
     pub fn snapshot<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> anyhow::Result<()> {
         if let Some(o) = self.objects.get_mut(&object) {
-            o.snapshot::<T>(time)?;
+            o.recreate_at::<T>(time)?;
         }
         Ok(())
     }

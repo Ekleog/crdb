@@ -46,7 +46,7 @@ pub mod crdb_internal {
     pub use futures::{self, future, stream, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
-    pub use std::{future::Future, sync::Arc};
+    pub use std::{future::Future, ops::Bound, sync::Arc};
     pub use ulid::Ulid;
 }
 

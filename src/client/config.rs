@@ -109,12 +109,19 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: <$object as crdb::Object>::Event) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
-                    async move { todo!() }
+                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: crdb::Arc<<$object as crdb::Object>::Event>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+                    // TODO: replace with an ulid generator, to make sure the id only ever goes UP
+                    let id = crdb::Ulid::new();
+                    self.db.submit::<$object>(object.to_object_id(), crdb::EventId(id), event)
                 }
 
-                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::Arc<$object>>> {
-                    async move { todo!() }
+                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<$object>>>> {
+                    async move {
+                        Ok(match self.db.get::<$object>(object.to_object_id()).await? {
+                            Some(mut o) => Some(o.last_snapshot()?),
+                            None => None,
+                        })
+                    }
                 }
 
                 pub fn [< query_ $name >](

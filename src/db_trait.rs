@@ -101,7 +101,7 @@ impl FullObject {
         Ok(true)
     }
 
-    pub(crate) fn snapshot<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
+    pub(crate) fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
         let max_new_created_at = EventId(Ulid::from_parts(at.0 + 1, 0));
         let (new_created_at, snapshot) =
             self.get_snapshot_at::<T>(Bound::Excluded(max_new_created_at))?;
@@ -111,6 +111,14 @@ impl FullObject {
         *changes = changes.split_off(&new_created_at);
         changes.pop_first();
         Ok(())
+    }
+
+    pub fn last_snapshot<T: Object>(&mut self) -> anyhow::Result<Arc<T>> {
+        // TODO: This currently does CoW to build the last snapshot, and thus does
+        // not update the cache. The whole goal of the in-memory cache was to avoid
+        // having to recompute the snapshots all the time. Somehow fix this (eg. use
+        // concread data structures?)
+        Ok(self.get_snapshot_at(Bound::Unbounded)?.1)
     }
 
     fn get_snapshot_at<T: Object>(
