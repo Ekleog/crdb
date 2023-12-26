@@ -8,12 +8,14 @@ license = "AGPL3"
 all-features = true
 
 [features]
-client = ["paste"]
-server = ["axum", "sqlx"]
+client-js = ["getrandom/js", "indexed_db_futures", "paste"]
+client-native = ["paste", "sqlx/sqlite"]
+server = ["axum", "sqlx/postgres"]
 
 [dependencies]
 anyhow = "1.0"
 futures = "0.3.29"
+getrandom = "0.2.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.10.8"
@@ -21,9 +23,8 @@ tokio = { version = "1.35", features = ["rt", "sync"] }
 tracing = "0.1.40"
 ulid = "1.1"
 
-# Server dependencies
+# Optional dependencies
 axum = { version = "0.7.2", optional = true }
-sqlx = { version = "0.7.3", features = ["postgres"], optional = true }
-
-# Client dependencies
+indexed_db_futures = { version = "0.4.1", optional = true }
 paste = { version = "1.0", optional = true }
+sqlx = { version = "0.7.3", optional = true }
