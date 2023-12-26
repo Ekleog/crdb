@@ -8,11 +8,16 @@ use std::sync::Arc;
 
 pub struct ApiDb<A: Authenticator> {
     _auth: A,
+    user: User,
 }
 
 impl<A: Authenticator> ApiDb<A> {
     pub async fn connect(_base_url: Arc<String>, _auth: Arc<A>) -> anyhow::Result<ApiDb<A>> {
         todo!()
+    }
+
+    pub fn user(&self) -> User {
+        self.user
     }
 
     pub async fn disconnect(self) -> anyhow::Result<()> {
@@ -22,6 +27,7 @@ impl<A: Authenticator> ApiDb<A> {
 
 #[allow(unused_variables)] // TODO: remove
 impl<A: Authenticator> Db for ApiDb<A> {
+    // TODO: use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
     async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
         // todo!()
         futures::stream::empty()

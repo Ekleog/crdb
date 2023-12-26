@@ -24,10 +24,8 @@ pub struct NewSnapshot<T: Object> {
 #[macro_export]
 macro_rules! generate_client {
     ( $authenticator:ty | $api_config:ident | $client_db:ident | $($name:ident : $object:ty),* ) => {
-        // TODO: generate something like an "impl" of client::Db that just forwards to the crate::Db impl of Cache<IndexedDbCache<Api>>
-        // set_new_* MUST be replaced by one function for each object/event type, so that the user can properly handle them.
-        // TODO: also have a way to force a server round-trip NOW, for eg. permissions change
-        // TODO: use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
+        // TODO: also have a way to force a server round-trip NOW, for eg. permissions change.
+        // This should probably be done by somehow exposing the queue for ApiDb
         pub struct $client_db {
             db: crdb::ClientDb<$authenticator>,
         }
@@ -129,10 +127,19 @@ macro_rules! generate_client {
                     include_heavy: bool,
                     ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
                     q: crdb::Query,
-                ) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<impl crdb::Stream<Item = crdb::Arc<$object>>>> {
+                ) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<impl '_ + Send + crdb::Stream<Item = anyhow::Result<crdb::Arc<$object>>>>> {
                     async move {
-                        // todo!()
-                        Ok(crdb::futures::stream::empty())
+                        Ok(self.db.query::<$object>(
+                            self.db.user(),
+                            include_heavy,
+                            ignore_not_modified_on_server_since,
+                            q,
+                        )
+                        .await?
+                        .map(|o| {
+                            o?.last_snapshot()
+                                .context("recovering the last snapshot of known-type object")
+                        }))
                     }
                 }
             })*

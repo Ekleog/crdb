@@ -6,6 +6,7 @@ use crate::{
 use std::{any::Any, collections::HashSet, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
+#[derive(Clone, Copy)]
 pub struct User {
     pub id: Ulid,
 }

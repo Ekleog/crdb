@@ -84,9 +84,10 @@ macro_rules! db {
     ) => {
         $v mod $module {
             use $crate::crdb_internal as crdb;
+            use crdb::anyhow::Context as CrdbContext;
             use crdb::Db as CrdbDb;
-            use crdb::stream::StreamExt as CrdbStreamExt;
             use crdb::future::FutureExt as CrdbFutureExt;
+            use crdb::stream::StreamExt as CrdbStreamExt;
 
             $crate::generate_api!($authenticator | $api_config | $($object),*);
             $crate::generate_client!($authenticator | $api_config | $client_db | $($name: $object),*);

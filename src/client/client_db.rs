@@ -25,6 +25,10 @@ impl<A: Authenticator> ClientDb<A> {
         })
     }
 
+    pub fn user(&self) -> User {
+        self.api.user()
+    }
+
     pub async fn disconnect(self) -> anyhow::Result<()> {
         self.api.disconnect().await
     }
