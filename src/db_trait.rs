@@ -266,5 +266,8 @@ pub trait Db: 'static + Send + Sync {
         id: BinPtr,
         value: Arc<Vec<u8>>,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
-    fn get_binary(&self, ptr: BinPtr) -> impl Send + Future<Output = anyhow::Result<Arc<Vec<u8>>>>;
+    fn get_binary(
+        &self,
+        ptr: BinPtr,
+    ) -> impl Send + Future<Output = anyhow::Result<Option<Arc<Vec<u8>>>>>;
 }

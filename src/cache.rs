@@ -371,18 +371,20 @@ impl<D: Db> Db for Cache<D> {
         self.db.create_binary(id, value).await
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>> {
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         {
             let binaries = self.binaries.read().await;
             if let Some(res) = binaries.get(&ptr) {
-                return Ok(res.clone());
+                return Ok(Some(res.clone()));
             }
         }
-        let res = self.db.get_binary(ptr).await?;
+        let Some(res) = self.db.get_binary(ptr).await? else {
+            return Ok(None);
+        };
         {
             let mut binaries = self.binaries.write().await;
             binaries.insert(ptr, res.clone());
         }
-        Ok(res)
+        Ok(Some(res))
     }
 }

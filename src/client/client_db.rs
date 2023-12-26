@@ -30,7 +30,6 @@ impl<A: Authenticator> ClientDb<A> {
     }
 }
 
-#[allow(unused_variables)] // TODO: remove
 impl<A: Authenticator> Db for ClientDb<A> {
     async fn new_objects(&self) -> impl Stream<Item = NewObject> {
         self.api.new_objects().await
@@ -123,7 +122,14 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.api.create_binary(id, value).await
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>> {
-        todo!()
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        if let Some(res) = self.db.get_binary(ptr).await? {
+            return Ok(Some(res));
+        }
+        let Some(res) = self.api.get_binary(ptr).await? else {
+            return Ok(None);
+        };
+        self.db.create_binary(ptr, res.clone()).await?;
+        Ok(Some(res))
     }
 }

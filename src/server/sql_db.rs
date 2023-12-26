@@ -94,7 +94,7 @@ impl Db for SqlDb {
         todo!()
     }
 
-    async fn get_binary(&self, ptr: crate::BinPtr) -> anyhow::Result<Arc<Vec<u8>>> {
+    async fn get_binary(&self, ptr: crate::BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }

@@ -50,7 +50,7 @@ macro_rules! generate_client {
                 async move { todo!() }
             }
 
-            pub fn get_binary(&self, id: crdb::BinPtr) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::Arc<Vec<u8>>>> {
+            pub fn get_binary(&self, id: crdb::BinPtr) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
                 async move { todo!() }
             }
 

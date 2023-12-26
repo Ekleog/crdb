@@ -77,7 +77,7 @@ impl Db for IndexedDb {
         todo!()
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>> {
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }
