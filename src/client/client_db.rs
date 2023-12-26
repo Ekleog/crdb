@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
     api: ApiDb<A>,
-    _db: Cache<IndexedDb>,
+    db: Cache<IndexedDb>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
@@ -21,7 +21,7 @@ impl<A: Authenticator> ClientDb<A> {
     ) -> anyhow::Result<ClientDb<A>> {
         Ok(ClientDb {
             api: ApiDb::connect(base_url, auth).await?,
-            _db: Cache::new::<C>(Arc::new(IndexedDb::new())),
+            db: Cache::new::<C>(Arc::new(IndexedDb::new())),
         })
     }
 
@@ -33,26 +33,24 @@ impl<A: Authenticator> ClientDb<A> {
 #[allow(unused_variables)] // TODO: remove
 impl<A: Authenticator> Db for ClientDb<A> {
     async fn new_objects(&self) -> impl Stream<Item = NewObject> {
-        // todo!()
-        futures::stream::empty()
+        self.api.new_objects().await
     }
 
     async fn new_events(&self) -> impl Send + Stream<Item = NewEvent> {
-        // todo!()
-        futures::stream::empty()
+        self.api.new_events().await
     }
 
     async fn new_snapshots(&self) -> impl Send + Stream<Item = NewSnapshot> {
-        // todo!()
-        futures::stream::empty()
+        self.api.new_snapshots().await
     }
 
     async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
-        todo!()
+        self.api.unsubscribe(ptr).await
     }
 
     async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
-        todo!()
+        self.api.create(object_id, object.clone()).await?;
+        self.db.create(object_id, object).await
     }
 
     async fn submit<T: Object>(
@@ -61,11 +59,15 @@ impl<A: Authenticator> Db for ClientDb<A> {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
-        todo!()
+        self.api.create(object_id, object.clone()).await?;
+        self.db.create(object_id, object).await
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<FullObject> {
-        todo!()
+        match self.db.get::<T>(ptr).await {
+            Ok(res) => Ok(res),
+            Err(_) => todo!(),
+        }
     }
 
     async fn query<T: Object>(
