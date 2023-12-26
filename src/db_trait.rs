@@ -51,7 +51,7 @@ impl FullObject {
     /// been applied, if the event is earlier than the object's last recreation time, or if
     /// the provided `T` is wrong.
     pub(crate) async fn apply<T: Object>(
-        &mut self,
+        &self,
         id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<bool> {
@@ -126,7 +126,7 @@ impl FullObject {
         Ok(())
     }
 
-    pub async fn last_snapshot<T: Object>(&mut self) -> anyhow::Result<Arc<T>> {
+    pub async fn last_snapshot<T: Object>(&self) -> anyhow::Result<Arc<T>> {
         {
             let changes = self.changes.read().await;
             if changes.is_empty() {
