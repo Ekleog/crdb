@@ -97,12 +97,16 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< unsubscribe_from_ $name >](&self) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
-                    async move { todo!() }
+                pub fn [< unsubscribe_from_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+                    self.db.unsubscribe(object.to_object_id())
                 }
 
-                pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
-                    async move { todo!() }
+                pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
+                    async move {
+                        let id = crdb::Ulid::new();
+                        self.db.create(crdb::ObjectId(id), crdb::EventId(id), object).await?;
+                        Ok(crdb::DbPtr::from(crdb::ObjectId(id)))
+                    }
                 }
 
                 pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: <$object as crdb::Object>::Event) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {

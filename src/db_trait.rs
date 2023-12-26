@@ -8,9 +8,9 @@ use std::{any::Any, collections::BTreeMap, future::Future, ops::Bound, sync::Arc
 use ulid::Ulid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ObjectId(pub(crate) Ulid);
+pub struct ObjectId(pub Ulid);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct EventId(pub(crate) Ulid);
+pub struct EventId(pub Ulid);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TypeId(pub Ulid);
 

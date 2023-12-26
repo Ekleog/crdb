@@ -126,6 +126,11 @@ impl<T: Object> DbPtr<T> {
             _phantom: PhantomData,
         }
     }
+
+    #[doc(hidden)]
+    pub fn to_object_id(&self) -> ObjectId {
+        ObjectId(self.id)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

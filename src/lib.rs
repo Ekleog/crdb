@@ -39,7 +39,7 @@ pub mod crdb_internal {
     pub use crate::{
         api::Config as ApiConfig,
         cache::{CacheConfig, ObjectCache},
-        db_trait::{Db, NewEvent, NewObject, NewSnapshot},
+        db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId},
         hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
@@ -47,6 +47,7 @@ pub mod crdb_internal {
     #[cfg(feature = "client")]
     pub use paste::paste;
     pub use std::{future::Future, sync::Arc};
+    pub use ulid::Ulid;
 }
 
 // This module needs to actually be public, because the `generate` macros need to be
