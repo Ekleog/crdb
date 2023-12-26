@@ -28,6 +28,7 @@ macro_rules! generate_client {
         // This should probably be done by somehow exposing the queue for ApiDb
         pub struct $client_db {
             db: crdb::ClientDb<$authenticator>,
+            ulid: crdb::Mutex<crdb::ulid::Generator>,
         }
 
         impl $client_db {
@@ -35,6 +36,7 @@ macro_rules! generate_client {
                 async move {
                     Ok($client_db {
                         db: crdb::ClientDb::connect::<$api_config>(base_url, auth).await?,
+                        ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     })
                 }
             }
@@ -101,15 +103,16 @@ macro_rules! generate_client {
 
                 pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move {
-                        let id = crdb::Ulid::new();
+                        let id = self.ulid.lock().unwrap().generate();
+                        let id = id.expect("Failed to generate ulid for object creation");
                         self.db.create(crdb::ObjectId(id), crdb::EventId(id), object).await?;
                         Ok(crdb::DbPtr::from(crdb::ObjectId(id)))
                     }
                 }
 
                 pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: crdb::Arc<<$object as crdb::Object>::Event>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
-                    // TODO: replace with an ulid generator, to make sure the id only ever goes UP
-                    let id = crdb::Ulid::new();
+                    let id = self.ulid.lock().unwrap().generate();
+                    let id = id.expect("Failed to generate ulid for event submission");
                     self.db.submit::<$object>(object.to_object_id(), crdb::EventId(id), event)
                 }
 

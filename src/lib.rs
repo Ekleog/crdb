@@ -46,8 +46,12 @@ pub mod crdb_internal {
     pub use futures::{self, future, stream, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
-    pub use std::{future::Future, ops::Bound, sync::Arc};
-    pub use ulid::Ulid;
+    pub use std::{
+        future::Future,
+        ops::Bound,
+        sync::{Arc, Mutex},
+    };
+    pub use ulid::{self, Ulid};
 }
 
 // This module needs to actually be public, because the `generate` macros need to be
