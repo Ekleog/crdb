@@ -69,10 +69,18 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< new_ $name _events >](&self) -> impl Send + crdb::Future<Output = impl Send + crdb::Stream<Item = $crate::NewEvent<$object>>> {
+                pub fn [< new_ $name _events >](&self) -> impl '_ + Send + crdb::Future<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewEvent<$object>>> {
                     async move {
-                        // todo!()
-                        crdb::futures::stream::empty()
+                        self.db
+                            .new_events()
+                            .await
+                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::ulid()))
+                            .map(|o| $crate::NewEvent {
+                                object: crdb::DbPtr::from(o.object_id),
+                                id: o.id,
+                                event: o.event.downcast::<<$object as crdb::Object>::Event>()
+                                    .expect("Failed downcasting event with checked type id")
+                            })
                     }
                 }
 
