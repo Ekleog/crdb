@@ -43,7 +43,7 @@ pub mod crdb_internal {
         hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
-    pub use futures::{self, Stream};
+    pub use futures::{self, future, stream, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
     pub use std::{future::Future, sync::Arc};
@@ -84,6 +84,8 @@ macro_rules! db {
         $v mod $module {
             use $crate::crdb_internal as crdb;
             use crdb::Db as CrdbDb;
+            use crdb::stream::StreamExt as CrdbStreamExt;
+            use crdb::future::FutureExt as CrdbFutureExt;
 
             $crate::generate_api!($authenticator | $api_config | $($object),*);
             $crate::generate_client!($authenticator | $api_config | $client_db | $($name: $object),*);

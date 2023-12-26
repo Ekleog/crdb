@@ -118,6 +118,16 @@ pub struct DbPtr<T: Object> {
     _phantom: PhantomData<T>,
 }
 
+impl<T: Object> DbPtr<T> {
+    #[doc(hidden)]
+    pub fn from(id: ObjectId) -> DbPtr<T> {
+        DbPtr {
+            id: id.0,
+            _phantom: PhantomData,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct BinPtr {
     pub(crate) id: Ulid,
