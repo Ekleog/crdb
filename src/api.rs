@@ -66,9 +66,7 @@ pub trait CanDoCallbacks: private::Sealed {
 pub trait Object:
     Any
     + Clone
-    + Default
     + Eq
-    + PartialEq
     + Send
     + Sync
     + for<'a> serde::Deserialize<'a>
@@ -79,7 +77,6 @@ pub trait Object:
     /// in the event being rejected by the server.
     type Event: Any
         + Eq
-        + PartialEq
         + Send
         + Sync
         + for<'a> serde::Deserialize<'a>
