@@ -5,6 +5,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use futures::Stream;
 use std::{any::Any, collections::BTreeMap, future::Future, ops::Bound, sync::Arc};
+use tokio::sync::RwLock;
 use ulid::Ulid;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -41,7 +42,7 @@ pub struct FullObject {
     pub(crate) id: ObjectId,
     pub(crate) created_at: EventId,
     pub(crate) creation: Arc<dyn Any + Send + Sync>,
-    pub(crate) changes: Arc<BTreeMap<EventId, Change>>,
+    pub(crate) changes: Arc<RwLock<BTreeMap<EventId, Change>>>,
 }
 
 impl FullObject {
@@ -49,7 +50,7 @@ impl FullObject {
     /// already been applied. Returns an error if another event with the same id had already
     /// been applied, if the event is earlier than the object's last recreation time, or if
     /// the provided `T` is wrong.
-    pub(crate) fn apply<T: Object>(
+    pub(crate) async fn apply<T: Object>(
         &mut self,
         id: EventId,
         event: Arc<T::Event>,
@@ -60,7 +61,8 @@ impl FullObject {
             self.created_at,
             self.id,
         );
-        if let Some(c) = self.changes.get(&id) {
+        let mut changes = self.changes.write().await;
+        if let Some(c) = changes.get(&id) {
             anyhow::ensure!(
                 c.event
                     .clone()
@@ -74,26 +76,31 @@ impl FullObject {
         }
 
         // Get the snapshot to just before the new event
-        let (_, mut last_snapshot) = self
-            .get_snapshot_at::<T>(Bound::Excluded(id))
-            .with_context(|| format!("applying event {id:?}"))?;
+        let (_, mut last_snapshot) = Self::get_snapshot_at::<T>(
+            self.id,
+            self.created_at,
+            &self.creation,
+            &mut *changes,
+            Bound::Excluded(id),
+        )
+        .await
+        .with_context(|| format!("applying event {id:?}"))?;
 
         // Apply the new event
-        let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
+        let last_snapshot_mut: &mut T = Arc::make_mut(&mut last_snapshot);
         last_snapshot_mut.apply(&*event);
         let new_change = Change {
             event,
             snapshot_after: Some(last_snapshot),
         };
-        let changes_mut = Arc::make_mut(&mut self.changes);
         assert!(
-            changes_mut.insert(id, new_change).is_none(),
+            changes.insert(id, new_change).is_none(),
             "Object {:?} already had an event with id {id:?} despite earlier check",
             self.id,
         );
 
         // Finally, invalidate all snapshots since the event
-        let to_invalidate = changes_mut.range_mut((Bound::Excluded(id), Bound::Unbounded));
+        let to_invalidate = changes.range_mut((Bound::Excluded(id), Bound::Unbounded));
         for c in to_invalidate {
             c.1.snapshot_after = None;
         }
@@ -101,53 +108,88 @@ impl FullObject {
         Ok(true)
     }
 
-    pub(crate) fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
+    pub(crate) async fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
+        let mut changes = self.changes.write().await;
         let max_new_created_at = EventId(Ulid::from_parts(at.0 + 1, 0));
-        let (new_created_at, snapshot) =
-            self.get_snapshot_at::<T>(Bound::Excluded(max_new_created_at))?;
+        let (new_created_at, snapshot) = Self::get_snapshot_at::<T>(
+            self.id,
+            self.created_at,
+            &self.creation,
+            &mut *changes,
+            Bound::Excluded(max_new_created_at),
+        )
+        .await?;
         self.created_at = new_created_at;
         self.creation = snapshot;
-        let changes = Arc::make_mut(&mut self.changes);
         *changes = changes.split_off(&new_created_at);
         changes.pop_first();
         Ok(())
     }
 
-    pub fn last_snapshot<T: Object>(&mut self) -> anyhow::Result<Arc<T>> {
-        // TODO: This currently does CoW to build the last snapshot, and thus does
-        // not update the cache. The whole goal of the in-memory cache was to avoid
-        // having to recompute the snapshots all the time. Somehow fix this (eg. use
-        // concread data structures?)
-        Ok(self.get_snapshot_at(Bound::Unbounded)?.1)
+    pub async fn last_snapshot<T: Object>(&mut self) -> anyhow::Result<Arc<T>> {
+        {
+            let changes = self.changes.read().await;
+            if changes.is_empty() {
+                return Ok(self
+                    .creation
+                    .clone()
+                    .downcast::<T>()
+                    .map_err(|_| anyhow!("Downcasting already-typed element"))?);
+            }
+            let (_, last_change) = changes.last_key_value().unwrap();
+            if let Some(s) = &last_change.snapshot_after {
+                return Ok(s
+                    .clone()
+                    .downcast::<T>()
+                    .map_err(|_| anyhow!("Downcasting already-typed element"))?);
+            }
+        }
+        Ok(Self::get_snapshot_at(
+            self.id,
+            self.created_at,
+            &self.creation,
+            &mut *self.changes.write().await,
+            Bound::Unbounded,
+        )
+        .await?
+        .1)
     }
 
-    fn get_snapshot_at<T: Object>(
-        &mut self,
+    /// Returns `(was_actually_last_in_bound, id, event)`
+    fn last_snapshot_before(
+        created_at: EventId,
+        creation: &Arc<dyn Any + Send + Sync>,
+        changes: &BTreeMap<EventId, Change>,
+        at: Bound<EventId>,
+    ) -> (bool, EventId, Arc<dyn Any + Send + Sync>) {
+        let changes_before = changes.range((Bound::Unbounded, at));
+        let mut is_first = true;
+        for (id, c) in changes_before.rev() {
+            if let Some(s) = c.snapshot_after.as_ref() {
+                return (is_first, *id, s.clone());
+            }
+            is_first = false;
+        }
+        (is_first, created_at, creation.clone())
+    }
+
+    async fn get_snapshot_at<T: Object>(
+        id: ObjectId,
+        created_at: EventId,
+        creation: &Arc<dyn Any + Send + Sync>,
+        changes: &mut BTreeMap<EventId, Change>,
         at: Bound<EventId>,
     ) -> anyhow::Result<(EventId, Arc<T>)> {
         // Find the last snapshot before `at`
-        let changes_before = self.changes.range((Bound::Unbounded, at));
-        let mut last_snapshot = None;
-        for c in changes_before.rev() {
-            if let Some(s) = c.1.snapshot_after.as_ref() {
-                last_snapshot = Some((c.0, s.clone()));
-                break;
-            }
-        }
-        let (last_snapshot_time, last_snapshot) = match last_snapshot {
-            Some((t, s)) => (*t, s),
-            // Note: Casting ObjectId to EventId here because ordering is the same anyway
-            None => (self.created_at, self.creation.clone()),
-        };
+        let (_, last_snapshot_time, last_snapshot) =
+            Self::last_snapshot_before(created_at, creation, changes, at);
         let mut last_snapshot = last_snapshot
             .downcast::<T>()
-            .map_err(|_| anyhow!("Failed downcasting {:?} to type {:?}", self.id, T::ulid()))?;
+            .map_err(|_| anyhow!("Failed downcasting {id:?} to type {:?}", T::ulid()))?;
         let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
 
         // Iterate through the changes since the last snapshot to just before the event
-        let to_apply = self
-            .changes
-            .range((Bound::Excluded(last_snapshot_time), at));
+        let to_apply = changes.range((Bound::Excluded(last_snapshot_time), at));
         let mut last_event_time = last_snapshot_time;
         for (id, change) in to_apply {
             last_event_time = *id;
@@ -156,6 +198,19 @@ impl FullObject {
                     .event
                     .downcast_ref()
                     .expect("Event with different type than object type"),
+            );
+        }
+
+        // Save the computed snapshot
+        if last_event_time != last_snapshot_time {
+            assert!(
+                changes
+                    .get_mut(&last_event_time)
+                    .unwrap()
+                    .snapshot_after
+                    .replace(last_snapshot.clone())
+                    .is_none(),
+                "Recomputed snapshot that was already computed"
             );
         }
 
@@ -234,7 +289,7 @@ pub trait Db: 'static + Send + Sync {
                     .map_err(|_| anyhow!("API returned object of unexpected type"))?,
             )
             .await?;
-            for (event_id, c) in o.changes.iter() {
+            for (event_id, c) in o.changes.read().await.iter() {
                 self.submit::<T>(
                     o.id,
                     *event_id,

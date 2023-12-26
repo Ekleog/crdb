@@ -119,7 +119,7 @@ macro_rules! generate_client {
                 pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<$object>>>> {
                     async move {
                         Ok(match self.db.get::<$object>(object.to_object_id()).await? {
-                            Some(mut o) => Some(o.last_snapshot()?),
+                            Some(mut o) => Some(o.last_snapshot().await?),
                             None => None,
                         })
                     }
@@ -139,8 +139,9 @@ macro_rules! generate_client {
                             q,
                         )
                         .await?
-                        .map(|o| {
+                        .then(|o| async move {
                             o?.last_snapshot()
+                                .await
                                 .context("recovering the last snapshot of known-type object")
                         }))
                     }

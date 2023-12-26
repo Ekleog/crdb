@@ -216,10 +216,10 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
 
-            fn snapshot(cache: &mut crdb::ObjectCache, s: crdb::NewSnapshot) -> crdb::anyhow::Result<()> {
+            async fn snapshot(cache: &mut crdb::ObjectCache, s: crdb::NewSnapshot) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::ulid() {
-                        return cache.snapshot::<$object>(s.object_id, s.time);
+                        return cache.snapshot::<$object>(s.object_id, s.time).await;
                     }
                 )*
                 crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
