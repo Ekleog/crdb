@@ -5,6 +5,7 @@ use crate::{
     db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
     BinPtr, Object, Query, Timestamp, User,
 };
+use anyhow::anyhow;
 use futures::Stream;
 use std::sync::Arc;
 
@@ -66,10 +67,34 @@ impl<A: Authenticator> Db for ClientDb<A> {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        match self.db.get::<T>(ptr).await {
-            Ok(res) => Ok(res),
-            Err(_) => todo!(),
+        if let Some(res) = self.db.get::<T>(ptr).await? {
+            return Ok(Some(res));
         }
+        let Some(o) = self.api.get::<T>(ptr).await? else {
+            return Ok(None);
+        };
+        self.db
+            .create::<T>(
+                o.id,
+                o.creation
+                    .clone()
+                    .downcast::<T>()
+                    .map_err(|_| anyhow!("API returned object of unexpected type"))?,
+            )
+            .await?;
+        for (event_id, c) in o.changes.iter() {
+            self.db
+                .submit::<T>(
+                    o.id,
+                    *event_id,
+                    c.event
+                        .clone()
+                        .downcast::<T::Event>()
+                        .map_err(|_| anyhow!("API returned object of unexpected type"))?,
+                )
+                .await?;
+        }
+        Ok(Some(o))
     }
 
     async fn query<T: Object>(
