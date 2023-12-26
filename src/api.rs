@@ -180,7 +180,7 @@ macro_rules! generate_api {
                         let object = o.object
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
-                        return cache.create::<$object>(o.id, object);
+                        return cache.create::<$object>(o.id, o.created_at, object);
                     }
                 )*
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)

@@ -49,9 +49,14 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.api.unsubscribe(ptr).await
     }
 
-    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
-        self.api.create(object_id, object.clone()).await?;
-        self.db.create(object_id, object).await
+    async fn create<T: Object>(
+        &self,
+        id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+    ) -> anyhow::Result<()> {
+        self.api.create(id, created_at, object.clone()).await?;
+        self.db.create(id, created_at, object).await
     }
 
     async fn submit<T: Object>(
@@ -76,6 +81,7 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.db
             .create::<T>(
                 o.id,
+                o.created_at,
                 o.creation
                     .clone()
                     .downcast::<T>()

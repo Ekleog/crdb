@@ -27,27 +27,30 @@ impl ObjectCache {
 
     fn create_impl<T: Object>(
         &mut self,
-        object_id: ObjectId,
+        id: ObjectId,
+        created_at: EventId,
         object: Arc<T>,
     ) -> anyhow::Result<(bool, &mut FullObject)> {
-        let cache_entry = self.objects.entry(object_id);
+        let cache_entry = self.objects.entry(id);
         match cache_entry {
-            hash_map::Entry::Occupied(o) => {
+            hash_map::Entry::Occupied(entry) => {
+                let o = entry.get();
                 anyhow::ensure!(
-                    o.get()
-                        .creation
-                        .clone()
-                        .downcast::<T>()
-                        .map(|v| v == object)
-                        .unwrap_or(false),
-                    "Object {object_id:?} was already created with a different initial value"
+                    o.created_at == created_at
+                        && o.id == id
+                        && o.creation
+                            .clone()
+                            .downcast::<T>()
+                            .map(|v| v == object)
+                            .unwrap_or(false),
+                    "Object {id:?} was already created with a different initial value"
                 );
-                Ok((false, o.into_mut()))
+                Ok((false, entry.into_mut()))
             }
             hash_map::Entry::Vacant(v) => {
                 let res = v.insert(FullObject {
-                    id: object_id,
-                    created_at: EventId(object_id.0),
+                    id,
+                    created_at,
                     creation: object,
                     changes: Arc::new(BTreeMap::new()),
                 });
@@ -61,10 +64,11 @@ impl ObjectCache {
     /// in the cache with a different value.
     pub fn create<T: Object>(
         &mut self,
-        object_id: ObjectId,
+        id: ObjectId,
+        created_at: EventId,
         object: Arc<T>,
     ) -> anyhow::Result<bool> {
-        self.create_impl(object_id, object).map(|r| r.0)
+        self.create_impl(id, created_at, object).map(|r| r.0)
     }
 
     fn remove(&mut self, object_id: &ObjectId) {
@@ -126,7 +130,8 @@ impl ObjectCache {
         // to merge with anything that would already exist.
         let (_, created) = self
             .create_impl(
-                object_id,
+                o.id,
+                o.created_at,
                 o.creation
                     .downcast::<T>()
                     .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
@@ -274,10 +279,15 @@ impl<D: Db> Db for Cache<D> {
         self.db.unsubscribe(ptr).await
     }
 
-    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
+    async fn create<T: Object>(
+        &self,
+        id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+    ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        if cache.create(object_id, object.clone())? {
-            self.db.create(object_id, object).await?;
+        if cache.create(id, created_at, object.clone())? {
+            self.db.create(id, created_at, object).await?;
         }
         Ok(())
     }

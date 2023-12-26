@@ -47,7 +47,12 @@ impl Db for SqlDb {
         todo!()
     }
 
-    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
+    async fn create<T: Object>(
+        &self,
+        id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+    ) -> anyhow::Result<()> {
         todo!()
         // TODO: create a new snapshot with is_creation = true
     }

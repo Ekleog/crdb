@@ -160,6 +160,7 @@ impl FullObject {
 pub struct NewObject {
     pub type_id: TypeId,
     pub id: ObjectId,
+    pub created_at: EventId,
     pub object: Arc<dyn Any + Send + Sync>,
 }
 
@@ -201,7 +202,8 @@ pub trait Db: 'static + Send + Sync {
 
     fn create<T: Object>(
         &self,
-        object_id: ObjectId,
+        id: ObjectId,
+        created_at: EventId,
         object: Arc<T>,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
     fn submit<T: Object>(

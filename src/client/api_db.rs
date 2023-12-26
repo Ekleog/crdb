@@ -41,7 +41,12 @@ impl<A: Authenticator> Db for ApiDb<A> {
         todo!()
     }
 
-    async fn create<T: Object>(&self, object_id: ObjectId, object: Arc<T>) -> anyhow::Result<()> {
+    async fn create<T: Object>(
+        &self,
+        id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 
