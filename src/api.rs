@@ -134,6 +134,7 @@ pub enum NewThing {
     Event(TypeId, ObjectId, EventId, serde_json::Value),
     Snapshot(TypeId, ObjectId, Timestamp),
     Binary(BinPtr, Vec<u8>),
+    CurrentTime(Timestamp),
 }
 
 #[doc(hidden)]
@@ -141,6 +142,7 @@ pub enum NewThing {
 pub enum Request {
     Subscribe(HashSet<ObjectId>),
     Unsubscribe(HashSet<ObjectId>),
+    GetTime,
     // TODO
 }
 
