@@ -40,7 +40,7 @@ pub mod crdb_internal {
         api::Config as ApiConfig,
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, NewEvent, NewObject, NewSnapshot},
-        private, BinPtr, DbPtr, Object, Query, Timestamp,
+        hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
     pub use futures::{self, Stream};
@@ -58,7 +58,8 @@ pub mod private {
     pub trait Sealed {}
 }
 
-fn hash_binary(data: &[u8]) -> BinPtr {
+#[doc(hidden)]
+pub fn hash_binary(data: &[u8]) -> BinPtr {
     use sha3::Digest;
     let mut hasher = sha3::Sha3_224::new();
     hasher.update(data);
@@ -82,6 +83,7 @@ macro_rules! db {
     ) => {
         $v mod $module {
             use $crate::crdb_internal as crdb;
+            use crdb::Db as CrdbDb;
 
             $crate::generate_api!($authenticator | $api_config | $($object),*);
             $crate::generate_client!($authenticator | $api_config | $client_db | $($name: $object),*);

@@ -42,16 +42,16 @@ macro_rules! generate_client {
             }
 
             pub fn disconnect(self) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
-                async move { todo!() }
+                self.db.disconnect()
             }
 
-            pub fn create_binary(&self, value: crdb::Arc<Vec<u8>>) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
-                // TODO: compute sha224 limited to 16 bytes for BinPtr
-                async move { todo!() }
+            pub fn create_binary(&self, value: crdb::Arc<Vec<u8>>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+                let id = crdb::hash_binary(&*value);
+                self.db.create_binary(id, value)
             }
 
-            pub fn get_binary(&self, id: crdb::BinPtr) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
-                async move { todo!() }
+            pub fn get_binary(&self, id: crdb::BinPtr) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
+                self.db.get_binary(id)
             }
 
             $(crdb::paste! {
