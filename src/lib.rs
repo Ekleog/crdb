@@ -5,11 +5,11 @@ mod cache;
 mod db_trait;
 pub use db_trait::Timestamp;
 
-#[cfg(feature = "client")]
+#[cfg(any(feature = "client-js", feature = "client-native"))]
 mod client;
-#[cfg(feature = "client")]
+#[cfg(any(feature = "client-js", feature = "client-native"))]
 pub use client::{NewEvent, NewObject, NewSnapshot};
-#[cfg(not(feature = "client"))]
+#[cfg(not(any(feature = "client-js", feature = "client-native")))]
 mod client {
     #[macro_export]
     macro_rules! generate_client {
@@ -32,7 +32,7 @@ mod server {
 // Stuff used by macros
 #[doc(hidden)]
 pub mod crdb_internal {
-    #[cfg(feature = "client")]
+    #[cfg(any(feature = "client-js", feature = "client-native"))]
     pub use crate::client::ClientDb;
     #[cfg(feature = "server")]
     pub use crate::server::Config as ServerConfig;
@@ -44,7 +44,7 @@ pub mod crdb_internal {
     };
     pub use anyhow;
     pub use futures::{self, future, stream, Stream};
-    #[cfg(feature = "client")]
+    #[cfg(any(feature = "client-js", feature = "client-native"))]
     pub use paste::paste;
     pub use std::{
         future::Future,
