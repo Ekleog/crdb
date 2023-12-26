@@ -114,11 +114,13 @@ impl<A: Authenticator> Db for ClientDb<A> {
     }
 
     async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
-        todo!()
+        self.db.snapshot::<T>(time, object).await?;
+        self.api.snapshot::<T>(time, object).await
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
-        todo!()
+        self.db.create_binary(id, value.clone()).await?;
+        self.api.create_binary(id, value).await
     }
 
     async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Arc<Vec<u8>>> {
