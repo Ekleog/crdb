@@ -84,10 +84,16 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< new_ $name _snapshots >](&self) -> impl Send + crdb::Future<Output = impl Send + crdb::Stream<Item = $crate::NewSnapshot<$object>>> {
+                pub fn [< new_ $name _snapshots >](&self) -> impl '_ + Send + crdb::Future<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewSnapshot<$object>>> {
                     async move {
-                        // todo!()
-                        crdb::futures::stream::empty()
+                        self.db
+                            .new_snapshots()
+                            .await
+                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::ulid()))
+                            .map(|o| $crate::NewSnapshot {
+                                object: crdb::DbPtr::from(o.object_id),
+                                time: o.time,
+                            })
                     }
                 }
 
