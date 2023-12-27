@@ -4,7 +4,9 @@ use ulid::Ulid;
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct Authenticator;
 
-#[derive(Clone, Default, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Clone, Default, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize,
+)]
 pub struct Foo;
 
 #[allow(unused_variables)]

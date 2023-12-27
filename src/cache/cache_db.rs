@@ -11,7 +11,6 @@ use tokio::sync::RwLock;
 
 pub struct CacheDb<D: Db> {
     db: Arc<D>,
-    // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
     cache: Arc<RwLock<ObjectCache>>,
     binaries: Arc<RwLock<BinariesCache>>,
 }
@@ -118,8 +117,11 @@ impl<D: Db> CacheDb<D> {
         });
     }
 
-    pub(crate) fn new<C: CacheConfig>(db: Arc<D>) -> CacheDb<D> {
-        let cache = Arc::new(RwLock::new(ObjectCache::new()));
+    /// Note that `watermark` will still keep in the cache all objects still in use by the program.
+    /// So, setting `watermark` to a value too low (eg. less than the size of objects actually in use by the
+    /// program) would make cache operation slow.
+    pub(crate) fn new<C: CacheConfig>(db: Arc<D>, watermark: usize) -> CacheDb<D> {
+        let cache = Arc::new(RwLock::new(ObjectCache::new(watermark)));
         let this = CacheDb {
             db: db.clone(),
             cache,
@@ -145,6 +147,12 @@ impl<D: Db> CacheDb<D> {
 
     pub(crate) async fn clear_objects_cache(&self) {
         self.cache.write().await.clear();
+    }
+
+    pub async fn reduce_size_to(&self, size: usize) {
+        self.cache.write().await.reduce_size_to(size);
+        self.binaries.write().await.clear();
+        // TODO: auto-clear binaries alongside watermark handling
     }
 }
 

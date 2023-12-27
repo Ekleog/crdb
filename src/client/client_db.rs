@@ -18,9 +18,10 @@ impl<A: Authenticator> ClientDb<A> {
     pub async fn connect<C: api::Config>(
         base_url: Arc<String>,
         auth: Arc<A>,
+        cache_watermark: usize,
     ) -> anyhow::Result<ClientDb<A>> {
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
-        let db = Arc::new(CacheDb::new::<C>(Arc::new(LocalDb::new())));
+        let db = Arc::new(CacheDb::new::<C>(Arc::new(LocalDb::new()), cache_watermark));
         db.also_watch_from::<C, _>(&api);
         Ok(ClientDb { api, db })
     }
@@ -43,6 +44,10 @@ impl<A: Authenticator> ClientDb<A> {
 
     pub async fn clear_objects_cache(&self) {
         self.db.clear_objects_cache().await
+    }
+
+    pub async fn reduce_size_to(&mut self, size: usize) {
+        self.db.reduce_size_to(size).await
     }
 }
 

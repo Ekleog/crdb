@@ -12,6 +12,7 @@ use std::{
 
 #[derive(Clone)]
 pub struct ObjectCache {
+    watermark: usize,
     // `Instant` here is the last access time
     objects: HashMap<ObjectId, (Instant, FullObject)>,
     last_accessed: BTreeMap<Instant, Vec<ObjectId>>,
@@ -20,8 +21,9 @@ pub struct ObjectCache {
 }
 
 impl ObjectCache {
-    pub fn new() -> ObjectCache {
+    pub fn new(watermark: usize) -> ObjectCache {
         ObjectCache {
+            watermark,
             objects: HashMap::new(),
             last_accessed: BTreeMap::new(),
             size: 0,
@@ -104,13 +106,16 @@ impl ObjectCache {
         created_at: EventId,
         object: Arc<T>,
     ) -> anyhow::Result<bool> {
-        self.create_impl(id, created_at, object).await.map(|r| r.0)
+        let res = self.create_impl(id, created_at, object).await.map(|r| r.0);
+        self.apply_watermark();
+        res
     }
 
     pub fn remove(&mut self, object_id: &ObjectId) {
         if let Some((t, o)) = self.objects.remove(object_id) {
             Self::removed(&mut self.last_accessed, *object_id, t);
             self.size -= o.deep_size_of();
+            self.apply_watermark();
         }
     }
 
@@ -129,7 +134,7 @@ impl ObjectCache {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<bool> {
-        match self.objects.entry(object_id) {
+        let res = match self.objects.entry(object_id) {
             hash_map::Entry::Occupied(object) => {
                 let (t, object) = object.get();
                 self.size -= object.deep_size_of();
@@ -158,7 +163,9 @@ impl ObjectCache {
                     Ok(false)
                 }
             }
-        }
+        };
+        self.apply_watermark();
+        res
     }
 
     pub async fn snapshot<T: Object>(
@@ -171,6 +178,7 @@ impl ObjectCache {
             o.recreate_at::<T>(time)?;
             self.size += o.deep_size_of();
             Self::touched(&mut self.last_accessed, object, *t);
+            self.apply_watermark();
         }
         Ok(())
     }
@@ -222,6 +230,7 @@ impl ObjectCache {
         self.size -= initial_size; // cancel what happened in the `create_impl`
         self.size += finished_size;
         Self::touched(&mut self.last_accessed, creation.id, t);
+        self.apply_watermark();
         Ok(())
     }
 
@@ -235,6 +244,20 @@ impl ObjectCache {
                 true
             }
         })
+    }
+
+    /// The average size of objects in the hashmap.
+    ///
+    /// This function's contract includes never returning 0
+    fn average_size(&self) -> usize {
+        let num = self.objects.len();
+        (self.size + num - 1) / num
+    }
+
+    fn apply_watermark(&mut self) {
+        if let Some(s) = self.size.checked_sub(self.watermark) {
+            self.reduce_size(3 * s / self.average_size(), s);
+        }
     }
 
     pub fn reduce_size_to(&mut self, size: usize) {
