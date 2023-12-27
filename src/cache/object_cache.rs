@@ -1,8 +1,13 @@
-use crate::{full_object::FullObject, db_trait::{Db, ObjectId, EventId}, Object, Timestamp};
+use crate::{
+    db_trait::{Db, EventId, ObjectId},
+    full_object::FullObject,
+    Object, Timestamp,
+};
 use anyhow::{anyhow, Context};
 use std::{
-    collections::{BTreeMap, HashMap, hash_map, btree_map},
-    time::Instant, sync::Arc,
+    collections::{btree_map, hash_map, BTreeMap, HashMap},
+    sync::Arc,
+    time::Instant,
 };
 
 #[derive(Clone)]
