@@ -1,7 +1,7 @@
 use super::{ApiDb, Authenticator, LocalDb};
 use crate::{
     api,
-    cache::Cache,
+    cache::CacheDb,
     db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId},
     full_object::FullObject,
     BinPtr, Object, Query, Timestamp, User,
@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub struct ClientDb<A: Authenticator> {
     api: Arc<ApiDb<A>>,
-    db: Arc<Cache<LocalDb>>,
+    db: Arc<CacheDb<LocalDb>>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
@@ -20,7 +20,7 @@ impl<A: Authenticator> ClientDb<A> {
         auth: Arc<A>,
     ) -> anyhow::Result<ClientDb<A>> {
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
-        let db = Arc::new(Cache::new::<C>(Arc::new(LocalDb::new())));
+        let db = Arc::new(CacheDb::new::<C>(Arc::new(LocalDb::new())));
         db.also_watch_from::<C, _>(&api);
         Ok(ClientDb { api, db })
     }

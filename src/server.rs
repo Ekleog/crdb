@@ -1,4 +1,4 @@
-use crate::{api::ServerMessage, cache::Cache, db_trait::ObjectId, User};
+use crate::{api::ServerMessage, cache::CacheDb, db_trait::ObjectId, User};
 use anyhow::Context;
 use axum::http::StatusCode;
 use std::{
@@ -22,7 +22,7 @@ struct Session(Ulid);
 
 pub struct Server<C: Config> {
     _config: C,
-    _db: Cache<sql_db::SqlDb>,
+    _db: CacheDb<sql_db::SqlDb>,
     _watchers: HashMap<ObjectId, HashSet<Session>>,
     _sessions: HashMap<Session, mpsc::UnboundedSender<ServerMessage>>,
 }
@@ -31,7 +31,7 @@ impl<C: Config> Server<C> {
     pub async fn new(config: C, db_url: &str) -> anyhow::Result<Self> {
         Ok(Server {
             _config: config,
-            _db: Cache::new::<C::ApiConfig>(Arc::new(sql_db::SqlDb::connect(db_url).await?)),
+            _db: CacheDb::new::<C::ApiConfig>(Arc::new(sql_db::SqlDb::connect(db_url).await?)),
             _watchers: HashMap::new(),
             _sessions: HashMap::new(),
         })
