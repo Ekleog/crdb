@@ -1,8 +1,8 @@
 use crate::{
     api::{BinPtr, Query},
     db_trait::{
-        Db, EventId, FullObject, FullObjectImpl, NewEvent, NewObject, NewSnapshot, ObjectId,
-        Timestamp,
+        Db, DynSized, EventId, FullObject, FullObjectImpl, NewEvent, NewObject, NewSnapshot,
+        ObjectId, Timestamp,
     },
     hash_binary, Object, User,
 };
@@ -11,7 +11,10 @@ use futures::{pin_mut, Stream, StreamExt};
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
     future::Future,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 use tokio::sync::RwLock;
 
@@ -19,12 +22,15 @@ use tokio::sync::RwLock;
 #[derive(Clone)]
 pub struct ObjectCache {
     objects: HashMap<ObjectId, FullObject>,
+    size: usize,
+    // TODO: have fuzzers that assert that `size` stays in-sync with `objects`
 }
 
 impl ObjectCache {
     fn new() -> ObjectCache {
         ObjectCache {
             objects: HashMap::new(),
+            size: 0,
         }
     }
 
@@ -53,13 +59,15 @@ impl ObjectCache {
                 Ok((false, entry.into_mut()))
             }
             hash_map::Entry::Vacant(v) => {
+                let o = FullObjectImpl {
+                    id,
+                    created_at,
+                    creation: object,
+                    changes: BTreeMap::new(),
+                };
+                self.size += o.deep_size_of();
                 let res = v.insert(FullObject {
-                    data: Arc::new(RwLock::new(FullObjectImpl {
-                        id,
-                        created_at,
-                        creation: object,
-                        changes: BTreeMap::new(),
-                    })),
+                    data: Arc::new(RwLock::new(o)),
                 });
                 Ok((true, res))
             }
@@ -78,8 +86,10 @@ impl ObjectCache {
         self.create_impl(id, created_at, object).await.map(|r| r.0)
     }
 
-    fn remove(&mut self, object_id: &ObjectId) {
-        self.objects.remove(object_id);
+    async fn remove(&mut self, object_id: &ObjectId) {
+        if let Some(o) = self.objects.remove(object_id) {
+            self.size -= o.data.read().await.deep_size_of();
+        }
     }
 
     /// Returns `true` if the event was newly inserted in the cache, and `false` if
@@ -98,11 +108,16 @@ impl ObjectCache {
         event: Arc<T::Event>,
     ) -> anyhow::Result<bool> {
         match self.objects.entry(object_id) {
-            hash_map::Entry::Occupied(mut object) => object
-                .get_mut()
-                .apply::<T>(event_id, event)
-                .await
-                .with_context(|| format!("applying {event_id:?} on {object_id:?}")),
+            hash_map::Entry::Occupied(object) => {
+                let object = object.get();
+                self.size -= object.data.read().await.deep_size_of();
+                let res = object
+                    .apply::<T>(event_id, event)
+                    .await
+                    .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
+                self.size += object.data.read().await.deep_size_of();
+                Ok(res)
+            }
             hash_map::Entry::Vacant(v) => {
                 if let Some(db) = db {
                     let o = db
@@ -110,10 +125,13 @@ impl ObjectCache {
                         .await
                         .with_context(|| format!("getting {object_id:?} from database"))?
                         .ok_or_else(|| anyhow!("Submitted an event to object {object_id:?} that does not exist in the db"))?;
-                    let o = v.insert(o);
-                    o.apply::<T>(event_id, event)
+                    let res = o
+                        .apply::<T>(event_id, event)
                         .await
-                        .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
+                        .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
+                    self.size += o.data.read().await.deep_size_of();
+                    v.insert(o);
+                    Ok(res)
                 } else {
                     Ok(false)
                 }
@@ -127,7 +145,9 @@ impl ObjectCache {
         time: Timestamp,
     ) -> anyhow::Result<()> {
         if let Some(o) = self.objects.get_mut(&object) {
+            self.size -= o.data.read().await.deep_size_of();
             o.recreate_at::<T>(time).await?;
+            self.size += o.data.read().await.deep_size_of();
         }
         Ok(())
     }
@@ -158,6 +178,7 @@ impl ObjectCache {
             )
             .await
             .with_context(|| format!("creating object {object_id:?}"))?;
+        let initial_size = created.data.read().await.deep_size_of();
         for (event_id, c) in o.changes.iter() {
             created
                 .apply::<T>(
@@ -176,6 +197,9 @@ impl ObjectCache {
                 .await
                 .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
         }
+        let finished_size = created.data.read().await.deep_size_of();
+        self.size -= initial_size; // cancel what happened in the `create_impl`
+        self.size += finished_size;
         Ok(())
     }
 }
@@ -232,6 +256,8 @@ pub(crate) struct Cache<D: Db> {
     // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
     cache: Arc<RwLock<ObjectCache>>,
     binaries: Arc<RwLock<HashMap<BinPtr, Arc<Vec<u8>>>>>,
+    binaries_size: AtomicUsize,
+    // TODO: have fuzzers that assert that `size` stays in-sync with `binaries`
 }
 
 impl<D: Db> Cache<D> {
@@ -342,6 +368,7 @@ impl<D: Db> Cache<D> {
             db: db.clone(),
             cache,
             binaries: Arc::new(RwLock::new(HashMap::new())),
+            binaries_size: AtomicUsize::new(0),
         };
         this.watch_from::<C, _>(&db, false);
         this
@@ -368,7 +395,7 @@ impl<D: Db> Db for Cache<D> {
 
     async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        cache.remove(&ptr);
+        cache.remove(&ptr).await;
         self.db.unsubscribe(ptr).await
     }
 
@@ -443,7 +470,7 @@ impl<D: Db> Db for Cache<D> {
                 let mut cache = self.cache.write().await;
                 if let Err(error) = cache.insert::<T>(id, o.clone()).await {
                     tracing::error!(?id, ?error, "failed inserting queried object in cache");
-                    cache.remove(&id);
+                    cache.remove(&id).await;
                 }
                 Ok(o)
             }))
@@ -463,6 +490,7 @@ impl<D: Db> Db for Cache<D> {
         );
         let mut binaries = self.binaries.write().await;
         binaries.insert(id, value.clone());
+        self.binaries_size.fetch_add(value.len(), Ordering::Relaxed);
         self.db.create_binary(id, value).await
     }
 
@@ -479,6 +507,7 @@ impl<D: Db> Db for Cache<D> {
         {
             let mut binaries = self.binaries.write().await;
             binaries.insert(ptr, res.clone());
+            self.binaries_size.fetch_add(res.len(), Ordering::Relaxed);
         }
         Ok(Some(res))
     }
