@@ -14,6 +14,7 @@ server = ["axum", "sqlx/postgres"]
 
 [dependencies]
 anyhow = "1.0"
+deepsize = "0.2.0"
 futures = "0.3.29"
 getrandom = "0.2.11"
 serde = { version = "1.0", features = ["derive"] }

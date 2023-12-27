@@ -64,12 +64,12 @@ pub trait CanDoCallbacks: private::Sealed {
 /// null byte in the serialized JSON. Including them will result in internal server
 /// errors.
 pub trait Object:
-    Any + Clone + Eq + Send + Sync + for<'a> serde::Deserialize<'a> + serde::Serialize
+    Any + Clone + Eq + Send + Sync + deepsize::DeepSizeOf + for<'a> serde::Deserialize<'a> + serde::Serialize
 {
     /// Note that due to postgresql limitations reasons, this type MUST NOT include any
     /// null byte in the serialized JSON. Trying to submit one such event will result
     /// in the event being rejected by the server.
-    type Event: Any + Eq + Send + Sync + for<'a> serde::Deserialize<'a> + serde::Serialize;
+    type Event: Any + Eq + Send + Sync + deepsize::DeepSizeOf + for<'a> serde::Deserialize<'a> + serde::Serialize;
 
     fn ulid() -> &'static Ulid;
     fn snapshot_version() -> u64 {
@@ -182,6 +182,7 @@ macro_rules! generate_api {
                 $(
                     if o.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let object = o.object
+                            .arc_to_any()
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
                         return cache.create::<$object>(o.id, o.created_at, object).await;
@@ -194,6 +195,7 @@ macro_rules! generate_api {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let event = e.event
+                            .arc_to_any()
                             .downcast::<<$object as crdb::Object>::Event>()
                             .expect("got new event that could not be downcast to its type_id");
                         return cache.submit::<D, $object>(db, e.object_id, e.id, event).await;
@@ -215,6 +217,7 @@ macro_rules! generate_api {
                 $(
                     if o.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let object = o.object
+                            .arc_to_any()
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
                         return db.create::<$object>(o.id, o.created_at, object).await;
@@ -227,6 +230,7 @@ macro_rules! generate_api {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let event = e.event
+                            .arc_to_any()
                             .downcast::<<$object as crdb::Object>::Event>()
                             .expect("got new event that could not be downcast to its type_id");
                         return db.submit::<$object>(e.object_id, e.id, event).await;

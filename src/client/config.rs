@@ -63,7 +63,7 @@ macro_rules! generate_client {
                             .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::ulid()))
                             .map(|o| $crate::NewObject {
                                 ptr: crdb::DbPtr::from(o.id),
-                                object: o.object.downcast::<$object>()
+                                object: o.object.arc_to_any().downcast::<$object>()
                                     .expect("Failed downcasting object with checked type id")
                             })
                     }
@@ -78,7 +78,7 @@ macro_rules! generate_client {
                             .map(|o| $crate::NewEvent {
                                 object: crdb::DbPtr::from(o.object_id),
                                 id: o.id,
-                                event: o.event.downcast::<<$object as crdb::Object>::Event>()
+                                event: o.event.arc_to_any().downcast::<<$object as crdb::Object>::Event>()
                                     .expect("Failed downcasting event with checked type id")
                             })
                     }

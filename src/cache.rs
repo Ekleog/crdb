@@ -43,9 +43,9 @@ impl ObjectCache {
                     o.created_at == created_at
                         && o.id == id
                         && o.creation
-                            .clone()
-                            .downcast::<T>()
-                            .map(|v| v == object)
+                            .ref_to_any()
+                            .downcast_ref::<T>()
+                            .map(|v| v == &*object)
                             .unwrap_or(false),
                     "Object {id:?} was already created with a different initial value"
                 );
@@ -152,6 +152,7 @@ impl ObjectCache {
                 o.created_at,
                 o.creation
                     .clone()
+                    .arc_to_any()
                     .downcast::<T>()
                     .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
             )
@@ -161,7 +162,7 @@ impl ObjectCache {
             created
                 .apply::<T>(
                     *event_id,
-                    c.event.clone().downcast::<T::Event>().map_err(|_| {
+                    c.event.clone().arc_to_any().downcast::<T::Event>().map_err(|_| {
                         anyhow!(
                             "Failed to downcast an event to {:?}'s event type",
                             T::ulid()

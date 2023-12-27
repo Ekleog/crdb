@@ -32,15 +32,33 @@ impl_for_id!(TypeId);
 
 #[derive(Clone)]
 pub(crate) struct Change {
-    pub(crate) event: Arc<dyn Any + Send + Sync>,
-    snapshot_after: Option<Arc<dyn Any + Send + Sync>>,
+    pub(crate) event: Arc<dyn DynSized>,
+    snapshot_after: Option<Arc<dyn DynSized>>,
+}
+
+pub trait DynSized: 'static + Any + Send + Sync + deepsize::DeepSizeOf {
+    // TODO: remove these functions once rust supports trait upcasting:
+    // https://github.com/rust-lang/rust/issues/65991#issuecomment-1869869919
+    fn arc_to_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync>;
+    fn ref_to_any(&self) -> &(dyn Any + Send + Sync);
+    fn deep_size_of(&self) -> usize {
+        <Self as deepsize::DeepSizeOf>::deep_size_of(self)
+    }
+}
+impl<T: 'static + Any + Send + Sync + deepsize::DeepSizeOf> DynSized for T {
+    fn arc_to_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> {
+        self
+    }
+    fn ref_to_any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
 }
 
 #[doc(hidden)]
 pub struct FullObjectImpl {
     pub(crate) id: ObjectId,
     pub(crate) created_at: EventId,
-    pub(crate) creation: Arc<dyn Any + Send + Sync>,
+    pub(crate) creation: Arc<dyn DynSized>,
     pub(crate) changes: BTreeMap<EventId, Change>,
 }
 
@@ -70,6 +88,7 @@ impl FullObject {
                 return Ok(this
                     .creation
                     .clone()
+                    .arc_to_any()
                     .downcast::<T>()
                     .map_err(|_| anyhow!("Downcasting already-typed element"))?);
             }
@@ -77,6 +96,7 @@ impl FullObject {
             if let Some(s) = &last_change.snapshot_after {
                 return Ok(s
                     .clone()
+                    .arc_to_any()
                     .downcast::<T>()
                     .map_err(|_| anyhow!("Downcasting already-typed element"))?);
             }
@@ -110,9 +130,9 @@ impl FullObjectImpl {
         if let Some(c) = self.changes.get(&id) {
             anyhow::ensure!(
                 c.event
-                    .clone()
-                    .downcast::<T::Event>()
-                    .map(|e| e == event)
+                    .ref_to_any()
+                    .downcast_ref::<T::Event>()
+                    .map(|e| e == &*event)
                     .unwrap_or(false),
                 "Event {id:?} was already pushed to object {:?} with a different value",
                 self.id,
@@ -166,7 +186,7 @@ impl FullObjectImpl {
     fn last_snapshot_before(
         &self,
         at: Bound<EventId>,
-    ) -> (bool, EventId, Arc<dyn Any + Send + Sync>) {
+    ) -> (bool, EventId, Arc<dyn DynSized>) {
         let changes_before = self.changes.range((Bound::Unbounded, at));
         let mut is_first = true;
         for (id, c) in changes_before.rev() {
@@ -185,6 +205,7 @@ impl FullObjectImpl {
         // Find the last snapshot before `at`
         let (_, last_snapshot_time, last_snapshot) = self.last_snapshot_before(at);
         let mut last_snapshot = last_snapshot
+            .arc_to_any()
             .downcast::<T>()
             .map_err(|_| anyhow!("Failed downcasting {:?} to type {:?}", self.id, T::ulid()))?;
         let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
@@ -199,6 +220,7 @@ impl FullObjectImpl {
             last_snapshot_mut.apply(
                 change
                     .event
+                    .ref_to_any()
                     .downcast_ref()
                     .expect("Event with different type than object type"),
             );
@@ -227,7 +249,7 @@ pub struct NewObject {
     pub type_id: TypeId,
     pub id: ObjectId,
     pub created_at: EventId,
-    pub object: Arc<dyn Any + Send + Sync>,
+    pub object: Arc<dyn DynSized>,
 }
 
 #[doc(hidden)]
@@ -236,7 +258,7 @@ pub struct NewEvent {
     pub type_id: TypeId,
     pub object_id: ObjectId,
     pub id: EventId,
-    pub event: Arc<dyn Any + Send + Sync>,
+    pub event: Arc<dyn DynSized>,
 }
 
 #[doc(hidden)]
@@ -289,6 +311,7 @@ pub trait Db: 'static + Send + Sync {
                 o.created_at,
                 o.creation
                     .clone()
+                    .arc_to_any()
                     .downcast::<T>()
                     .map_err(|_| anyhow!("API returned object of unexpected type"))?,
             )
@@ -299,6 +322,7 @@ pub trait Db: 'static + Send + Sync {
                     *event_id,
                     c.event
                         .clone()
+                        .arc_to_any()
                         .downcast::<T::Event>()
                         .map_err(|_| anyhow!("API returned object of unexpected type"))?,
                 )

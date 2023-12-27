@@ -4,7 +4,7 @@ use ulid::Ulid;
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct Authenticator;
 
-#[derive(Clone, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Default, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
 pub struct Foo;
 
 #[allow(unused_variables)]
@@ -44,7 +44,7 @@ impl crdb::Object for Foo {
     }
 }
 
-#[derive(Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
 pub enum FooEvent {}
 
 crdb::db! {
