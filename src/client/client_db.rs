@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 #[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
-    api: ApiDb<A>,
+    api: Arc<ApiDb<A>>,
     db: Arc<Cache<LocalDb>>,
 }
 
@@ -19,17 +19,17 @@ impl<A: Authenticator> ClientDb<A> {
         base_url: Arc<String>,
         auth: Arc<A>,
     ) -> anyhow::Result<ClientDb<A>> {
-        Ok(ClientDb {
-            api: ApiDb::connect(base_url, auth).await?,
-            db: Arc::new(Cache::new::<C>(Arc::new(LocalDb::new()))),
-        })
+        let api = Arc::new(ApiDb::connect(base_url, auth).await?);
+        let db = Arc::new(Cache::new::<C>(Arc::new(LocalDb::new())));
+        db.also_watch_from::<C, _>(&api);
+        Ok(ClientDb { api, db })
     }
 
     pub fn user(&self) -> User {
         self.api.user()
     }
 
-    pub async fn disconnect(self) -> anyhow::Result<()> {
+    pub async fn disconnect(&self) -> anyhow::Result<()> {
         self.api.disconnect().await
     }
 }

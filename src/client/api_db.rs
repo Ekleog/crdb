@@ -20,7 +20,7 @@ impl<A: Authenticator> ApiDb<A> {
         self.user
     }
 
-    pub async fn disconnect(self) -> anyhow::Result<()> {
+    pub async fn disconnect(&self) -> anyhow::Result<()> {
         todo!()
     }
 }

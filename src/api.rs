@@ -210,6 +210,39 @@ macro_rules! generate_api {
                 )*
                 crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
             }
+
+            async fn create_in_db<D: crdb::Db>(db: &D, o: crdb::NewObject) -> crdb::anyhow::Result<()> {
+                $(
+                    if o.type_id.0 == *<$object as crdb::Object>::ulid() {
+                        let object = o.object
+                            .downcast::<$object>()
+                            .expect("got new object that could not be downcast to its type_id");
+                        return db.create::<$object>(o.id, o.created_at, object).await;
+                    }
+                )*
+                crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
+            }
+
+            async fn submit_in_db<D: crdb::Db>(db: &D, e: crdb::NewEvent) -> crdb::anyhow::Result<()> {
+                $(
+                    if e.type_id.0 == *<$object as crdb::Object>::ulid() {
+                        let event = e.event
+                            .downcast::<<$object as crdb::Object>::Event>()
+                            .expect("got new event that could not be downcast to its type_id");
+                        return db.submit::<$object>(e.object_id, e.id, event).await;
+                    }
+                )*
+                crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
+            }
+
+            async fn snapshot_in_db<D: crdb::Db>(db: &D, s: crdb::NewSnapshot) -> crdb::anyhow::Result<()> {
+                $(
+                    if s.type_id.0 == *<$object as crdb::Object>::ulid() {
+                        return db.snapshot::<$object>(s.time, s.object_id).await;
+                    }
+                )*
+                crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
+            }
         }
     };
 }

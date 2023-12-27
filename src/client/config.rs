@@ -41,7 +41,7 @@ macro_rules! generate_client {
                 }
             }
 
-            pub fn disconnect(self) -> impl Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+            pub fn disconnect(&self) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
                 self.db.disconnect()
             }
 
