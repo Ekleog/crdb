@@ -7,23 +7,27 @@ use crate::{
 use anyhow::{anyhow, Context};
 use futures::{pin_mut, Stream, StreamExt};
 use std::{
-    collections::{hash_map, HashMap},
+    collections::{btree_map, hash_map, BTreeMap, HashMap},
     future::Future,
     sync::Arc,
+    time::Instant,
 };
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ObjectCache {
-    objects: HashMap<ObjectId, FullObject>,
+    // `Instant` here is the last access time
+    objects: HashMap<ObjectId, (Instant, FullObject)>,
+    last_accessed: BTreeMap<Instant, Vec<ObjectId>>,
     size: usize,
-    // TODO: have fuzzers that assert that `size` stays in-sync with `objects`
+    // TODO: have fuzzers that assert that `size` stays in-sync with `objects`, as well as `last_accessed`
 }
 
 impl ObjectCache {
     fn new() -> ObjectCache {
         ObjectCache {
             objects: HashMap::new(),
+            last_accessed: BTreeMap::new(),
             size: 0,
         }
     }
@@ -33,11 +37,11 @@ impl ObjectCache {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> anyhow::Result<(bool, &mut FullObject)> {
+    ) -> anyhow::Result<(bool, &mut FullObject, Instant)> {
         let cache_entry = self.objects.entry(id);
         match cache_entry {
             hash_map::Entry::Occupied(entry) => {
-                let o = entry.get();
+                let (t, o) = entry.get();
                 let o = o.creation_info();
                 anyhow::ensure!(
                     o.created_at == created_at
@@ -50,15 +54,49 @@ impl ObjectCache {
                     "Object {id:?} was already created with a different initial value"
                 );
                 std::mem::drop(o);
-                Ok((false, entry.into_mut()))
+                let t = Self::touched(&mut self.last_accessed, id, *t);
+                Ok((false, &mut entry.into_mut().1, t))
             }
             hash_map::Entry::Vacant(v) => {
                 let o = FullObject::new(id, created_at, object);
                 self.size += o.deep_size_of();
-                let res = v.insert(o);
-                Ok((true, res))
+                let t = Self::created(&mut self.last_accessed, id);
+                let res = v.insert((t, o));
+                Ok((true, &mut res.1, t))
             }
         }
+    }
+
+    fn created(last_accessed: &mut BTreeMap<Instant, Vec<ObjectId>>, id: ObjectId) -> Instant {
+        let now = Instant::now();
+        last_accessed.entry(now).or_insert_with(Vec::new).push(id);
+        now
+    }
+
+    fn removed(
+        last_accessed: &mut BTreeMap<Instant, Vec<ObjectId>>,
+        id: ObjectId,
+        previous_time: Instant,
+    ) {
+        let btree_map::Entry::Occupied(mut e) = last_accessed.entry(previous_time) else {
+            panic!("Called `ObjectCache::touched` with wrong `previous_time`");
+        };
+        let v = e.get_mut();
+        v.swap_remove(v.iter().position(|x| x == &id).expect(
+            "Called `ObjectCache::touched` with an `id` that does not match `previous_time`",
+        ));
+        if v.is_empty() {
+            e.remove();
+        }
+    }
+
+    fn touched(
+        last_accessed: &mut BTreeMap<Instant, Vec<ObjectId>>,
+        id: ObjectId,
+        previous_time: Instant,
+    ) -> Instant {
+        Self::removed(last_accessed, id, previous_time);
+        Self::created(last_accessed, id)
     }
 
     /// Returns `true` if the object was newly inserted in the cache, and `false` if
@@ -74,7 +112,8 @@ impl ObjectCache {
     }
 
     async fn remove(&mut self, object_id: &ObjectId) {
-        if let Some(o) = self.objects.remove(object_id) {
+        if let Some((t, o)) = self.objects.remove(object_id) {
+            Self::removed(&mut self.last_accessed, *object_id, t);
             self.size -= o.deep_size_of();
         }
     }
@@ -96,12 +135,13 @@ impl ObjectCache {
     ) -> anyhow::Result<bool> {
         match self.objects.entry(object_id) {
             hash_map::Entry::Occupied(object) => {
-                let object = object.get();
+                let (t, object) = object.get();
                 self.size -= object.deep_size_of();
                 let res = object
                     .apply::<T>(event_id, event)
                     .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
                 self.size += object.deep_size_of();
+                Self::touched(&mut self.last_accessed, object_id, *t);
                 Ok(res)
             }
             hash_map::Entry::Vacant(v) => {
@@ -115,7 +155,8 @@ impl ObjectCache {
                         .apply::<T>(event_id, event)
                         .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
                     self.size += o.deep_size_of();
-                    v.insert(o);
+                    let t = Self::created(&mut self.last_accessed, object_id);
+                    v.insert((t, o));
                     Ok(res)
                 } else {
                     Ok(false)
@@ -129,16 +170,21 @@ impl ObjectCache {
         object: ObjectId,
         time: Timestamp,
     ) -> anyhow::Result<()> {
-        if let Some(o) = self.objects.get_mut(&object) {
+        if let Some((t, o)) = self.objects.get_mut(&object) {
             self.size -= o.deep_size_of();
             o.recreate_at::<T>(time)?;
             self.size += o.deep_size_of();
+            Self::touched(&mut self.last_accessed, object, *t);
         }
         Ok(())
     }
 
     fn get(&self, id: &ObjectId) -> Option<&FullObject> {
-        self.objects.get(id)
+        // Note: we do not actually remember that `id` was touched. This is not too bad, because
+        // long-lived `Arc`s during the cache cleanup will lead to them being marked as used.
+        // TODO: still, we should probably record that `id` was touched somewhere, to deal with
+        // short-term but recurrent read accesses.
+        self.objects.get(id).map(|v| &v.1)
     }
 
     async fn insert<T: Object>(&mut self, o: FullObject) -> anyhow::Result<()> {
@@ -146,7 +192,7 @@ impl ObjectCache {
         // Do not directly insert into the hashmap, because the hashmap could already contain more
         // recent events for this object. Instead, pass the object and all the events one by one,
         // to merge with anything that would already exist.
-        let (_, created) = self
+        let (_, created, t) = self
             .create_impl(
                 creation.id,
                 creation.created_at,
@@ -179,13 +225,15 @@ impl ObjectCache {
         let finished_size = created.deep_size_of();
         self.size -= initial_size; // cancel what happened in the `create_impl`
         self.size += finished_size;
+        Self::touched(&mut self.last_accessed, creation.id, t);
         Ok(())
     }
 
     fn clear(&mut self) {
-        self.objects.retain(|_, o| {
+        self.objects.retain(|_, (t, o)| {
             if o.refcount() == 1 {
                 self.size -= o.deep_size_of();
+                Self::removed(&mut self.last_accessed, o.id(), *t);
                 false
             } else {
                 true

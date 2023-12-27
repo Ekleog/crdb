@@ -68,7 +68,20 @@ impl FullObject {
     }
 
     pub fn refcount(&self) -> usize {
-        Arc::strong_count(&self.data)
+        let mut res = Arc::strong_count(&self.data);
+        let this = self.data.read().unwrap();
+        res += Arc::strong_count(&this.creation) - 1;
+        res += this
+            .changes
+            .values()
+            .map(|v| {
+                v.snapshot_after
+                    .as_ref()
+                    .map(|s| Arc::strong_count(&s) - 1)
+                    .unwrap_or(0)
+            })
+            .sum::<usize>();
+        res
     }
 
     pub fn id(&self) -> ObjectId {
