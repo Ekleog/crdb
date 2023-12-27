@@ -6,48 +6,22 @@ use crate::{
 };
 use anyhow::Context;
 use futures::{pin_mut, Stream, StreamExt};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
+mod binaries_cache;
 mod config;
 mod object_cache;
 
+pub use binaries_cache::BinariesCache;
 pub use config::CacheConfig;
 pub use object_cache::ObjectCache;
-
-struct Binaries {
-    data: HashMap<BinPtr, Arc<Vec<u8>>>,
-    size: usize,
-    // TODO: have fuzzers that assert that `size` stays in-sync with `binaries`
-}
-
-impl Binaries {
-    fn clear(&mut self) {
-        self.data.retain(|_, v| {
-            if Arc::strong_count(v) == 1 {
-                self.size -= v.len();
-                false
-            } else {
-                true
-            }
-        })
-    }
-
-    fn insert(&mut self, id: BinPtr, value: Arc<Vec<u8>>) {
-        self.size += value.len();
-        self.data.insert(id, value);
-    }
-
-    fn get(&self, id: &BinPtr) -> Option<Arc<Vec<u8>>> {
-        self.data.get(id).cloned()
-    }
-}
 
 pub(crate) struct Cache<D: Db> {
     db: Arc<D>,
     // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
     cache: Arc<RwLock<ObjectCache>>,
-    binaries: Arc<RwLock<Binaries>>,
+    binaries: Arc<RwLock<BinariesCache>>,
 }
 
 impl<D: Db> Cache<D> {
@@ -157,10 +131,7 @@ impl<D: Db> Cache<D> {
         let this = Cache {
             db: db.clone(),
             cache,
-            binaries: Arc::new(RwLock::new(Binaries {
-                data: HashMap::new(),
-                size: 0,
-            })),
+            binaries: Arc::new(RwLock::new(BinariesCache::new())),
         };
         this.watch_from::<C, _>(&db, false);
         this
