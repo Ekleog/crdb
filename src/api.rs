@@ -178,13 +178,13 @@ macro_rules! generate_api {
         impl crdb::ApiConfig for $config {}
 
         impl crdb::CacheConfig for $config {
-            fn create(cache: &mut crdb::ObjectCache, o: crdb::NewObject) -> crdb::anyhow::Result<bool> {
+            async fn create(cache: &mut crdb::ObjectCache, o: crdb::NewObject) -> crdb::anyhow::Result<bool> {
                 $(
                     if o.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let object = o.object
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
-                        return cache.create::<$object>(o.id, o.created_at, object);
+                        return cache.create::<$object>(o.id, o.created_at, object).await;
                     }
                 )*
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
