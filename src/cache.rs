@@ -1,15 +1,13 @@
 use crate::{
     api::{BinPtr, Query},
-    db_trait::{
-        Db, DynSized, EventId, FullObject, FullObjectImpl, NewEvent, NewObject, NewSnapshot,
-        ObjectId, Timestamp,
-    },
+    db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId, Timestamp},
+    full_object::{DynSized, FullObject},
     hash_binary, Object, User,
 };
 use anyhow::{anyhow, Context};
 use futures::{pin_mut, Stream, StreamExt};
 use std::{
-    collections::{hash_map, BTreeMap, HashMap},
+    collections::{hash_map, HashMap},
     future::Future,
     sync::Arc,
 };
@@ -41,7 +39,7 @@ impl ObjectCache {
         match cache_entry {
             hash_map::Entry::Occupied(entry) => {
                 let o = entry.get();
-                let o = o.data.read().await;
+                let o = o.creation_info();
                 anyhow::ensure!(
                     o.created_at == created_at
                         && o.id == id
@@ -56,16 +54,9 @@ impl ObjectCache {
                 Ok((false, entry.into_mut()))
             }
             hash_map::Entry::Vacant(v) => {
-                let o = FullObjectImpl {
-                    id,
-                    created_at,
-                    creation: object,
-                    changes: BTreeMap::new(),
-                };
+                let o = FullObject::new(id, created_at, object);
                 self.size += o.deep_size_of();
-                let res = v.insert(FullObject {
-                    data: Arc::new(RwLock::new(o)),
-                });
+                let res = v.insert(o);
                 Ok((true, res))
             }
         }
@@ -85,7 +76,7 @@ impl ObjectCache {
 
     async fn remove(&mut self, object_id: &ObjectId) {
         if let Some(o) = self.objects.remove(object_id) {
-            self.size -= o.data.read().await.deep_size_of();
+            self.size -= o.deep_size_of();
         }
     }
 
@@ -107,12 +98,11 @@ impl ObjectCache {
         match self.objects.entry(object_id) {
             hash_map::Entry::Occupied(object) => {
                 let object = object.get();
-                self.size -= object.data.read().await.deep_size_of();
+                self.size -= object.deep_size_of();
                 let res = object
                     .apply::<T>(event_id, event)
-                    .await
                     .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
-                self.size += object.data.read().await.deep_size_of();
+                self.size += object.deep_size_of();
                 Ok(res)
             }
             hash_map::Entry::Vacant(v) => {
@@ -124,9 +114,8 @@ impl ObjectCache {
                         .ok_or_else(|| anyhow!("Submitted an event to object {object_id:?} that does not exist in the db"))?;
                     let res = o
                         .apply::<T>(event_id, event)
-                        .await
                         .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
-                    self.size += o.data.read().await.deep_size_of();
+                    self.size += o.deep_size_of();
                     v.insert(o);
                     Ok(res)
                 } else {
@@ -142,9 +131,9 @@ impl ObjectCache {
         time: Timestamp,
     ) -> anyhow::Result<()> {
         if let Some(o) = self.objects.get_mut(&object) {
-            self.size -= o.data.read().await.deep_size_of();
-            o.recreate_at::<T>(time).await?;
-            self.size += o.data.read().await.deep_size_of();
+            self.size -= o.deep_size_of();
+            o.recreate_at::<T>(time)?;
+            self.size += o.deep_size_of();
         }
         Ok(())
     }
@@ -153,30 +142,25 @@ impl ObjectCache {
         self.objects.get(id)
     }
 
-    async fn insert<T: Object>(
-        &mut self,
-        object_id: ObjectId,
-        o: FullObject,
-    ) -> anyhow::Result<()> {
-        let o = o.data.read().await;
-        debug_assert!(object_id == o.id, "inserting an object with wrong id");
+    async fn insert<T: Object>(&mut self, o: FullObject) -> anyhow::Result<()> {
+        let (creation, changes) = o.extract_all_clone();
         // Do not directly insert into the hashmap, because the hashmap could already contain more
         // recent events for this object. Instead, pass the object and all the events one by one,
         // to merge with anything that would already exist.
         let (_, created) = self
             .create_impl(
-                o.id,
-                o.created_at,
-                o.creation
-                    .clone()
+                creation.id,
+                creation.created_at,
+                creation
+                    .creation
                     .arc_to_any()
                     .downcast::<T>()
                     .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
             )
             .await
-            .with_context(|| format!("creating object {object_id:?}"))?;
-        let initial_size = created.data.read().await.deep_size_of();
-        for (event_id, c) in o.changes.iter() {
+            .with_context(|| format!("creating object {:?}", creation.id))?;
+        let initial_size = created.deep_size_of();
+        for (event_id, c) in changes.iter() {
             created
                 .apply::<T>(
                     *event_id,
@@ -191,10 +175,9 @@ impl ObjectCache {
                             )
                         })?,
                 )
-                .await
-                .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
+                .with_context(|| format!("applying {event_id:?} on {:?}", creation.id))?;
         }
-        let finished_size = created.data.read().await.deep_size_of();
+        let finished_size = created.deep_size_of();
         self.size -= initial_size; // cancel what happened in the `create_impl`
         self.size += finished_size;
         Ok(())
@@ -472,10 +455,15 @@ impl<D: Db> Db for Cache<D> {
         let Some(res) = self.db.get::<T>(ptr).await? else {
             return Ok(None);
         };
+        debug_assert!(
+            res.id() == ptr,
+            "Got result with id {:?} instead of expected id {ptr:?}",
+            res.id()
+        );
         {
             let mut cache = self.cache.write().await;
             cache
-                .insert::<T>(ptr, res.clone())
+                .insert::<T>(res.clone())
                 .await
                 .with_context(|| format!("inserting object {ptr:?} in the cache"))?;
         }
@@ -500,9 +488,9 @@ impl<D: Db> Db for Cache<D> {
             .await?
             .then(|o| async {
                 let o = o?;
-                let id = o.data.read().await.id;
                 let mut cache = self.cache.write().await;
-                if let Err(error) = cache.insert::<T>(id, o.clone()).await {
+                if let Err(error) = cache.insert::<T>(o.clone()).await {
+                    let id = o.id();
                     tracing::error!(?id, ?error, "failed inserting queried object in cache");
                     cache.remove(&id).await;
                 }

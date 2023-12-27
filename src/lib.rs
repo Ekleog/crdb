@@ -3,6 +3,8 @@ pub use api::{BinPtr, CanDoCallbacks, DbPtr, JsonPathItem, Object, Query, User};
 
 mod cache;
 mod db_trait;
+mod full_object;
+
 pub use db_trait::Timestamp;
 
 #[cfg(any(feature = "client-js", feature = "client-native"))]

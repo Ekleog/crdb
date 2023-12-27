@@ -1,5 +1,6 @@
 use crate::{
-    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
+    db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId},
+    full_object::FullObject,
     BinPtr, Object, Query, Timestamp, User,
 };
 use futures::Stream;

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId, Timestamp},
+    db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId, Timestamp},
+    full_object::FullObject,
     Object, User,
 };
 use anyhow::Context;
