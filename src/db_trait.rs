@@ -77,11 +77,11 @@ impl FullObject {
         id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<bool> {
-        self.data.write().await.apply::<T>(id, event).await
+        self.data.write().await.apply::<T>(id, event)
     }
 
     pub(crate) async fn recreate_at<T: Object>(&self, at: Timestamp) -> anyhow::Result<()> {
-        self.data.write().await.recreate_at::<T>(at).await
+        self.data.write().await.recreate_at::<T>(at)
     }
 
     pub async fn last_snapshot<T: Object>(&self) -> anyhow::Result<Arc<T>> {
@@ -104,13 +104,7 @@ impl FullObject {
                     .map_err(|_| anyhow!("Downcasting already-typed element"))?);
             }
         }
-        Ok(self
-            .data
-            .write()
-            .await
-            .get_snapshot_at(Bound::Unbounded)
-            .await?
-            .1)
+        Ok(self.data.write().await.get_snapshot_at(Bound::Unbounded)?.1)
     }
 }
 
@@ -119,11 +113,7 @@ impl FullObjectImpl {
     /// already been applied. Returns an error if another event with the same id had already
     /// been applied, if the event is earlier than the object's last recreation time, or if
     /// the provided `T` is wrong.
-    pub async fn apply<T: Object>(
-        &mut self,
-        id: EventId,
-        event: Arc<T::Event>,
-    ) -> anyhow::Result<bool> {
+    pub fn apply<T: Object>(&mut self, id: EventId, event: Arc<T::Event>) -> anyhow::Result<bool> {
         anyhow::ensure!(
             id > self.created_at,
             "Submitted event {id:?} before the last recreation time ({:?}) of object {:?}",
@@ -146,7 +136,6 @@ impl FullObjectImpl {
         // Get the snapshot to just before the new event
         let (_, mut last_snapshot) = self
             .get_snapshot_at::<T>(Bound::Excluded(id))
-            .await
             .with_context(|| format!("applying event {id:?}"))?;
 
         // Apply the new event
@@ -173,11 +162,10 @@ impl FullObjectImpl {
         Ok(true)
     }
 
-    pub async fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
+    pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
         let max_new_created_at = EventId(Ulid::from_parts(at.0 + 1, 0));
-        let (new_created_at, snapshot) = self
-            .get_snapshot_at::<T>(Bound::Excluded(max_new_created_at))
-            .await?;
+        let (new_created_at, snapshot) =
+            self.get_snapshot_at::<T>(Bound::Excluded(max_new_created_at))?;
         self.created_at = new_created_at;
         self.creation = snapshot;
         self.changes = self.changes.split_off(&new_created_at);
@@ -198,7 +186,7 @@ impl FullObjectImpl {
         (is_first, self.created_at, self.creation.clone())
     }
 
-    async fn get_snapshot_at<T: Object>(
+    fn get_snapshot_at<T: Object>(
         &mut self,
         at: Bound<EventId>,
     ) -> anyhow::Result<(EventId, Arc<T>)> {
