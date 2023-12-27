@@ -30,7 +30,6 @@ impl<T: 'static + Any + Send + Sync + deepsize::DeepSizeOf> DynSized for T {
     }
 }
 
-#[doc(hidden)]
 #[derive(Clone, deepsize::DeepSizeOf)]
 pub struct Change {
     pub event: Arc<dyn DynSized>,
@@ -51,7 +50,6 @@ pub struct CreationInfo {
     pub creation: Arc<dyn DynSized>,
 }
 
-#[doc(hidden)]
 #[derive(Clone)]
 pub struct FullObject {
     data: Arc<RwLock<FullObjectImpl>>,

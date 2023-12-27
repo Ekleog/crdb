@@ -14,7 +14,6 @@ pub use indexed_db::IndexedDb as LocalDb;
 #[cfg(not(target = "wasm32-unknown-unknown"))]
 pub use sqlite_db::SqliteDb as LocalDb;
 
-#[doc(hidden)]
 pub trait Authenticator:
     'static + Send + Sync + for<'de> serde::Deserialize<'de> + serde::Serialize
 {

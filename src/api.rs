@@ -113,13 +113,11 @@ pub trait Object:
 }
 
 pub struct DbPtr<T: Object> {
-    #[doc(hidden)]
     pub id: Ulid,
     _phantom: PhantomData<T>,
 }
 
 impl<T: Object> DbPtr<T> {
-    #[doc(hidden)]
     pub fn from(id: ObjectId) -> DbPtr<T> {
         DbPtr {
             id: id.0,
@@ -127,7 +125,6 @@ impl<T: Object> DbPtr<T> {
         }
     }
 
-    #[doc(hidden)]
     pub fn to_object_id(&self) -> ObjectId {
         ObjectId(self.id)
     }
@@ -138,11 +135,9 @@ pub struct BinPtr {
     pub(crate) id: Ulid,
 }
 
-#[doc(hidden)]
 #[allow(dead_code)] // TODO: remove
 pub struct RequestId(Ulid);
 
-#[doc(hidden)]
 #[allow(dead_code)] // TODO: remove
 pub enum NewThing {
     Object(TypeId, ObjectId, serde_json::Value),
@@ -152,7 +147,6 @@ pub enum NewThing {
     CurrentTime(Timestamp),
 }
 
-#[doc(hidden)]
 #[allow(dead_code)] // TODO: remove
 pub enum Request {
     Subscribe(HashSet<ObjectId>),
@@ -164,7 +158,6 @@ pub enum Request {
 /// One ServerMessage is supposed to hold as many NewThings as possible
 /// without delaying updates, but still avoiding going too far above
 /// than 1M / message, to allow for better resumability.
-#[doc(hidden)]
 #[allow(dead_code)] // TODO: remove
 pub struct ServerMessage {
     updates_on_server_until: Timestamp,
@@ -172,7 +165,6 @@ pub struct ServerMessage {
     new_things: Vec<NewThing>,
 }
 
-#[doc(hidden)]
 #[allow(dead_code)] // TODO: remove
 pub struct ClientMessage {
     request_id: RequestId,

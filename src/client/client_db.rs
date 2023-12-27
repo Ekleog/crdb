@@ -9,7 +9,6 @@ use crate::{
 use futures::{future, Stream, StreamExt};
 use std::sync::Arc;
 
-#[doc(hidden)]
 pub struct ClientDb<A: Authenticator> {
     api: Arc<ApiDb<A>>,
     db: Arc<Cache<LocalDb>>,

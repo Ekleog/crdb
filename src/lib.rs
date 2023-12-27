@@ -65,7 +65,6 @@ pub mod private {
     pub trait Sealed {}
 }
 
-#[doc(hidden)]
 pub fn hash_binary(data: &[u8]) -> BinPtr {
     use sha3::Digest;
     let mut hasher = sha3::Sha3_224::new();

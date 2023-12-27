@@ -31,7 +31,6 @@ impl_for_id!(ObjectId);
 impl_for_id!(EventId);
 impl_for_id!(TypeId);
 
-#[doc(hidden)]
 #[derive(Clone)]
 pub struct NewObject {
     pub type_id: TypeId,
@@ -40,7 +39,6 @@ pub struct NewObject {
     pub object: Arc<dyn DynSized>,
 }
 
-#[doc(hidden)]
 #[derive(Clone)]
 pub struct NewEvent {
     pub type_id: TypeId,
@@ -49,7 +47,6 @@ pub struct NewEvent {
     pub event: Arc<dyn DynSized>,
 }
 
-#[doc(hidden)]
 #[derive(Clone)]
 pub struct NewSnapshot {
     pub type_id: TypeId,
@@ -66,7 +63,6 @@ impl Timestamp {
     }
 }
 
-#[doc(hidden)]
 pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.

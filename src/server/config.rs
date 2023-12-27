@@ -2,10 +2,8 @@ use crate::cache::CacheConfig;
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait Config: crate::private::Sealed {
-    #[doc(hidden)]
     type Auth;
 
-    #[doc(hidden)]
     type ApiConfig: CacheConfig;
 }
 

@@ -9,11 +9,10 @@ use std::{
 use tokio::sync::mpsc;
 use ulid::Ulid;
 
-#[doc(hidden)] // See comment on config::private::Sealed for why this is public
-pub mod config;
-pub use config::Config;
-
+mod config;
 mod sql_db;
+
+pub use config::Config;
 
 pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
     fn authenticate(data: Auth) -> Result<User, (StatusCode, String)>;
