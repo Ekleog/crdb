@@ -11,10 +11,7 @@ use futures::{pin_mut, Stream, StreamExt};
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
     future::Future,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 use tokio::sync::RwLock;
 
@@ -251,13 +248,39 @@ pub trait CacheConfig {
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
 }
 
+struct Binaries {
+    data: HashMap<BinPtr, Arc<Vec<u8>>>,
+    size: usize,
+    // TODO: have fuzzers that assert that `size` stays in-sync with `binaries`
+}
+
+impl Binaries {
+    fn clear(&mut self) {
+        self.data.retain(|_, v| {
+            if Arc::strong_count(v) == 1 {
+                self.size -= v.len();
+                false
+            } else {
+                true
+            }
+        })
+    }
+
+    fn insert(&mut self, id: BinPtr, value: Arc<Vec<u8>>) {
+        self.size += value.len();
+        self.data.insert(id, value);
+    }
+
+    fn get(&self, id: &BinPtr) -> Option<Arc<Vec<u8>>> {
+        self.data.get(id).cloned()
+    }
+}
+
 pub(crate) struct Cache<D: Db> {
     db: Arc<D>,
     // TODO: figure out how to purge from cache (LRU-style), using DeepSizeOf
     cache: Arc<RwLock<ObjectCache>>,
-    binaries: Arc<RwLock<HashMap<BinPtr, Arc<Vec<u8>>>>>,
-    binaries_size: AtomicUsize,
-    // TODO: have fuzzers that assert that `size` stays in-sync with `binaries`
+    binaries: Arc<RwLock<Binaries>>,
 }
 
 impl<D: Db> Cache<D> {
@@ -367,8 +390,10 @@ impl<D: Db> Cache<D> {
         let this = Cache {
             db: db.clone(),
             cache,
-            binaries: Arc::new(RwLock::new(HashMap::new())),
-            binaries_size: AtomicUsize::new(0),
+            binaries: Arc::new(RwLock::new(Binaries {
+                data: HashMap::new(),
+                size: 0,
+            })),
         };
         this.watch_from::<C, _>(&db, false);
         this
@@ -377,6 +402,15 @@ impl<D: Db> Cache<D> {
     /// Relays all new objects/events from `db` to the internal database, caching them in the process.
     pub(crate) fn also_watch_from<C: CacheConfig, OtherDb: Db>(&self, db: &Arc<OtherDb>) {
         self.watch_from::<C, _>(db, true)
+    }
+
+    pub(crate) async fn clear_cache(&self) {
+        self.clear_binaries_cache().await;
+        // TODO: clear cache
+    }
+
+    pub(crate) async fn clear_binaries_cache(&self) {
+        self.binaries.write().await.clear();
     }
 }
 
@@ -488,27 +522,18 @@ impl<D: Db> Db for Cache<D> {
             "Provided id {id:?} does not match value hash {:?}",
             hash_binary(&*value),
         );
-        let mut binaries = self.binaries.write().await;
-        binaries.insert(id, value.clone());
-        self.binaries_size.fetch_add(value.len(), Ordering::Relaxed);
+        self.binaries.write().await.insert(id, value.clone());
         self.db.create_binary(id, value).await
     }
 
     async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        {
-            let binaries = self.binaries.read().await;
-            if let Some(res) = binaries.get(&ptr) {
-                return Ok(Some(res.clone()));
-            }
+        if let Some(res) = self.binaries.read().await.get(&ptr) {
+            return Ok(Some(res.clone()));
         }
         let Some(res) = self.db.get_binary(ptr).await? else {
             return Ok(None);
         };
-        {
-            let mut binaries = self.binaries.write().await;
-            binaries.insert(ptr, res.clone());
-            self.binaries_size.fetch_add(res.len(), Ordering::Relaxed);
-        }
+        self.binaries.write().await.insert(ptr, res.clone());
         Ok(Some(res))
     }
 }
