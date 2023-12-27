@@ -181,6 +181,17 @@ impl ObjectCache {
         self.size += finished_size;
         Ok(())
     }
+
+    fn clear(&mut self) {
+        self.objects.retain(|_, o| {
+            if o.refcount() == 1 {
+                self.size -= o.deep_size_of();
+                false
+            } else {
+                true
+            }
+        })
+    }
 }
 
 pub trait CacheConfig {
@@ -387,11 +398,15 @@ impl<D: Db> Cache<D> {
 
     pub(crate) async fn clear_cache(&self) {
         self.clear_binaries_cache().await;
-        // TODO: clear cache
+        self.clear_objects_cache().await;
     }
 
     pub(crate) async fn clear_binaries_cache(&self) {
         self.binaries.write().await.clear();
+    }
+
+    pub(crate) async fn clear_objects_cache(&self) {
+        self.cache.write().await.clear();
     }
 }
 

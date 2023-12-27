@@ -67,6 +67,10 @@ impl FullObject {
         }
     }
 
+    pub fn refcount(&self) -> usize {
+        Arc::strong_count(&self.data)
+    }
+
     pub fn id(&self) -> ObjectId {
         self.data.read().unwrap().id
     }

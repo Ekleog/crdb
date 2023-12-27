@@ -33,12 +33,16 @@ impl<A: Authenticator> ClientDb<A> {
         self.api.disconnect().await
     }
 
+    pub async fn clear_cache(&self) {
+        self.db.clear_cache().await
+    }
+
     pub async fn clear_binaries_cache(&self) {
         self.db.clear_binaries_cache().await
     }
 
-    pub async fn clear_cache(&self) {
-        self.db.clear_cache().await
+    pub async fn clear_objects_cache(&self) {
+        self.db.clear_objects_cache().await
     }
 }
 
