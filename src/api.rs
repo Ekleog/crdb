@@ -183,7 +183,7 @@ macro_rules! generate_api {
         impl crdb::ApiConfig for $config {}
 
         impl crdb::CacheConfig for $config {
-            async fn create(cache: &mut crdb::ObjectCache, o: crdb::NewObject) -> crdb::anyhow::Result<bool> {
+            async fn create(cache: &mut crdb::ObjectCache, o: crdb::DynNewObject) -> crdb::anyhow::Result<bool> {
                 $(
                     if o.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let object = o.object
@@ -196,7 +196,7 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
             }
 
-            async fn submit<D: crdb::Db>(db: Option<&D>, cache: &mut crdb::ObjectCache, e: crdb::NewEvent) -> crdb::anyhow::Result<bool> {
+            async fn submit<D: crdb::Db>(db: Option<&D>, cache: &mut crdb::ObjectCache, e: crdb::DynNewEvent) -> crdb::anyhow::Result<bool> {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let event = e.event
@@ -209,7 +209,7 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
 
-            async fn snapshot(cache: &mut crdb::ObjectCache, s: crdb::NewSnapshot) -> crdb::anyhow::Result<()> {
+            async fn snapshot(cache: &mut crdb::ObjectCache, s: crdb::DynNewSnapshot) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::ulid() {
                         return cache.snapshot::<$object>(s.object_id, s.time).await;
@@ -218,7 +218,7 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
             }
 
-            async fn create_in_db<D: crdb::Db>(db: &D, o: crdb::NewObject) -> crdb::anyhow::Result<()> {
+            async fn create_in_db<D: crdb::Db>(db: &D, o: crdb::DynNewObject) -> crdb::anyhow::Result<()> {
                 $(
                     if o.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let object = o.object
@@ -231,7 +231,7 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
             }
 
-            async fn submit_in_db<D: crdb::Db>(db: &D, e: crdb::NewEvent) -> crdb::anyhow::Result<()> {
+            async fn submit_in_db<D: crdb::Db>(db: &D, e: crdb::DynNewEvent) -> crdb::anyhow::Result<()> {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let event = e.event
@@ -244,7 +244,7 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
 
-            async fn snapshot_in_db<D: crdb::Db>(db: &D, s: crdb::NewSnapshot) -> crdb::anyhow::Result<()> {
+            async fn snapshot_in_db<D: crdb::Db>(db: &D, s: crdb::DynNewSnapshot) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::ulid() {
                         return db.snapshot::<$object>(s.time, s.object_id).await;

@@ -32,7 +32,7 @@ impl_for_id!(EventId);
 impl_for_id!(TypeId);
 
 #[derive(Clone)]
-pub struct NewObject {
+pub struct DynNewObject {
     pub type_id: TypeId,
     pub id: ObjectId,
     pub created_at: EventId,
@@ -40,7 +40,7 @@ pub struct NewObject {
 }
 
 #[derive(Clone)]
-pub struct NewEvent {
+pub struct DynNewEvent {
     pub type_id: TypeId,
     pub object_id: ObjectId,
     pub id: EventId,
@@ -48,7 +48,7 @@ pub struct NewEvent {
 }
 
 #[derive(Clone)]
-pub struct NewSnapshot {
+pub struct DynNewSnapshot {
     pub type_id: TypeId,
     pub object_id: ObjectId,
     pub time: Timestamp,
@@ -66,14 +66,16 @@ impl Timestamp {
 pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
-    fn new_objects(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewObject>>;
+    fn new_objects(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewObject>>;
     /// This function returns all new events for events on objects that have been
     /// subscribed on. Objects subscribed on are all the objects that have ever been
     /// created with `created`, or obtained with `get` or `query`, as well as all
     /// objects received through `new_objects`, excluding objects explicitly unsubscribed
     /// from
-    fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewEvent>>;
-    fn new_snapshots(&self) -> impl Send + Future<Output = impl Send + Stream<Item = NewSnapshot>>;
+    fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewEvent>>;
+    fn new_snapshots(
+        &self,
+    ) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewSnapshot>>;
     /// Note that this function unsubscribes ALL the streams that have ever been taken from this
     /// database; and purges it from the local database.
     fn unsubscribe(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<()>>;

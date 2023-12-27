@@ -41,7 +41,7 @@ pub mod crdb_internal {
     pub use crate::{
         api::Config as ApiConfig,
         cache::{CacheConfig, ObjectCache},
-        db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId},
+        db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
         hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;

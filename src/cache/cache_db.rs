@@ -1,6 +1,6 @@
 use super::{BinariesCache, CacheConfig, ObjectCache};
 use crate::{
-    db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId},
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
     hash_binary, BinPtr, Object, Query, Timestamp, User,
 };
@@ -149,15 +149,15 @@ impl<D: Db> CacheDb<D> {
 }
 
 impl<D: Db> Db for CacheDb<D> {
-    async fn new_objects(&self) -> impl Stream<Item = NewObject> {
+    async fn new_objects(&self) -> impl Stream<Item = DynNewObject> {
         self.db.new_objects().await
     }
 
-    async fn new_events(&self) -> impl Stream<Item = NewEvent> {
+    async fn new_events(&self) -> impl Stream<Item = DynNewEvent> {
         self.db.new_events().await
     }
 
-    async fn new_snapshots(&self) -> impl Stream<Item = NewSnapshot> {
+    async fn new_snapshots(&self) -> impl Stream<Item = DynNewSnapshot> {
         self.db.new_snapshots().await
     }
 

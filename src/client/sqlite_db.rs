@@ -1,5 +1,5 @@
 use crate::{
-    db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId},
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
     BinPtr, Object, Query, Timestamp, User,
 };
@@ -18,17 +18,17 @@ impl SqliteDb {
 
 #[allow(unused_variables)] // TODO: remove
 impl Db for SqliteDb {
-    async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
+    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = NewEvent> {
+    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = NewSnapshot> {
+    async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
         // todo!()
         futures::stream::empty()
     }

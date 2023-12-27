@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId, Timestamp},
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp},
     full_object::FullObject,
     Object, User,
 };
@@ -29,17 +29,17 @@ impl SqlDb {
 
 #[allow(unused_variables)] // TODO: remove
 impl Db for SqlDb {
-    async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
+    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = NewEvent> {
+    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = NewSnapshot> {
+    async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
         // todo!()
         futures::stream::empty()
     }

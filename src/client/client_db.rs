@@ -2,7 +2,7 @@ use super::{ApiDb, Authenticator, LocalDb};
 use crate::{
     api,
     cache::CacheDb,
-    db_trait::{Db, EventId, NewEvent, NewObject, NewSnapshot, ObjectId},
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
     BinPtr, Object, Query, Timestamp, User,
 };
@@ -47,15 +47,15 @@ impl<A: Authenticator> ClientDb<A> {
 }
 
 impl<A: Authenticator> Db for ClientDb<A> {
-    async fn new_objects(&self) -> impl Stream<Item = NewObject> {
+    async fn new_objects(&self) -> impl Stream<Item = DynNewObject> {
         self.api.new_objects().await
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = NewEvent> {
+    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
         self.api.new_events().await
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = NewSnapshot> {
+    async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
         self.api.new_snapshots().await
     }
 
