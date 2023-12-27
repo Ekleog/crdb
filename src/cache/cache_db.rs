@@ -73,7 +73,7 @@ impl<D: Db> CacheDb<D> {
                     // DO NOT re-fetch object when receiving an event not in cache for it.
                     // Without this, users would risk unsubscribing from an object, then receiving
                     // an event on this object (as a race condition), and then staying subscribed.
-                    if let Err(error) = C::submit::<D>(None, &mut *cache, e).await {
+                    if let Err(error) = C::submit(&mut *cache, e).await {
                         tracing::error!(
                             ?error,
                             ?object,
@@ -184,7 +184,7 @@ impl<D: Db> Db for CacheDb<D> {
         object: Arc<T>,
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        if cache.create(id, created_at, object.clone()).await? {
+        if cache.create(id, created_at, object.clone())? {
             self.db.create(id, created_at, object).await?;
         }
         Ok(())
@@ -197,10 +197,7 @@ impl<D: Db> Db for CacheDb<D> {
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        if cache
-            .submit::<D, T>(Some(&*self.db), object_id, event_id, event.clone())
-            .await?
-        {
+        if cache.submit::<T>(object_id, event_id, event.clone())? {
             self.db.submit::<T>(object_id, event_id, event).await?;
         }
         Ok(())
@@ -225,7 +222,6 @@ impl<D: Db> Db for CacheDb<D> {
             let mut cache = self.cache.write().await;
             cache
                 .insert::<T>(res.clone())
-                .await
                 .with_context(|| format!("inserting object {ptr:?} in the cache"))?;
         }
         Ok(Some(res))
@@ -250,7 +246,7 @@ impl<D: Db> Db for CacheDb<D> {
             .then(|o| async {
                 let o = o?;
                 let mut cache = self.cache.write().await;
-                if let Err(error) = cache.insert::<T>(o.clone()).await {
+                if let Err(error) = cache.insert::<T>(o.clone()) {
                     let id = o.id();
                     tracing::error!(?id, ?error, "failed inserting queried object in cache");
                     cache.remove(&id);
@@ -261,7 +257,7 @@ impl<D: Db> Db for CacheDb<D> {
 
     async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        cache.snapshot::<T>(object, time).await?;
+        cache.snapshot::<T>(object, time)?;
         self.db.snapshot::<T>(time, object).await
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    db_trait::{Db, EventId, ObjectId},
+    db_trait::{EventId, ObjectId},
     full_object::FullObject,
     Object, Timestamp,
 };
@@ -30,7 +30,7 @@ impl ObjectCache {
         }
     }
 
-    async fn create_impl<T: Object>(
+    fn create_impl<T: Object>(
         &mut self,
         id: ObjectId,
         created_at: EventId,
@@ -100,13 +100,13 @@ impl ObjectCache {
     /// Returns `true` if the object was newly inserted in the cache, and `false` if
     /// the object was already present in the cache. Errors if the object id was already
     /// in the cache with a different value.
-    pub async fn create<T: Object>(
+    pub fn create<T: Object>(
         &mut self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
     ) -> anyhow::Result<bool> {
-        let res = self.create_impl(id, created_at, object).await.map(|r| r.0);
+        let res = self.create_impl(id, created_at, object).map(|r| r.0);
         self.apply_watermark();
         res
     }
@@ -119,7 +119,7 @@ impl ObjectCache {
         }
     }
 
-    /// Returns `true` if the event was newly inserted in the cache, and `false` if
+    /// Returns `true` if the event was previously absent from the cache, and `false` if
     /// the event was already present in the cache. Returns an error if another event
     /// with the same id had already been applied, if the event is earlier than the
     /// object's last recreation time, if the provided `T` is wrong or if the database
@@ -127,52 +127,27 @@ impl ObjectCache {
     ///
     /// If `db` is `Some`, then this will automatically fetch the contents for `object_id`
     /// if it is not in the cache yet.
-    pub async fn submit<D: Db, T: Object>(
+    pub fn submit<T: Object>(
         &mut self,
-        db: Option<&D>,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<bool> {
-        let res = match self.objects.entry(object_id) {
-            hash_map::Entry::Occupied(object) => {
-                let (t, object) = object.get();
-                self.size -= object.deep_size_of();
-                let res = object
-                    .apply::<T>(event_id, event)
-                    .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
-                self.size += object.deep_size_of();
-                Self::touched(&mut self.last_accessed, object_id, *t);
-                Ok(res)
-            }
-            hash_map::Entry::Vacant(v) => {
-                if let Some(db) = db {
-                    let o = db
-                        .get::<T>(object_id)
-                        .await
-                        .with_context(|| format!("getting {object_id:?} from database"))?
-                        .ok_or_else(|| anyhow!("Submitted an event to object {object_id:?} that does not exist in the db"))?;
-                    let res = o
-                        .apply::<T>(event_id, event)
-                        .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
-                    self.size += o.deep_size_of();
-                    let t = Self::created(&mut self.last_accessed, object_id);
-                    v.insert((t, o));
-                    Ok(res)
-                } else {
-                    Ok(false)
-                }
-            }
+        let Some((t, object)) = self.objects.get(&object_id) else {
+            self.apply_watermark();
+            return Ok(true); // Object was absent
         };
+        self.size -= object.deep_size_of();
+        let res = object
+            .apply::<T>(event_id, event)
+            .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
+        self.size += object.deep_size_of();
+        Self::touched(&mut self.last_accessed, object_id, *t);
         self.apply_watermark();
-        res
+        Ok(res)
     }
 
-    pub async fn snapshot<T: Object>(
-        &mut self,
-        object: ObjectId,
-        time: Timestamp,
-    ) -> anyhow::Result<()> {
+    pub fn snapshot<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> anyhow::Result<()> {
         if let Some((t, o)) = self.objects.get_mut(&object) {
             self.size -= o.deep_size_of();
             o.recreate_at::<T>(time)?;
@@ -191,7 +166,7 @@ impl ObjectCache {
         self.objects.get(id).map(|v| &v.1)
     }
 
-    pub async fn insert<T: Object>(&mut self, o: FullObject) -> anyhow::Result<()> {
+    pub fn insert<T: Object>(&mut self, o: FullObject) -> anyhow::Result<()> {
         let (creation, changes) = o.extract_all_clone();
         // Do not directly insert into the hashmap, because the hashmap could already contain more
         // recent events for this object. Instead, pass the object and all the events one by one,
@@ -206,7 +181,6 @@ impl ObjectCache {
                     .downcast::<T>()
                     .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
             )
-            .await
             .with_context(|| format!("creating object {:?}", creation.id))?;
         let initial_size = created.deep_size_of();
         for (event_id, c) in changes.iter() {

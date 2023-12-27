@@ -190,20 +190,20 @@ macro_rules! generate_api {
                             .arc_to_any()
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
-                        return cache.create::<$object>(o.id, o.created_at, object).await;
+                        return cache.create::<$object>(o.id, o.created_at, object);
                     }
                 )*
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
             }
 
-            async fn submit<D: crdb::Db>(db: Option<&D>, cache: &mut crdb::ObjectCache, e: crdb::DynNewEvent) -> crdb::anyhow::Result<bool> {
+            async fn submit(cache: &mut crdb::ObjectCache, e: crdb::DynNewEvent) -> crdb::anyhow::Result<bool> {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::ulid() {
                         let event = e.event
                             .arc_to_any()
                             .downcast::<<$object as crdb::Object>::Event>()
                             .expect("got new event that could not be downcast to its type_id");
-                        return cache.submit::<D, $object>(db, e.object_id, e.id, event).await;
+                        return cache.submit::<$object>(e.object_id, e.id, event);
                     }
                 )*
                 crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
@@ -212,7 +212,7 @@ macro_rules! generate_api {
             async fn snapshot(cache: &mut crdb::ObjectCache, s: crdb::DynNewSnapshot) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::ulid() {
-                        return cache.snapshot::<$object>(s.object_id, s.time).await;
+                        return cache.snapshot::<$object>(s.object_id, s.time);
                     }
                 )*
                 crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
