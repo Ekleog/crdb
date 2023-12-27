@@ -107,7 +107,7 @@ impl ObjectCache {
         self.create_impl(id, created_at, object).await.map(|r| r.0)
     }
 
-    pub async fn remove(&mut self, object_id: &ObjectId) {
+    pub fn remove(&mut self, object_id: &ObjectId) {
         if let Some((t, o)) = self.objects.remove(object_id) {
             Self::removed(&mut self.last_accessed, *object_id, t);
             self.size -= o.deep_size_of();
@@ -235,5 +235,50 @@ impl ObjectCache {
                 true
             }
         })
+    }
+
+    pub fn reduce_size_to(&mut self, size: usize) {
+        if let Some(s) = self.size.checked_sub(size) {
+            self.reduce_size(self.objects.len(), s);
+        }
+    }
+
+    pub fn reduce_size(&mut self, max_items_checked: usize, mut max_size_removed: usize) {
+        for _ in 0..max_items_checked {
+            if max_size_removed == 0 {
+                return;
+            }
+
+            // Retrieve the first ID to check
+            let Some(mut accessed_entry) = self.last_accessed.first_entry() else {
+                return;
+            };
+            let t = *accessed_entry.key();
+            let id = accessed_entry
+                .get_mut()
+                .pop()
+                .expect("Empty Vec in ObjectCache's last_accessed");
+            if accessed_entry.get().is_empty() {
+                accessed_entry.remove();
+            }
+
+            // Remove it if the object has no refcount, update last update time if not
+            let hash_map::Entry::Occupied(mut object_entry) = self.objects.entry(id) else {
+                panic!("`ObjectCache`'s `last_accessed` contained an invalid reference");
+            };
+            debug_assert!(
+                object_entry.get().0 == t,
+                "`ObjectCache`'s last accessed time disagrees with `last_accessed`'s view"
+            );
+            if object_entry.get().1.refcount() == 1 {
+                let s = object_entry.get().1.deep_size_of();
+                self.size -= s;
+                max_size_removed = max_size_removed.saturating_sub(s);
+                object_entry.remove();
+            } else {
+                let t = Self::created(&mut self.last_accessed, object_entry.get().1.id());
+                object_entry.get_mut().0 = t;
+            }
+        }
     }
 }

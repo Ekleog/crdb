@@ -163,7 +163,7 @@ impl<D: Db> Db for CacheDb<D> {
 
     async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        cache.remove(&ptr).await;
+        cache.remove(&ptr);
         self.db.unsubscribe(ptr).await
     }
 
@@ -243,7 +243,7 @@ impl<D: Db> Db for CacheDb<D> {
                 if let Err(error) = cache.insert::<T>(o.clone()).await {
                     let id = o.id();
                     tracing::error!(?id, ?error, "failed inserting queried object in cache");
-                    cache.remove(&id).await;
+                    cache.remove(&id);
                 }
                 Ok(o)
             }))
