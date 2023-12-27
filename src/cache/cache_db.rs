@@ -120,6 +120,8 @@ impl<D: Db> CacheDb<D> {
     /// Note that `watermark` will still keep in the cache all objects still in use by the program.
     /// So, setting `watermark` to a value too low (eg. less than the size of objects actually in use by the
     /// program) would make cache operation slow.
+    /// For this reason, if the cache used size reaches the watermark, then the watermark will be
+    /// automatically increased.
     pub(crate) fn new<C: CacheConfig>(db: Arc<D>, watermark: usize) -> CacheDb<D> {
         let cache = Arc::new(RwLock::new(ObjectCache::new(watermark)));
         let this = CacheDb {

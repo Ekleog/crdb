@@ -255,8 +255,15 @@ impl ObjectCache {
     }
 
     fn apply_watermark(&mut self) {
-        if let Some(s) = self.size.checked_sub(self.watermark) {
-            self.reduce_size(3 * s / self.average_size(), s);
+        if let Some(max_size_removed) = self.size.checked_sub(self.watermark) {
+            let max_items_checked = 3 * max_size_removed / self.average_size();
+            let original_num = self.objects.len();
+            let original_size = self.size;
+            self.reduce_size(max_items_checked, max_size_removed);
+            // If we went through all the objects without removing anything, increase the watermark
+            if max_items_checked == original_num && self.size == original_size {
+                self.watermark = self.size * 10 / 8; // Add some leeway to avoid this happening too often
+            }
         }
     }
 
