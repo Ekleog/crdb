@@ -162,12 +162,16 @@ impl ObjectCache {
             created
                 .apply::<T>(
                     *event_id,
-                    c.event.clone().arc_to_any().downcast::<T::Event>().map_err(|_| {
-                        anyhow!(
-                            "Failed to downcast an event to {:?}'s event type",
-                            T::ulid()
-                        )
-                    })?,
+                    c.event
+                        .clone()
+                        .arc_to_any()
+                        .downcast::<T::Event>()
+                        .map_err(|_| {
+                            anyhow!(
+                                "Failed to downcast an event to {:?}'s event type",
+                                T::ulid()
+                            )
+                        })?,
                 )
                 .await
                 .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;

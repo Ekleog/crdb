@@ -23,6 +23,7 @@ macro_rules! impl_for_id {
                 Timestamp(self.0.timestamp_ms())
             }
         }
+        deepsize::known_deep_size!(0; $type); // These types does not allocate
     };
 }
 
@@ -30,7 +31,7 @@ impl_for_id!(ObjectId);
 impl_for_id!(EventId);
 impl_for_id!(TypeId);
 
-#[derive(Clone)]
+#[derive(Clone, deepsize::DeepSizeOf)]
 pub(crate) struct Change {
     pub(crate) event: Arc<dyn DynSized>,
     snapshot_after: Option<Arc<dyn DynSized>>,
@@ -55,6 +56,7 @@ impl<T: 'static + Any + Send + Sync + deepsize::DeepSizeOf> DynSized for T {
 }
 
 #[doc(hidden)]
+#[derive(deepsize::DeepSizeOf)]
 pub struct FullObjectImpl {
     pub(crate) id: ObjectId,
     pub(crate) created_at: EventId,
@@ -183,10 +185,7 @@ impl FullObjectImpl {
     }
 
     /// Returns `(was_actually_last_in_bound, id, event)`
-    fn last_snapshot_before(
-        &self,
-        at: Bound<EventId>,
-    ) -> (bool, EventId, Arc<dyn DynSized>) {
+    fn last_snapshot_before(&self, at: Bound<EventId>) -> (bool, EventId, Arc<dyn DynSized>) {
         let changes_before = self.changes.range((Bound::Unbounded, at));
         let mut is_first = true;
         for (id, c) in changes_before.rev() {
