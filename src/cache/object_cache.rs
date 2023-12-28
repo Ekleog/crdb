@@ -164,7 +164,7 @@ impl ObjectCache {
             self.size -= o.deep_size_of();
             o.recreate_at::<T>(time)?;
             self.size += o.deep_size_of();
-            Self::touched(&mut self.last_accessed, object, *t);
+            *t = Self::touched(&mut self.last_accessed, object, *t);
             self.apply_watermark();
         }
         Ok(())
@@ -215,7 +215,8 @@ impl ObjectCache {
         let finished_size = created.deep_size_of();
         self.size -= initial_size; // cancel what happened in the `create_impl`
         self.size += finished_size;
-        Self::touched(&mut self.last_accessed, creation.id, t);
+        self.objects.get_mut(&creation.id).unwrap().0 =
+            Self::touched(&mut self.last_accessed, creation.id, t);
         self.apply_watermark();
         Ok(())
     }
@@ -286,7 +287,8 @@ impl ObjectCache {
             };
             debug_assert!(
                 object_entry.get().0 == t,
-                "`ObjectCache`'s last accessed time disagrees with `last_accessed`'s view"
+                "`ObjectCache`'s last accessed time disagrees with `last_accessed`'s view: {t:?} != {:?}",
+                object_entry.get().0,
             );
             if object_entry.get().1.refcount() == 1 {
                 let s = object_entry.get().1.deep_size_of();

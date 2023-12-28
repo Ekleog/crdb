@@ -70,6 +70,10 @@ pub struct DynNewSnapshot {
 pub struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 impl Timestamp {
+    pub fn from_ms(v: u64) -> Timestamp {
+        Timestamp(v)
+    }
+
     pub fn time_ms(&self) -> u64 {
         self.0
     }
