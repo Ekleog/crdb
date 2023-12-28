@@ -11,6 +11,9 @@ use std::{
 };
 use ulid::Ulid;
 
+#[cfg(test)]
+mod tests;
+
 pub trait DynSized: 'static + Any + Send + Sync + deepsize::DeepSizeOf {
     // TODO: remove these functions once rust supports trait upcasting:
     // https://github.com/rust-lang/rust/issues/65991#issuecomment-1869869919
@@ -30,16 +33,31 @@ impl<T: 'static + Any + Send + Sync + deepsize::DeepSizeOf> DynSized for T {
     }
 }
 
-#[derive(Clone, deepsize::DeepSizeOf)]
+fn fmt_option_arc(
+    v: &Option<Arc<dyn DynSized>>,
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    match v {
+        Some(v) => write!(fmt, "Some({:p})", &**v),
+        None => write!(fmt, "None"),
+    }
+}
+
+#[derive(Clone, deepsize::DeepSizeOf, educe::Educe)]
+#[educe(Debug)]
 pub struct Change {
+    #[educe(Debug(method = std::fmt::Pointer::fmt))]
     pub event: Arc<dyn DynSized>,
+    #[educe(Debug(method = fmt_option_arc))]
     pub snapshot_after: Option<Arc<dyn DynSized>>,
 }
 
-#[derive(deepsize::DeepSizeOf)]
+#[derive(deepsize::DeepSizeOf, educe::Educe)]
+#[educe(Debug)]
 struct FullObjectImpl {
     id: ObjectId,
     created_at: EventId,
+    #[educe(Debug(method = std::fmt::Pointer::fmt))]
     creation: Arc<dyn DynSized>,
     changes: BTreeMap<EventId, Change>,
 }
@@ -50,7 +68,7 @@ pub struct CreationInfo {
     pub creation: Arc<dyn DynSized>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FullObject {
     data: Arc<RwLock<FullObjectImpl>>,
 }
@@ -168,7 +186,7 @@ impl FullObjectImpl {
         );
         if let Some(c) = self.changes.get(&id) {
             anyhow::ensure!(
-                c.event
+                (*c.event)
                     .ref_to_any()
                     .downcast_ref::<T::Event>()
                     .map(|e| e == &*event)
@@ -252,8 +270,7 @@ impl FullObjectImpl {
         for (id, change) in to_apply {
             last_event_time = *id;
             last_snapshot_mut.apply(
-                change
-                    .event
+                (*change.event)
                     .ref_to_any()
                     .downcast_ref()
                     .expect("Event with different type than object type"),

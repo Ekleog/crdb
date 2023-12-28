@@ -126,11 +126,42 @@ fn regression_submit_after_object_tracks_ids_ok() {
     cache
         .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
         .unwrap();
-    // ignore submit result, as we'll be expecting a failure here
-    let _ = cache.submit::<TestObject1>(
-        OBJECT_ID_1,
-        EVENT_ID_2,
-        Arc::new(TestEvent1::Set(b"12345678".to_vec())),
-    );
+    cache
+        .submit::<TestObject1>(
+            OBJECT_ID_1,
+            EVENT_ID_2,
+            Arc::new(TestEvent1::Set(b"12345678".to_vec())),
+        )
+        .unwrap();
+    cache.assert_invariants(|| "regression test".to_string());
+}
+
+#[test]
+fn regression_submit_order_1324_leads_to_type_corruption() {
+    let mut cache = ObjectCache::new(1000);
+    cache
+        .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .unwrap();
+    cache
+        .submit::<TestObject1>(
+            OBJECT_ID_1,
+            EVENT_ID_3,
+            Arc::new(TestEvent1::Append(b"5678".to_vec())),
+        )
+        .unwrap();
+    cache
+        .submit::<TestObject1>(
+            OBJECT_ID_1,
+            EVENT_ID_2,
+            Arc::new(TestEvent1::Set(b"ABCD".to_vec())),
+        )
+        .unwrap();
+    cache
+        .submit::<TestObject1>(
+            OBJECT_ID_1,
+            EVENT_ID_4,
+            Arc::new(TestEvent1::Set(b"EFGH".to_vec())),
+        )
+        .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
 }
