@@ -10,6 +10,9 @@ use std::{
     time::Instant,
 };
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone)]
 pub struct ObjectCache {
     watermark: usize,
@@ -247,7 +250,9 @@ impl ObjectCache {
         }
     }
 
-    pub fn reduce_size(&mut self, max_items_checked: usize, mut max_size_removed: usize) {
+    pub fn reduce_size(&mut self, max_items_checked: usize, max_size_removed: usize) {
+        let max_items_checked = std::cmp::min(max_items_checked, self.objects.len());
+        let mut max_size_removed = std::cmp::min(max_size_removed, self.size);
         for _ in 0..max_items_checked {
             if max_size_removed == 0 {
                 return;
@@ -282,6 +287,28 @@ impl ObjectCache {
             } else {
                 let t = Self::created(&mut self.last_accessed, object_entry.get().1.id());
                 object_entry.get_mut().0 = t;
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn assert_invariants(&self) {
+        let mut total_size = 0;
+        for (id, (t, o)) in self.objects.iter() {
+            total_size += o.deep_size_of();
+            self.last_accessed
+                .get(t)
+                .expect("getting ids at t")
+                .iter()
+                .find(|v| v == &id)
+                .expect("having id in the ids at t");
+        }
+        assert_eq!(total_size, self.size, "size mismatch");
+        for (t, ids) in self.last_accessed.iter() {
+            for id in ids.iter() {
+                let o = self.objects.get(id).expect("getting object at id");
+                assert_eq!(t, &o.0, "time mismatch");
+                assert_eq!(&o.1.id(), id, "id mismatch");
             }
         }
     }

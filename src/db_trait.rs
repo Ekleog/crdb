@@ -23,6 +23,14 @@ macro_rules! impl_for_id {
                 Timestamp(self.0.timestamp_ms())
             }
         }
+
+        #[cfg(test)]
+        impl bolero::generator::TypeGenerator for $type {
+            fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
+                Some(Self(Ulid::from_bytes(<[u8; 16] as bolero::generator::TypeGenerator>::generate::<D>(driver)?)))
+            }
+        }
+
         deepsize::known_deep_size!(0; $type); // These types does not allocate
     };
 }
@@ -54,7 +62,8 @@ pub struct DynNewSnapshot {
     pub time: Timestamp,
 }
 
-#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(test, derive(bolero::generator::TypeGenerator))]
 pub struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 impl Timestamp {

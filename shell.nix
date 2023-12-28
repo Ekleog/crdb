@@ -5,8 +5,10 @@ pkgs.stdenv.mkDerivation {
   name = "crdb";
   buildInputs = (
     (with pkgs; [
+      cargo-bolero
       cargo-nextest
       niv
+      samply
       sqlx-cli
       trunk
 
