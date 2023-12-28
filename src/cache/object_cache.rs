@@ -141,10 +141,19 @@ impl ObjectCache {
             return Ok(true); // Object was absent
         };
         self.size -= object.deep_size_of();
-        let res = object
+        let res = match object
             .apply::<T>(event_id, event)
-            .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
-        self.size += object.deep_size_of();
+            .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
+        {
+            Ok(res) => {
+                self.size += object.deep_size_of();
+                res
+            }
+            Err(e) => {
+                self.size += object.deep_size_of();
+                return Err(e);
+            }
+        };
         Self::touched(&mut self.last_accessed, object_id, *t);
         self.apply_watermark();
         Ok(res)
@@ -292,23 +301,26 @@ impl ObjectCache {
     }
 
     #[cfg(test)]
-    fn assert_invariants(&self) {
+    fn assert_invariants(&self, at: impl Fn() -> String) {
         let mut total_size = 0;
         for (id, (t, o)) in self.objects.iter() {
             total_size += o.deep_size_of();
             self.last_accessed
                 .get(t)
-                .expect("getting ids at t")
+                .unwrap_or_else(|| panic!("getting ids at t -- at {}", at()))
                 .iter()
                 .find(|v| v == &id)
-                .expect("having id in the ids at t");
+                .unwrap_or_else(|| panic!("having id in the ids at t -- at {}", at()));
         }
-        assert_eq!(total_size, self.size, "size mismatch");
+        assert_eq!(total_size, self.size, "size mismatch -- at {}", at());
         for (t, ids) in self.last_accessed.iter() {
             for id in ids.iter() {
-                let o = self.objects.get(id).expect("getting object at id");
-                assert_eq!(t, &o.0, "time mismatch");
-                assert_eq!(&o.1.id(), id, "id mismatch");
+                let o = self
+                    .objects
+                    .get(id)
+                    .unwrap_or_else(|| panic!("getting object at id -- at {}", at()));
+                assert_eq!(t, &o.0, "time mismatch -- at {}", at());
+                assert_eq!(&o.1.id(), id, "id mismatch -- at {}", at());
             }
         }
     }

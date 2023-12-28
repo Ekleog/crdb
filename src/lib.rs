@@ -5,6 +5,9 @@ mod cache;
 mod db_trait;
 mod full_object;
 
+#[cfg(test)]
+mod test_utils;
+
 pub use db_trait::Timestamp;
 
 #[cfg(any(feature = "client-js", feature = "client-native"))]

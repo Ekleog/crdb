@@ -1,92 +1,23 @@
 use super::ObjectCache;
 use crate::{
     db_trait::{EventId, ObjectId},
+    test_utils::*,
     Timestamp,
 };
 use std::sync::Arc;
-
-#[derive(
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    bolero::generator::TypeGenerator,
-    deepsize::DeepSizeOf,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-struct Object(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>);
-
-#[derive(
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    bolero::generator::TypeGenerator,
-    deepsize::DeepSizeOf,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-enum Event {
-    Set(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>),
-    Append(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>),
-    Clear,
-}
-
-#[allow(unused_variables)] // TODO: remove?
-impl crate::Object for Object {
-    type Event = Event;
-
-    fn ulid() -> &'static ulid::Ulid {
-        todo!()
-    }
-
-    fn can_create<C: crate::CanDoCallbacks>(
-        &self,
-        user: crate::User,
-        db: &C,
-    ) -> anyhow::Result<bool> {
-        todo!()
-    }
-
-    fn can_apply<C: crate::CanDoCallbacks>(
-        &self,
-        user: &crate::User,
-        event: &Self::Event,
-        db: &C,
-    ) -> anyhow::Result<bool> {
-        todo!()
-    }
-
-    fn users_who_can_read<C: crate::CanDoCallbacks>(&self) -> anyhow::Result<Vec<crate::User>> {
-        todo!()
-    }
-
-    fn apply(&mut self, event: &Self::Event) {
-        todo!()
-    }
-
-    fn is_heavy(&self) -> anyhow::Result<bool> {
-        todo!()
-    }
-
-    fn required_binaries(&self) -> Vec<crate::BinPtr> {
-        todo!()
-    }
-}
 
 #[derive(Debug, bolero::generator::TypeGenerator)]
 enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
-        object: Arc<Object>,
+        object: Arc<TestObject1>,
     },
     Remove(usize),
     Submit {
         object: usize,
         event_id: EventId,
-        event: Arc<Event>,
+        event: Arc<TestEvent1>,
     },
     Snapshot {
         object: usize,
@@ -117,7 +48,7 @@ fn cache_state_stays_valid() {
             let mut cache = ObjectCache::new(*watermark);
             let mut objects = Vec::new();
             let mut locations = vec![None; 0x10000];
-            for op in ops {
+            for (i, op) in ops.iter().enumerate() {
                 match op {
                     Op::Create {
                         id,
@@ -141,12 +72,12 @@ fn cache_state_stays_valid() {
                     } => {
                         objects
                             .get(*object)
-                            .map(|id| cache.submit::<Object>(*id, *event_id, event.clone()));
+                            .map(|id| cache.submit::<TestObject1>(*id, *event_id, event.clone()));
                     }
                     Op::Snapshot { object, time } => {
                         objects
                             .get(*object)
-                            .map(|id| cache.snapshot::<Object>(*id, *time));
+                            .map(|id| cache.snapshot::<TestObject1>(*id, *time));
                     }
                     Op::Get { object, location } => {
                         objects
@@ -169,7 +100,22 @@ fn cache_state_stays_valid() {
                         cache.reduce_size(*max_items_checked, *max_size_removed);
                     }
                 }
-                cache.assert_invariants();
+                cache.assert_invariants(|| format!("after processing op {i}: {op:?}"));
             }
         });
+}
+
+#[test]
+fn regression_submit_before_object_tracks_size_ok() {
+    let mut cache = ObjectCache::new(1000);
+    cache
+        .create(OBJECT_ID_1, EVENT_ID_2, Arc::new(TestObject1::stub_1()))
+        .unwrap();
+    // ignore submit result, as we'll be expecting a failure here
+    let _ = cache.submit::<TestObject1>(
+        OBJECT_ID_1,
+        EVENT_ID_1,
+        Arc::new(TestEvent1::Set(b"12345678".to_vec())),
+    );
+    cache.assert_invariants(|| "regression test".to_string());
 }
