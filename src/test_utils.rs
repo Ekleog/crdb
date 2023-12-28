@@ -1,6 +1,6 @@
 #![allow(dead_code)] // test utils can be or not eb used but get copy-pasted anyway
 
-use crate::db_trait::{EventId, ObjectId};
+use crate::db_trait::{EventId, ObjectId, TypeId};
 use ulid::Ulid;
 
 pub const OBJECT_ID_1: ObjectId = ObjectId(Ulid::from_bytes(*b"0000000000000001"));
@@ -14,6 +14,12 @@ pub const EVENT_ID_2: EventId = EventId(Ulid::from_bytes(*b"1000000000000002"));
 pub const EVENT_ID_3: EventId = EventId(Ulid::from_bytes(*b"1000000000000003"));
 pub const EVENT_ID_4: EventId = EventId(Ulid::from_bytes(*b"1000000000000004"));
 pub const EVENT_ID_5: EventId = EventId(Ulid::from_bytes(*b"1000000000000005"));
+
+pub const TYPE_ID_1: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000001"));
+pub const TYPE_ID_2: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000002"));
+pub const TYPE_ID_3: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000003"));
+pub const TYPE_ID_4: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000004"));
+pub const TYPE_ID_5: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000005"));
 
 #[derive(
     Clone,
@@ -91,7 +97,11 @@ impl crate::Object for TestObject1 {
     }
 
     fn apply(&mut self, event: &Self::Event) {
-        todo!()
+        match event {
+            TestEvent1::Set(v) => self.0 = v.clone(),
+            TestEvent1::Append(v) => self.0.extend(v.iter().cloned()),
+            TestEvent1::Clear => self.0.clear(),
+        }
     }
 
     fn is_heavy(&self) -> anyhow::Result<bool> {
