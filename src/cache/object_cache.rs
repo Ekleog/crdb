@@ -136,7 +136,7 @@ impl ObjectCache {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<bool> {
-        let Some((t, object)) = self.objects.get(&object_id) else {
+        let Some((t, object)) = self.objects.get_mut(&object_id) else {
             self.apply_watermark();
             return Ok(true); // Object was absent
         };
@@ -154,7 +154,7 @@ impl ObjectCache {
                 return Err(e);
             }
         };
-        Self::touched(&mut self.last_accessed, object_id, *t);
+        *t = Self::touched(&mut self.last_accessed, object_id, *t);
         self.apply_watermark();
         Ok(res)
     }
@@ -307,7 +307,7 @@ impl ObjectCache {
             total_size += o.deep_size_of();
             self.last_accessed
                 .get(t)
-                .unwrap_or_else(|| panic!("getting ids at t -- at {}", at()))
+                .unwrap_or_else(|| panic!("full last_accessed dump: {:?},\ngetting ids for present-in-objects `t` ({t:?})\nexpecting at least {id:?}\n-- at {}", self.last_accessed, at()))
                 .iter()
                 .find(|v| v == &id)
                 .unwrap_or_else(|| panic!("having id in the ids at t -- at {}", at()));

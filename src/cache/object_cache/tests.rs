@@ -119,3 +119,18 @@ fn regression_submit_before_object_tracks_size_ok() {
     );
     cache.assert_invariants(|| "regression test".to_string());
 }
+
+#[test]
+fn regression_submit_after_object_tracks_ids_ok() {
+    let mut cache = ObjectCache::new(1000);
+    cache
+        .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .unwrap();
+    // ignore submit result, as we'll be expecting a failure here
+    let _ = cache.submit::<TestObject1>(
+        OBJECT_ID_1,
+        EVENT_ID_2,
+        Arc::new(TestEvent1::Set(b"12345678".to_vec())),
+    );
+    cache.assert_invariants(|| "regression test".to_string());
+}

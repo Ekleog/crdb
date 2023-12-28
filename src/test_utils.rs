@@ -3,23 +3,30 @@
 use crate::db_trait::{EventId, ObjectId, TypeId};
 use ulid::Ulid;
 
-pub const OBJECT_ID_1: ObjectId = ObjectId(Ulid::from_bytes(*b"0000000000000001"));
-pub const OBJECT_ID_2: ObjectId = ObjectId(Ulid::from_bytes(*b"0000000000000002"));
-pub const OBJECT_ID_3: ObjectId = ObjectId(Ulid::from_bytes(*b"0000000000000003"));
-pub const OBJECT_ID_4: ObjectId = ObjectId(Ulid::from_bytes(*b"0000000000000004"));
-pub const OBJECT_ID_5: ObjectId = ObjectId(Ulid::from_bytes(*b"0000000000000005"));
+const fn ulid(s: &str) -> Ulid {
+    match Ulid::from_string(s) {
+        Ok(r) => r,
+        Err(_) => panic!("const fn failed"),
+    }
+}
 
-pub const EVENT_ID_1: EventId = EventId(Ulid::from_bytes(*b"1000000000000001"));
-pub const EVENT_ID_2: EventId = EventId(Ulid::from_bytes(*b"1000000000000002"));
-pub const EVENT_ID_3: EventId = EventId(Ulid::from_bytes(*b"1000000000000003"));
-pub const EVENT_ID_4: EventId = EventId(Ulid::from_bytes(*b"1000000000000004"));
-pub const EVENT_ID_5: EventId = EventId(Ulid::from_bytes(*b"1000000000000005"));
+pub const OBJECT_ID_1: ObjectId = ObjectId(ulid("10000000000000000000000001"));
+pub const OBJECT_ID_2: ObjectId = ObjectId(ulid("20000000000000000000000002"));
+pub const OBJECT_ID_3: ObjectId = ObjectId(ulid("30000000000000000000000003"));
+pub const OBJECT_ID_4: ObjectId = ObjectId(ulid("40000000000000000000000004"));
+pub const OBJECT_ID_5: ObjectId = ObjectId(ulid("50000000000000000000000005"));
 
-pub const TYPE_ID_1: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000001"));
-pub const TYPE_ID_2: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000002"));
-pub const TYPE_ID_3: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000003"));
-pub const TYPE_ID_4: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000004"));
-pub const TYPE_ID_5: TypeId = TypeId(Ulid::from_bytes(*b"2000000000000005"));
+pub const EVENT_ID_1: EventId = EventId(ulid("10000000000000000000000001"));
+pub const EVENT_ID_2: EventId = EventId(ulid("20000000000000000000000002"));
+pub const EVENT_ID_3: EventId = EventId(ulid("30000000000000000000000003"));
+pub const EVENT_ID_4: EventId = EventId(ulid("40000000000000000000000004"));
+pub const EVENT_ID_5: EventId = EventId(ulid("50000000000000000000000005"));
+
+pub const TYPE_ID_1: TypeId = TypeId(ulid("10000000000000000000000001"));
+pub const TYPE_ID_2: TypeId = TypeId(ulid("20000000000000000000000002"));
+pub const TYPE_ID_3: TypeId = TypeId(ulid("30000000000000000000000003"));
+pub const TYPE_ID_4: TypeId = TypeId(ulid("40000000000000000000000004"));
+pub const TYPE_ID_5: TypeId = TypeId(ulid("50000000000000000000000005"));
 
 #[derive(
     Clone,

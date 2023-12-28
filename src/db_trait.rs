@@ -8,12 +8,15 @@ use futures::Stream;
 use std::{future::Future, sync::Arc};
 use ulid::Ulid;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ObjectId(pub Ulid);
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct EventId(pub Ulid);
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct TypeId(pub Ulid);
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
+#[educe(Debug)]
+pub struct ObjectId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
+#[educe(Debug)]
+pub struct EventId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
+#[educe(Debug)]
+pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
 macro_rules! impl_for_id {
     ($type:ty) => {
