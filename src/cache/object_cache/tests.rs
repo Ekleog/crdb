@@ -189,3 +189,15 @@ fn regression_double_snapshot_panics() {
         .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
 }
+
+#[test]
+fn regression_snapshot_too_late_fails_size_check() {
+    let mut cache = ObjectCache::new(1000);
+    cache
+        .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .unwrap();
+    cache.assert_invariants(|| "regression test".to_string());
+    // this will fail due to Timestamp being too big
+    let _ = cache.snapshot::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(u64::MAX));
+    cache.assert_invariants(|| "regression test".to_string());
+}

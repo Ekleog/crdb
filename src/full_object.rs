@@ -228,7 +228,7 @@ impl FullObjectImpl {
 
     pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
         anyhow::ensure!(
-            at.time_ms() < (1 << Ulid::TIME_BITS),
+            at <= Timestamp::max_for_ulid(),
             "Recreating object at timestamp {at:?}, which is invalid for ULIDs"
         );
         let max_new_created_at =

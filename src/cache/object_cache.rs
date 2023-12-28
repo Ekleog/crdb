@@ -162,8 +162,13 @@ impl ObjectCache {
     pub fn snapshot<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> anyhow::Result<()> {
         if let Some((t, o)) = self.objects.get_mut(&object) {
             self.size -= o.deep_size_of();
-            o.recreate_at::<T>(time)?;
-            self.size += o.deep_size_of();
+            match o.recreate_at::<T>(time) {
+                Ok(()) => self.size += o.deep_size_of(),
+                Err(e) => {
+                    self.size += o.deep_size_of();
+                    return Err(e);
+                }
+            }
             *t = Self::touched(&mut self.last_accessed, object, *t);
             self.apply_watermark();
         }

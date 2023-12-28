@@ -74,6 +74,10 @@ impl Timestamp {
         Timestamp(v)
     }
 
+    pub fn max_for_ulid() -> Timestamp {
+        Timestamp((1 << Ulid::TIME_BITS) - 1)
+    }
+
     pub fn time_ms(&self) -> u64 {
         self.0
     }
