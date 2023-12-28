@@ -227,7 +227,12 @@ impl FullObjectImpl {
     }
 
     pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
-        let max_new_created_at = EventId(Ulid::from_parts(at.time_ms() + 1, 0));
+        anyhow::ensure!(
+            at.time_ms() < (1 << Ulid::TIME_BITS),
+            "Recreating object at timestamp {at:?}, which is invalid for ULIDs"
+        );
+        let max_new_created_at =
+            EventId(Ulid::from_parts(at.time_ms(), (1 << Ulid::RAND_BITS) - 1));
 
         // First, check that we're not trying to roll the snapshot back in time, as this would result
         // in passing invalid input to `get_snapshot_at`.
