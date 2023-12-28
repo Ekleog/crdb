@@ -60,6 +60,9 @@ pub enum TestEvent1 {
 }
 
 impl TestObject1 {
+    pub fn new(v: Vec<u8>) -> TestObject1 {
+        TestObject1(v)
+    }
     pub fn stub_1() -> TestObject1 {
         TestObject1(b"10000001".to_vec())
     }

@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context};
 use std::{
     any::Any,
     collections::BTreeMap,
-    ops::Bound,
+    ops::{Bound, RangeBounds},
     sync::{Arc, RwLock},
 };
 use ulid::Ulid;
@@ -228,6 +228,13 @@ impl FullObjectImpl {
 
     pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
         let max_new_created_at = EventId(Ulid::from_parts(at.time_ms() + 1, 0));
+
+        // First, check that we're not trying to roll the snapshot back in time, as this would result
+        // in passing invalid input to `get_snapshot_at`.
+        if max_new_created_at <= self.created_at {
+            return Ok(());
+        }
+
         let (new_created_at, snapshot) =
             self.get_snapshot_at::<T>(Bound::Excluded(max_new_created_at))?;
         self.created_at = new_created_at;
@@ -254,6 +261,10 @@ impl FullObjectImpl {
         &mut self,
         at: Bound<EventId>,
     ) -> anyhow::Result<(EventId, Arc<T>)> {
+        debug_assert!(
+            (Bound::Unbounded, at).contains(&self.created_at),
+            "asked `get_snapshot_at` for a too-early bound"
+        );
         // Find the last snapshot before `at`
         let (_, last_snapshot_time, last_snapshot) = self.last_snapshot_before(at);
         let mut last_snapshot = last_snapshot
