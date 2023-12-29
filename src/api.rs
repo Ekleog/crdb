@@ -172,7 +172,10 @@ pub struct ClientMessage {
     request: Request,
 }
 
-pub trait Config: crate::private::Sealed + CacheConfig {}
+pub trait Config: crate::private::Sealed + CacheConfig {
+    /// Panics if there are two types with the same ULID configured
+    fn check_ulids();
+}
 
 #[doc(hidden)]
 #[macro_export]
@@ -181,7 +184,16 @@ macro_rules! generate_api {
         pub struct $config;
 
         impl crdb::private::Sealed for $config {}
-        impl crdb::ApiConfig for $config {}
+        impl crdb::ApiConfig for $config {
+            fn check_ulids() {
+                let ulids = [$(<$object as crdb::Object>::ulid()),*];
+                for u in ulids.iter() {
+                    if ulids.iter().filter(|i| *i == u).count() != 1 {
+                        panic!("Type ULID {u} was used multiple times!");
+                    }
+                }
+            }
+        }
 
         impl crdb::CacheConfig for $config {
             async fn create(cache: &mut crdb::ObjectCache, o: crdb::DynNewObject) -> crdb::anyhow::Result<bool> {

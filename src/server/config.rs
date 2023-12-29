@@ -1,10 +1,10 @@
-use crate::cache::CacheConfig;
+use crate::api;
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait Config: crate::private::Sealed {
     type Auth;
 
-    type ApiConfig: CacheConfig;
+    type ApiConfig: api::Config;
 }
 
 #[doc(hidden)]

@@ -1,4 +1,9 @@
-use crate::{api::ServerMessage, cache::CacheDb, db_trait::ObjectId, User};
+use crate::{
+    api::{self, ServerMessage},
+    cache::CacheDb,
+    db_trait::ObjectId,
+    User,
+};
 use anyhow::Context;
 use axum::http::StatusCode;
 use std::{
@@ -29,6 +34,7 @@ pub struct Server<C: Config> {
 
 impl<C: Config> Server<C> {
     pub async fn new(config: C, db_url: &str, cache_watermark: usize) -> anyhow::Result<Self> {
+        <C::ApiConfig as api::Config>::check_ulids();
         Ok(Server {
             _config: config,
             _db: CacheDb::new::<C::ApiConfig>(

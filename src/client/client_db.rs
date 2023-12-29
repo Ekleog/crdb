@@ -20,6 +20,7 @@ impl<A: Authenticator> ClientDb<A> {
         auth: Arc<A>,
         cache_watermark: usize,
     ) -> anyhow::Result<ClientDb<A>> {
+        C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
         let db = Arc::new(CacheDb::new::<C>(Arc::new(LocalDb::new()), cache_watermark));
         db.also_watch_from::<C, _>(&api);
