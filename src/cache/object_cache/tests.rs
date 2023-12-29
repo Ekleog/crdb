@@ -201,3 +201,14 @@ fn regression_snapshot_too_late_fails_size_check() {
     let _ = cache.snapshot::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(u64::MAX));
     cache.assert_invariants(|| "regression test".to_string());
 }
+
+#[test]
+fn regression_remove_to_empty_makes_integer_overflow() {
+    let mut cache = ObjectCache::new(0);
+    let created = Arc::new(TestObject1::stub_1()); // keep alive for watermark to not directly erase it
+    cache
+        .create(OBJECT_ID_1, EVENT_ID_1, created.clone())
+        .unwrap();
+    cache.remove(&OBJECT_ID_1);
+    cache.assert_invariants(|| "regression test".to_string());
+}

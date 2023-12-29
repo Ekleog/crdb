@@ -13,7 +13,7 @@ use std::{
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ObjectCache {
     watermark: usize,
     // `Instant` here is the last access time
@@ -80,11 +80,11 @@ impl ObjectCache {
         previous_time: Instant,
     ) {
         let btree_map::Entry::Occupied(mut e) = last_accessed.entry(previous_time) else {
-            panic!("Called `ObjectCache::touched` with wrong `previous_time`");
+            panic!("Called `ObjectCache::removed` with wrong `previous_time`");
         };
         let v = e.get_mut();
         v.swap_remove(v.iter().position(|x| x == &id).expect(
-            "Called `ObjectCache::touched` with an `id` that does not match `previous_time`",
+            "Called `ObjectCache::removed` with an `id` that does not match `previous_time`",
         ));
         if v.is_empty() {
             e.remove();
@@ -238,7 +238,7 @@ impl ObjectCache {
         })
     }
 
-    /// The average size of objects in the hashmap.
+    /// The average size of objects in the hashmap. Do not call on an empty hashmap!
     ///
     /// This function's contract includes never returning 0
     fn average_size(&self) -> usize {
@@ -248,6 +248,9 @@ impl ObjectCache {
 
     fn apply_watermark(&mut self) {
         if let Some(max_size_removed) = self.size.checked_sub(self.watermark) {
+            if max_size_removed == 0 {
+                return;
+            }
             let max_items_checked = 3 * max_size_removed / self.average_size();
             let original_num = self.objects.len();
             let original_size = self.size;

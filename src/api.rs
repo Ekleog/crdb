@@ -92,6 +92,7 @@ pub trait Object:
     fn from_old_snapshot(version: u64, data: serde_json::Value) -> Self {
         unimplemented!()
     }
+    // TODO: allow re-encoding all snapshots in db with the new version using from_old_snapshot
 
     fn can_create<C: CanDoCallbacks>(&self, user: User, db: &C) -> anyhow::Result<bool>;
     /// Note that permissions are always checked with the latest version of the object on the server.
