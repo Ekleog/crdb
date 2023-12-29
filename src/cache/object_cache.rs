@@ -23,6 +23,24 @@ pub struct ObjectCache {
     // TODO: have fuzzers that assert that `size` stays in-sync with `objects`, as well as `last_accessed`
 }
 
+struct SizeUpdater<'a> {
+    object: &'a FullObject,
+    size: &'a mut usize,
+}
+
+impl<'a> SizeUpdater<'a> {
+    fn new(size: &'a mut usize, object: &'a FullObject) -> SizeUpdater<'a> {
+        *size -= object.deep_size_of();
+        SizeUpdater { object, size }
+    }
+}
+
+impl<'a> Drop for SizeUpdater<'a> {
+    fn drop(&mut self) {
+        *self.size += self.object.deep_size_of();
+    }
+}
+
 impl ObjectCache {
     pub fn new(watermark: usize) -> ObjectCache {
         ObjectCache {
@@ -38,11 +56,11 @@ impl ObjectCache {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> anyhow::Result<(bool, &mut FullObject, Instant)> {
+    ) -> anyhow::Result<bool> {
         let cache_entry = self.objects.entry(id);
         match cache_entry {
-            hash_map::Entry::Occupied(entry) => {
-                let (t, o) = entry.get();
+            hash_map::Entry::Occupied(mut entry) => {
+                let (t, o) = entry.get_mut();
                 let o = o.creation_info();
                 anyhow::ensure!(
                     o.created_at == created_at
@@ -55,15 +73,15 @@ impl ObjectCache {
                     "Object {id:?} was already created with a different initial value"
                 );
                 std::mem::drop(o);
-                let t = Self::touched(&mut self.last_accessed, id, *t);
-                Ok((false, &mut entry.into_mut().1, t))
+                *t = Self::touched(&mut self.last_accessed, id, *t);
+                Ok(false)
             }
             hash_map::Entry::Vacant(v) => {
                 let o = FullObject::new(id, created_at, object);
                 self.size += o.deep_size_of();
                 let t = Self::created(&mut self.last_accessed, id);
-                let res = v.insert((t, o));
-                Ok((true, &mut res.1, t))
+                v.insert((t, o));
+                Ok(true)
             }
         }
     }
@@ -109,7 +127,7 @@ impl ObjectCache {
         created_at: EventId,
         object: Arc<T>,
     ) -> anyhow::Result<bool> {
-        let res = self.create_impl(id, created_at, object).map(|r| r.0);
+        let res = self.create_impl(id, created_at, object);
         self.apply_watermark();
         res
     }
@@ -140,36 +158,22 @@ impl ObjectCache {
             self.apply_watermark();
             return Ok(true); // Object was absent
         };
-        self.size -= object.deep_size_of();
-        let res = match object
+        let updater = SizeUpdater::new(&mut self.size, &object);
+        let res = object
             .apply::<T>(event_id, event)
-            .with_context(|| format!("applying {event_id:?} on {object_id:?}"))
-        {
-            Ok(res) => {
-                self.size += object.deep_size_of();
-                res
-            }
-            Err(e) => {
-                self.size += object.deep_size_of();
-                return Err(e);
-            }
-        };
+            .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
         *t = Self::touched(&mut self.last_accessed, object_id, *t);
+        std::mem::drop(updater);
         self.apply_watermark();
         Ok(res)
     }
 
     pub fn snapshot<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> anyhow::Result<()> {
         if let Some((t, o)) = self.objects.get_mut(&object) {
-            self.size -= o.deep_size_of();
-            match o.recreate_at::<T>(time) {
-                Ok(()) => self.size += o.deep_size_of(),
-                Err(e) => {
-                    self.size += o.deep_size_of();
-                    return Err(e);
-                }
-            }
+            let updater = SizeUpdater::new(&mut self.size, &o);
+            o.recreate_at::<T>(time)?;
             *t = Self::touched(&mut self.last_accessed, object, *t);
+            std::mem::drop(updater);
             self.apply_watermark();
         }
         Ok(())
@@ -188,18 +192,21 @@ impl ObjectCache {
         // Do not directly insert into the hashmap, because the hashmap could already contain more
         // recent events for this object. Instead, pass the object and all the events one by one,
         // to merge with anything that would already exist.
-        let (_, created, t) = self
-            .create_impl(
-                creation.id,
-                creation.created_at,
-                creation
-                    .creation
-                    .arc_to_any()
-                    .downcast::<T>()
-                    .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
-            )
-            .with_context(|| format!("creating object {:?}", creation.id))?;
-        let initial_size = created.deep_size_of();
+        self.create_impl(
+            creation.id,
+            creation.created_at,
+            creation
+                .creation
+                .arc_to_any()
+                .downcast::<T>()
+                .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
+        )
+        .with_context(|| format!("creating object {:?}", creation.id))?;
+        let (t, created) = self
+            .objects
+            .get(&creation.id)
+            .expect("Failed to retrieve an object just created");
+        let size_updater = SizeUpdater::new(&mut self.size, &created);
         for (event_id, c) in changes.iter() {
             created
                 .apply::<T>(
@@ -217,11 +224,9 @@ impl ObjectCache {
                 )
                 .with_context(|| format!("applying {event_id:?} on {:?}", creation.id))?;
         }
-        let finished_size = created.deep_size_of();
-        self.size -= initial_size; // cancel what happened in the `create_impl`
-        self.size += finished_size;
+        std::mem::drop(size_updater);
         self.objects.get_mut(&creation.id).unwrap().0 =
-            Self::touched(&mut self.last_accessed, creation.id, t);
+            Self::touched(&mut self.last_accessed, creation.id, *t);
         self.apply_watermark();
         Ok(())
     }
