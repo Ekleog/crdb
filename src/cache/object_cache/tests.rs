@@ -11,13 +11,13 @@ enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
-        object: Arc<TestObject1>,
+        object: TestObject1,
     },
     Remove(usize),
     Submit {
         object: usize,
         event_id: EventId,
-        event: Arc<TestEvent1>,
+        event: TestEvent1,
     },
     Snapshot {
         object: usize,
@@ -53,7 +53,7 @@ fn cache_state_stays_valid_impl((watermark, ops): &(usize, Vec<Op>)) {
             } => {
                 if objects.iter().all(|v| v != id) {
                     cache
-                        .create(*id, *created_at, object.clone())
+                        .create(*id, *created_at, Arc::new(object.clone()))
                         .expect("failed creating object");
                     objects.push(*id);
                 }
@@ -68,7 +68,7 @@ fn cache_state_stays_valid_impl((watermark, ops): &(usize, Vec<Op>)) {
             } => {
                 objects
                     .get(*object)
-                    .map(|id| cache.submit::<TestObject1>(*id, *event_id, event.clone()));
+                    .map(|id| cache.submit::<TestObject1>(*id, *event_id, Arc::new(event.clone())));
             }
             Op::Snapshot { object, time } => {
                 objects
