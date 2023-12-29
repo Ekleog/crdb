@@ -20,7 +20,6 @@ pub struct ObjectCache {
     objects: HashMap<ObjectId, (Instant, FullObject)>,
     last_accessed: BTreeMap<Instant, Vec<ObjectId>>,
     size: usize,
-    // TODO: have fuzzers that assert that `size` stays in-sync with `objects`, as well as `last_accessed`
 }
 
 struct SizeUpdater<'a> {

@@ -154,7 +154,7 @@ impl<D: Db> CacheDb<D> {
     pub async fn reduce_size_to(&self, size: usize) {
         self.cache.write().await.reduce_size_to(size);
         self.binaries.write().await.clear();
-        // TODO: auto-clear binaries alongside watermark handling
+        // TODO: auto-clear binaries without waiting for a reduce_size_to call
     }
 }
 
