@@ -50,6 +50,7 @@ impl<C: Config> Server<C> {
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .with_context(|| format!("binding to {addr:?}"))?;
+        self._db.reduce_size_to(1024).await; // shut dead code warning up for now
         axum::serve(listener, axum::Router::new())
             .await
             .context("serving axum webserver")
