@@ -85,7 +85,7 @@ impl crate::Object for TestObject1 {
     type Event = TestEvent1;
 
     fn ulid() -> &'static ulid::Ulid {
-        todo!()
+        unimplemented!()
     }
 
     fn can_create<C: crate::CanDoCallbacks>(
@@ -93,7 +93,7 @@ impl crate::Object for TestObject1 {
         user: crate::User,
         db: &C,
     ) -> anyhow::Result<bool> {
-        todo!()
+        unimplemented!()
     }
 
     fn can_apply<C: crate::CanDoCallbacks>(
@@ -102,11 +102,11 @@ impl crate::Object for TestObject1 {
         event: &Self::Event,
         db: &C,
     ) -> anyhow::Result<bool> {
-        todo!()
+        unimplemented!()
     }
 
     fn users_who_can_read<C: crate::CanDoCallbacks>(&self) -> anyhow::Result<Vec<crate::User>> {
-        todo!()
+        unimplemented!()
     }
 
     fn apply(&mut self, event: &Self::Event) {
@@ -118,10 +118,16 @@ impl crate::Object for TestObject1 {
     }
 
     fn is_heavy(&self) -> anyhow::Result<bool> {
-        todo!()
+        unimplemented!()
     }
 
     fn required_binaries(&self) -> Vec<crate::BinPtr> {
-        todo!()
+        unimplemented!()
+    }
+}
+
+impl crate::Event for TestEvent1 {
+    fn required_binaries(&self) -> Vec<crate::BinPtr> {
+        unimplemented!()
     }
 }

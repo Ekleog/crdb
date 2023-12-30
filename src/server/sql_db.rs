@@ -8,15 +8,20 @@ use crate::{
 use anyhow::Context;
 use futures::Stream;
 
+#[cfg(test)]
+mod tests;
+
 pub(crate) struct SqlDb {
     _db: sqlx::PgPool,
 }
 
 impl SqlDb {
-    pub async fn connect(db: sqlx::PgPool) -> anyhow::Result<SqlDb> {
-        Ok(SqlDb {
-            _db: db,
-        })
+    pub async fn connect(db: sqlx::postgres::PgPool) -> anyhow::Result<SqlDb> {
+        sqlx::migrate!("src/server/migrations")
+            .run(&db)
+            .await
+            .context("running migrations on postgresql database")?;
+        Ok(SqlDb { _db: db })
     }
 }
 
@@ -26,22 +31,19 @@ impl SqlDb {
 #[allow(unused_variables)] // TODO: remove
 impl Db for SqlDb {
     async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
-        // todo!()
         futures::stream::empty()
     }
 
     async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
-        // todo!()
         futures::stream::empty()
     }
 
     async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
-        // todo!()
         futures::stream::empty()
     }
 
     async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
-        todo!()
+        unimplemented!("unsubscribing from a postgresql db does not make sense")
     }
 
     async fn create<T: Object>(

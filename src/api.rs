@@ -85,7 +85,7 @@ pub trait Object:
     type Event: Event;
 
     fn ulid() -> &'static Ulid;
-    fn snapshot_version() -> u64 {
+    fn snapshot_version() -> i32 {
         0
     }
     #[allow(unused_variables)]
