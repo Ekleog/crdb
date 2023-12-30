@@ -60,6 +60,12 @@ pub trait CanDoCallbacks: private::Sealed {
     fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
 }
 
+pub trait Event:
+    Any + Eq + Send + Sync + deepsize::DeepSizeOf + for<'a> serde::Deserialize<'a> + serde::Serialize
+{
+    fn required_binaries(&self) -> Vec<BinPtr>;
+}
+
 /// Note that due to postgresql limitations reasons, this type MUST NOT include any
 /// null byte in the serialized JSON. Including them will result in internal server
 /// errors.
@@ -76,13 +82,7 @@ pub trait Object:
     /// Note that due to postgresql limitations reasons, this type MUST NOT include any
     /// null byte in the serialized JSON. Trying to submit one such event will result
     /// in the event being rejected by the server.
-    type Event: Any
-        + Eq
-        + Send
-        + Sync
-        + deepsize::DeepSizeOf
-        + for<'a> serde::Deserialize<'a>
-        + serde::Serialize;
+    type Event: Event;
 
     fn ulid() -> &'static Ulid;
     fn snapshot_version() -> u64 {

@@ -33,11 +33,7 @@ pub struct Server<C: Config> {
 }
 
 impl<C: Config> Server<C> {
-    pub async fn new(
-        config: C,
-        db: sqlx::PgPool,
-        cache_watermark: usize,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(config: C, db: sqlx::PgPool, cache_watermark: usize) -> anyhow::Result<Self> {
         <C::ApiConfig as api::Config>::check_ulids();
         Ok(Server {
             _config: config,

@@ -49,6 +49,12 @@ impl crdb::Object for Foo {
 #[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
 pub enum FooEvent {}
 
+impl crdb::Event for FooEvent {
+    fn required_binaries(&self) -> Vec<crdb::BinPtr> {
+        Vec::new()
+    }
+}
+
 crdb::db! {
     pub mod db {
         auth: super::Authenticator,
