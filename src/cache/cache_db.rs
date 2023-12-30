@@ -134,20 +134,21 @@ impl<D: Db> CacheDb<D> {
     }
 
     /// Relays all new objects/events from `db` to the internal database, caching them in the process.
-    pub(crate) fn also_watch_from<C: CacheConfig, OtherDb: Db>(&self, db: &Arc<OtherDb>) {
+    #[cfg(feature = "client")] // only used for clients, server doesn't need it
+    pub fn also_watch_from<C: CacheConfig, OtherDb: Db>(&self, db: &Arc<OtherDb>) {
         self.watch_from::<C, _>(db, true)
     }
 
-    pub(crate) async fn clear_cache(&self) {
+    pub async fn clear_cache(&self) {
         self.clear_binaries_cache().await;
         self.clear_objects_cache().await;
     }
 
-    pub(crate) async fn clear_binaries_cache(&self) {
+    pub async fn clear_binaries_cache(&self) {
         self.binaries.write().await.clear();
     }
 
-    pub(crate) async fn clear_objects_cache(&self) {
+    pub async fn clear_objects_cache(&self) {
         self.cache.write().await.clear();
     }
 

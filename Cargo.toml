@@ -8,8 +8,10 @@ license = "AGPL3"
 all-features = true
 
 [features]
-client-js = ["getrandom/js", "indexed_db_futures", "paste"]
-client-native = ["paste", "sqlx/sqlite"]
+client-js = ["client", "getrandom/js", "indexed_db_futures"]
+client-native = ["client", "sqlx/sqlite"]
+
+client = ["paste"]
 server = ["axum", "sqlx/postgres"]
 
 [dependencies]

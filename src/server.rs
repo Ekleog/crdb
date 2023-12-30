@@ -56,6 +56,7 @@ impl<C: Config> Server<C> {
             .await
             .with_context(|| format!("binding to {addr:?}"))?;
         self._db.reduce_size_to(1024).await; // shut dead code warning up for now
+        self._db.clear_cache().await; // shut dead code warning up for now
         axum::serve(listener, axum::Router::new())
             .await
             .context("serving axum webserver")
