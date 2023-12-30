@@ -30,6 +30,8 @@ pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize
 
 struct SessionToken(Ulid);
 
+struct SessionRef(Ulid);
+
 pub struct Server<C: Config> {
     _config: C,
     _db: CacheDb<postgres_db::PostgresDb>,

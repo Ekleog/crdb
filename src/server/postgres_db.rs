@@ -8,6 +8,8 @@ use crate::{
 use anyhow::Context;
 use futures::Stream;
 
+use super::{Session, SessionRef, SessionToken};
+
 #[cfg(test)]
 mod tests;
 
@@ -15,6 +17,7 @@ pub(crate) struct PostgresDb {
     db: sqlx::PgPool,
 }
 
+#[allow(unused_variables, dead_code)] // TODO: remove
 impl PostgresDb {
     pub async fn connect(db: sqlx::postgres::PgPool) -> anyhow::Result<PostgresDb> {
         sqlx::migrate!("src/server/migrations")
@@ -22,6 +25,30 @@ impl PostgresDb {
             .await
             .context("running migrations on postgresql database")?;
         Ok(PostgresDb { db })
+    }
+
+    pub async fn login_session(&self, session: Session) -> anyhow::Result<SessionToken> {
+        todo!()
+    }
+
+    pub async fn retrieve_session(&self, token: SessionToken) -> anyhow::Result<User> {
+        todo!()
+    }
+
+    pub async fn rename_session(&self, token: SessionToken, new_name: &str) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    pub async fn list_sessions(&self, user: User) -> anyhow::Result<Vec<(SessionRef, Session)>> {
+        todo!()
+    }
+
+    pub async fn disconnect_session_token(&self, token: SessionToken) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    pub async fn disconnect_session_ref(&self, session: SessionRef) -> anyhow::Result<()> {
+        todo!()
     }
 }
 

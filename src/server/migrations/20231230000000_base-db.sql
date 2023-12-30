@@ -1,5 +1,6 @@
 CREATE TABLE sessions (
-    session_id UUID PRIMARY KEY NOT NULL,
+    session_token UUID PRIMARY KEY NOT NULL,
+    session_ref UUID UNIQUE NOT NULL, -- An UUID used to refer to the session by other sessions
     user_id UUID NOT NULL,
     name VARCHAR NOT NULL,
     login_time TIMESTAMP NOT NULL,
