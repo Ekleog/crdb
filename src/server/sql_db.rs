@@ -13,13 +13,9 @@ pub(crate) struct SqlDb {
 }
 
 impl SqlDb {
-    pub async fn connect(db_url: &str) -> anyhow::Result<SqlDb> {
+    pub async fn connect(db: sqlx::PgPool) -> anyhow::Result<SqlDb> {
         Ok(SqlDb {
-            _db: sqlx::postgres::PgPoolOptions::new()
-                .max_connections(50) // TODO: make configurable (builder pattern?)
-                .connect(&db_url)
-                .await
-                .with_context(|| format!("opening database {db_url:?}"))?,
+            _db: db,
         })
     }
 }

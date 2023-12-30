@@ -33,12 +33,16 @@ pub struct Server<C: Config> {
 }
 
 impl<C: Config> Server<C> {
-    pub async fn new(config: C, db_url: &str, cache_watermark: usize) -> anyhow::Result<Self> {
+    pub async fn new(
+        config: C,
+        db: sqlx::PgPool,
+        cache_watermark: usize,
+    ) -> anyhow::Result<Self> {
         <C::ApiConfig as api::Config>::check_ulids();
         Ok(Server {
             _config: config,
             _db: CacheDb::new::<C::ApiConfig>(
-                Arc::new(sql_db::SqlDb::connect(db_url).await?),
+                Arc::new(sql_db::SqlDb::connect(db).await?),
                 cache_watermark,
             ),
             _watchers: HashMap::new(),
