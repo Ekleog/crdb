@@ -19,17 +19,22 @@ mod sql_db;
 
 pub use config::Config;
 
-pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
-    fn authenticate(data: Auth) -> Result<User, (StatusCode, String)>;
+pub struct Session {
+    pub user_id: User,
+    pub session_name: String,
 }
 
-struct Session(Ulid);
+pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
+    fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
+}
+
+struct SessionToken(Ulid);
 
 pub struct Server<C: Config> {
     _config: C,
     _db: CacheDb<sql_db::SqlDb>,
-    _watchers: HashMap<ObjectId, HashSet<Session>>,
-    _sessions: HashMap<Session, mpsc::UnboundedSender<ServerMessage>>,
+    _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
+    _sessions: HashMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
 }
 
 impl<C: Config> Server<C> {
