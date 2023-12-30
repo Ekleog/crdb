@@ -1,6 +1,9 @@
 #![allow(dead_code)] // test utils can be or not eb used but get copy-pasted anyway
 
-use crate::db_trait::{EventId, ObjectId, TypeId};
+use crate::{
+    db_trait::{EventId, ObjectId, TypeId},
+    CanDoCallbacks, User,
+};
 use ulid::Ulid;
 
 const fn ulid(s: &str) -> Ulid {
@@ -88,25 +91,28 @@ impl crate::Object for TestObject1 {
         unimplemented!()
     }
 
-    fn can_create<C: crate::CanDoCallbacks>(
-        &self,
-        user: crate::User,
-        db: &C,
+    async fn can_create<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        db: &'a C,
     ) -> anyhow::Result<bool> {
         unimplemented!()
     }
 
-    fn can_apply<C: crate::CanDoCallbacks>(
-        &self,
-        user: &crate::User,
-        event: &Self::Event,
-        db: &C,
+    async fn can_apply<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        event: &'a Self::Event,
+        db: &'a C,
     ) -> anyhow::Result<bool> {
         unimplemented!()
     }
 
-    fn users_who_can_read<C: crate::CanDoCallbacks>(&self) -> anyhow::Result<Vec<crate::User>> {
-        unimplemented!()
+    async fn users_who_can_read<'a, C: CanDoCallbacks>(
+        &'a self,
+        db: &'a C,
+    ) -> anyhow::Result<Vec<User>> {
+        Ok(Vec::new())
     }
 
     fn apply(&mut self, event: &Self::Event) {
@@ -117,12 +123,12 @@ impl crate::Object for TestObject1 {
         }
     }
 
-    fn is_heavy(&self) -> anyhow::Result<bool> {
-        unimplemented!()
+    fn is_heavy(&self) -> bool {
+        self.0.len() > 10
     }
 
     fn required_binaries(&self) -> Vec<crate::BinPtr> {
-        unimplemented!()
+        Vec::new()
     }
 }
 

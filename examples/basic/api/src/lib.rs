@@ -21,24 +21,33 @@ impl crdb::Object for Foo {
         &ID
     }
 
-    fn can_create<C: CanDoCallbacks>(&self, user: User, db: &C) -> anyhow::Result<bool> {
-        todo!()
-    }
-    fn can_apply<C: CanDoCallbacks>(
-        &self,
-        user: &User,
-        event: &Self::Event,
-        db: &C,
+    async fn can_create<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        db: &'a C,
     ) -> anyhow::Result<bool> {
         todo!()
     }
-    fn users_who_can_read<C: CanDoCallbacks>(&self) -> anyhow::Result<Vec<User>> {
+    async fn can_apply<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        event: &'a Self::Event,
+        db: &'a C,
+    ) -> anyhow::Result<bool> {
         todo!()
     }
+    async fn users_who_can_read<'a, C: CanDoCallbacks>(
+        &'a self,
+        db: &'a C,
+    ) -> anyhow::Result<Vec<User>> {
+        todo!()
+    }
+
     fn apply(&mut self, event: &Self::Event) {
         todo!()
     }
-    fn is_heavy(&self) -> anyhow::Result<bool> {
+
+    fn is_heavy(&self) -> bool {
         todo!()
     }
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {

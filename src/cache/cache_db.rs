@@ -156,6 +156,8 @@ impl<D: Db> CacheDb<D> {
         self.cache.write().await.reduce_size_to(size);
         self.binaries.write().await.clear();
         // TODO: auto-clear binaries without waiting for a reduce_size_to call
+        // Probably both cache & binaries should be dealt with together by moving the
+        // watermark handling to the CacheDb level
     }
 }
 

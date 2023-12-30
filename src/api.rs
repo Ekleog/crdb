@@ -1,15 +1,74 @@
 use crate::{
     cache::CacheConfig,
-    db_trait::{EventId, ObjectId, TypeId},
+    db_trait::{Db, EventId, ObjectId, TypeId},
     Timestamp,
 };
-use std::{any::Any, collections::HashSet, marker::PhantomData, sync::Arc};
+use anyhow::Context;
+use std::{any::Any, collections::HashSet, future::Future, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
+
+macro_rules! impl_for_id {
+    ($type:ty) => {
+        #[cfg(feature = "server")]
+        impl $type {
+            fn to_uuid(&self) -> uuid::Uuid {
+                uuid::Uuid::from_bytes(self.id.to_bytes())
+            }
+        }
+
+        #[cfg(feature = "server")]
+        impl<'q> sqlx::encode::Encode<'q, sqlx::Postgres> for $type {
+            fn encode_by_ref(
+                &self,
+                buf: &mut sqlx::postgres::PgArgumentBuffer,
+            ) -> sqlx::encode::IsNull {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode_by_ref(
+                    &self.to_uuid(),
+                    buf,
+                )
+            }
+            fn encode(self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode(
+                    self.to_uuid(),
+                    buf,
+                )
+            }
+            fn produces(&self) -> Option<sqlx::postgres::PgTypeInfo> {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::produces(&self.to_uuid())
+            }
+            fn size_hint(&self) -> usize {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::size_hint(&self.to_uuid())
+            }
+        }
+
+        #[cfg(feature = "server")]
+        impl sqlx::Type<sqlx::Postgres> for $type {
+            fn type_info() -> sqlx::postgres::PgTypeInfo {
+                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
+            }
+            fn compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::compatible(ty)
+            }
+        }
+
+        #[cfg(feature = "server")]
+        impl sqlx::postgres::PgHasArrayType for $type {
+            fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_type_info()
+            }
+            fn array_compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_compatible(ty)
+            }
+        }
+    };
+}
 
 #[derive(Clone, Copy)]
 pub struct User {
     pub id: Ulid,
 }
+
+impl_for_id!(User);
 
 #[non_exhaustive]
 pub enum JsonPathItem {
@@ -56,8 +115,24 @@ mod private {
     pub trait Sealed {}
 }
 
-pub trait CanDoCallbacks: private::Sealed {
-    fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Arc<T>>;
+pub trait CanDoCallbacks: Send + Sync + private::Sealed {
+    fn get<T: Object>(
+        &self,
+        ptr: DbPtr<T>,
+    ) -> impl '_ + Send + Future<Output = anyhow::Result<Option<Arc<T>>>>;
+}
+
+impl<D: Db> private::Sealed for &D {}
+
+impl<D: Db> CanDoCallbacks for &D {
+    async fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Option<Arc<T>>> {
+        Ok(<D as Db>::get::<T>(&self, ObjectId(ptr.id))
+            .await
+            .with_context(|| format!("requesting {ptr:?} from database"))?
+            .map(|o| o.last_snapshot())
+            .transpose()
+            .with_context(|| format!("retrieving last snapshot for {ptr:?}"))?)
+    }
 }
 
 pub trait Event:
@@ -94,27 +169,39 @@ pub trait Object:
     }
     // TODO: allow re-encoding all snapshots in db with the new version using from_old_snapshot
 
-    fn can_create<C: CanDoCallbacks>(&self, user: User, db: &C) -> anyhow::Result<bool>;
+    fn can_create<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        db: &'a C,
+    ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
     /// Note that permissions are always checked with the latest version of the object on the server.
     /// So, due to this, CRDB objects are not strictly speaking a CRDT. However, it is required to do
     /// so for security, because otherwise a user who lost permissions would still be allowed to
     /// submit events antidated to before the permission loss, which would be bad as users could
     /// re-grant themselves permissions.
-    fn can_apply<C: CanDoCallbacks>(
-        &self,
-        user: &User,
-        event: &Self::Event,
-        db: &C,
-    ) -> anyhow::Result<bool>;
-    fn users_who_can_read<C: CanDoCallbacks>(&self) -> anyhow::Result<Vec<User>>;
+    fn can_apply<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        event: &'a Self::Event,
+        db: &'a C,
+    ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
+    fn users_who_can_read<'a, C: CanDoCallbacks>(
+        &'a self,
+        db: &'a C,
+    ) -> impl 'a + Send + Future<Output = anyhow::Result<Vec<User>>>;
+
     fn apply(&mut self, event: &Self::Event);
 
-    fn is_heavy(&self) -> anyhow::Result<bool>;
+    fn is_heavy(&self) -> bool;
     fn required_binaries(&self) -> Vec<BinPtr>;
 }
 
+#[derive(educe::Educe)]
+#[educe(Debug(named_field = false))]
 pub struct DbPtr<T: Object> {
+    #[educe(Debug(method = std::fmt::Display::fmt))]
     pub id: Ulid,
+    #[educe(Debug(ignore))]
     _phantom: PhantomData<T>,
 }
 
@@ -135,6 +222,8 @@ impl<T: Object> DbPtr<T> {
 pub struct BinPtr {
     pub(crate) id: Ulid,
 }
+
+impl_for_id!(BinPtr);
 
 #[allow(dead_code)] // TODO: remove
 pub struct RequestId(Ulid);

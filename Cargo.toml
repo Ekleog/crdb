@@ -12,7 +12,7 @@ client-js = ["client", "getrandom/js", "indexed_db_futures"]
 client-native = ["client", "sqlx/sqlite"]
 
 client = ["paste"]
-server = ["axum", "sqlx/postgres"]
+server = ["axum", "sqlx/json", "sqlx/postgres", "sqlx/uuid", "uuid"]
 
 [dependencies]
 anyhow = "1.0"
@@ -32,6 +32,7 @@ axum = { version = "0.7.2", optional = true }
 indexed_db_futures = { version = "0.4.1", optional = true }
 paste = { version = "1.0", optional = true }
 sqlx = { version = "0.7.3", features = ["runtime-tokio"], optional = true }
+uuid = { version = "1.6", optional = true }
 
 [dev-dependencies]
 bolero = "0.10.0"

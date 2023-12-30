@@ -1,5 +1,5 @@
 CREATE TABLE sessions (
-    session_id UUID  PRIMARY KEY NOT NULL,
+    session_id UUID PRIMARY KEY NOT NULL,
     user_id UUID NOT NULL,
     name VARCHAR NOT NULL,
     login_time TIMESTAMP NOT NULL,
@@ -29,3 +29,6 @@ CREATE TABLE events (
     data JSONB NOT NULL,
     required_binaries UUID ARRAY NOT NULL
 );
+
+CREATE UNIQUE INDEX snapshot_creations ON snapshots (object_id) WHERE is_creation;
+CREATE UNIQUE INDEX snapshot_latests ON snapshots (object_id) WHERE is_latest;

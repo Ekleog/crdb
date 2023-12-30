@@ -1,6 +1,20 @@
 use super::PostgresDb;
+use crate::{
+    db_trait::Db,
+    test_utils::{TestObject1, EVENT_ID_1, EVENT_ID_2, OBJECT_ID_1},
+};
+use std::sync::Arc;
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
-    PostgresDb::connect(db).await.expect("connecting to db");
+    let db = PostgresDb::connect(db).await.expect("connecting to db");
+    db.create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .await
+        .expect("creating test object 1 failed");
+    db.create(OBJECT_ID_1, EVENT_ID_2, Arc::new(TestObject1::stub_2()))
+        .await
+        .expect_err("creating duplicate test object 1 spuriously worked");
+    db.create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .await
+        .expect("creating exact copy test object 1 failed");
 }

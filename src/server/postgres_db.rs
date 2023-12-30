@@ -12,7 +12,7 @@ use futures::Stream;
 mod tests;
 
 pub(crate) struct PostgresDb {
-    _db: sqlx::PgPool,
+    db: sqlx::PgPool,
 }
 
 impl PostgresDb {
@@ -21,7 +21,7 @@ impl PostgresDb {
             .run(&db)
             .await
             .context("running migrations on postgresql database")?;
-        Ok(PostgresDb { _db: db })
+        Ok(PostgresDb { db })
     }
 }
 
@@ -52,8 +52,59 @@ impl Db for PostgresDb {
         created_at: EventId,
         object: Arc<T>,
     ) -> anyhow::Result<()> {
-        todo!()
-        // TODO: create a new snapshot with is_creation = true
+        // Object ID uniqueness is enforced by the `snapshot_creations` unique index
+        let created_at = created_at.to_uuid();
+        let object_id = id.to_uuid();
+        let snapshot_version = T::snapshot_version();
+        let object_json = sqlx::types::Json(&object);
+        let users_who_can_read = object
+            .users_who_can_read(&self)
+            .await
+            .context("listing users who can read")?;
+        let is_heavy = object.is_heavy();
+        let required_binaries = object.required_binaries();
+        let affected =
+            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, TRUE, TRUE, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING")
+                .bind(created_at)
+                .bind(object_id)
+                .bind(snapshot_version)
+                .bind(object_json)
+                .bind(users_who_can_read)
+                .bind(is_heavy)
+                .bind(required_binaries)
+                .execute(&self.db)
+                .await
+                .with_context(|| format!("inserting snapshot {created_at:?}"))?
+                .rows_affected();
+        anyhow::ensure!(affected <= 1, "Object {id:?} already existed in database");
+        if affected == 0 {
+            // Check for equality with pre-existing
+            let affected = sqlx::query(
+                "
+                    SELECT 1 FROM snapshots
+                    WHERE snapshot_id = $1
+                    AND object_id = $2
+                    AND is_creation = TRUE
+                    AND snapshot_version = $3
+                    AND snapshot = $4
+                ",
+            )
+            .bind(created_at)
+            .bind(object_id)
+            .bind(snapshot_version)
+            .bind(object_json)
+            .execute(&self.db)
+            .await
+            .with_context(|| {
+                format!("checking pre-existing snapshot for {created_at:?} is the same")
+            })?
+            .rows_affected();
+            anyhow::ensure!(
+                affected == 1,
+                "Snapshot {created_at:?} already existed with a different value set"
+            );
+        }
+        Ok(())
     }
 
     async fn submit<T: Object>(

@@ -25,6 +25,27 @@ macro_rules! impl_for_id {
             pub(crate) fn time(&self) -> Timestamp {
                 Timestamp(self.0.timestamp_ms())
             }
+
+            #[cfg(feature = "server")]
+            pub(crate) fn to_uuid(&self) -> uuid::Uuid {
+                uuid::Uuid::from_bytes(self.0.to_bytes())
+            }
+        }
+
+        #[cfg(feature = "server")]
+        impl<'q> sqlx::encode::Encode<'q, sqlx::Postgres> for $type {
+            fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode_by_ref(&self.to_uuid(), buf)
+            }
+            fn encode(self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode(self.to_uuid(), buf)
+            }
+            fn produces(&self) -> Option<sqlx::postgres::PgTypeInfo> {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::produces(&self.to_uuid())
+            }
+            fn size_hint(&self) -> usize {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::size_hint(&self.to_uuid())
+            }
         }
 
         #[cfg(test)]
