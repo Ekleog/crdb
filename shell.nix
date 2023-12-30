@@ -16,6 +16,7 @@ pkgs.stdenv.mkDerivation {
       (fenix.combine (with fenix; [
         minimal.cargo
         minimal.rustc
+        rust-analyzer
         targets.wasm32-unknown-unknown.latest.rust-std
       ]))
     ])
