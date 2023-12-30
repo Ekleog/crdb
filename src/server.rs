@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use ulid::Ulid;
 
 mod config;
-mod sql_db;
+mod postgres_db;
 
 pub use config::Config;
 
@@ -32,7 +32,7 @@ struct SessionToken(Ulid);
 
 pub struct Server<C: Config> {
     _config: C,
-    _db: CacheDb<sql_db::SqlDb>,
+    _db: CacheDb<postgres_db::PostgresDb>,
     _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
     _sessions: HashMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
 }
@@ -43,7 +43,7 @@ impl<C: Config> Server<C> {
         Ok(Server {
             _config: config,
             _db: CacheDb::new::<C::ApiConfig>(
-                Arc::new(sql_db::SqlDb::connect(db).await?),
+                Arc::new(postgres_db::PostgresDb::connect(db).await?),
                 cache_watermark,
             ),
             _watchers: HashMap::new(),

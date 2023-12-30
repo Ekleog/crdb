@@ -11,17 +11,17 @@ use futures::Stream;
 #[cfg(test)]
 mod tests;
 
-pub(crate) struct SqlDb {
+pub(crate) struct PostgresDb {
     _db: sqlx::PgPool,
 }
 
-impl SqlDb {
-    pub async fn connect(db: sqlx::postgres::PgPool) -> anyhow::Result<SqlDb> {
+impl PostgresDb {
+    pub async fn connect(db: sqlx::postgres::PgPool) -> anyhow::Result<PostgresDb> {
         sqlx::migrate!("src/server/migrations")
             .run(&db)
             .await
             .context("running migrations on postgresql database")?;
-        Ok(SqlDb { _db: db })
+        Ok(PostgresDb { _db: db })
     }
 }
 
@@ -29,7 +29,7 @@ impl SqlDb {
 // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
 
 #[allow(unused_variables)] // TODO: remove
-impl Db for SqlDb {
+impl Db for PostgresDb {
     async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
         futures::stream::empty()
     }

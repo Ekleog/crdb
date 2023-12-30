@@ -1,3 +1,7 @@
+fmt:
+    cargo fmt
+    cd examples/basic && cargo fmt
+
 test: test-crate test-example-basic
 
 test-crate:
