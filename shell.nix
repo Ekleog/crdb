@@ -7,6 +7,7 @@ pkgs.stdenv.mkDerivation {
     (with pkgs; [
       cargo-bolero
       cargo-nextest
+      just
       niv
       samply
       sqlx-cli
