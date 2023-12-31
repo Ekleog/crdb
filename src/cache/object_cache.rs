@@ -198,7 +198,7 @@ impl ObjectCache {
                 .creation
                 .arc_to_any()
                 .downcast::<T>()
-                .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::ulid()))?,
+                .map_err(|_| anyhow!("Failed to downcast an object to {:?}", T::type_ulid()))?,
         )
         .with_context(|| format!("creating object {:?}", creation.id))?;
         let (t, created) = self
@@ -217,7 +217,7 @@ impl ObjectCache {
                         .map_err(|_| {
                             anyhow!(
                                 "Failed to downcast an event to {:?}'s event type",
-                                T::ulid()
+                                T::type_ulid()
                             )
                         })?,
                 )

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp},
+    db_trait::{
+        Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp, TypeId,
+    },
     full_object::FullObject,
     Object, User,
 };
@@ -75,13 +77,12 @@ impl Db for PostgresDb {
 
     async fn create<T: Object>(
         &self,
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
     ) -> anyhow::Result<()> {
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
-        let created_at = created_at.to_uuid();
-        let object_id = id.to_uuid();
+        let type_id = TypeId(*T::type_ulid());
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
         let users_who_can_read = object
@@ -90,9 +91,11 @@ impl Db for PostgresDb {
             .context("listing users who can read")?;
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
+        // TODO: ASSERT that all required binaries are actually present
         let affected =
-            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, TRUE, TRUE, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING")
+            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING")
                 .bind(created_at)
+                .bind(type_id)
                 .bind(object_id)
                 .bind(snapshot_version)
                 .bind(object_json)
@@ -103,7 +106,10 @@ impl Db for PostgresDb {
                 .await
                 .with_context(|| format!("inserting snapshot {created_at:?}"))?
                 .rows_affected();
-        anyhow::ensure!(affected <= 1, "Object {id:?} already existed in database");
+        anyhow::ensure!(
+            affected <= 1,
+            "Object {object_id:?} already existed in database"
+        );
         if affected == 0 {
             // Check for equality with pre-existing
             let affected = sqlx::query(

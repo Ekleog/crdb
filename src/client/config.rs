@@ -62,7 +62,7 @@ macro_rules! generate_client {
                         self.db
                             .new_objects()
                             .await
-                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::ulid()))
+                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::type_ulid()))
                             .map(|o| $crate::NewObject {
                                 ptr: crdb::DbPtr::from(o.id),
                                 object: o.object.arc_to_any().downcast::<$object>()
@@ -76,7 +76,7 @@ macro_rules! generate_client {
                         self.db
                             .new_events()
                             .await
-                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::ulid()))
+                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::type_ulid()))
                             .map(|o| $crate::NewEvent {
                                 object: crdb::DbPtr::from(o.object_id),
                                 id: o.id,
@@ -91,7 +91,7 @@ macro_rules! generate_client {
                         self.db
                             .new_snapshots()
                             .await
-                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::ulid()))
+                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::type_ulid()))
                             .map(|o| $crate::NewSnapshot {
                                 object: crdb::DbPtr::from(o.object_id),
                                 time: o.time,

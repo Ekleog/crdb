@@ -272,10 +272,13 @@ impl FullObjectImpl {
         );
         // Find the last snapshot before `at`
         let (_, last_snapshot_time, last_snapshot) = self.last_snapshot_before(at);
-        let mut last_snapshot = last_snapshot
-            .arc_to_any()
-            .downcast::<T>()
-            .map_err(|_| anyhow!("Failed downcasting {:?} to type {:?}", self.id, T::ulid()))?;
+        let mut last_snapshot = last_snapshot.arc_to_any().downcast::<T>().map_err(|_| {
+            anyhow!(
+                "Failed downcasting {:?} to type {:?}",
+                self.id,
+                T::type_ulid()
+            )
+        })?;
         let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
 
         // Iterate through the changes since the last snapshot to just before the event

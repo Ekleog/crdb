@@ -87,8 +87,8 @@ impl TestObject1 {
 impl crate::Object for TestObject1 {
     type Event = TestEvent1;
 
-    fn ulid() -> &'static ulid::Ulid {
-        unimplemented!()
+    fn type_ulid() -> &'static ulid::Ulid {
+        &TYPE_ID_1.0
     }
 
     async fn can_create<'a, C: CanDoCallbacks>(

@@ -14,6 +14,7 @@ CREATE TABLE binaries (
 
 CREATE TABLE snapshots (
     snapshot_id UUID PRIMARY KEY NOT NULL, -- the ULID, cast to an UUID
+    type_id UUID NOT NULL,
     object_id UUID NOT NULL,
     is_creation BOOLEAN NOT NULL,
     is_latest BOOLEAN NOT NULL,

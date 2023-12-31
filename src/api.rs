@@ -159,7 +159,7 @@ pub trait Object:
     /// in the event being rejected by the server.
     type Event: Event;
 
-    fn ulid() -> &'static Ulid;
+    fn type_ulid() -> &'static Ulid;
     fn snapshot_version() -> i32 {
         0
     }
@@ -275,7 +275,7 @@ macro_rules! generate_api {
         impl crdb::private::Sealed for $config {}
         impl crdb::ApiConfig for $config {
             fn check_ulids() {
-                let ulids = [$(<$object as crdb::Object>::ulid()),*];
+                let ulids = [$(<$object as crdb::Object>::type_ulid()),*];
                 for u in ulids.iter() {
                     if ulids.iter().filter(|i| *i == u).count() != 1 {
                         panic!("Type ULID {u} was used multiple times!");
@@ -287,7 +287,7 @@ macro_rules! generate_api {
         impl crdb::CacheConfig for $config {
             async fn create(cache: &mut crdb::ObjectCache, o: crdb::DynNewObject) -> crdb::anyhow::Result<bool> {
                 $(
-                    if o.type_id.0 == *<$object as crdb::Object>::ulid() {
+                    if o.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let object = o.object
                             .arc_to_any()
                             .downcast::<$object>()
@@ -300,7 +300,7 @@ macro_rules! generate_api {
 
             async fn submit(cache: &mut crdb::ObjectCache, e: crdb::DynNewEvent) -> crdb::anyhow::Result<bool> {
                 $(
-                    if e.type_id.0 == *<$object as crdb::Object>::ulid() {
+                    if e.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let event = e.event
                             .arc_to_any()
                             .downcast::<<$object as crdb::Object>::Event>()
@@ -313,7 +313,7 @@ macro_rules! generate_api {
 
             async fn snapshot(cache: &mut crdb::ObjectCache, s: crdb::DynNewSnapshot) -> crdb::anyhow::Result<()> {
                 $(
-                    if s.type_id.0 == *<$object as crdb::Object>::ulid() {
+                    if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         return cache.snapshot::<$object>(s.object_id, s.time);
                     }
                 )*
@@ -322,7 +322,7 @@ macro_rules! generate_api {
 
             async fn create_in_db<D: crdb::Db>(db: &D, o: crdb::DynNewObject) -> crdb::anyhow::Result<()> {
                 $(
-                    if o.type_id.0 == *<$object as crdb::Object>::ulid() {
+                    if o.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let object = o.object
                             .arc_to_any()
                             .downcast::<$object>()
@@ -335,7 +335,7 @@ macro_rules! generate_api {
 
             async fn submit_in_db<D: crdb::Db>(db: &D, e: crdb::DynNewEvent) -> crdb::anyhow::Result<()> {
                 $(
-                    if e.type_id.0 == *<$object as crdb::Object>::ulid() {
+                    if e.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let event = e.event
                             .arc_to_any()
                             .downcast::<<$object as crdb::Object>::Event>()
@@ -348,7 +348,7 @@ macro_rules! generate_api {
 
             async fn snapshot_in_db<D: crdb::Db>(db: &D, s: crdb::DynNewSnapshot) -> crdb::anyhow::Result<()> {
                 $(
-                    if s.type_id.0 == *<$object as crdb::Object>::ulid() {
+                    if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         return db.snapshot::<$object>(s.time, s.object_id).await;
                     }
                 )*

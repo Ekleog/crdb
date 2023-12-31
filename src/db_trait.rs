@@ -48,6 +48,16 @@ macro_rules! impl_for_id {
             }
         }
 
+        #[cfg(feature = "server")]
+        impl sqlx::Type<sqlx::Postgres> for $type {
+            fn type_info() -> sqlx::postgres::PgTypeInfo {
+                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
+            }
+            fn compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::compatible(ty)
+            }
+        }
+
         #[cfg(test)]
         impl bolero::generator::TypeGenerator for $type {
             fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
