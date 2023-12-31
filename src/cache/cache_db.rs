@@ -185,10 +185,20 @@ impl<D: Db> Db for CacheDb<D> {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        precomputed_can_read: Option<Vec<User>>,
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
         if cache.create(id, created_at, object.clone())? {
-            self.db.create(id, created_at, object).await?;
+            let precomputed_can_read = match precomputed_can_read {
+                Some(r) => r,
+                None => object
+                    .users_who_can_read(&self)
+                    .await
+                    .with_context(|| format!("listing users who can read object {id:?}"))?,
+            };
+            self.db
+                .create(id, created_at, object, Some(precomputed_can_read))
+                .await?;
         }
         Ok(())
     }

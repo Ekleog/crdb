@@ -74,9 +74,14 @@ impl<A: Authenticator> Db for ClientDb<A> {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        precomputed_can_read: Option<Vec<User>>,
     ) -> anyhow::Result<()> {
-        self.api.create(id, created_at, object.clone()).await?;
-        self.db.create(id, created_at, object).await
+        self.api
+            .create(id, created_at, object.clone(), None)
+            .await?;
+        self.db
+            .create(id, created_at, object, precomputed_can_read)
+            .await
     }
 
     async fn submit<T: Object>(

@@ -136,6 +136,7 @@ pub trait Db: 'static + Send + Sync {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        precomputed_can_read: Option<Vec<User>>,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
     fn submit<T: Object>(
         &self,
@@ -157,6 +158,7 @@ pub trait Db: 'static + Send + Sync {
                     .arc_to_any()
                     .downcast::<T>()
                     .map_err(|_| anyhow!("API returned object of unexpected type"))?,
+                None,
             )
             .await?;
             for (event_id, c) in changes.into_iter() {

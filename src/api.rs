@@ -327,7 +327,7 @@ macro_rules! generate_api {
                             .arc_to_any()
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
-                        return db.create::<$object>(o.id, o.created_at, object).await;
+                        return db.create::<$object>(o.id, o.created_at, object, None).await;
                     }
                 )*
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)

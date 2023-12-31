@@ -53,6 +53,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        _precomputed_can_read: Option<Vec<User>>,
     ) -> anyhow::Result<()> {
         todo!()
     }

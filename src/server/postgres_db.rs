@@ -80,15 +80,19 @@ impl Db for PostgresDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        precomputed_can_read: Option<Vec<User>>,
     ) -> anyhow::Result<()> {
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
-        let users_who_can_read = object
-            .users_who_can_read(&self)
-            .await
-            .context("listing users who can read")?;
+        let users_who_can_read = match precomputed_can_read {
+            Some(r) => r,
+            None => object
+                .users_who_can_read(&self)
+                .await
+                .with_context(|| format!("listing users who can read object {object_id:?}"))?,
+        };
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
         // TODO: ASSERT that all required binaries are actually present

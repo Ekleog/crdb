@@ -42,6 +42,7 @@ impl Db for SqliteDb {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        precomputed_can_read: Option<Vec<User>>,
     ) -> anyhow::Result<()> {
         todo!()
     }
