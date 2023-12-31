@@ -4,8 +4,15 @@ fmt:
 
 test: test-crate test-example-basic
 
+rebuild-offline-queries:
+    dropdb crdb-test || true
+    createdb crdb-test
+    sqlx migrate run --source src/server/migrations/ --database-url "postgres:///crdb-test?host=/run/postgresql"
+    cargo sqlx prepare --database-url "postgres:///crdb-test?host=/run/postgresql" -- --all-features --tests
+    dropdb crdb-test
+
 test-crate:
-    cargo test --all-features
+    SQLX_OFFLINE="true" cargo test --all-features
 
 test-example-basic: build-example-basic-client test-example-basic-host
 

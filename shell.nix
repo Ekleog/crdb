@@ -21,4 +21,5 @@ pkgs.stdenv.mkDerivation {
       ]))
     ])
   );
+  SQLX_OFFLINE="true"; # for rust-analyzer
 }

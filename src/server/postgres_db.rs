@@ -5,7 +5,7 @@ use crate::{
         Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp, TypeId,
     },
     full_object::FullObject,
-    Object, User,
+    Event, Object, User,
 };
 use anyhow::Context;
 use futures::Stream;
@@ -106,11 +106,7 @@ impl Db for PostgresDb {
                 .await
                 .with_context(|| format!("inserting snapshot {created_at:?}"))?
                 .rows_affected();
-        anyhow::ensure!(
-            affected <= 1,
-            "Object {object_id:?} already existed in database"
-        );
-        if affected == 0 {
+        if affected != 1 {
             // Check for equality with pre-existing
             let affected = sqlx::query(
                 "
@@ -142,13 +138,101 @@ impl Db for PostgresDb {
 
     async fn submit<T: Object>(
         &self,
-        object: ObjectId,
+        object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> anyhow::Result<()> {
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .context("acquiring postgresql transaction")?;
+
+        // Lock the object
+        let creation_snapshot = sqlx::query!(
+            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation FOR UPDATE",
+            object_id.to_uuid(),
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .with_context(|| format!("locking object {object_id:?} in database"))?;
+        match creation_snapshot {
+            None => anyhow::bail!("Object {object_id:?} does not exist yet in database"),
+            Some(s) => anyhow::ensure!(
+                s.snapshot_id < event_id.to_uuid(),
+                "Event {event_id:?} is being submitted before object creation time {:?}",
+                s.snapshot_id
+            ),
+        }
+
+        // Insert the event itself
+        let event_json = sqlx::types::Json(&event);
+        let required_binaries = event.required_binaries();
+        let affected =
+            sqlx::query("INSERT INTO events VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
+                .bind(event_id)
+                .bind(object_id)
+                .bind(event_json)
+                .bind(required_binaries)
+                .execute(&mut *transaction)
+                .await
+                .with_context(|| format!("inserting event {event_id:?} in database"))?
+                .rows_affected();
+        if affected != 1 {
+            // Check for equality with pre-existing
+            let affected = sqlx::query(
+                "
+                    SELECT 1 FROM events
+                    WHERE event_id = $1
+                    AND object_id = $2
+                    AND data = $3
+                ",
+            )
+            .bind(event_id)
+            .bind(object_id)
+            .bind(event_json)
+            .execute(&self.db)
+            .await
+            .with_context(|| {
+                format!("checking pre-existing snapshot for {event_id:?} is the same")
+            })?
+            .rows_affected();
+            anyhow::ensure!(
+                affected == 1,
+                "Event {event_id:?} already existed with a different value set"
+            );
+            // Nothing else to do, event was already inserted
+            return Ok(());
+        }
+
+        // Clear all snapshots after the event
+        sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id > $2")
+            .bind(object_id)
+            .bind(event_id)
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| {
+                format!("clearing all snapshots for object {object_id:?} after event {event_id:?}")
+            })?;
+
+        // Find the last snapshot for the object
+        let last_snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, is_latest, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                ORDER BY snapshot_id DESC
+                LIMIT 1
+            ",
+            object_id.to_uuid(),
+        )
+        .fetch_one(&mut *transaction)
+        .await
+        .with_context(|| format!("fetching the last snapshot for object {object_id:?}"))?;
+
         todo!()
-        // TODO: add the event, create a new snapshot with is_creation = false for just after `event`,
-        // and the last snapshot should be is_last = true. Also remove is_last from no-longer-last
+        // TODO: create a new snapshot with is_creation = false for just after `event`,
+        // and the last snapshot should be is_last = true. Also remove is_latest flag from no-longer-last
         // snapshot
     }
     // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is

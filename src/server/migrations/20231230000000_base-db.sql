@@ -1,5 +1,5 @@
 CREATE TABLE sessions (
-    session_token UUID PRIMARY KEY NOT NULL,
+    session_token UUID PRIMARY KEY NOT NULL, -- The actual session token, used for auth
     session_ref UUID UNIQUE NOT NULL, -- An UUID used to refer to the session by other sessions
     user_id UUID NOT NULL,
     name VARCHAR NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE binaries (
 );
 
 CREATE TABLE snapshots (
-    snapshot_id UUID PRIMARY KEY NOT NULL, -- the ULID, cast to an UUID
+    snapshot_id UUID PRIMARY KEY NOT NULL, -- the timestamp ULID, cast to an UUID
     type_id UUID NOT NULL,
     object_id UUID NOT NULL,
     is_creation BOOLEAN NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE snapshots (
 );
 
 CREATE TABLE events (
-    event_id UUID PRIMARY KEY NOT NULL, -- the ULID, cast to an UUID
+    event_id UUID PRIMARY KEY NOT NULL, -- the timestamp ULID, cast to an UUID
     object_id UUID NOT NULL,
     data JSONB NOT NULL,
     required_binaries UUID ARRAY NOT NULL

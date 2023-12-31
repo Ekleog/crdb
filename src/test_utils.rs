@@ -134,6 +134,6 @@ impl crate::Object for TestObject1 {
 
 impl crate::Event for TestEvent1 {
     fn required_binaries(&self) -> Vec<crate::BinPtr> {
-        unimplemented!()
+        Vec::new()
     }
 }

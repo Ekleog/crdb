@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT snapshot_id, is_latest, snapshot_version, snapshot\n                FROM snapshots\n                WHERE object_id = $1\n                ORDER BY snapshot_id DESC\n                LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "snapshot_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "is_latest",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "snapshot_version",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "snapshot",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f43aa0fdfdbe700ca38bdf95f28e62f4a003f3ffa1172e19413e7507843cd624"
+}
