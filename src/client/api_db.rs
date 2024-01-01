@@ -2,7 +2,7 @@ use super::Authenticator;
 use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
-    BinPtr, Object, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
 use futures::Stream;
 use std::sync::Arc;
@@ -48,12 +48,12 @@ impl<A: Authenticator> Db for ApiDb<A> {
         todo!()
     }
 
-    async fn create<T: Object>(
+    async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        _precomputed_can_read: Option<Vec<User>>,
+        _cb: &C,
     ) -> anyhow::Result<()> {
         todo!()
     }

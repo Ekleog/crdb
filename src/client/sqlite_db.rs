@@ -1,7 +1,7 @@
 use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
-    BinPtr, Object, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
 use futures::Stream;
 use std::sync::Arc;
@@ -37,12 +37,12 @@ impl Db for SqliteDb {
         todo!()
     }
 
-    async fn create<T: Object>(
+    async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        precomputed_can_read: Option<Vec<User>>,
+        cb: &C,
     ) -> anyhow::Result<()> {
         todo!()
     }

@@ -42,7 +42,7 @@ pub mod crdb_internal {
     #[cfg(feature = "server")]
     pub use crate::server::Config as ServerConfig;
     pub use crate::{
-        api::Config as ApiConfig,
+        api::{CanDoCallbacks, Config as ApiConfig},
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
         hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,

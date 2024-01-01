@@ -122,9 +122,9 @@ pub trait CanDoCallbacks: Send + Sync + private::Sealed {
     ) -> impl '_ + Send + Future<Output = anyhow::Result<Option<Arc<T>>>>;
 }
 
-impl<D: Db> private::Sealed for &D {}
+impl<D: Db> private::Sealed for D {}
 
-impl<D: Db> CanDoCallbacks for &D {
+impl<D: Db> CanDoCallbacks for D {
     async fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Option<Arc<T>>> {
         Ok(<D as Db>::get::<T>(&self, ObjectId(ptr.id))
             .await
@@ -320,14 +320,14 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
             }
 
-            async fn create_in_db<D: crdb::Db>(db: &D, o: crdb::DynNewObject) -> crdb::anyhow::Result<()> {
+            async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, cb: &C) -> crdb::anyhow::Result<()> {
                 $(
                     if o.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let object = o.object
                             .arc_to_any()
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
-                        return db.create::<$object>(o.id, o.created_at, object, None).await;
+                        return db.create::<$object, _>(o.id, o.created_at, object, cb).await;
                     }
                 )*
                 crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)

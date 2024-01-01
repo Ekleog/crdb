@@ -1,7 +1,7 @@
 use crate::{
     api::{BinPtr, Query},
     full_object::{DynSized, FullObject},
-    Object, User,
+    CanDoCallbacks, Object, User,
 };
 use anyhow::anyhow;
 use futures::Stream;
@@ -131,12 +131,12 @@ pub trait Db: 'static + Send + Sync {
     /// database; and purges it from the local database.
     fn unsubscribe(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<()>>;
 
-    fn create<T: Object>(
+    fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        precomputed_can_read: Option<Vec<User>>,
+        cb: &C,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
     fn submit<T: Object>(
         &self,
@@ -144,13 +144,14 @@ pub trait Db: 'static + Send + Sync {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
-    fn create_all<T: Object>(
+    fn create_all<T: Object, C: CanDoCallbacks>(
         &self,
         o: FullObject,
+        cb: &C,
     ) -> impl Send + Future<Output = anyhow::Result<()>> {
         async move {
             let (creation, changes) = o.extract_all_clone();
-            self.create::<T>(
+            self.create::<T, _>(
                 creation.id,
                 creation.created_at,
                 creation
@@ -158,7 +159,7 @@ pub trait Db: 'static + Send + Sync {
                     .arc_to_any()
                     .downcast::<T>()
                     .map_err(|_| anyhow!("API returned object of unexpected type"))?,
-                None,
+                cb,
             )
             .await?;
             for (event_id, c) in changes.into_iter() {

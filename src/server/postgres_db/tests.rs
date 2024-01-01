@@ -12,7 +12,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         OBJECT_ID_1,
         EVENT_ID_1,
         Arc::new(TestObject1::stub_1()),
-        None,
+        &db,
     )
     .await
     .expect("creating test object 1 failed");
@@ -20,7 +20,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         OBJECT_ID_1,
         EVENT_ID_2,
         Arc::new(TestObject1::stub_2()),
-        None,
+        &db,
     )
     .await
     .expect_err("creating duplicate test object 1 spuriously worked");
@@ -28,7 +28,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         OBJECT_ID_1,
         EVENT_ID_1,
         Arc::new(TestObject1::stub_1()),
-        None,
+        &db,
     )
     .await
     .expect("creating exact copy test object 1 failed");

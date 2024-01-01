@@ -34,7 +34,7 @@ struct SessionRef(Ulid);
 
 pub struct Server<C: Config> {
     _config: C,
-    _db: CacheDb<postgres_db::PostgresDb>,
+    _db: Arc<CacheDb<postgres_db::PostgresDb>>,
     _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
     _sessions: HashMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
 }

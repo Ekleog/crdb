@@ -107,7 +107,7 @@ macro_rules! generate_client {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();
                         let id = id.expect("Failed to generate ulid for object creation");
-                        self.db.create(crdb::ObjectId(id), crdb::EventId(id), object, None).await?;
+                        self.db.create(crdb::ObjectId(id), crdb::EventId(id), object, &self.db).await?;
                         Ok(crdb::DbPtr::from(crdb::ObjectId(id)))
                     }
                 }

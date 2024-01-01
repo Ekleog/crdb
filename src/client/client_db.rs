@@ -4,7 +4,7 @@ use crate::{
     cache::CacheDb,
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
-    BinPtr, Object, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
 use futures::{future, Stream, StreamExt};
 use std::sync::Arc;
@@ -22,7 +22,7 @@ impl<A: Authenticator> ClientDb<A> {
     ) -> anyhow::Result<ClientDb<A>> {
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
-        let db = Arc::new(CacheDb::new::<C>(Arc::new(LocalDb::new()), cache_watermark));
+        let db = CacheDb::new::<C>(Arc::new(LocalDb::new()), cache_watermark);
         db.also_watch_from::<C, _>(&api);
         Ok(ClientDb { api, db })
     }
@@ -69,19 +69,15 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.api.unsubscribe(ptr).await
     }
 
-    async fn create<T: Object>(
+    async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        precomputed_can_read: Option<Vec<User>>,
+        cb: &C,
     ) -> anyhow::Result<()> {
-        self.api
-            .create(id, created_at, object.clone(), None)
-            .await?;
-        self.db
-            .create(id, created_at, object, precomputed_can_read)
-            .await
+        self.api.create(id, created_at, object.clone(), cb).await?;
+        self.db.create(id, created_at, object, cb).await
     }
 
     async fn submit<T: Object>(
@@ -97,13 +93,13 @@ impl<A: Authenticator> Db for ClientDb<A> {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        if let Some(res) = self.db.get::<T>(ptr).await? {
+        if let Some(res) = Db::get::<T>(&*self.db, ptr).await? {
             return Ok(Some(res));
         }
-        let Some(o) = self.api.get::<T>(ptr).await? else {
+        let Some(o) = Db::get::<T>(&*self.api, ptr).await? else {
             return Ok(None);
         };
-        self.db.create_all::<T>(o.clone()).await?;
+        self.db.create_all::<T, _>(o.clone(), &*self.db).await?;
         Ok(Some(o))
     }
 
@@ -131,7 +127,7 @@ impl<A: Authenticator> Db for ClientDb<A> {
                         let db = db.clone();
                         async move {
                             let o = o?;
-                            db.create_all::<T>(o.clone()).await?;
+                            db.create_all::<T, _>(o.clone(), &*db).await?;
                             Ok(o)
                         }
                     }

@@ -2,7 +2,7 @@ use super::{BinariesCache, CacheConfig, ObjectCache};
 use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
-    hash_binary, BinPtr, Object, Query, Timestamp, User,
+    hash_binary, BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
 use anyhow::Context;
 use futures::{pin_mut, Stream, StreamExt};
@@ -16,12 +16,17 @@ pub struct CacheDb<D: Db> {
 }
 
 impl<D: Db> CacheDb<D> {
-    fn watch_from<C: CacheConfig, OtherDb: Db>(&self, db: &Arc<OtherDb>, relay_to_db: bool) {
+    fn watch_from<C: CacheConfig, OtherDb: Db>(
+        self: &Arc<Self>,
+        db: &Arc<OtherDb>,
+        relay_to_db: bool,
+    ) {
         // Watch new objects
         tokio::task::spawn({
             let db = db.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
+            let this = self.clone();
             async move {
                 let new_objects = db.new_objects().await;
                 pin_mut!(new_objects);
@@ -29,7 +34,8 @@ impl<D: Db> CacheDb<D> {
                     let mut cache = cache.write().await;
                     let object = o.id;
                     if relay_to_db {
-                        if let Err(error) = C::create_in_db(&*internal_db, o.clone()).await {
+                        if let Err(error) = C::create_in_db(&*internal_db, o.clone(), &*this).await
+                        {
                             tracing::error!(
                                 ?error,
                                 ?object,
@@ -122,20 +128,20 @@ impl<D: Db> CacheDb<D> {
     /// program) would make cache operation slow.
     /// For this reason, if the cache used size reaches the watermark, then the watermark will be
     /// automatically increased.
-    pub(crate) fn new<C: CacheConfig>(db: Arc<D>, watermark: usize) -> CacheDb<D> {
+    pub(crate) fn new<C: CacheConfig>(db: Arc<D>, watermark: usize) -> Arc<CacheDb<D>> {
         let cache = Arc::new(RwLock::new(ObjectCache::new(watermark)));
-        let this = CacheDb {
+        let this = Arc::new(CacheDb {
             db: db.clone(),
             cache,
             binaries: Arc::new(RwLock::new(BinariesCache::new())),
-        };
+        });
         this.watch_from::<C, _>(&db, false);
         this
     }
 
     /// Relays all new objects/events from `db` to the internal database, caching them in the process.
     #[cfg(feature = "client")] // only used for clients, server doesn't need it
-    pub fn also_watch_from<C: CacheConfig, OtherDb: Db>(&self, db: &Arc<OtherDb>) {
+    pub fn also_watch_from<C: CacheConfig, OtherDb: Db>(self: &Arc<Self>, db: &Arc<OtherDb>) {
         self.watch_from::<C, _>(db, true)
     }
 
@@ -180,25 +186,16 @@ impl<D: Db> Db for CacheDb<D> {
         self.db.unsubscribe(ptr).await
     }
 
-    async fn create<T: Object>(
+    async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        precomputed_can_read: Option<Vec<User>>,
+        cb: &C,
     ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
         if cache.create(id, created_at, object.clone())? {
-            let precomputed_can_read = match precomputed_can_read {
-                Some(r) => r,
-                None => object
-                    .users_who_can_read(&self)
-                    .await
-                    .with_context(|| format!("listing users who can read object {id:?}"))?,
-            };
-            self.db
-                .create(id, created_at, object, Some(precomputed_can_read))
-                .await?;
+            self.db.create(id, created_at, object, cb).await?;
         }
         Ok(())
     }

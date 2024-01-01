@@ -5,7 +5,7 @@ use crate::{
         Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp, TypeId,
     },
     full_object::FullObject,
-    Event, Object, User,
+    CanDoCallbacks, Event, Object, User,
 };
 use anyhow::Context;
 use futures::Stream;
@@ -75,24 +75,21 @@ impl Db for PostgresDb {
         unimplemented!("unsubscribing from a postgresql db does not make sense")
     }
 
-    async fn create<T: Object>(
+    async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        precomputed_can_read: Option<Vec<User>>,
+        cb: &C,
     ) -> anyhow::Result<()> {
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
-        let users_who_can_read = match precomputed_can_read {
-            Some(r) => r,
-            None => object
-                .users_who_can_read(&self)
-                .await
-                .with_context(|| format!("listing users who can read object {object_id:?}"))?,
-        };
+        let users_who_can_read = object
+            .users_who_can_read(cb)
+            .await
+            .with_context(|| format!("listing users who can read object {object_id:?}"))?;
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
         // TODO: ASSERT that all required binaries are actually present
