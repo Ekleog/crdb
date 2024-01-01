@@ -329,15 +329,38 @@ impl Db for PostgresDb {
 
                 object.apply(&e);
             }
-        }
+            std::mem::drop(events_since_inserted);
 
-        todo!()
-        // TODO: create a new snapshot with is_creation = false for just after `event`,
-        // and the last snapshot should be is_last = true. Also remove is_latest flag from no-longer-last
-        // snapshot
+            // Save the latest snapshot
+            let users_who_can_read = object.users_who_can_read(cb).await.with_context(|| {
+                format!(
+                    "listing users who can read for snapshot {event_id:?} of object {object_id:?}"
+                )
+            })?;
+            sqlx::query(
+                "INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, TRUE, $5, $6, $7, $8, $9)",
+            )
+            .bind(event_id)
+            .bind(TypeId(*T::type_ulid()))
+            .bind(object_id)
+            .bind(T::snapshot_version())
+            .bind(sqlx::types::Json(&object))
+            .bind(users_who_can_read)
+            .bind(object.is_heavy())
+            .bind(object.required_binaries())
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| format!("inserting event {event_id:?} into table"))?;
+        }
+        // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is
+        // properly present in the same transaction as we're adding the event, reject if not.
+
+        transaction.commit().await.with_context(|| {
+            format!("committing transaction adding event {event_id:?} to object {object_id:?}")
+        })?;
+
+        Ok(())
     }
-    // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is
-    // properly present in the same transaction as we're adding the event, reject if not.
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
         todo!()

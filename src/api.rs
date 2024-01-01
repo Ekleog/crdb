@@ -196,6 +196,7 @@ pub trait Object:
     fn required_binaries(&self) -> Vec<BinPtr>;
 }
 
+#[cfg(feature = "server")]
 pub fn parse_snapshot<T: Object>(
     snapshot_version: i32,
     snapshot_data: serde_json::Value,
