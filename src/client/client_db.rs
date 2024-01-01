@@ -80,16 +80,17 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.db.create(id, created_at, object, cb).await
     }
 
-    async fn submit<T: Object>(
+    async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        cb: &C,
     ) -> anyhow::Result<()> {
         self.api
-            .submit::<T>(object, event_id, event.clone())
+            .submit::<T, _>(object, event_id, event.clone(), cb)
             .await?;
-        self.db.submit::<T>(object, event_id, event).await
+        self.db.submit::<T, _>(object, event_id, event, cb).await
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {

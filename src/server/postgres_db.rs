@@ -138,11 +138,12 @@ impl Db for PostgresDb {
         Ok(())
     }
 
-    async fn submit<T: Object>(
+    async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        cb: &C,
     ) -> anyhow::Result<()> {
         let mut transaction = self
             .db
@@ -235,6 +236,14 @@ impl Db for PostgresDb {
             parse_snapshot::<T>(last_snapshot.snapshot_version, last_snapshot.snapshot)
                 .with_context(|| format!("parsing last snapshot for object {object_id:?}"))?;
 
+        // Remove the "latest snapshot" flag for the object
+        // Note that this can be a no-op if the latest snapshot was already deleted above
+        sqlx::query("UPDATE snapshots SET is_latest = FALSE WHERE object_id = $1")
+            .bind(object_id)
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| format!("removing latest-snapshot flag for object {object_id:?}"))?;
+
         // Apply all events between the last snapshot and the current event
         if !last_snapshot.is_latest {
             let mut events_between_last_snapshot_and_current_event = sqlx::query!(
@@ -257,6 +266,58 @@ impl Db for PostgresDb {
                         "fetching all events for {object_id:?} betwen {:?} and {event_id:?}",
                         last_snapshot.snapshot_id
                     )
+                })?;
+                let e = serde_json::from_value::<T::Event>(e.data).with_context(|| {
+                    format!(
+                        "parsing event {:?} of type {:?}",
+                        e.event_id,
+                        T::type_ulid()
+                    )
+                })?;
+
+                object.apply(&e);
+            }
+        }
+
+        // Add the current event to the last snapshot
+        object.apply(&event);
+
+        // Save the new snapshot (the new event was already saved above)
+        let users_who_can_read = object.users_who_can_read(cb).await.with_context(|| {
+            format!("listing users who can read for snapshot {event_id:?} of object {object_id:?}")
+        })?;
+        sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9)")
+            .bind(event_id)
+            .bind(TypeId(*T::type_ulid()))
+            .bind(object_id)
+            .bind(last_snapshot.is_latest)
+            .bind(T::snapshot_version())
+            .bind(sqlx::types::Json(&object))
+            .bind(users_who_can_read)
+            .bind(object.is_heavy())
+            .bind(object.required_binaries())
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| format!("inserting event {event_id:?} into table"))?;
+
+        // If needed, re-compute the last snapshot
+        if !last_snapshot.is_latest {
+            // List all the events since the inserted event
+            let mut events_since_inserted = sqlx::query!(
+                "
+                    SELECT event_id, data
+                    FROM events
+                    WHERE object_id = $1
+                    AND event_id > $2
+                    ORDER BY event_id ASC
+                ",
+                object_id.to_uuid(),
+                event_id.to_uuid(),
+            )
+            .fetch(&mut *transaction);
+            while let Some(e) = events_since_inserted.next().await {
+                let e = e.with_context(|| {
+                    format!("fetching all events for {object_id:?} after {event_id:?}")
                 })?;
                 let e = serde_json::from_value::<T::Event>(e.data).with_context(|| {
                     format!(

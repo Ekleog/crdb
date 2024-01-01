@@ -47,11 +47,12 @@ impl Db for SqliteDb {
         todo!()
     }
 
-    async fn submit<T: Object>(
+    async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        cb: &C,
     ) -> anyhow::Result<()> {
         todo!()
     }

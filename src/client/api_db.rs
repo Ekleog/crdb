@@ -58,11 +58,12 @@ impl<A: Authenticator> Db for ApiDb<A> {
         todo!()
     }
 
-    async fn submit<T: Object>(
+    async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        _cb: &C,
     ) -> anyhow::Result<()> {
         todo!()
     }

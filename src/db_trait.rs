@@ -138,11 +138,12 @@ pub trait Db: 'static + Send + Sync {
         object: Arc<T>,
         cb: &C,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
-    fn submit<T: Object>(
+    fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        cb: &C,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
     fn create_all<T: Object, C: CanDoCallbacks>(
         &self,
@@ -163,13 +164,14 @@ pub trait Db: 'static + Send + Sync {
             )
             .await?;
             for (event_id, c) in changes.into_iter() {
-                self.submit::<T>(
+                self.submit::<T, _>(
                     creation.id,
                     event_id,
                     c.event
                         .arc_to_any()
                         .downcast::<T::Event>()
                         .map_err(|_| anyhow!("API returned object of unexpected type"))?,
+                    cb,
                 )
                 .await?;
             }
