@@ -59,6 +59,7 @@ impl<D: Db> CacheDb<D> {
             let db = db.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
+            let this = self.clone();
             async move {
                 let new_events = db.new_events().await;
                 pin_mut!(new_events);
@@ -67,7 +68,8 @@ impl<D: Db> CacheDb<D> {
                     let object = e.object_id;
                     let event = e.id;
                     if relay_to_db {
-                        if let Err(error) = C::submit_in_db(&*internal_db, e.clone()).await {
+                        if let Err(error) = C::submit_in_db(&*internal_db, e.clone(), &*this).await
+                        {
                             tracing::error!(
                                 ?error,
                                 ?object,
