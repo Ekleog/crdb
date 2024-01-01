@@ -354,6 +354,7 @@ impl Db for PostgresDb {
         }
         // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is
         // properly present in the same transaction as we're adding the event, reject if not.
+        // The ASSERT should probably be FOR KEY SHARE, and even be placed at the top of the transaction
 
         transaction.commit().await.with_context(|| {
             format!("committing transaction adding event {event_id:?} to object {object_id:?}")
