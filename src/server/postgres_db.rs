@@ -9,7 +9,7 @@ use crate::{
     CanDoCallbacks, Event, Object, User,
 };
 use anyhow::Context;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 
 use super::{Session, SessionRef, SessionToken};
 
@@ -231,9 +231,44 @@ impl Db for PostgresDb {
         .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("fetching the last snapshot for object {object_id:?}"))?;
-        let last_object =
+        let mut object =
             parse_snapshot::<T>(last_snapshot.snapshot_version, last_snapshot.snapshot)
                 .with_context(|| format!("parsing last snapshot for object {object_id:?}"))?;
+
+        // Apply all events between the last snapshot and the current event
+        if !last_snapshot.is_latest {
+            let mut events_between_last_snapshot_and_current_event = sqlx::query!(
+                "
+                    SELECT event_id, data
+                    FROM events
+                    WHERE object_id = $1
+                    AND event_id > $2
+                    AND event_id < $3
+                    ORDER BY event_id ASC
+                ",
+                object_id.to_uuid(),
+                last_snapshot.snapshot_id,
+                event_id.to_uuid(),
+            )
+            .fetch(&mut *transaction);
+            while let Some(e) = events_between_last_snapshot_and_current_event.next().await {
+                let e = e.with_context(|| {
+                    format!(
+                        "fetching all events for {object_id:?} betwen {:?} and {event_id:?}",
+                        last_snapshot.snapshot_id
+                    )
+                })?;
+                let e = serde_json::from_value::<T::Event>(e.data).with_context(|| {
+                    format!(
+                        "parsing event {:?} of type {:?}",
+                        e.event_id,
+                        T::type_ulid()
+                    )
+                })?;
+
+                object.apply(&e);
+            }
+        }
 
         todo!()
         // TODO: create a new snapshot with is_creation = false for just after `event`,
