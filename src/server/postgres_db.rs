@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    api::parse_snapshot,
     db_trait::{
         Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp, TypeId,
     },
@@ -230,6 +231,9 @@ impl Db for PostgresDb {
         .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("fetching the last snapshot for object {object_id:?}"))?;
+        let last_object =
+            parse_snapshot::<T>(last_snapshot.snapshot_version, last_snapshot.snapshot)
+                .with_context(|| format!("parsing last snapshot for object {object_id:?}"))?;
 
         todo!()
         // TODO: create a new snapshot with is_creation = false for just after `event`,

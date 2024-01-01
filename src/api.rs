@@ -164,7 +164,7 @@ pub trait Object:
         0
     }
     #[allow(unused_variables)]
-    fn from_old_snapshot(version: u64, data: serde_json::Value) -> Self {
+    fn from_old_snapshot(version: i32, data: serde_json::Value) -> anyhow::Result<Self> {
         unimplemented!()
     }
     // TODO: allow re-encoding all snapshots in db with the new version using from_old_snapshot
@@ -194,6 +194,27 @@ pub trait Object:
 
     fn is_heavy(&self) -> bool;
     fn required_binaries(&self) -> Vec<BinPtr>;
+}
+
+pub fn parse_snapshot<T: Object>(
+    snapshot_version: i32,
+    snapshot_data: serde_json::Value,
+) -> anyhow::Result<T> {
+    if snapshot_version == T::snapshot_version() {
+        Ok(serde_json::from_value(snapshot_data).with_context(|| {
+            format!(
+                "parsing current snapshot version {snapshot_version} for object type {:?}",
+                T::type_ulid()
+            )
+        })?)
+    } else {
+        T::from_old_snapshot(snapshot_version, snapshot_data).with_context(|| {
+            format!(
+                "parsing old snapshot version {snapshot_version} for object type {:?}",
+                T::type_ulid()
+            )
+        })
+    }
 }
 
 #[derive(educe::Educe)]
