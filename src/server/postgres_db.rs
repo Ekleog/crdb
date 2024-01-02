@@ -5,13 +5,13 @@ use crate::{
         Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp,
         TypeId,
     },
-    full_object::FullObject,
+    full_object::{Change, FullObject},
     BinPtr, CanDoCallbacks, Event, Object, User,
 };
 use anyhow::{anyhow, Context};
 use futures::{Stream, StreamExt};
 use sqlx::Row;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 #[cfg(test)]
 mod tests;
@@ -424,7 +424,140 @@ impl Db for PostgresDb {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        todo!()
+        const EVENT_ID: usize = 0;
+        const EVENT_DATA: usize = 1;
+
+        // First, read the events. If starting with the snapshots, then a transaction could re-create
+        // the object after the creation snapshot was read, which would mean some events would be missing.
+        // However, we do not know whether the object exists with the proper type yet, so wait until we
+        // run the `fetch_optional` below to do any meaningful handling.
+        let mut events =
+            sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
+                .bind(ptr)
+                .fetch_all(&self.db)
+                .await
+                .with_context(|| format!("fetching all events for object {ptr:?}"))?;
+
+        // Then, read the creation and latest snapshots
+        let creation_snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND type_id = $2
+                AND is_creation
+            ",
+            ptr.to_uuid(),
+            uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
+        )
+        .fetch_optional(&self.db)
+        .await
+        .with_context(|| format!("fetching creation snapshot for object {ptr:?}"))?;
+        let creation_snapshot = match creation_snapshot {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let latest_snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND type_id = $2
+                AND is_latest
+            ",
+            ptr.to_uuid(),
+            uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
+        )
+        .fetch_one(&self.db)
+        .await
+        .with_context(|| format!("fetching latest snapshot for object {ptr:?}"))?;
+
+        // If new events appeared between the time we fetched the events and the latest snapshot, re-download them
+        if latest_snapshot.snapshot_id != creation_snapshot.snapshot_id
+            && (events.is_empty()
+                || latest_snapshot.snapshot_id > events.last().unwrap().get(EVENT_ID))
+        {
+            let new_events = sqlx::query(
+                "SELECT event_id, data FROM events WHERE object_id = $1 AND event_id > $2 ORDER BY event_id",
+            )
+            .bind(ptr)
+            .bind(events.last().map(|e| e.get(EVENT_ID)).unwrap_or(creation_snapshot.snapshot_id))
+            .fetch_all(&self.db)
+            .await
+            .with_context(|| format!("fetching all new events for object {ptr:?}"))?;
+            events.extend(new_events);
+            // TODO: this could still fail in the following situation:
+            // - we fetch the first events
+            // - we fetch the creation and latest snapshots
+            // - lots of new events are added
+            // - the object is re-created with a starting point after the lots of new events
+            // - when we fetch these events, we'll be missing events since the creation point
+            // Considering that event re-creation should never occur on events less than a few minutes
+            // old at least (otherwise it makes no sense to use crdb), this risk is accepted for now.
+            // This being said, we should actually fix this, maybe by having all this inside a loop {} that
+            // re-attempts fetching all the things.
+        }
+
+        // Build the FullObject from the parts
+        let creation = Arc::new(
+            parse_snapshot::<T>(
+                creation_snapshot.snapshot_version,
+                creation_snapshot.snapshot,
+            )
+            .with_context(|| {
+                format!(
+                    "parsing snapshot {:?} as type {:?}",
+                    creation_snapshot.snapshot_id,
+                    T::type_ulid()
+                )
+            })?,
+        );
+        let first_event = events
+            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) > creation_snapshot.snapshot_id);
+        let after_last_event = events
+            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) > latest_snapshot.snapshot_id);
+        let mut changes = BTreeMap::new();
+        for e in events
+            .into_iter()
+            .skip(first_event)
+            .take(after_last_event - first_event)
+        {
+            let event_id = EventId::from_uuid(e.get(EVENT_ID));
+            changes.insert(
+                event_id,
+                Change::new(Arc::new(
+                    serde_json::from_value::<T::Event>(e.get(EVENT_DATA)).with_context(|| {
+                        format!("parsing event {event_id:?} as type {:?}", T::type_ulid())
+                    })?,
+                )),
+            );
+        }
+        if let Some(mut c) = changes.last_entry() {
+            c.get_mut().set_snapshot(Arc::new(
+                parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
+                    .with_context(|| {
+                        format!(
+                            "parsing snapshot {:?} as type {:?}",
+                            latest_snapshot.snapshot_id,
+                            T::type_ulid()
+                        )
+                    })?,
+            ));
+        } else {
+            assert!(
+                creation_snapshot.snapshot_id == latest_snapshot.snapshot_id,
+                "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
+                latest_snapshot.snapshot_id,
+                creation_snapshot.snapshot_id
+            );
+        }
+
+        Ok(Some(FullObject::from_parts(
+            ptr,
+            EventId::from_uuid(creation_snapshot.snapshot_id),
+            creation,
+            changes,
+        )))
     }
 
     async fn query<T: Object>(

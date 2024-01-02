@@ -52,6 +52,19 @@ pub struct Change {
     pub snapshot_after: Option<Arc<dyn DynSized>>,
 }
 
+impl Change {
+    pub fn new(event: Arc<dyn DynSized>) -> Change {
+        Change {
+            event,
+            snapshot_after: None,
+        }
+    }
+
+    pub fn set_snapshot(&mut self, snapshot: Arc<dyn DynSized>) {
+        self.snapshot_after = Some(snapshot);
+    }
+}
+
 #[derive(deepsize::DeepSizeOf, educe::Educe)]
 #[educe(Debug)]
 struct FullObjectImpl {
@@ -81,6 +94,22 @@ impl FullObject {
                 created_at,
                 creation,
                 changes: BTreeMap::new(),
+            })),
+        }
+    }
+
+    pub fn from_parts(
+        id: ObjectId,
+        created_at: EventId,
+        creation: Arc<dyn DynSized>,
+        changes: BTreeMap<EventId, Change>,
+    ) -> FullObject {
+        FullObject {
+            data: Arc::new(RwLock::new(FullObjectImpl {
+                id,
+                created_at,
+                creation,
+                changes,
             })),
         }
     }

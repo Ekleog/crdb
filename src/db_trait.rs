@@ -20,8 +20,8 @@ pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
 macro_rules! impl_for_id {
     ($type:ty) => {
+        #[allow(dead_code)]
         impl $type {
-            #[allow(dead_code)]
             pub(crate) fn time(&self) -> Timestamp {
                 Timestamp(self.0.timestamp_ms())
             }
@@ -29,6 +29,11 @@ macro_rules! impl_for_id {
             #[cfg(feature = "server")]
             pub(crate) fn to_uuid(&self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.0.to_bytes())
+            }
+
+            #[cfg(feature = "server")]
+            pub(crate) fn from_uuid(id: uuid::Uuid) -> Self {
+                Self(Ulid::from_bytes(*id.as_bytes()))
             }
         }
 
