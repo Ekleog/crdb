@@ -276,14 +276,14 @@ impl Db for PostgresDb {
             .with_context(|| format!("removing latest-snapshot flag for object {object_id:?}"))
             .map_err(DbOpError::Other)?;
 
-        // Apply all events between the last snapshot and the current event
+        // Apply all events between the last snapshot (excluded) and the current event (excluded)
         if !last_snapshot.is_latest {
-            apply_events_from(
+            apply_events_between(
                 &mut *transaction,
                 &mut object,
                 object_id,
                 EventId::from_uuid(last_snapshot.snapshot_id),
-                event_id,
+                EventId::from_u128(event_id.as_u128() - 1),
             )
             .await?;
         }
@@ -543,6 +543,24 @@ impl Db for PostgresDb {
             // both the latest snapshot and the creation snapshot
             return Ok(());
         }
+        let mut object = parse_snapshot::<T>(snapshot.snapshot_version, snapshot.snapshot)
+            .with_context(|| {
+                format!(
+                    "parsing snapshot {:?} as {:?}",
+                    snapshot.snapshot_id,
+                    T::type_ulid()
+                )
+            })?;
+
+        // Apply all the events between latest snapshot (excluded) and asked recreation time (included)
+        apply_events_between(
+            &mut *transaction,
+            &mut object,
+            object_id,
+            EventId::from_uuid(snapshot.snapshot_id),
+            cutoff_time,
+        )
+        .await?;
         todo!()
     }
 
@@ -688,7 +706,9 @@ async fn get_impl<T: Object>(
     )))
 }
 
-async fn apply_events_from<T: Object>(
+/// `from` is excluded
+/// `to` is included
+async fn apply_events_between<T: Object>(
     transaction: &mut sqlx::PgConnection,
     object: &mut T,
     object_id: ObjectId,
@@ -701,7 +721,7 @@ async fn apply_events_from<T: Object>(
             FROM events
             WHERE object_id = $1
             AND event_id > $2
-            AND event_id < $3
+            AND event_id <= $3
             ORDER BY event_id ASC
         ",
         object_id as ObjectId,

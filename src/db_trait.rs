@@ -36,9 +36,16 @@ macro_rules! impl_for_id {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
 
-            #[cfg(feature = "server")]
             pub(crate) fn last_id_at(time: Timestamp) -> Self {
                 Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1))
+            }
+
+            pub(crate) fn from_u128(v: u128) -> Self {
+                Self(Ulid::from_bytes(v.to_be_bytes()))
+            }
+
+            pub(crate) fn as_u128(&self) -> u128 {
+                u128::from_be_bytes(self.0.to_bytes())
             }
         }
 

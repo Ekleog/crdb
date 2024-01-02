@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT event_id, data\n            FROM events\n            WHERE object_id = $1\n            AND event_id > $2\n            AND event_id < $3\n            ORDER BY event_id ASC\n        ",
+  "query": "\n            SELECT event_id, data\n            FROM events\n            WHERE object_id = $1\n            AND event_id > $2\n            AND event_id <= $3\n            ORDER BY event_id ASC\n        ",
   "describe": {
     "columns": [
       {
@@ -26,5 +26,5 @@
       false
     ]
   },
-  "hash": "d18850a99626a74a9a689dc91dd6e02284310f2a6b6861b95ead6be8841cf5ba"
+  "hash": "b7dc7b39144d2ba6d0dec7f346c93352b7096f39e2f603dcbace27d15d2e343e"
 }
