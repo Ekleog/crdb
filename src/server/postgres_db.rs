@@ -429,9 +429,6 @@ impl Db for PostgresDb {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        const EVENT_ID: usize = 0;
-        const EVENT_DATA: usize = 1;
-
         let mut transaction = self
             .db
             .begin()
@@ -444,107 +441,7 @@ impl Db for PostgresDb {
             .await
             .context("setting transaction as repeatable read")?;
 
-        let creation_snapshot = sqlx::query!(
-            "
-                SELECT snapshot_id, snapshot_version, snapshot
-                FROM snapshots
-                WHERE object_id = $1
-                AND type_id = $2
-                AND is_creation
-            ",
-            ptr.to_uuid(),
-            uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
-        )
-        .fetch_optional(&mut *transaction)
-        .await
-        .with_context(|| format!("fetching creation snapshot for object {ptr:?}"))?;
-        let creation_snapshot = match creation_snapshot {
-            Some(s) => s,
-            None => return Ok(None),
-        };
-
-        let events =
-            sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
-                .bind(ptr)
-                .fetch_all(&mut *transaction)
-                .await
-                .with_context(|| format!("fetching all events for object {ptr:?}"))?;
-
-        let latest_snapshot = sqlx::query!(
-            "
-                SELECT snapshot_id, snapshot_version, snapshot
-                FROM snapshots
-                WHERE object_id = $1
-                AND type_id = $2
-                AND is_latest
-            ",
-            ptr.to_uuid(),
-            uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .with_context(|| format!("fetching latest snapshot for object {ptr:?}"))?;
-
-        // Build the FullObject from the parts
-        let creation = Arc::new(
-            parse_snapshot::<T>(
-                creation_snapshot.snapshot_version,
-                creation_snapshot.snapshot,
-            )
-            .with_context(|| {
-                format!(
-                    "parsing snapshot {:?} as type {:?}",
-                    creation_snapshot.snapshot_id,
-                    T::type_ulid()
-                )
-            })?,
-        );
-        let first_event = events
-            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= creation_snapshot.snapshot_id);
-        let after_last_event = events
-            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= latest_snapshot.snapshot_id);
-        let mut changes = BTreeMap::new();
-        for e in events
-            .into_iter()
-            .skip(first_event)
-            .take(after_last_event - first_event)
-        {
-            let event_id = EventId::from_uuid(e.get(EVENT_ID));
-            changes.insert(
-                event_id,
-                Change::new(Arc::new(
-                    serde_json::from_value::<T::Event>(e.get(EVENT_DATA)).with_context(|| {
-                        format!("parsing event {event_id:?} as type {:?}", T::type_ulid())
-                    })?,
-                )),
-            );
-        }
-        if let Some(mut c) = changes.last_entry() {
-            c.get_mut().set_snapshot(Arc::new(
-                parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
-                    .with_context(|| {
-                        format!(
-                            "parsing snapshot {:?} as type {:?}",
-                            latest_snapshot.snapshot_id,
-                            T::type_ulid()
-                        )
-                    })?,
-            ));
-        } else {
-            assert!(
-                creation_snapshot.snapshot_id == latest_snapshot.snapshot_id,
-                "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
-                latest_snapshot.snapshot_id,
-                creation_snapshot.snapshot_id
-            );
-        }
-
-        Ok(Some(FullObject::from_parts(
-            ptr,
-            EventId::from_uuid(creation_snapshot.snapshot_id),
-            creation,
-            changes,
-        )))
+        get_impl::<T>(&mut *transaction, ptr).await
     }
 
     async fn query<T: Object>(
@@ -591,4 +488,115 @@ async fn check_required_binaries(
         return Err(DbOpError::MissingBinPtrs(binaries));
     }
     Ok(())
+}
+
+/// Note: this assumes that `transaction` is set to REPEATABLE READ for consistency
+async fn get_impl<T: Object>(
+    transaction: &mut sqlx::PgConnection,
+    ptr: ObjectId,
+) -> anyhow::Result<Option<FullObject>> {
+    const EVENT_ID: usize = 0;
+    const EVENT_DATA: usize = 1;
+
+    let creation_snapshot = sqlx::query!(
+        "
+            SELECT snapshot_id, snapshot_version, snapshot
+            FROM snapshots
+            WHERE object_id = $1
+            AND type_id = $2
+            AND is_creation
+        ",
+        ptr.to_uuid(),
+        uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
+    )
+    .fetch_optional(&mut *transaction)
+    .await
+    .with_context(|| format!("fetching creation snapshot for object {ptr:?}"))?;
+    let creation_snapshot = match creation_snapshot {
+        Some(s) => s,
+        None => return Ok(None),
+    };
+
+    let events =
+        sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
+            .bind(ptr)
+            .fetch_all(&mut *transaction)
+            .await
+            .with_context(|| format!("fetching all events for object {ptr:?}"))?;
+
+    let latest_snapshot = sqlx::query!(
+        "
+            SELECT snapshot_id, snapshot_version, snapshot
+            FROM snapshots
+            WHERE object_id = $1
+            AND type_id = $2
+            AND is_latest
+        ",
+        ptr.to_uuid(),
+        uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .with_context(|| format!("fetching latest snapshot for object {ptr:?}"))?;
+
+    // Build the FullObject from the parts
+    let creation = Arc::new(
+        parse_snapshot::<T>(
+            creation_snapshot.snapshot_version,
+            creation_snapshot.snapshot,
+        )
+        .with_context(|| {
+            format!(
+                "parsing snapshot {:?} as type {:?}",
+                creation_snapshot.snapshot_id,
+                T::type_ulid()
+            )
+        })?,
+    );
+    let first_event = events
+        .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= creation_snapshot.snapshot_id);
+    let after_last_event =
+        events.partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= latest_snapshot.snapshot_id);
+    let mut changes = BTreeMap::new();
+    for e in events
+        .into_iter()
+        .skip(first_event)
+        .take(after_last_event - first_event)
+    {
+        let event_id = EventId::from_uuid(e.get(EVENT_ID));
+        changes.insert(
+            event_id,
+            Change::new(Arc::new(
+                serde_json::from_value::<T::Event>(e.get(EVENT_DATA)).with_context(|| {
+                    format!("parsing event {event_id:?} as type {:?}", T::type_ulid())
+                })?,
+            )),
+        );
+    }
+    if let Some(mut c) = changes.last_entry() {
+        c.get_mut().set_snapshot(Arc::new(
+            parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
+                .with_context(|| {
+                    format!(
+                        "parsing snapshot {:?} as type {:?}",
+                        latest_snapshot.snapshot_id,
+                        T::type_ulid()
+                    )
+                })?,
+        ));
+    } else {
+        assert!(
+            creation_snapshot.snapshot_id == latest_snapshot.snapshot_id,
+            "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
+            latest_snapshot.snapshot_id,
+            creation_snapshot.snapshot_id
+        );
+    }
+
+    Ok(Some(FullObject::from_parts(
+        ptr,
+        EventId::from_uuid(creation_snapshot.snapshot_id),
+        creation,
+        changes,
+    )))
 }
