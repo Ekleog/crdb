@@ -6,6 +6,8 @@ fmt:
 
 test: test-crate test-example-basic
 
+test-no-pg: test-crate-no-pg test-example-basic
+
 rebuild-offline-queries:
     dropdb crdb-test || true
     createdb crdb-test
@@ -15,6 +17,9 @@ rebuild-offline-queries:
 
 test-crate:
     SQLX_OFFLINE="true" cargo test --all-features
+
+test-crate-no-pg:
+    SQLX_OFFLINE="true" cargo test --all-features -- --skip server::postgres_db
 
 test-example-basic: build-example-basic-client test-example-basic-host
 
