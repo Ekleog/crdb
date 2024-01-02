@@ -44,7 +44,9 @@ pub const TYPE_ID_5: TypeId = TypeId(ulid("30000000000000000000000050"));
     serde::Deserialize,
     serde::Serialize,
 )]
-pub struct TestObject1(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>);
+pub struct TestObject1(
+    #[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] pub Vec<u8>,
+);
 
 #[derive(
     Clone,

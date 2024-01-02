@@ -513,9 +513,9 @@ impl Db for PostgresDb {
             })?,
         );
         let first_event = events
-            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) > creation_snapshot.snapshot_id);
+            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= creation_snapshot.snapshot_id);
         let after_last_event = events
-            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) > latest_snapshot.snapshot_id);
+            .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= latest_snapshot.snapshot_id);
         let mut changes = BTreeMap::new();
         for e in events
             .into_iter()

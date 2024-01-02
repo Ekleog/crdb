@@ -46,6 +46,16 @@ async fn smoke_test(db: sqlx::PgPool) {
     )
     .await
     .expect_err("submitting duplicate event with different contents worked");
+    assert_eq!(
+        Vec::<u8>::new(),
+        db.get::<TestObject1>(OBJECT_ID_1)
+            .await
+            .expect("getting object 1")
+            .expect("object 1 is supposed to exist")
+            .last_snapshot::<TestObject1>()
+            .expect("getting last snapshot")
+            .0
+    );
 }
 
 // TODO: fuzz the db (by having postgres create its test db in a tablespace in /tmp
