@@ -147,8 +147,7 @@ impl Db for PostgresDb {
             return Ok(());
         }
 
-        // Check that all required binaries are present, now that the object has been locked
-        // (by virtue of having been created by this transaction)
+        // Check that all required binaries are present, always as the last lock obtained in the transaction
         check_required_binaries(&mut t, required_binaries)
             .await
             .map_err(|e| {
@@ -401,9 +400,17 @@ impl Db for PostgresDb {
             .with_context(|| format!("inserting event {event_id:?} into table"))
             .map_err(DbOpError::Other)?;
         }
-        // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is
-        // properly present in the same transaction as we're adding the event, reject if not.
-        // The ASSERT should probably be FOR KEY SHARE, and even be placed at the top of the transaction
+
+        // Check that all required binaries are present, always as the last lock obtained in the transaction
+        check_required_binaries(&mut transaction, event.required_binaries())
+            .await
+            .map_err(|e| {
+                e.with_context(|| {
+                    format!(
+                        "checking that all binaries for object {object_id:?} are already present"
+                    )
+                })
+            })?;
 
         transaction
             .commit()
