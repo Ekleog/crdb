@@ -6,6 +6,9 @@ fmt:
 
 test: test-crate test-example-basic
 
+doc:
+    RUSTDOCFLAGS="-Z unstable-options --document-hidden-items" cargo doc --all-features --document-private-items
+
 test-no-pg: test-crate-no-pg test-example-basic
 
 rebuild-offline-queries:
