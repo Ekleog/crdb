@@ -1,3 +1,5 @@
+export RUST_BACKTRACE := "short"
+
 fmt:
     cargo fmt
     cd examples/basic && cargo fmt

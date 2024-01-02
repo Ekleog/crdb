@@ -358,12 +358,14 @@ impl Db for PostgresDb {
                 event_id.to_uuid(),
             )
             .fetch(&mut *transaction);
+            let mut last_event_id = None;
             while let Some(e) = events_since_inserted.next().await {
                 let e = e
                     .with_context(|| {
                         format!("fetching all events for {object_id:?} after {event_id:?}")
                     })
                     .map_err(DbOpError::Other)?;
+                last_event_id = Some(e.event_id);
                 let e = serde_json::from_value::<T::Event>(e.data)
                     .with_context(|| {
                         format!(
@@ -385,9 +387,12 @@ impl Db for PostgresDb {
                 )
             })?;
             sqlx::query(
-                "INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, TRUE, $5, $6, $7, $8, $9)",
+                "INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, TRUE, $4, $5, $6, $7, $8)",
             )
-            .bind(event_id)
+            .bind(
+                last_event_id
+                    .expect("Entered the 'recomputing last snapshot' stage without any new events"),
+            )
             .bind(TypeId(*T::type_ulid()))
             .bind(object_id)
             .bind(T::snapshot_version())
