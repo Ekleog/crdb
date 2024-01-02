@@ -464,8 +464,8 @@ impl Db for PostgresDb {
             .context("setting transaction as repeatable read")?;
 
         let query = format!(
-            "SELECT object_id FROM snapshots WHERE is_latest AND ({})",
-            q.where_clause()
+            "SELECT object_id FROM snapshots WHERE is_latest AND type_id = $1 AND ({})",
+            q.where_clause(2)
         );
         let mut query = sqlx::query(&query);
         for b in q.binds() {
@@ -481,7 +481,16 @@ impl Db for PostgresDb {
             .await
             .with_context(|| format!("listing objects matching query {q:?}"))?;
 
-        Ok(futures::stream::empty()) // TODO
+        Ok(async_stream::stream! {
+            for id in ids {
+                let object = get_impl::<T>(&mut *transaction, ObjectId::from_uuid(id.get(0))).await;
+                match object {
+                    Err(e) => yield Err(e),
+                    Ok(None) => panic!("Found object that matches query, but was unable to get it"),
+                    Ok(Some(o)) => yield Ok(o),
+                }
+            }
+        })
     }
 
     async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {

@@ -54,9 +54,9 @@ pub enum Query {
 
 impl Query {
     #[cfg(feature = "server")]
-    pub(crate) fn where_clause(&self) -> String {
+    pub(crate) fn where_clause(&self, first_idx: usize) -> String {
         let mut res = String::new();
-        let mut bind_idx = 0;
+        let mut bind_idx = first_idx;
         add_to_where_clause(&mut res, &mut bind_idx, self);
         res
     }

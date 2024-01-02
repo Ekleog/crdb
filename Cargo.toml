@@ -16,6 +16,7 @@ server = ["axum", "sqlx/json", "sqlx/postgres", "sqlx/uuid", "uuid"]
 
 [dependencies]
 anyhow = "1.0"
+async-stream = "0.3.5"
 deepsize = "0.2.0"
 educe = "0.5.9"
 futures = "0.3.29"
