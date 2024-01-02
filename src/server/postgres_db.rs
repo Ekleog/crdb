@@ -1,17 +1,17 @@
-use std::sync::Arc;
-
+use super::{Session, SessionRef, SessionToken};
 use crate::{
     api::parse_snapshot,
     db_trait::{
-        Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp, TypeId,
+        Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp,
+        TypeId,
     },
     full_object::FullObject,
-    CanDoCallbacks, Event, Object, User,
+    BinPtr, CanDoCallbacks, Event, Object, User,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use futures::{Stream, StreamExt};
-
-use super::{Session, SessionRef, SessionToken};
+use sqlx::Row;
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
@@ -82,7 +82,14 @@ impl Db for PostgresDb {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
+        let mut t = self
+            .db
+            .begin()
+            .await
+            .context("acquiring postgresql transaction")
+            .map_err(DbOpError::Other)?;
+
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
         let snapshot_version = T::snapshot_version();
@@ -90,10 +97,10 @@ impl Db for PostgresDb {
         let users_who_can_read = object
             .users_who_can_read(cb)
             .await
-            .with_context(|| format!("listing users who can read object {object_id:?}"))?;
+            .with_context(|| format!("listing users who can read object {object_id:?}"))
+            .map_err(DbOpError::Other)?;
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
-        // TODO: ASSERT that all required binaries are actually present
         let affected =
             sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING")
                 .bind(created_at)
@@ -103,10 +110,11 @@ impl Db for PostgresDb {
                 .bind(object_json)
                 .bind(users_who_can_read)
                 .bind(is_heavy)
-                .bind(required_binaries)
-                .execute(&self.db)
+                .bind(&required_binaries)
+                .execute(&mut *t)
                 .await
-                .with_context(|| format!("inserting snapshot {created_at:?}"))?
+                .with_context(|| format!("inserting snapshot {created_at:?}"))
+                .map_err(DbOpError::Other)?
                 .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
@@ -124,17 +132,37 @@ impl Db for PostgresDb {
             .bind(object_id)
             .bind(snapshot_version)
             .bind(object_json)
-            .execute(&self.db)
+            .execute(&mut *t)
             .await
             .with_context(|| {
                 format!("checking pre-existing snapshot for {created_at:?} is the same")
-            })?
+            })
+            .map_err(DbOpError::Other)?
             .rows_affected();
-            anyhow::ensure!(
-                affected == 1,
-                "Snapshot {created_at:?} already existed with a different value set"
-            );
+            if affected != 1 {
+                return Err(DbOpError::Other(anyhow!(
+                    "Snapshot {created_at:?} already existed with a different value set"
+                )));
+            }
+            return Ok(());
         }
+
+        // Check that all required binaries are present, now that the object has been locked
+        // (by virtue of having been created by this transaction)
+        check_required_binaries(&mut t, required_binaries)
+            .await
+            .map_err(|e| {
+                e.with_context(|| {
+                    format!(
+                        "checking that all binaries for object {object_id:?} are already present"
+                    )
+                })
+            })?;
+
+        t.commit()
+            .await
+            .with_context(|| format!("committing transaction that created {object_id:?}"))
+            .map_err(DbOpError::Other)?;
         Ok(())
     }
 
@@ -149,7 +177,8 @@ impl Db for PostgresDb {
             .db
             .begin()
             .await
-            .context("acquiring postgresql transaction")?;
+            .context("acquiring postgresql transaction")
+            .map_err(DbOpError::Other)?;
 
         // Lock the object
         let creation_snapshot = sqlx::query!(
@@ -158,7 +187,8 @@ impl Db for PostgresDb {
         )
         .fetch_optional(&mut *transaction)
         .await
-        .with_context(|| format!("locking object {object_id:?} in database"))?;
+        .with_context(|| format!("locking object {object_id:?} in database"))
+        .map_err(DbOpError::Other)?;
         match creation_snapshot {
             None => anyhow::bail!("Object {object_id:?} does not exist yet in database"),
             Some(s) => anyhow::ensure!(
@@ -179,7 +209,8 @@ impl Db for PostgresDb {
                 .bind(required_binaries)
                 .execute(&mut *transaction)
                 .await
-                .with_context(|| format!("inserting event {event_id:?} in database"))?
+                .with_context(|| format!("inserting event {event_id:?} in database"))
+                .map_err(DbOpError::Other)?
                 .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
@@ -196,9 +227,8 @@ impl Db for PostgresDb {
             .bind(event_json)
             .execute(&self.db)
             .await
-            .with_context(|| {
-                format!("checking pre-existing snapshot for {event_id:?} is the same")
-            })?
+            .with_context(|| format!("checking pre-existing snapshot for {event_id:?} is the same"))
+            .map_err(DbOpError::Other)?
             .rows_affected();
             anyhow::ensure!(
                 affected == 1,
@@ -216,7 +246,8 @@ impl Db for PostgresDb {
             .await
             .with_context(|| {
                 format!("clearing all snapshots for object {object_id:?} after event {event_id:?}")
-            })?;
+            })
+            .map_err(DbOpError::Other)?;
 
         // Find the last snapshot for the object
         let last_snapshot = sqlx::query!(
@@ -234,7 +265,8 @@ impl Db for PostgresDb {
         .with_context(|| format!("fetching the last snapshot for object {object_id:?}"))?;
         let mut object =
             parse_snapshot::<T>(last_snapshot.snapshot_version, last_snapshot.snapshot)
-                .with_context(|| format!("parsing last snapshot for object {object_id:?}"))?;
+                .with_context(|| format!("parsing last snapshot for object {object_id:?}"))
+                .map_err(DbOpError::Other)?;
 
         // Remove the "latest snapshot" flag for the object
         // Note that this can be a no-op if the latest snapshot was already deleted above
@@ -242,7 +274,8 @@ impl Db for PostgresDb {
             .bind(object_id)
             .execute(&mut *transaction)
             .await
-            .with_context(|| format!("removing latest-snapshot flag for object {object_id:?}"))?;
+            .with_context(|| format!("removing latest-snapshot flag for object {object_id:?}"))
+            .map_err(DbOpError::Other)?;
 
         // Apply all events between the last snapshot and the current event
         if !last_snapshot.is_latest {
@@ -261,19 +294,23 @@ impl Db for PostgresDb {
             )
             .fetch(&mut *transaction);
             while let Some(e) = events_between_last_snapshot_and_current_event.next().await {
-                let e = e.with_context(|| {
-                    format!(
-                        "fetching all events for {object_id:?} betwen {:?} and {event_id:?}",
-                        last_snapshot.snapshot_id
-                    )
-                })?;
-                let e = serde_json::from_value::<T::Event>(e.data).with_context(|| {
-                    format!(
-                        "parsing event {:?} of type {:?}",
-                        e.event_id,
-                        T::type_ulid()
-                    )
-                })?;
+                let e = e
+                    .with_context(|| {
+                        format!(
+                            "fetching all events for {object_id:?} betwen {:?} and {event_id:?}",
+                            last_snapshot.snapshot_id
+                        )
+                    })
+                    .map_err(DbOpError::Other)?;
+                let e = serde_json::from_value::<T::Event>(e.data)
+                    .with_context(|| {
+                        format!(
+                            "parsing event {:?} of type {:?}",
+                            e.event_id,
+                            T::type_ulid()
+                        )
+                    })
+                    .map_err(DbOpError::Other)?;
 
                 object.apply(&e);
             }
@@ -283,9 +320,15 @@ impl Db for PostgresDb {
         object.apply(&event);
 
         // Save the new snapshot (the new event was already saved above)
-        let users_who_can_read = object.users_who_can_read(cb).await.with_context(|| {
-            format!("listing users who can read for snapshot {event_id:?} of object {object_id:?}")
-        })?;
+        let users_who_can_read = object
+            .users_who_can_read(cb)
+            .await
+            .with_context(|| {
+                format!(
+                    "listing users who can read for snapshot {event_id:?} of object {object_id:?}"
+                )
+            })
+            .map_err(DbOpError::Other)?;
         sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9)")
             .bind(event_id)
             .bind(TypeId(*T::type_ulid()))
@@ -298,7 +341,8 @@ impl Db for PostgresDb {
             .bind(object.required_binaries())
             .execute(&mut *transaction)
             .await
-            .with_context(|| format!("inserting event {event_id:?} into table"))?;
+            .with_context(|| format!("inserting event {event_id:?} into table"))
+            .map_err(DbOpError::Other)?;
 
         // If needed, re-compute the last snapshot
         if !last_snapshot.is_latest {
@@ -316,16 +360,20 @@ impl Db for PostgresDb {
             )
             .fetch(&mut *transaction);
             while let Some(e) = events_since_inserted.next().await {
-                let e = e.with_context(|| {
-                    format!("fetching all events for {object_id:?} after {event_id:?}")
-                })?;
-                let e = serde_json::from_value::<T::Event>(e.data).with_context(|| {
-                    format!(
-                        "parsing event {:?} of type {:?}",
-                        e.event_id,
-                        T::type_ulid()
-                    )
-                })?;
+                let e = e
+                    .with_context(|| {
+                        format!("fetching all events for {object_id:?} after {event_id:?}")
+                    })
+                    .map_err(DbOpError::Other)?;
+                let e = serde_json::from_value::<T::Event>(e.data)
+                    .with_context(|| {
+                        format!(
+                            "parsing event {:?} of type {:?}",
+                            e.event_id,
+                            T::type_ulid()
+                        )
+                    })
+                    .map_err(DbOpError::Other)?;
 
                 object.apply(&e);
             }
@@ -350,15 +398,20 @@ impl Db for PostgresDb {
             .bind(object.required_binaries())
             .execute(&mut *transaction)
             .await
-            .with_context(|| format!("inserting event {event_id:?} into table"))?;
+            .with_context(|| format!("inserting event {event_id:?} into table"))
+            .map_err(DbOpError::Other)?;
         }
         // TODO: make sure there is a postgresql ASSERT that validates that any newly-added BinPtr is
         // properly present in the same transaction as we're adding the event, reject if not.
         // The ASSERT should probably be FOR KEY SHARE, and even be placed at the top of the transaction
 
-        transaction.commit().await.with_context(|| {
-            format!("committing transaction adding event {event_id:?} to object {object_id:?}")
-        })?;
+        transaction
+            .commit()
+            .await
+            .with_context(|| {
+                format!("committing transaction adding event {event_id:?} to object {object_id:?}")
+            })
+            .map_err(DbOpError::Other)?;
 
         Ok(())
     }
@@ -382,11 +435,33 @@ impl Db for PostgresDb {
         todo!()
     }
 
-    async fn create_binary(&self, id: crate::BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+    async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn get_binary(&self, ptr: crate::BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
+}
+
+async fn check_required_binaries(
+    t: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    mut binaries: Vec<BinPtr>,
+) -> Result<(), DbOpError> {
+    // FOR KEY SHARE: prevent DELETE of the binaries while `t` is running
+    let present_ids = sqlx::query("SELECT id FROM binaries WHERE id = ANY ($1) FOR KEY SHARE")
+        .bind(&binaries)
+        .fetch_all(&mut **t)
+        .await
+        .context("listing binaries already present in database")
+        .map_err(DbOpError::Other)?;
+    binaries.retain(|b| {
+        present_ids
+            .iter()
+            .any(|i| i.get::<uuid::Uuid, _>(0) == b.to_uuid())
+    });
+    if !binaries.is_empty() {
+        return Err(DbOpError::MissingBinPtrs(binaries));
+    }
+    Ok(())
 }

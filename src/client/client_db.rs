@@ -2,7 +2,7 @@ use super::{ApiDb, Authenticator, LocalDb};
 use crate::{
     api,
     cache::CacheDb,
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
@@ -75,7 +75,7 @@ impl<A: Authenticator> Db for ClientDb<A> {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         self.api.create(id, created_at, object.clone(), cb).await?;
         self.db.create(id, created_at, object, cb).await
     }

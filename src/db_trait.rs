@@ -114,6 +114,25 @@ impl Timestamp {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum DbOpError {
+    #[error("Missing binary pointers: {0:?}")]
+    MissingBinPtrs(Vec<BinPtr>),
+
+    #[error(transparent)]
+    Other(anyhow::Error),
+}
+
+impl DbOpError {
+    pub fn with_context<F: FnOnce() -> String>(self, f: F) -> DbOpError {
+        match self {
+            DbOpError::MissingBinPtrs(b) => DbOpError::MissingBinPtrs(b),
+            DbOpError::Other(e) => DbOpError::Other(e.context(f())),
+        }
+    }
+}
+
 pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
@@ -137,7 +156,7 @@ pub trait Db: 'static + Send + Sync {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> impl Send + Future<Output = anyhow::Result<()>>;
+    ) -> impl Send + Future<Output = Result<(), DbOpError>>;
     fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,

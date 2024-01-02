@@ -11,7 +11,7 @@ macro_rules! impl_for_id {
     ($type:ty) => {
         #[cfg(feature = "server")]
         impl $type {
-            fn to_uuid(&self) -> uuid::Uuid {
+            pub(crate) fn to_uuid(&self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.id.to_bytes())
             }
         }
@@ -342,7 +342,7 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
             }
 
-            async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, cb: &C) -> crdb::anyhow::Result<()> {
+            async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, cb: &C) -> Result<(), crdb::DbOpError> {
                 $(
                     if o.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let object = o.object
@@ -352,7 +352,7 @@ macro_rules! generate_api {
                         return db.create::<$object, _>(o.id, o.created_at, object, cb).await;
                     }
                 )*
-                crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
+                Err(crdb::DbOpError::Other(crdb::anyhow::anyhow!("got new object with unknown type {:?}", o.type_id)))
             }
 
             async fn submit_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, e: crdb::DynNewEvent, cb: &C) -> crdb::anyhow::Result<()> {

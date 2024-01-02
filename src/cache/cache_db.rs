@@ -1,6 +1,6 @@
 use super::{BinariesCache, CacheConfig, ObjectCache};
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
     hash_binary, BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
@@ -194,9 +194,12 @@ impl<D: Db> Db for CacheDb<D> {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         let mut cache = self.cache.write().await;
-        if cache.create(id, created_at, object.clone())? {
+        if cache
+            .create(id, created_at, object.clone())
+            .map_err(DbOpError::Other)?
+        {
             self.db.create(id, created_at, object, cb).await?;
         }
         Ok(())

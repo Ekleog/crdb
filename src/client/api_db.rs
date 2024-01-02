@@ -1,6 +1,6 @@
 use super::Authenticator;
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
@@ -54,7 +54,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         created_at: EventId,
         object: Arc<T>,
         _cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         todo!()
     }
 
