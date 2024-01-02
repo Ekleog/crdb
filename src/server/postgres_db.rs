@@ -1,6 +1,6 @@
 use super::{Session, SessionRef, SessionToken};
 use crate::{
-    api::parse_snapshot,
+    api::{parse_snapshot, query::Bind},
     db_trait::{
         Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, Timestamp,
         TypeId,
@@ -467,6 +467,19 @@ impl Db for PostgresDb {
             "SELECT object_id FROM snapshots WHERE is_latest AND ({})",
             q.where_clause()
         );
+        let mut query = sqlx::query(&query);
+        for b in q.binds() {
+            match b {
+                Bind::Json(v) => query = query.bind(v),
+                Bind::Str(v) => query = query.bind(v),
+                Bind::F64(v) => query = query.bind(v),
+                Bind::I64(v) => query = query.bind(v),
+            }
+        }
+        let ids = query
+            .fetch_all(&mut *transaction)
+            .await
+            .with_context(|| format!("listing objects matching query {q:?}"))?;
 
         Ok(futures::stream::empty()) // TODO
     }

@@ -1,15 +1,28 @@
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum JsonPathItem {
     Key(String),
     Id(isize),
 }
 
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum JsonNumber {
     F64(f64),
-    I128(i128),
+    I64(i64),
 }
 
+impl JsonNumber {
+    #[cfg(feature = "server")]
+    fn to_bind(&self) -> Bind {
+        match self {
+            JsonNumber::F64(v) => Bind::F64(*v),
+            JsonNumber::I64(v) => Bind::I64(*v),
+        }
+    }
+}
+
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Query {
     // Logic operators
@@ -45,6 +58,13 @@ impl Query {
         let mut res = String::new();
         let mut bind_idx = 0;
         add_to_where_clause(&mut res, &mut bind_idx, self);
+        res
+    }
+
+    #[cfg(feature = "server")]
+    pub(crate) fn binds(&self) -> Vec<Bind<'_>> {
+        let mut res = Vec::new();
+        add_to_binds(&mut res, self);
         res
     }
 }
@@ -134,6 +154,49 @@ fn add_path_to_clause(res: &mut String, path: &[JsonPathItem]) {
             JsonPathItem::Key(k) => {
                 res.push_str(&format!("->'{k}'"));
             }
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+pub(crate) enum Bind<'a> {
+    Json(&'a serde_json::Value),
+    Str(&'a str),
+    I64(i64),
+    F64(f64),
+}
+
+#[cfg(feature = "server")]
+fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) {
+    match query {
+        Query::All(v) => {
+            for q in v {
+                add_to_binds(&mut *res, q);
+            }
+        }
+        Query::Any(v) => {
+            for q in v {
+                add_to_binds(&mut *res, q);
+            }
+        }
+        Query::Not(q) => {
+            add_to_binds(&mut *res, q);
+        }
+        Query::Eq(_, v) => {
+            res.push(Bind::Json(v));
+        }
+        Query::Ne(_, v) => {
+            res.push(Bind::Json(v));
+        }
+        Query::Le(_, v) => res.push(v.to_bind()),
+        Query::Lt(_, v) => res.push(v.to_bind()),
+        Query::Ge(_, v) => res.push(v.to_bind()),
+        Query::Gt(_, v) => res.push(v.to_bind()),
+        Query::Contains(_, v) => {
+            res.push(Bind::Json(v));
+        }
+        Query::ContainsStr(_, v) => {
+            res.push(Bind::Str(v));
         }
     }
 }

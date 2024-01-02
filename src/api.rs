@@ -7,7 +7,7 @@ use anyhow::Context;
 use std::{any::Any, collections::HashSet, future::Future, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
-mod query;
+pub(crate) mod query;
 pub use query::{JsonNumber, JsonPathItem, Query};
 
 macro_rules! impl_for_id {
