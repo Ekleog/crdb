@@ -484,7 +484,11 @@ impl Db for PostgresDb {
         })
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(
+        &self,
+        time: Timestamp,
+        object_id: ObjectId,
+    ) -> anyhow::Result<()> {
         if time.time_ms()
             > SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -493,9 +497,26 @@ impl Db for PostgresDb {
                 - 1000 * 3600
         {
             tracing::warn!(
-                "Re-creating object {object:?} at time {time:?} which is less than an hour old"
+                "Re-creating object {object_id:?} at time {time:?} which is less than an hour old"
             );
         }
+
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .context("acquiring postgresql transaction")?;
+
+        // Lock the object
+        let affected = sqlx::query(
+            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation FOR UPDATE",
+        )
+        .bind(object_id)
+        .execute(&mut *transaction)
+        .await
+        .with_context(|| format!("locking {object_id:?} for re-creation"))?
+        .rows_affected();
+        anyhow::ensure!(affected == 1, "Failed to lock object {object_id:?}");
         todo!()
     }
 
