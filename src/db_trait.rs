@@ -35,6 +35,11 @@ macro_rules! impl_for_id {
             pub(crate) fn from_uuid(id: uuid::Uuid) -> Self {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
+
+            #[cfg(feature = "server")]
+            pub(crate) fn last_id_at(time: Timestamp) -> Self {
+                Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1))
+            }
         }
 
         #[cfg(feature = "server")]

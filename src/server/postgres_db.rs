@@ -501,6 +501,8 @@ impl Db for PostgresDb {
             );
         }
 
+        let cutoff_time = EventId::last_id_at(time);
+
         let mut transaction = self
             .db
             .begin()
@@ -517,6 +519,30 @@ impl Db for PostgresDb {
         .with_context(|| format!("locking {object_id:?} for re-creation"))?
         .rows_affected();
         anyhow::ensure!(affected == 1, "Failed to lock object {object_id:?}");
+
+        // Fetch the latest snapshot
+        let snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, snapshot_version, snapshot, is_latest, is_creation
+                FROM snapshots
+                WHERE object_id = $1
+                AND snapshot_id < $2
+                ORDER BY snapshot_id DESC
+                LIMIT 1
+            ",
+            object_id as ObjectId,
+            cutoff_time as EventId,
+        )
+        .fetch_one(&mut *transaction)
+        .await
+        .with_context(|| {
+            format!("fetching latest snapshot before {cutoff_time:?} for object {object_id:?}")
+        })?;
+        if snapshot.is_creation && snapshot.is_latest {
+            // no need to do anything, the last snapshot before the requested cutoff was already
+            // both the latest snapshot and the creation snapshot
+            return Ok(());
+        }
         todo!()
     }
 
