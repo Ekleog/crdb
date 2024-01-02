@@ -11,7 +11,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use futures::{Stream, StreamExt};
 use sqlx::Row;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc, time::SystemTime};
 use ulid::Ulid;
 
 #[cfg(test)]
@@ -278,41 +278,14 @@ impl Db for PostgresDb {
 
         // Apply all events between the last snapshot and the current event
         if !last_snapshot.is_latest {
-            let mut events_between_last_snapshot_and_current_event = sqlx::query!(
-                "
-                    SELECT event_id, data
-                    FROM events
-                    WHERE object_id = $1
-                    AND event_id > $2
-                    AND event_id < $3
-                    ORDER BY event_id ASC
-                ",
-                object_id.to_uuid(),
-                last_snapshot.snapshot_id,
-                event_id.to_uuid(),
+            apply_events_from(
+                &mut *transaction,
+                &mut object,
+                object_id,
+                EventId::from_uuid(last_snapshot.snapshot_id),
+                event_id,
             )
-            .fetch(&mut *transaction);
-            while let Some(e) = events_between_last_snapshot_and_current_event.next().await {
-                let e = e
-                    .with_context(|| {
-                        format!(
-                            "fetching all events for {object_id:?} betwen {:?} and {event_id:?}",
-                            last_snapshot.snapshot_id
-                        )
-                    })
-                    .map_err(DbOpError::Other)?;
-                let e = serde_json::from_value::<T::Event>(e.data)
-                    .with_context(|| {
-                        format!(
-                            "parsing event {:?} of type {:?}",
-                            e.event_id,
-                            T::type_ulid()
-                        )
-                    })
-                    .map_err(DbOpError::Other)?;
-
-                object.apply(&e);
-            }
+            .await?;
         }
 
         // Add the current event to the last snapshot
@@ -511,7 +484,18 @@ impl Db for PostgresDb {
         })
     }
 
-    async fn recreate<T: Object>(&self, _time: Timestamp, _object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+        if time.time_ms()
+            > SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|t| t.as_millis())
+                .unwrap_or(0) as u64
+                - 1000 * 3600
+        {
+            tracing::warn!(
+                "Re-creating object {object:?} at time {time:?} which is less than an hour old"
+            );
+        }
         todo!()
     }
 
@@ -655,4 +639,46 @@ async fn get_impl<T: Object>(
         creation,
         changes,
     )))
+}
+
+async fn apply_events_from<T: Object>(
+    transaction: &mut sqlx::PgConnection,
+    object: &mut T,
+    object_id: ObjectId,
+    from: EventId,
+    to: EventId,
+) -> anyhow::Result<()> {
+    let mut events = sqlx::query!(
+        "
+            SELECT event_id, data
+            FROM events
+            WHERE object_id = $1
+            AND event_id > $2
+            AND event_id < $3
+            ORDER BY event_id ASC
+        ",
+        object_id as ObjectId,
+        from as EventId,
+        to as EventId,
+    )
+    .fetch(&mut *transaction);
+    while let Some(e) = events.next().await {
+        let e = e
+            .with_context(|| {
+                format!("fetching all events for {object_id:?} betwen {from:?} and {to:?}")
+            })
+            .map_err(DbOpError::Other)?;
+        let e = serde_json::from_value::<T::Event>(e.data)
+            .with_context(|| {
+                format!(
+                    "parsing event {:?} of type {:?}",
+                    e.event_id,
+                    T::type_ulid()
+                )
+            })
+            .map_err(DbOpError::Other)?;
+
+        object.apply(&e);
+    }
+    Ok(())
 }
