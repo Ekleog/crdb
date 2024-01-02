@@ -463,6 +463,11 @@ impl Db for PostgresDb {
             .await
             .context("setting transaction as repeatable read")?;
 
+        let query = format!(
+            "SELECT object_id FROM snapshots WHERE is_latest AND ({})",
+            q.where_clause()
+        );
+
         Ok(futures::stream::empty()) // TODO
     }
 
