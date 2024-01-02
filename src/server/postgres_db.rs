@@ -12,6 +12,7 @@ use anyhow::{anyhow, Context};
 use futures::{Stream, StreamExt};
 use sqlx::Row;
 use std::{collections::BTreeMap, sync::Arc};
+use ulid::Ulid;
 
 #[cfg(test)]
 mod tests;
@@ -58,7 +59,6 @@ impl PostgresDb {
 // TODO: add a mechanism to auto-recreate all objects after some time elapsed
 // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
 
-#[allow(unused_variables)] // TODO: remove
 impl Db for PostgresDb {
     async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
         futures::stream::empty()
@@ -72,7 +72,7 @@ impl Db for PostgresDb {
         futures::stream::empty()
     }
 
-    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
+    async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
         unimplemented!("unsubscribing from a postgresql db does not make sense")
     }
 
@@ -464,10 +464,28 @@ impl Db for PostgresDb {
             .context("setting transaction as repeatable read")?;
 
         let query = format!(
-            "SELECT object_id FROM snapshots WHERE is_latest AND type_id = $1 AND ({})",
-            q.where_clause(2)
+            "
+                SELECT object_id
+                FROM snapshots
+                WHERE is_latest
+                AND type_id = $1
+                AND $2 IN users_who_can_read
+                AND ($3 OR NOT is_heavy)
+                AND snapshot_id > $4
+                AND ({})
+            ",
+            q.where_clause(5)
         );
-        let mut query = sqlx::query(&query);
+        let mut query = sqlx::query(&query)
+            .bind(TypeId(*T::type_ulid()))
+            .bind(user)
+            .bind(include_heavy)
+            .bind(EventId(Ulid::from_parts(
+                ignore_not_modified_on_server_since
+                    .map(|t| t.time_ms())
+                    .unwrap_or(0),
+                (1 << Ulid::RAND_BITS) - 1,
+            )));
         for b in q.binds() {
             match b {
                 Bind::Json(v) => query = query.bind(v),
@@ -493,15 +511,15 @@ impl Db for PostgresDb {
         })
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(&self, _time: Timestamp, _object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+    async fn create_binary(&self, _id: BinPtr, _value: Arc<Vec<u8>>) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, _ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }
