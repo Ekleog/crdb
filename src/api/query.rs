@@ -17,9 +17,10 @@ pub enum Query {
     Any(Vec<Query>),
     Not(Box<Query>),
 
+    // TODO: this could be useful?
     // Any/all the values in the array at JsonPathItem must match Query
-    AnyIn(Vec<JsonPathItem>, Box<Query>),
-    AllIn(Vec<JsonPathItem>, Box<Query>),
+    // AnyIn(Vec<JsonPathItem>, Box<Query>),
+    // AllIn(Vec<JsonPathItem>, Box<Query>),
 
     // JSON tests
     Eq(Vec<JsonPathItem>, serde_json::Value),
@@ -72,8 +73,6 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             add_to_where_clause(&mut *res, &mut *bind_idx, q);
             res.push_str(")");
         }
-        Query::AnyIn(_, _) => todo!(),
-        Query::AllIn(_, _) => todo!(),
         Query::Eq(path, _) => {
             res.push_str("snapshot");
             add_path_to_clause(&mut *res, path);
