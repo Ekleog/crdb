@@ -432,14 +432,25 @@ impl Db for PostgresDb {
         const EVENT_ID: usize = 0;
         const EVENT_DATA: usize = 1;
 
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .context("acquiring postgresql transaction")?;
+
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .context("setting transaction as repeatable read")?;
+
         // First, read the events. If starting with the snapshots, then a transaction could re-create
         // the object after the creation snapshot was read, which would mean some events would be missing.
         // However, we do not know whether the object exists with the proper type yet, so wait until we
         // run the `fetch_optional` below to do any meaningful handling.
-        let mut events =
+        let events =
             sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
                 .bind(ptr)
-                .fetch_all(&self.db)
+                .fetch_all(&mut *transaction)
                 .await
                 .with_context(|| format!("fetching all events for object {ptr:?}"))?;
 
@@ -455,7 +466,7 @@ impl Db for PostgresDb {
             ptr.to_uuid(),
             uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
         )
-        .fetch_optional(&self.db)
+        .fetch_optional(&mut *transaction)
         .await
         .with_context(|| format!("fetching creation snapshot for object {ptr:?}"))?;
         let creation_snapshot = match creation_snapshot {
@@ -473,35 +484,9 @@ impl Db for PostgresDb {
             ptr.to_uuid(),
             uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
         )
-        .fetch_one(&self.db)
+        .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("fetching latest snapshot for object {ptr:?}"))?;
-
-        // If new events appeared between the time we fetched the events and the latest snapshot, re-download them
-        if latest_snapshot.snapshot_id != creation_snapshot.snapshot_id
-            && (events.is_empty()
-                || latest_snapshot.snapshot_id > events.last().unwrap().get(EVENT_ID))
-        {
-            let new_events = sqlx::query(
-                "SELECT event_id, data FROM events WHERE object_id = $1 AND event_id > $2 ORDER BY event_id",
-            )
-            .bind(ptr)
-            .bind(events.last().map(|e| e.get(EVENT_ID)).unwrap_or(creation_snapshot.snapshot_id))
-            .fetch_all(&self.db)
-            .await
-            .with_context(|| format!("fetching all new events for object {ptr:?}"))?;
-            events.extend(new_events);
-            // TODO: this could still fail in the following situation:
-            // - we fetch the first events
-            // - we fetch the creation and latest snapshots
-            // - lots of new events are added
-            // - the object is re-created with a starting point after the lots of new events
-            // - when we fetch these events, we'll be missing events since the creation point
-            // Considering that event re-creation should never occur on events less than a few minutes
-            // old at least (otherwise it makes no sense to use crdb), this risk is accepted for now.
-            // This being said, we should actually fix this, maybe by having all this inside a loop {} that
-            // re-attempts fetching all the things.
-        }
 
         // Build the FullObject from the parts
         let creation = Arc::new(
