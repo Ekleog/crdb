@@ -2,7 +2,7 @@ use super::{ApiDb, Authenticator, LocalDb};
 use crate::{
     api,
     cache::CacheDb,
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
@@ -61,8 +61,8 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.api.new_events().await
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
-        self.api.new_snapshots().await
+    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
+        self.api.new_recreations().await
     }
 
     async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
@@ -136,9 +136,9 @@ impl<A: Authenticator> Db for ClientDb<A> {
         ))
     }
 
-    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
-        self.db.snapshot::<T>(time, object).await?;
-        self.api.snapshot::<T>(time, object).await
+    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+        self.db.recreate::<T>(time, object).await?;
+        self.api.recreate::<T>(time, object).await
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {

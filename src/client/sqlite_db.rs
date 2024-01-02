@@ -1,5 +1,5 @@
 use crate::{
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
@@ -28,7 +28,7 @@ impl Db for SqliteDb {
         futures::stream::empty()
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
+    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
         // todo!()
         futures::stream::empty()
     }
@@ -72,7 +72,7 @@ impl Db for SqliteDb {
         Ok(futures::stream::empty())
     }
 
-    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 

@@ -8,7 +8,7 @@ mod sqlite_db;
 
 pub use api_db::ApiDb;
 pub use client_db::ClientDb;
-pub use config::{NewEvent, NewObject, NewSnapshot};
+pub use config::{NewEvent, NewObject, NewRecreation};
 #[cfg(target = "wasm32-unknown-unknown")]
 pub use indexed_db::IndexedDb as LocalDb;
 #[cfg(not(target = "wasm32-unknown-unknown"))]

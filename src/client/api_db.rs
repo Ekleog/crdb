@@ -1,6 +1,6 @@
 use super::Authenticator;
 use crate::{
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
@@ -39,7 +39,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         futures::stream::empty()
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
+    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
         // todo!()
         futures::stream::empty()
     }
@@ -83,7 +83,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         Ok(futures::stream::empty())
     }
 
-    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 

@@ -167,7 +167,7 @@ impl ObjectCache {
         Ok(res)
     }
 
-    pub fn snapshot<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> anyhow::Result<()> {
+    pub fn recreate<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> anyhow::Result<()> {
         if let Some((t, o)) = self.objects.get_mut(&object) {
             let updater = SizeUpdater::new(&mut self.size, &o);
             o.recreate_at::<T>(time)?;

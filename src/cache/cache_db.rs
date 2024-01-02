@@ -1,6 +1,6 @@
 use super::{BinariesCache, CacheConfig, ObjectCache};
 use crate::{
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
     full_object::FullObject,
     hash_binary, BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
@@ -93,31 +93,31 @@ impl<D: Db> CacheDb<D> {
             }
         });
 
-        // Watch new snapshots
+        // Watch new re-creations
         tokio::task::spawn({
             let db = db.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
             async move {
-                let new_snapshots = db.new_snapshots().await;
-                pin_mut!(new_snapshots);
-                while let Some(s) = new_snapshots.next().await {
+                let new_recreations = db.new_recreations().await;
+                pin_mut!(new_recreations);
+                while let Some(s) = new_recreations.next().await {
                     let mut cache = cache.write().await;
                     let object = s.object_id;
                     if relay_to_db {
-                        if let Err(error) = C::snapshot_in_db(&*internal_db, s.clone()).await {
+                        if let Err(error) = C::recreate_in_db(&*internal_db, s.clone()).await {
                             tracing::error!(
                                 ?error,
                                 ?object,
-                                "failed snapshotting as per received event in internal db"
+                                "failed recreating as per received event in internal db"
                             );
                         }
                     }
-                    if let Err(error) = C::snapshot(&mut *cache, s).await {
+                    if let Err(error) = C::recreate(&mut *cache, s).await {
                         tracing::error!(
                             ?error,
                             ?object,
-                            "failed snapshotting as per received event in cache"
+                            "failed recreating as per received event in cache"
                         )
                     }
                 }
@@ -178,8 +178,8 @@ impl<D: Db> Db for CacheDb<D> {
         self.db.new_events().await
     }
 
-    async fn new_snapshots(&self) -> impl Stream<Item = DynNewSnapshot> {
-        self.db.new_snapshots().await
+    async fn new_recreations(&self) -> impl Stream<Item = DynNewRecreation> {
+        self.db.new_recreations().await
     }
 
     async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
@@ -273,10 +273,10 @@ impl<D: Db> Db for CacheDb<D> {
             }))
     }
 
-    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
-        cache.snapshot::<T>(object, time)?;
-        self.db.snapshot::<T>(time, object).await
+        cache.recreate::<T>(object, time)?;
+        self.db.recreate::<T>(time, object).await
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {

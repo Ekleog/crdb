@@ -254,7 +254,7 @@ pub struct RequestId(Ulid);
 pub enum NewThing {
     Object(TypeId, ObjectId, serde_json::Value),
     Event(TypeId, ObjectId, EventId, serde_json::Value),
-    Snapshot(TypeId, ObjectId, Timestamp),
+    Recreation(TypeId, ObjectId, Timestamp),
     Binary(BinPtr, Vec<u8>),
     CurrentTime(Timestamp),
 }
@@ -333,13 +333,13 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
 
-            async fn snapshot(cache: &mut crdb::ObjectCache, s: crdb::DynNewSnapshot) -> crdb::anyhow::Result<()> {
+            async fn recreate(cache: &mut crdb::ObjectCache, s: crdb::DynNewRecreation) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
-                        return cache.snapshot::<$object>(s.object_id, s.time);
+                        return cache.recreate::<$object>(s.object_id, s.time);
                     }
                 )*
-                crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
+                crdb::anyhow::bail!("got new re-creation with unknown type {:?}", s.type_id)
             }
 
             async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, cb: &C) -> Result<(), crdb::DbOpError> {
@@ -368,13 +368,13 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
 
-            async fn snapshot_in_db<D: crdb::Db>(db: &D, s: crdb::DynNewSnapshot) -> crdb::anyhow::Result<()> {
+            async fn recreate_in_db<D: crdb::Db>(db: &D, s: crdb::DynNewRecreation) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
-                        return db.snapshot::<$object>(s.time, s.object_id).await;
+                        return db.recreate::<$object>(s.time, s.object_id).await;
                     }
                 )*
-                crdb::anyhow::bail!("got new snapshot with unknown type {:?}", s.type_id)
+                crdb::anyhow::bail!("got new re-creation with unknown type {:?}", s.type_id)
             }
         }
     };

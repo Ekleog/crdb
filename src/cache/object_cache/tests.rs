@@ -19,7 +19,7 @@ enum Op {
         event_id: EventId,
         event: TestEvent1,
     },
-    Snapshot {
+    Recreate {
         object: usize,
         time: Timestamp,
     },
@@ -70,10 +70,10 @@ fn cache_state_stays_valid_impl((watermark, ops): &(usize, Vec<Op>)) {
                     .get(*object)
                     .map(|id| cache.submit::<TestObject1>(*id, *event_id, Arc::new(event.clone())));
             }
-            Op::Snapshot { object, time } => {
+            Op::Recreate { object, time } => {
                 objects
                     .get(*object)
-                    .map(|id| cache.snapshot::<TestObject1>(*id, *time));
+                    .map(|id| cache.recreate::<TestObject1>(*id, *time));
             }
             Op::Get { object, location } => {
                 objects
@@ -169,7 +169,7 @@ fn regression_submit_order_1324_leads_to_type_corruption() {
 }
 
 #[test]
-fn regression_double_snapshot_panics() {
+fn regression_double_recreate_panics() {
     let mut cache = ObjectCache::new(1000);
     cache
         .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
@@ -182,23 +182,23 @@ fn regression_double_snapshot_panics() {
         )
         .unwrap();
     cache
-        .snapshot::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(1000))
+        .recreate::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(1000))
         .unwrap();
     cache
-        .snapshot::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(2000))
+        .recreate::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(2000))
         .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
 }
 
 #[test]
-fn regression_snapshot_too_late_fails_size_check() {
+fn regression_recerate_too_late_fails_size_check() {
     let mut cache = ObjectCache::new(1000);
     cache
         .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
         .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
     // this will fail due to Timestamp being too big
-    let _ = cache.snapshot::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(u64::MAX));
+    let _ = cache.recreate::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(u64::MAX));
     cache.assert_invariants(|| "regression test".to_string());
 }
 

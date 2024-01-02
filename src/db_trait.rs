@@ -95,7 +95,7 @@ pub struct DynNewEvent {
 }
 
 #[derive(Clone)]
-pub struct DynNewSnapshot {
+pub struct DynNewRecreation {
     pub type_id: TypeId,
     pub object_id: ObjectId,
     pub time: Timestamp,
@@ -148,9 +148,9 @@ pub trait Db: 'static + Send + Sync {
     /// objects received through `new_objects`, excluding objects explicitly unsubscribed
     /// from
     fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewEvent>>;
-    fn new_snapshots(
+    fn new_recreations(
         &self,
-    ) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewSnapshot>>;
+    ) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewRecreation>>;
     /// Note that this function unsubscribes ALL the streams that have ever been taken from this
     /// database; and purges it from the local database.
     fn unsubscribe(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<()>>;
@@ -217,7 +217,7 @@ pub trait Db: 'static + Send + Sync {
         q: Query,
     ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>>>;
 
-    fn snapshot<T: Object>(
+    fn recreate<T: Object>(
         &self,
         time: Timestamp,
         object: ObjectId,

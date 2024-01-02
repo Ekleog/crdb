@@ -2,7 +2,7 @@ use super::{Session, SessionRef, SessionToken};
 use crate::{
     api::parse_snapshot,
     db_trait::{
-        Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId, Timestamp,
+        Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, Timestamp,
         TypeId,
     },
     full_object::{Change, FullObject},
@@ -68,7 +68,7 @@ impl Db for PostgresDb {
         futures::stream::empty()
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = DynNewSnapshot> {
+    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
         futures::stream::empty()
     }
 
@@ -269,7 +269,7 @@ impl Db for PostgresDb {
 
         // Remove the "latest snapshot" flag for the object
         // Note that this can be a no-op if the latest snapshot was already deleted above
-        sqlx::query("UPDATE snapshots SET is_latest = FALSE WHERE object_id = $1")
+        sqlx::query("UPDATE snapshots SET is_latest = FALSE WHERE object_id = $1 AND is_latest")
             .bind(object_id)
             .execute(&mut *transaction)
             .await
@@ -438,23 +438,12 @@ impl Db for PostgresDb {
             .await
             .context("acquiring postgresql transaction")?;
 
+        // Atomically perform all the reads here
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *transaction)
             .await
             .context("setting transaction as repeatable read")?;
 
-        // First, read the events. If starting with the snapshots, then a transaction could re-create
-        // the object after the creation snapshot was read, which would mean some events would be missing.
-        // However, we do not know whether the object exists with the proper type yet, so wait until we
-        // run the `fetch_optional` below to do any meaningful handling.
-        let events =
-            sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
-                .bind(ptr)
-                .fetch_all(&mut *transaction)
-                .await
-                .with_context(|| format!("fetching all events for object {ptr:?}"))?;
-
-        // Then, read the creation and latest snapshots
         let creation_snapshot = sqlx::query!(
             "
                 SELECT snapshot_id, snapshot_version, snapshot
@@ -473,6 +462,14 @@ impl Db for PostgresDb {
             Some(s) => s,
             None => return Ok(None),
         };
+
+        let events =
+            sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
+                .bind(ptr)
+                .fetch_all(&mut *transaction)
+                .await
+                .with_context(|| format!("fetching all events for object {ptr:?}"))?;
+
         let latest_snapshot = sqlx::query!(
             "
                 SELECT snapshot_id, snapshot_version, snapshot
@@ -561,7 +558,7 @@ impl Db for PostgresDb {
         Ok(futures::stream::empty())
     }
 
-    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 

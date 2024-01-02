@@ -15,7 +15,7 @@ pub struct NewEvent<T: Object> {
     pub event: Arc<T::Event>,
 }
 
-pub struct NewSnapshot<T: Object> {
+pub struct NewRecreation<T: Object> {
     pub object: DbPtr<T>,
     pub time: Timestamp,
 }
@@ -86,13 +86,13 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< new_ $name _snapshots >](&self) -> impl '_ + Send + crdb::Future<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewSnapshot<$object>>> {
+                pub fn [< new_ $name _recreations >](&self) -> impl '_ + Send + crdb::Future<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewRecreation<$object>>> {
                     async move {
                         self.db
-                            .new_snapshots()
+                            .new_recreations()
                             .await
                             .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::type_ulid()))
-                            .map(|o| $crate::NewSnapshot {
+                            .map(|o| $crate::NewRecreation {
                                 object: crdb::DbPtr::from(o.object_id),
                                 time: o.time,
                             })

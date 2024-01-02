@@ -263,7 +263,7 @@ impl FullObjectImpl {
         let max_new_created_at =
             EventId(Ulid::from_parts(at.time_ms(), (1 << Ulid::RAND_BITS) - 1));
 
-        // First, check that we're not trying to roll the snapshot back in time, as this would result
+        // First, check that we're not trying to roll the creation back in time, as this would result
         // in passing invalid input to `get_snapshot_at`.
         if max_new_created_at <= self.created_at {
             return Ok(());

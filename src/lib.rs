@@ -13,7 +13,7 @@ pub use db_trait::Timestamp;
 #[cfg(any(feature = "client"))]
 mod client;
 #[cfg(any(feature = "client"))]
-pub use client::{NewEvent, NewObject, NewSnapshot};
+pub use client::{NewEvent, NewObject, NewRecreation};
 #[cfg(not(feature = "client"))]
 mod client {
     #[macro_export]
@@ -44,7 +44,7 @@ pub mod crdb_internal {
     pub use crate::{
         api::{CanDoCallbacks, Config as ApiConfig},
         cache::{CacheConfig, ObjectCache},
-        db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewSnapshot, EventId, ObjectId},
+        db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
         hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;

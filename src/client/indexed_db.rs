@@ -1,5 +1,5 @@
 use crate::{
-    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewSnapshot, ObjectId},
+    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewRecreation, ObjectId},
     BinPtr, Object, Query, Timestamp, User,
 };
 use futures::Stream;
@@ -27,7 +27,7 @@ impl Db for IndexedDb {
         futures::stream::empty()
     }
 
-    async fn new_snapshots(&self) -> impl Send + Stream<Item = NewSnapshot> {
+    async fn new_recreations(&self) -> impl Send + Stream<Item = NewRecreation> {
         // todo!()
         futures::stream::empty()
     }
@@ -69,7 +69,7 @@ impl Db for IndexedDb {
         Ok(futures::stream::empty())
     }
 
-    async fn snapshot<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
 
