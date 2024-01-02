@@ -6,7 +6,7 @@ use crate::{
         TypeId,
     },
     full_object::{Change, FullObject},
-    BinPtr, CanDoCallbacks, Event, Object, User,
+    BinPtr, CanDoCallbacks, Event, Object, Query, User,
 };
 use anyhow::{anyhow, Context};
 use futures::{Stream, StreamExt};
@@ -449,10 +449,21 @@ impl Db for PostgresDb {
         user: User,
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: crate::Query,
+        q: Query,
     ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
-        // todo!()
-        Ok(futures::stream::empty())
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .context("acquiring postgresql transaction")?;
+
+        // Atomically perform all the reads here
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .context("setting transaction as repeatable read")?;
+
+        Ok(futures::stream::empty()) // TODO
     }
 
     async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {

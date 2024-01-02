@@ -7,6 +7,9 @@ use anyhow::Context;
 use std::{any::Any, collections::HashSet, future::Future, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
+mod query;
+pub use query::{JsonNumber, JsonPathItem, Query};
+
 macro_rules! impl_for_id {
     ($type:ty) => {
         #[cfg(feature = "server")]
@@ -69,47 +72,6 @@ pub struct User {
 }
 
 impl_for_id!(User);
-
-#[non_exhaustive]
-pub enum JsonPathItem {
-    Key(String),
-    Id(usize),
-}
-
-#[non_exhaustive]
-pub enum JsonNumber {
-    F64(f64),
-    I64(i64),
-    U64(u64),
-}
-
-#[non_exhaustive]
-pub enum Query {
-    // Logic operators
-    All(Vec<Query>),
-    Any(Vec<Query>),
-    Not(Box<Query>),
-
-    // Any/all the values in the array at JsonPathItem must match Query
-    AnyIn(Vec<JsonPathItem>, Box<Query>),
-    AllIn(Vec<JsonPathItem>, Box<Query>),
-
-    // JSON tests
-    Eq(Vec<JsonPathItem>, serde_json::Value),
-    Ne(Vec<JsonPathItem>, serde_json::Value),
-
-    // Integers
-    Le(Vec<JsonPathItem>, JsonNumber),
-    Lt(Vec<JsonPathItem>, JsonNumber),
-    Ge(Vec<JsonPathItem>, JsonNumber),
-    Gt(Vec<JsonPathItem>, JsonNumber),
-
-    // Arrays and object subscripting
-    Contains(Vec<JsonPathItem>, serde_json::Value),
-
-    // Full text search
-    ContainsStr(Vec<JsonPathItem>, String),
-}
 
 mod private {
     pub trait Sealed {}

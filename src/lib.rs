@@ -1,5 +1,7 @@
 mod api;
-pub use api::{BinPtr, CanDoCallbacks, DbPtr, Event, JsonPathItem, Object, Query, User};
+pub use api::{
+    BinPtr, CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query, User,
+};
 
 mod cache;
 mod db_trait;
