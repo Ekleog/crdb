@@ -510,15 +510,17 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")?;
 
         // Lock the object
-        let affected = sqlx::query(
+        let creation_snapshot = sqlx::query!(
             "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation FOR UPDATE",
+            object_id as ObjectId,
         )
-        .bind(object_id)
-        .execute(&mut *transaction)
+        .fetch_one(&mut *transaction)
         .await
-        .with_context(|| format!("locking {object_id:?} for re-creation"))?
-        .rows_affected();
-        anyhow::ensure!(affected == 1, "Failed to lock object {object_id:?}");
+        .with_context(|| format!("locking {object_id:?} for re-creation"))?;
+        if EventId::from_uuid(creation_snapshot.snapshot_id) >= cutoff_time {
+            // Already created after the requested time
+            return Ok(());
+        }
 
         // Fetch the latest snapshot
         let snapshot = sqlx::query!(
@@ -561,6 +563,8 @@ impl Db for PostgresDb {
             cutoff_time,
         )
         .await?;
+
+        // We now have the new object. Delete all the stuff before it
         todo!()
     }
 
