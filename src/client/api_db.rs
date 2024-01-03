@@ -83,7 +83,12 @@ impl<A: Authenticator> Db for ApiDb<A> {
         Ok(futures::stream::empty())
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        cb: &C,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 

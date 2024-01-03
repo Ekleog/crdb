@@ -330,10 +330,10 @@ macro_rules! generate_api {
                 crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
             }
 
-            async fn recreate_in_db<D: crdb::Db>(db: &D, s: crdb::DynNewRecreation) -> crdb::anyhow::Result<()> {
+            async fn recreate_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, s: crdb::DynNewRecreation, cb: &C) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
-                        return db.recreate::<$object>(s.time, s.object_id).await;
+                        return db.recreate::<$object, C>(s.time, s.object_id, cb).await;
                     }
                 )*
                 crdb::anyhow::bail!("got new re-creation with unknown type {:?}", s.type_id)

@@ -7,6 +7,7 @@ use crate::{
 };
 use std::sync::Arc;
 
+// TODO: assert consistency: each object has a creation & latest snapshot, etc.
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
     let db = PostgresDb::connect(db).await.expect("connecting to db");

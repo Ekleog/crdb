@@ -229,10 +229,11 @@ pub trait Db: 'static + Send + Sync {
         q: Query,
     ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>>>;
 
-    fn recreate<T: Object>(
+    fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         time: Timestamp,
         object: ObjectId,
+        cb: &C,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
 
     fn create_binary(

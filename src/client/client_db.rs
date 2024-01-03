@@ -136,9 +136,14 @@ impl<A: Authenticator> Db for ClientDb<A> {
         ))
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
-        self.db.recreate::<T>(time, object).await?;
-        self.api.recreate::<T>(time, object).await
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        cb: &C,
+    ) -> anyhow::Result<()> {
+        self.db.recreate::<T, C>(time, object, cb).await?;
+        self.api.recreate::<T, C>(time, object, cb).await
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {

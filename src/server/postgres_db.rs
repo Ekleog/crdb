@@ -484,10 +484,11 @@ impl Db for PostgresDb {
         })
     }
 
-    async fn recreate<T: Object>(
+    async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         time: Timestamp,
         object_id: ObjectId,
+        cb: &C,
     ) -> anyhow::Result<()> {
         if time.time_ms()
             > SystemTime::now()
@@ -500,8 +501,6 @@ impl Db for PostgresDb {
                 "Re-creating object {object_id:?} at time {time:?} which is less than an hour old"
             );
         }
-
-        let cutoff_time = EventId::last_id_at(time);
 
         let mut transaction = self
             .db
@@ -517,18 +516,44 @@ impl Db for PostgresDb {
         .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("locking {object_id:?} for re-creation"))?;
-        if EventId::from_uuid(creation_snapshot.snapshot_id) >= cutoff_time {
+        if EventId::from_uuid(creation_snapshot.snapshot_id) >= EventId::last_id_at(time) {
             // Already created after the requested time
             return Ok(());
         }
 
-        // Fetch the latest snapshot
+        // Figure out the cutoff event
+        let event = sqlx::query!(
+            "
+                SELECT event_id
+                FROM events
+                WHERE object_id = $1
+                AND event_id < $2
+                ORDER BY event_id DESC
+                LIMIT 1
+            ",
+            object_id as ObjectId,
+            EventId::last_id_at(time) as EventId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .with_context(|| {
+            format!(
+                "recovering the last event for {object_id:?} before cutoff time {:?}",
+                EventId::last_id_at(time)
+            )
+        })?;
+        let cutoff_time = match event {
+            None => return Ok(()), // Nothing to do, there was no event before the cutoff already
+            Some(e) => EventId::from_uuid(e.event_id),
+        };
+
+        // Fetch the last snapshot before cutoff
         let snapshot = sqlx::query!(
             "
-                SELECT snapshot_id, snapshot_version, snapshot, is_latest, is_creation
+                SELECT snapshot_id, snapshot_version, snapshot
                 FROM snapshots
                 WHERE object_id = $1
-                AND snapshot_id < $2
+                AND snapshot_id <= $2
                 ORDER BY snapshot_id DESC
                 LIMIT 1
             ",
@@ -540,32 +565,83 @@ impl Db for PostgresDb {
         .with_context(|| {
             format!("fetching latest snapshot before {cutoff_time:?} for object {object_id:?}")
         })?;
-        if snapshot.is_creation && snapshot.is_latest {
-            // no need to do anything, the last snapshot before the requested cutoff was already
-            // both the latest snapshot and the creation snapshot
-            return Ok(());
-        }
-        let mut object = parse_snapshot::<T>(snapshot.snapshot_version, snapshot.snapshot)
+
+        // Delete all the snapshots before cutoff
+        sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id < $2")
+            .bind(object_id)
+            .bind(cutoff_time)
+            .execute(&mut *transaction)
+            .await
             .with_context(|| {
-                format!(
-                    "parsing snapshot {:?} as {:?}",
-                    snapshot.snapshot_id,
-                    T::type_ulid()
-                )
+                format!("deleting all snapshots for {object_id:?} before {cutoff_time:?}")
             })?;
 
-        // Apply all the events between latest snapshot (excluded) and asked recreation time (included)
-        apply_events_between(
-            &mut *transaction,
-            &mut object,
-            object_id,
-            EventId::from_uuid(snapshot.snapshot_id),
-            cutoff_time,
-        )
-        .await?;
+        if EventId::from_uuid(snapshot.snapshot_id) != cutoff_time {
+            // Insert a new snapshot dated at `cutoff_time`
 
-        // We now have the new object. Delete all the stuff before it
-        todo!()
+            // Apply all the events between latest snapshot (excluded) and asked recreation time (included)
+            let mut object = parse_snapshot::<T>(snapshot.snapshot_version, snapshot.snapshot)
+                .with_context(|| {
+                    format!(
+                        "parsing snapshot {:?} as {:?}",
+                        snapshot.snapshot_id,
+                        T::type_ulid()
+                    )
+                })?;
+
+            apply_events_between(
+                &mut *transaction,
+                &mut object,
+                object_id,
+                EventId::from_uuid(snapshot.snapshot_id),
+                cutoff_time,
+            )
+            .await?;
+
+            // Insert the new creation snapshot. This cannot conflict because we deleted
+            // the previous creation snapshot just above. There was no snapshot at this event
+            // before, so it cannot be the latest snapshot.
+            let users_who_can_read = object.users_who_can_read(cb).await.with_context(|| {
+                format!("listing users who can read {object_id:?} at snapshot {cutoff_time:?}")
+            })?;
+            sqlx::query(
+                "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, FALSE, $5, $6, $7, $8, $9",
+            )
+            .bind(cutoff_time)
+            .bind(TypeId(*T::type_ulid()))
+            .bind(object_id)
+            .bind(T::snapshot_version())
+            .bind(sqlx::types::Json(&object))
+            .bind(users_who_can_read)
+            .bind(object.is_heavy())
+            .bind(object.required_binaries())
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| format!("inserting snapshot {cutoff_time:?} for {object_id:?}"))?;
+        } else {
+            // Just update the `cutoff_time` snapshot to record it's the creation snapshot
+            sqlx::query("UPDATE snapshots SET is_creation = TRUE WHERE snapshot_id = $1")
+                .bind(cutoff_time)
+                .execute(&mut *transaction)
+                .await
+                .with_context(|| {
+                    format!(
+                        "marking snapshot {cutoff_time:?} as the creation one for {object_id:?}"
+                    )
+                })?;
+        }
+
+        // We now have all the new information. We can delete the events.
+        sqlx::query("DELETE FROM events WHERE object_id = $1 AND event_id <= $2")
+            .bind(object_id)
+            .bind(cutoff_time)
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| {
+                format!("deleting all events for {object_id:?} before {cutoff_time:?}")
+            })?;
+
+        Ok(())
     }
 
     async fn create_binary(&self, _id: BinPtr, _value: Arc<Vec<u8>>) -> anyhow::Result<()> {
