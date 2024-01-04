@@ -56,7 +56,7 @@ impl PostgresDb {
     }
 
     #[cfg(test)]
-    async fn assert_invariants(&self) {
+    async fn assert_invariants_generic(&self) {
         // All binaries are present
         assert_eq!(
             0,
@@ -78,12 +78,33 @@ impl PostgresDb {
             .rows_affected()
         );
 
+        // No events references an object without a creation snapshot
+        assert_eq!(
+            0,
+            sqlx::query(
+                "
+                    SELECT object_id FROM events
+                    EXCEPT
+                    SELECT object_id FROM snapshots WHERE is_creation
+                "
+            )
+            .execute(&self.db)
+            .await
+            .unwrap()
+            .rows_affected()
+        )
+    }
+
+    #[cfg(test)]
+    async fn assert_invariants_for<T: Object>(&self) {
         // For each object
-        let objects =
-            sqlx::query!("SELECT object_id FROM snapshots UNION SELECT object_id FROM events")
-                .fetch_all(&self.db)
-                .await
-                .unwrap();
+        let objects = sqlx::query!(
+            "SELECT object_id FROM snapshots WHERE type_id = $1",
+            TypeId(*T::type_ulid()) as TypeId
+        )
+        .fetch_all(&self.db)
+        .await
+        .unwrap();
         for o in objects {
             // It has a creation and a latest snapshot
             let creation: uuid::Uuid = sqlx::query(
