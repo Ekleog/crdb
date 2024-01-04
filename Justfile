@@ -11,12 +11,6 @@ doc:
 
 test-no-pg: test-crate-no-pg test-example-basic
 
-setup-pg-tests:
-    sudo -u postgres rm -rf /tmp/crdb-test
-    psql postgres -c "DROP TABLESPACE in_memory" || true
-    sudo -u postgres mkdir -p /tmp/crdb-test
-    psql postgres -c "CREATE TABLESPACE in_memory LOCATION '/tmp/crdb-test'"
-
 make-test-db:
     dropdb crdb-test || true
     createdb crdb-test
@@ -45,3 +39,9 @@ fuzz-object-cache:
         -j 8 \
         cache::object_cache::tests::cache_state_stays_valid \
         --corpus-dir src/cache/object_cache/__fuzz__/cache__object_cache__tests__cache_state_stays_valid/corpus.nounit
+
+fuzz-pg-basic:
+    cargo bolero test --all-features \
+        -j 8 \
+        server::postgres_db::tests::db_keeps_invariants \
+        --corpus-dir src/server/postgres_db/__fuzz__/server__postgres_db__tests__db_keeps_invariants/corpus.nounit

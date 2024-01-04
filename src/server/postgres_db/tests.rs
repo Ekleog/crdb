@@ -6,7 +6,7 @@ use crate::{
     },
 };
 use anyhow::Context;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use ulid::Ulid;
 
 #[sqlx::test]
@@ -244,18 +244,73 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
     Ok(())
 }
 
-fn db_keeps_invariants_impl(ops: &Vec<Op>) {
-    let mut args = HashMap::new();
-    args.insert(String::from("tablespace"), String::from("in_memory"));
-    sqlx::test::run_test_with_pool(
-        sqlx::test::TestArgs {
-            test_path: "db_keeps_invariants_impl",
-            migrator: None,
-            fixtures: &[],
-            args,
-        },
-        |db| async move {
-            let db = PostgresDb::connect(db).await.unwrap();
+struct TmpDb {
+    url: String,
+    dir: tempfile::TempDir,
+}
+
+impl TmpDb {
+    fn new() -> TmpDb {
+        let dir = tempfile::Builder::new()
+            .prefix("crdb-test-pg-")
+            .tempdir()
+            .expect("Failed creating a temporary directory");
+        let p = dir.path();
+        let db = p;
+        let logs = p.join("logs");
+        std::process::Command::new("pg_ctl")
+            .env("PGDATA", &db)
+            .env("PGHOST", &db)
+            .args(["init", "-s", "-o", "-E utf8 --locale C -A trust"])
+            .env("TZ", "UTC")
+            .status()
+            .expect("Failed creating the database");
+        std::process::Command::new("pg_ctl")
+            .env("PGDATA", &db)
+            .env("PGHOST", &db)
+            .args([
+                "start",
+                "-s",
+                "-l",
+                logs.to_str().unwrap(),
+                "-w",
+                "-o",
+                &format!("-F -h '' -k {db:?}"),
+            ])
+            .status()
+            .expect("Failed starting the postgres server");
+        let url = format!("postgres://?host={}&dbname=postgres", db.to_str().unwrap());
+        TmpDb { url, dir }
+    }
+
+    async fn pool(&self) -> sqlx::PgPool {
+        sqlx::PgPool::connect(&self.url)
+            .await
+            .expect("Failed connecting to running cluster")
+    }
+}
+
+impl Drop for TmpDb {
+    fn drop(&mut self) {
+        std::process::Command::new("pg_ctl")
+            .env("PGDATA", &self.dir.path().join("db"))
+            .env("PGHOST", &self.dir.path().join("db"))
+            .args(["stop", "-s", "-w", "-m", "fast"])
+            .output()
+            .expect("Failed stopping the postgres server");
+    }
+}
+
+fn db_keeps_invariants_impl(cluster: &TmpDb, ops: &Vec<Op>) {
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async move {
+            let pool = cluster.pool().await;
+            let db = PostgresDb::connect(pool.clone()).await.unwrap();
+            sqlx::query(include_str!("cleanup-db.sql"))
+                .execute(&pool)
+                .await
+                .unwrap();
             let mut s = FuzzState::new();
             for (i, op) in ops.iter().enumerate() {
                 apply_op(&db, &mut s, op)
@@ -265,16 +320,16 @@ fn db_keeps_invariants_impl(ops: &Vec<Op>) {
                 db.assert_invariants_generic().await;
                 db.assert_invariants_for::<TestObject1>().await;
             }
-        },
-    );
+        });
 }
 
 #[test]
 fn db_keeps_invariants() {
+    let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(50)
         .with_type()
-        .for_each(db_keeps_invariants_impl)
+        .for_each(move |ops| db_keeps_invariants_impl(&cluster, ops))
 }
 
 // TODO: add a fuzzer using `reord` that checks for concurrency
