@@ -317,7 +317,7 @@ macro_rules! generate_api {
                 Err(crdb::DbOpError::Other(crdb::anyhow::anyhow!("got new object with unknown type {:?}", o.type_id)))
             }
 
-            async fn submit_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, e: crdb::DynNewEvent, cb: &C) -> crdb::anyhow::Result<()> {
+            async fn submit_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, e: crdb::DynNewEvent, cb: &C) -> Result<(), crdb::DbOpError> {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let event = e.event
@@ -327,7 +327,7 @@ macro_rules! generate_api {
                         return db.submit::<$object, _>(e.object_id, e.id, event, cb).await;
                     }
                 )*
-                crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
+                Err(crdb::DbOpError::Other(crdb::anyhow::anyhow!("got new event with unknown type {:?}", e.type_id)))
             }
 
             async fn recreate_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, s: crdb::DynNewRecreation, cb: &C) -> crdb::anyhow::Result<()> {
