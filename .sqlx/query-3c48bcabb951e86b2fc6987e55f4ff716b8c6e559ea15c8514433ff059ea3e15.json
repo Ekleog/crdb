@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM snapshots WHERE object_id = $1 ORDER BY snapshot_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "snapshot_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "type_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "object_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "is_creation",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_latest",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "snapshot_version",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "snapshot",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "users_who_can_read",
+        "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_heavy",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "required_binaries",
+        "type_info": "UuidArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3c48bcabb951e86b2fc6987e55f4ff716b8c6e559ea15c8514433ff059ea3e15"
+}

@@ -63,10 +63,22 @@ macro_rules! impl_for_id {
                 <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_compatible(ty)
             }
         }
+
+        #[cfg(test)]
+        impl bolero::TypeGenerator for $type {
+            fn generate<D: bolero::Driver>(driver: &mut D) -> Option<$type> {
+                <[u8; 16]>::generate(driver).map(|b| Self {
+                    id: Ulid::from_bytes(b),
+                })
+            }
+        }
+
+        // No allocations in the Ulid-only-containing types
+        deepsize::known_deep_size!(0; $type);
     };
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct User {
     pub id: Ulid,
 }
@@ -180,7 +192,7 @@ pub fn parse_snapshot<T: Object>(
     }
 }
 
-#[derive(educe::Educe)]
+#[derive(Clone, Eq, PartialEq, educe::Educe, serde::Deserialize, serde::Serialize)]
 #[educe(Debug(named_field = false))]
 pub struct DbPtr<T: Object> {
     #[educe(Debug(method = std::fmt::Display::fmt))]
@@ -188,6 +200,14 @@ pub struct DbPtr<T: Object> {
     #[educe(Debug(ignore))]
     _phantom: PhantomData<T>,
 }
+
+impl<T: Object> deepsize::DeepSizeOf for DbPtr<T> {
+    fn deep_size_of_children(&self, _context: &mut deepsize::Context) -> usize {
+        0
+    }
+}
+
+impl<T: Object> Copy for DbPtr<T> {}
 
 impl<T: Object> DbPtr<T> {
     pub fn from(id: ObjectId) -> DbPtr<T> {
@@ -202,7 +222,17 @@ impl<T: Object> DbPtr<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[cfg(test)]
+impl<T: Object> bolero::TypeGenerator for DbPtr<T> {
+    fn generate<D: bolero::Driver>(driver: &mut D) -> Option<DbPtr<T>> {
+        <[u8; 16]>::generate(driver).map(|b| Self {
+            id: Ulid::from_bytes(b),
+            _phantom: PhantomData,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct BinPtr {
     pub(crate) id: Ulid,
 }
@@ -317,7 +347,7 @@ macro_rules! generate_api {
                 Err(crdb::DbOpError::Other(crdb::anyhow::anyhow!("got new object with unknown type {:?}", o.type_id)))
             }
 
-            async fn submit_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, e: crdb::DynNewEvent, cb: &C) -> crdb::anyhow::Result<()> {
+            async fn submit_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, e: crdb::DynNewEvent, cb: &C) -> Result<(), crdb::DbOpError> {
                 $(
                     if e.type_id.0 == *<$object as crdb::Object>::type_ulid() {
                         let event = e.event
@@ -327,13 +357,13 @@ macro_rules! generate_api {
                         return db.submit::<$object, _>(e.object_id, e.id, event, cb).await;
                     }
                 )*
-                crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
+                Err(crdb::DbOpError::Other(crdb::anyhow::anyhow!("got new event with unknown type {:?}", e.type_id)))
             }
 
-            async fn recreate_in_db<D: crdb::Db>(db: &D, s: crdb::DynNewRecreation) -> crdb::anyhow::Result<()> {
+            async fn recreate_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, s: crdb::DynNewRecreation, cb: &C) -> crdb::anyhow::Result<()> {
                 $(
                     if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
-                        return db.recreate::<$object>(s.time, s.object_id).await;
+                        return db.recreate::<$object, C>(s.time, s.object_id, cb).await;
                     }
                 )*
                 crdb::anyhow::bail!("got new re-creation with unknown type {:?}", s.type_id)

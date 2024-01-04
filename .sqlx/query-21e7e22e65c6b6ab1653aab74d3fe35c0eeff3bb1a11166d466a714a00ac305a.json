@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT event_id\n                FROM events\n                WHERE object_id = $1\n                AND event_id < $2\n                ORDER BY event_id DESC\n                LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "event_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "21e7e22e65c6b6ab1653aab74d3fe35c0eeff3bb1a11166d466a714a00ac305a"
+}

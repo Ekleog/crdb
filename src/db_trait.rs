@@ -35,6 +35,19 @@ macro_rules! impl_for_id {
             pub(crate) fn from_uuid(id: uuid::Uuid) -> Self {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
+
+            pub(crate) fn last_id_at(time: Timestamp) -> anyhow::Result<Self> {
+                anyhow::ensure!(time.time_ms() < (1 << Ulid::TIME_BITS), "Provided timestamp {time:?} is outside the range of valid ULIDs");
+                Ok(Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1)))
+            }
+
+            pub(crate) fn from_u128(v: u128) -> Self {
+                Self(Ulid::from_bytes(v.to_be_bytes()))
+            }
+
+            pub(crate) fn as_u128(&self) -> u128 {
+                u128::from_be_bytes(self.0.to_bytes())
+            }
         }
 
         #[cfg(feature = "server")]
@@ -168,7 +181,7 @@ pub trait Db: 'static + Send + Sync {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> impl Send + Future<Output = anyhow::Result<()>>;
+    ) -> impl Send + Future<Output = Result<(), DbOpError>>;
     fn create_all<T: Object, C: CanDoCallbacks>(
         &self,
         o: FullObject,
@@ -217,10 +230,11 @@ pub trait Db: 'static + Send + Sync {
         q: Query,
     ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>>>;
 
-    fn recreate<T: Object>(
+    fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         time: Timestamp,
         object: ObjectId,
+        cb: &C,
     ) -> impl Send + Future<Output = anyhow::Result<()>>;
 
     fn create_binary(

@@ -50,7 +50,7 @@ impl Db for SqliteDb {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         todo!()
     }
 
@@ -69,7 +69,12 @@ impl Db for SqliteDb {
         Ok(futures::stream::empty())
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        cb: &C,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 

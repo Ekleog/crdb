@@ -64,7 +64,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         event_id: EventId,
         event: Arc<T::Event>,
         _cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         todo!()
     }
 
@@ -83,7 +83,12 @@ impl<A: Authenticator> Db for ApiDb<A> {
         Ok(futures::stream::empty())
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        cb: &C,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 

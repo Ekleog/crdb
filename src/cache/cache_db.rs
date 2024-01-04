@@ -98,6 +98,7 @@ impl<D: Db> CacheDb<D> {
             let db = db.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
+            let this = self.clone();
             async move {
                 let new_recreations = db.new_recreations().await;
                 pin_mut!(new_recreations);
@@ -105,7 +106,9 @@ impl<D: Db> CacheDb<D> {
                     let mut cache = cache.write().await;
                     let object = s.object_id;
                     if relay_to_db {
-                        if let Err(error) = C::recreate_in_db(&*internal_db, s.clone()).await {
+                        if let Err(error) =
+                            C::recreate_in_db(&*internal_db, s.clone(), &*this).await
+                        {
                             tracing::error!(
                                 ?error,
                                 ?object,
@@ -211,9 +214,12 @@ impl<D: Db> Db for CacheDb<D> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         let mut cache = self.cache.write().await;
-        if cache.submit::<T>(object_id, event_id, event.clone())? {
+        if cache
+            .submit::<T>(object_id, event_id, event.clone())
+            .map_err(DbOpError::Other)?
+        {
             self.db
                 .submit::<T, _>(object_id, event_id, event, cb)
                 .await?;
@@ -273,10 +279,15 @@ impl<D: Db> Db for CacheDb<D> {
             }))
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        cb: &C,
+    ) -> anyhow::Result<()> {
         let mut cache = self.cache.write().await;
         cache.recreate::<T>(object, time)?;
-        self.db.recreate::<T>(time, object).await
+        self.db.recreate::<T, C>(time, object, cb).await
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {

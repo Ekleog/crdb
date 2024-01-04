@@ -11,18 +11,20 @@ doc:
 
 test-no-pg: test-crate-no-pg test-example-basic
 
-rebuild-offline-queries:
+make-test-db:
     dropdb crdb-test || true
     createdb crdb-test
     sqlx migrate run --source src/server/migrations/ --database-url "postgres:///crdb-test?host=/run/postgresql"
+
+rebuild-offline-queries: make-test-db
     cargo sqlx prepare --database-url "postgres:///crdb-test?host=/run/postgresql" -- --all-features --tests
     dropdb crdb-test
 
 test-crate:
-    SQLX_OFFLINE="true" cargo test --all-features
+    SQLX_OFFLINE="true" cargo nextest run --all-features
 
 test-crate-no-pg:
-    SQLX_OFFLINE="true" cargo test --all-features -- --skip server::postgres_db
+    SQLX_OFFLINE="true" cargo nextest run --all-features -E 'all() - test(server::postgres_db::)'
 
 test-example-basic: build-example-basic-client test-example-basic-host
 
@@ -37,3 +39,9 @@ fuzz-object-cache:
         -j 8 \
         cache::object_cache::tests::cache_state_stays_valid \
         --corpus-dir src/cache/object_cache/__fuzz__/cache__object_cache__tests__cache_state_stays_valid/corpus.nounit
+
+fuzz-pg-basic:
+    cargo bolero test --all-features \
+        -j 8 \
+        server::postgres_db::tests::db_keeps_invariants \
+        --corpus-dir src/server/postgres_db/__fuzz__/server__postgres_db__tests__db_keeps_invariants/corpus.nounit

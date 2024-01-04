@@ -61,6 +61,9 @@ pub mod crdb_internal {
     pub use ulid::{self, Ulid};
 }
 
+#[cfg(any(feature = "server", feature = "client-native"))]
+pub use sqlx;
+
 // This module needs to actually be public, because the `generate` macros need to be
 // able to implement the traits. However, making it doc(hidden) makes it look as though
 // it is actually sealed in the documentation, which is good because we don't want
