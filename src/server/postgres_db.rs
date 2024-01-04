@@ -83,12 +83,16 @@ impl Db for PostgresDb {
         object: Arc<T>,
         cb: &C,
     ) -> Result<(), DbOpError> {
+        reord::point().await;
+
         let mut t = self
             .db
             .begin()
             .await
             .context("acquiring postgresql transaction")
             .map_err(DbOpError::Other)?;
+
+        reord::point().await;
 
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
@@ -101,6 +105,7 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
+        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         let affected =
             sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING")
                 .bind(created_at)
@@ -116,6 +121,7 @@ impl Db for PostgresDb {
                 .with_context(|| format!("inserting snapshot {created_at:?}"))
                 .map_err(DbOpError::Other)?
                 .rows_affected();
+        reord::point().await;
         if affected != 1 {
             // Check for equality with pre-existing
             let affected = sqlx::query(
@@ -144,6 +150,7 @@ impl Db for PostgresDb {
                     "Snapshot {created_at:?} already existed with a different value set"
                 )));
             }
+            reord::point().await;
             return Ok(());
         }
 
@@ -157,11 +164,14 @@ impl Db for PostgresDb {
                     )
                 })
             })?;
+        reord::point().await;
 
         t.commit()
             .await
             .with_context(|| format!("committing transaction that created {object_id:?}"))
             .map_err(DbOpError::Other)?;
+        std::mem::drop(object_lock);
+        reord::point().await;
         Ok(())
     }
 

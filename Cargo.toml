@@ -21,6 +21,7 @@ deepsize = "0.2.0"
 educe = "0.5.9"
 futures = "0.3.29"
 getrandom = "0.2.11"
+reord = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.10.8"
@@ -38,3 +39,4 @@ uuid = { version = "1.6", optional = true }
 
 [dev-dependencies]
 bolero = "0.10.0"
+reord = { version = "0.1.0", features = ["test"] }
