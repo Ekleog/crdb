@@ -11,10 +11,12 @@ doc:
 
 test-no-pg: test-crate-no-pg test-example-basic
 
-rebuild-offline-queries:
+make-test-db:
     dropdb crdb-test || true
     createdb crdb-test
     sqlx migrate run --source src/server/migrations/ --database-url "postgres:///crdb-test?host=/run/postgresql"
+
+rebuild-offline-queries: make-test-db
     cargo sqlx prepare --database-url "postgres:///crdb-test?host=/run/postgresql" -- --all-features --tests
     dropdb crdb-test
 

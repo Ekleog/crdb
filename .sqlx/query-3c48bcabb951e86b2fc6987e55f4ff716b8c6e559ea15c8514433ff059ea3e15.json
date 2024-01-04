@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM snapshots WHERE object_id = $1",
+  "query": "SELECT * FROM snapshots WHERE object_id = $1 ORDER BY snapshot_id",
   "describe": {
     "columns": [
       {
@@ -72,5 +72,5 @@
       false
     ]
   },
-  "hash": "842fac95841693180dc220b242dc88c6d6e39ac7e4da0ac7f2a676c1cf8bfd94"
+  "hash": "3c48bcabb951e86b2fc6987e55f4ff716b8c6e559ea15c8514433ff059ea3e15"
 }

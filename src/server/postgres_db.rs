@@ -194,21 +194,95 @@ impl PostgresDb {
             );
 
             // Rebuilding the object gives the same snapshots
-            let snapshots =
-                sqlx::query!("SELECT * FROM snapshots WHERE object_id = $1", o.object_id)
-                    .fetch_all(&self.db)
-                    .await
-                    .unwrap();
-            let events = sqlx::query!("SELECT * FROM events WHERE object_id = $1", o.object_id)
-                .fetch_all(&self.db)
-                .await
-                .unwrap();
+            let snapshots = sqlx::query!(
+                "SELECT * FROM snapshots WHERE object_id = $1 ORDER BY snapshot_id",
+                o.object_id
+            )
+            .fetch_all(&self.db)
+            .await
+            .unwrap();
+            let events = sqlx::query!(
+                "SELECT * FROM events WHERE object_id = $1 ORDER BY event_id",
+                o.object_id
+            )
+            .fetch_all(&self.db)
+            .await
+            .unwrap();
 
-            let object =
+            assert_eq!(
+                TypeId::from_uuid(snapshots[0].type_id),
+                TypeId(*T::type_ulid())
+            );
+            assert!(snapshots[0].is_creation);
+            let mut object =
                 parse_snapshot::<T>(snapshots[0].snapshot_version, snapshots[0].snapshot.clone())
                     .unwrap();
+            assert_eq!(snapshots[0].is_heavy, object.is_heavy());
+            assert_eq!(
+                snapshots[0].required_binaries,
+                object
+                    .required_binaries()
+                    .into_iter()
+                    .map(|b| b.to_uuid())
+                    .collect::<Vec<_>>()
+            );
 
-            // TODO
+            let mut snapshot_idx = 1;
+            let mut event_idx = 0;
+            loop {
+                if event_idx == events.len() {
+                    assert_eq!(snapshot_idx, snapshots.len());
+                    break;
+                }
+                let e = &events[event_idx];
+                event_idx += 1;
+                let event = serde_json::from_value::<T::Event>(e.data.clone()).unwrap();
+                assert_eq!(
+                    event
+                        .required_binaries()
+                        .into_iter()
+                        .map(|b| b.to_uuid())
+                        .collect::<Vec<_>>(),
+                    e.required_binaries
+                );
+                object.apply(&event);
+                if snapshots[snapshot_idx].snapshot_id != e.event_id {
+                    continue;
+                }
+                let s = &snapshots[snapshot_idx];
+                snapshot_idx += 1;
+                assert_eq!(TypeId::from_uuid(s.type_id), TypeId(*T::type_ulid()));
+                let snapshot = parse_snapshot::<T>(s.snapshot_version, s.snapshot.clone()).unwrap();
+                assert!(object == snapshot);
+                assert_eq!(s.is_heavy, snapshot.is_heavy());
+                assert_eq!(
+                    s.required_binaries,
+                    snapshot
+                        .required_binaries()
+                        .into_iter()
+                        .map(|b| b.to_uuid())
+                        .collect::<Vec<_>>()
+                );
+            }
+            if events.is_empty() {
+                assert!(snapshots.len() == 1);
+            } else {
+                assert_eq!(
+                    snapshots[snapshots.len() - 1].snapshot_id,
+                    events[events.len() - 1].event_id
+                );
+            }
+            assert!(snapshots[snapshots.len() - 1].is_latest);
+            assert_eq!(
+                snapshots[snapshots.len() - 1].users_who_can_read,
+                object
+                    .users_who_can_read(self)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|u| u.to_uuid())
+                    .collect::<Vec<_>>()
+            );
         }
     }
 }

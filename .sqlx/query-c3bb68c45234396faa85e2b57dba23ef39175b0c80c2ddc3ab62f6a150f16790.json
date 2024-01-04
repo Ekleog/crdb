@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM events WHERE object_id = $1",
+  "query": "SELECT * FROM events WHERE object_id = $1 ORDER BY event_id",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       false
     ]
   },
-  "hash": "7655d24f5b72d894de47c51aa9c2e1e6d36d3c4bba6251e5f93f51c43cc5ede9"
+  "hash": "c3bb68c45234396faa85e2b57dba23ef39175b0c80c2ddc3ab62f6a150f16790"
 }
