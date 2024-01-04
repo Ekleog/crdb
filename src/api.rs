@@ -63,10 +63,22 @@ macro_rules! impl_for_id {
                 <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_compatible(ty)
             }
         }
+
+        #[cfg(test)]
+        impl bolero::TypeGenerator for $type {
+            fn generate<D: bolero::Driver>(driver: &mut D) -> Option<$type> {
+                <[u8; 16]>::generate(driver).map(|b| Self {
+                    id: Ulid::from_bytes(b),
+                })
+            }
+        }
+
+        // No allocations in the Ulid-only-containing types
+        deepsize::known_deep_size!(0; $type);
     };
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct User {
     pub id: Ulid,
 }
@@ -202,7 +214,7 @@ impl<T: Object> DbPtr<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct BinPtr {
     pub(crate) id: Ulid,
 }

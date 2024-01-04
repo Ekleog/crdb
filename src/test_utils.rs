@@ -92,7 +92,6 @@ impl TestObject1 {
     }
 }
 
-#[allow(unused_variables)] // TODO: remove?
 impl Object for TestObject1 {
     type Event = TestEvent1;
 
@@ -102,24 +101,24 @@ impl Object for TestObject1 {
 
     async fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
-        user: User,
-        db: &'a C,
+        _user: User,
+        _db: &'a C,
     ) -> anyhow::Result<bool> {
         unimplemented!()
     }
 
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
-        user: User,
-        event: &'a Self::Event,
-        db: &'a C,
+        _user: User,
+        _event: &'a Self::Event,
+        _db: &'a C,
     ) -> anyhow::Result<bool> {
         unimplemented!()
     }
 
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
-        db: &'a C,
+        _db: &'a C,
     ) -> anyhow::Result<Vec<User>> {
         Ok(Vec::new())
     }
@@ -142,6 +141,84 @@ impl Object for TestObject1 {
 }
 
 impl crate::Event for TestEvent1 {
+    fn required_binaries(&self) -> Vec<BinPtr> {
+        Vec::new()
+    }
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    bolero::generator::TypeGenerator,
+    deepsize::DeepSizeOf,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+pub struct TestObjectPerms(pub User);
+
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    bolero::generator::TypeGenerator,
+    deepsize::DeepSizeOf,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+pub enum TestEventPerms {
+    Set(User),
+}
+
+impl Object for TestObjectPerms {
+    type Event = TestEventPerms;
+
+    fn type_ulid() -> &'static ulid::Ulid {
+        &TYPE_ID_2.0
+    }
+
+    async fn can_create<'a, C: CanDoCallbacks>(
+        &'a self,
+        _user: User,
+        _db: &'a C,
+    ) -> anyhow::Result<bool> {
+        unimplemented!()
+    }
+
+    async fn can_apply<'a, C: CanDoCallbacks>(
+        &'a self,
+        _user: User,
+        _event: &'a Self::Event,
+        _db: &'a C,
+    ) -> anyhow::Result<bool> {
+        unimplemented!()
+    }
+
+    async fn users_who_can_read<'a, C: CanDoCallbacks>(
+        &'a self,
+        _db: &'a C,
+    ) -> anyhow::Result<Vec<User>> {
+        Ok(vec![self.0])
+    }
+
+    fn apply(&mut self, event: &Self::Event) {
+        match event {
+            TestEventPerms::Set(u) => self.0 = *u,
+        }
+    }
+
+    fn is_heavy(&self) -> bool {
+        false
+    }
+
+    fn required_binaries(&self) -> Vec<BinPtr> {
+        Vec::new()
+    }
+}
+
+impl crate::Event for TestEventPerms {
     fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
     }
