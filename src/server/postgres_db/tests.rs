@@ -1,9 +1,8 @@
 use super::PostgresDb;
 use crate::{
-    cache::ObjectCache,
     db_trait::{Db, DbOpError, EventId, ObjectId, Timestamp},
     test_utils::{
-        TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
+        self, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
     },
 };
 use anyhow::Context;
@@ -151,14 +150,14 @@ enum Op {
 
 struct FuzzState {
     objects: Vec<ObjectId>,
-    mem_db: ObjectCache,
+    mem_db: test_utils::MemDb,
 }
 
 impl FuzzState {
     fn new() -> FuzzState {
         FuzzState {
             objects: Vec::new(),
-            mem_db: ObjectCache::new(usize::MAX),
+            mem_db: test_utils::MemDb::new(),
         }
     }
 }
@@ -173,7 +172,7 @@ fn cmp_anyhow<T: Debug + Eq>(pg: anyhow::Result<T>, mem: anyhow::Result<T>) -> a
 
 fn cmp_db<T: Debug + Eq>(
     pg_res: Result<T, DbOpError>,
-    mem_res: anyhow::Result<T>,
+    mem_res: Result<T, DbOpError>,
 ) -> anyhow::Result<()> {
     match (&pg_res, &mem_res) {
         (Ok(pg), Ok(mem)) => anyhow::ensure!(
@@ -181,7 +180,10 @@ fn cmp_db<T: Debug + Eq>(
             "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"
         ),
         (Err(DbOpError::Other(_pg)), Err(_mem)) => (), // TODO: add more checks? (and in cmp_anyhow too)
-        (Err(DbOpError::MissingBinPtrs(_)), _) => todo!(),
+        (Err(DbOpError::MissingBinPtrs(pg)), Err(DbOpError::MissingBinPtrs(mem))) => anyhow::ensure!(
+            pg == mem,
+            "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"
+        ),
         (_, _) => anyhow::bail!("postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"),
     }
     Ok(())
@@ -198,8 +200,8 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
             let pg = db.create(*id, *created_at, object.clone(), db).await;
             let mem = s
                 .mem_db
-                .create(*id, *created_at, object.clone())
-                .map(|_| ());
+                .create(*id, *created_at, object.clone(), &s.mem_db)
+                .await;
             cmp_db(pg, mem)?;
         }
         Op::Submit {
@@ -217,8 +219,8 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                 .await;
             let mem = s
                 .mem_db
-                .submit::<TestObject1>(o, *event_id, event.clone())
-                .map(|_| ());
+                .submit::<TestObject1, _>(o, *event_id, event.clone(), &s.mem_db)
+                .await;
             cmp_db(pg, mem)?;
         }
         Op::Get { object } => {
@@ -237,11 +239,15 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                     Err(e) => Err(e).context("getting last snapshot of {o:?}"),
                 },
             };
-            let mem: anyhow::Result<Option<Arc<TestObject1>>> = s
-                .mem_db
-                .get(&o)
-                .map(|o| o.last_snapshot::<TestObject1>())
-                .transpose();
+            let mem: anyhow::Result<Option<Arc<TestObject1>>> =
+                match s.mem_db.get::<TestObject1>(o).await {
+                    Err(e) => Err(e).context("getting {o:?} in mem db"),
+                    Ok(None) => Ok(None),
+                    Ok(Some(o)) => match o.last_snapshot::<TestObject1>() {
+                        Ok(o) => Ok(Some(o)),
+                        Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                    },
+                };
             cmp_anyhow(pg, mem)?;
         }
         Op::Recreate { object, time } => {
@@ -251,7 +257,10 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let pg = db.recreate::<TestObject1, _>(*time, o, db).await;
-            let mem = s.mem_db.recreate::<TestObject1>(o, *time);
+            let mem = s
+                .mem_db
+                .recreate::<TestObject1, _>(*time, o, &s.mem_db)
+                .await;
             cmp_anyhow(pg, mem)?;
         }
     }

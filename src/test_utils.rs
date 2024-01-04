@@ -1,9 +1,16 @@
 #![allow(dead_code)] // test utils can be or not eb used but get copy-pasted anyway
 
 use crate::{
-    db_trait::{EventId, ObjectId, TypeId},
-    CanDoCallbacks, User,
+    db_trait::{
+        Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,
+    },
+    full_object::{DynSized, FullObject},
+    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
+use anyhow::{anyhow, Context};
+use futures::prelude::Stream;
+use std::{any::Any, collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 use ulid::Ulid;
 
 const fn ulid(s: &str) -> Ulid {
@@ -86,7 +93,7 @@ impl TestObject1 {
 }
 
 #[allow(unused_variables)] // TODO: remove?
-impl crate::Object for TestObject1 {
+impl Object for TestObject1 {
     type Event = TestEvent1;
 
     fn type_ulid() -> &'static ulid::Ulid {
@@ -129,13 +136,169 @@ impl crate::Object for TestObject1 {
         self.0.len() > 10
     }
 
-    fn required_binaries(&self) -> Vec<crate::BinPtr> {
+    fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
     }
 }
 
 impl crate::Event for TestEvent1 {
-    fn required_binaries(&self) -> Vec<crate::BinPtr> {
+    fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
+    }
+}
+
+struct MemDbImpl {
+    // Some(e) for a real event, None for a creation snapshot
+    events: HashMap<EventId, Option<Arc<dyn DynSized>>>,
+    objects: HashMap<ObjectId, FullObject>,
+    binaries: HashMap<BinPtr, Arc<Vec<u8>>>,
+}
+
+pub struct MemDb(Arc<Mutex<MemDbImpl>>);
+
+impl MemDb {
+    pub fn new() -> MemDb {
+        MemDb(Arc::new(Mutex::new(MemDbImpl {
+            events: HashMap::new(),
+            objects: HashMap::new(),
+            binaries: HashMap::new(),
+        })))
+    }
+}
+
+fn eq<T: 'static + Any + Send + Sync + Eq>(
+    l: &dyn DynSized,
+    r: &dyn DynSized,
+) -> anyhow::Result<bool> {
+    Ok(l.ref_to_any()
+        .downcast_ref::<T>()
+        .context("downcasting lhs")?
+        == r.ref_to_any()
+            .downcast_ref::<T>()
+            .context("downcasting rhs")?)
+}
+
+impl Db for MemDb {
+    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
+        futures::stream::empty()
+    }
+
+    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
+        futures::stream::empty()
+    }
+
+    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
+        futures::stream::empty()
+    }
+
+    async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
+        unimplemented!()
+    }
+
+    async fn create<T: Object, C: CanDoCallbacks>(
+        &self,
+        id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+        _cb: &C,
+    ) -> Result<(), DbOpError> {
+        let mut this = self.0.lock().await;
+
+        // First, check for duplicates
+        if let Some(o) = this.objects.get(&id) {
+            let c = o.creation_info();
+            if created_at != c.created_at {
+                return Err(DbOpError::Other(anyhow!(
+                    "object {id:?} already existed with different creation time"
+                )));
+            }
+            if !eq::<T>(&*c.creation, &*object as _).map_err(DbOpError::Other)? {
+                return Err(DbOpError::Other(anyhow!(
+                    "object {id:?} already existed with different creation value"
+                )));
+            }
+            return Ok(());
+        }
+        if let Some(_) = this.events.get(&created_at) {
+            return Err(DbOpError::Other(anyhow!(
+                "creating object at the same time as an existing event"
+            )));
+        }
+
+        // This is a new insert, do it
+        this.objects
+            .insert(id, FullObject::new(id, created_at, object));
+        this.events.insert(created_at, None);
+
+        Ok(())
+    }
+
+    async fn submit<T: Object, C: CanDoCallbacks>(
+        &self,
+        object: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+        _cb: &C,
+    ) -> Result<(), DbOpError> {
+        let mut this = self.0.lock().await;
+        if let Some(e) = this.events.get(&event_id) {
+            if !eq::<T::Event>(&*e, &*event as _).map_err(DbOpError::Other)? {
+                return Err(DbOpError::Other(anyhow!(
+                    "event already inserted with different value"
+                )));
+            }
+            return Ok(());
+        }
+        match this.objects.get(&object) {
+            None => Err(DbOpError::Other(anyhow!(
+                "object not yet present in database"
+            ))),
+            Some(o) if o.creation_info().created_at >= event_id => {
+                Err(DbOpError::Other(anyhow!("event is too early for object")))
+            }
+            Some(o) => {
+                o.apply::<T>(event_id, event.clone())
+                    .map_err(DbOpError::Other)?;
+                this.events.insert(event_id, Some(event));
+                Ok(())
+            }
+        }
+    }
+
+    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
+        Ok(self.0.lock().await.objects.get(&ptr).cloned())
+    }
+
+    async fn query<T: Object>(
+        &self,
+        _user: User,
+        _include_heavy: bool,
+        _ignore_not_modified_on_server_since: Option<Timestamp>,
+        _q: Query,
+    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+        // TODO
+        Ok(futures::stream::empty())
+    }
+
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        _cb: &C,
+    ) -> anyhow::Result<()> {
+        let this = self.0.lock().await;
+        let Some(o) = this.objects.get(&object) else {
+            anyhow::bail!("object does not exist");
+        };
+        o.recreate_at::<T>(time).context("recreating object")?;
+        Ok(())
+    }
+
+    async fn create_binary(&self, _id: BinPtr, _value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+        unimplemented!()
+    }
+
+    async fn get_binary(&self, _ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        unimplemented!()
     }
 }
