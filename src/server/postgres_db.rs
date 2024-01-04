@@ -91,7 +91,6 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")
             .map_err(DbOpError::Other)?;
 
-
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
         let snapshot_version = T::snapshot_version();
@@ -427,6 +426,7 @@ impl Db for PostgresDb {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
+        reord::point().await;
         let mut transaction = self
             .db
             .begin()
@@ -434,6 +434,7 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")?;
 
         // Atomically perform all the reads here
+        reord::point().await;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *transaction)
             .await
@@ -449,6 +450,7 @@ impl Db for PostgresDb {
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+        reord::point().await;
         let mut transaction = self
             .db
             .begin()
@@ -456,6 +458,7 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")?;
 
         // Atomically perform all the reads here
+        reord::point().await;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *transaction)
             .await
@@ -492,6 +495,7 @@ impl Db for PostgresDb {
                 Bind::I64(v) => query = query.bind(v),
             }
         }
+        reord::point().await;
         let ids = query
             .fetch_all(&mut *transaction)
             .await
@@ -527,6 +531,7 @@ impl Db for PostgresDb {
             );
         }
 
+        reord::point().await;
         let mut transaction = self
             .db
             .begin()
@@ -534,6 +539,7 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")?;
 
         // Lock the object
+        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         let creation_snapshot = sqlx::query!(
             "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation FOR UPDATE",
             object_id as ObjectId,
@@ -543,10 +549,13 @@ impl Db for PostgresDb {
         .with_context(|| format!("locking {object_id:?} for re-creation"))?;
         if EventId::from_uuid(creation_snapshot.snapshot_id) >= EventId::last_id_at(time) {
             // Already created after the requested time
+            std::mem::drop(object_lock);
+            reord::point().await;
             return Ok(());
         }
 
         // Figure out the cutoff event
+        reord::point().await;
         let event = sqlx::query!(
             "
                 SELECT event_id
@@ -573,6 +582,7 @@ impl Db for PostgresDb {
         };
 
         // Fetch the last snapshot before cutoff
+        reord::point().await;
         let snapshot = sqlx::query!(
             "
                 SELECT snapshot_id, snapshot_version, snapshot
@@ -592,6 +602,7 @@ impl Db for PostgresDb {
         })?;
 
         // Delete all the snapshots before cutoff
+        reord::point().await;
         sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id < $2")
             .bind(object_id)
             .bind(cutoff_time)
@@ -629,6 +640,7 @@ impl Db for PostgresDb {
             let users_who_can_read = object.users_who_can_read(cb).await.with_context(|| {
                 format!("listing users who can read {object_id:?} at snapshot {cutoff_time:?}")
             })?;
+            reord::point().await;
             sqlx::query(
                 "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, FALSE, $5, $6, $7, $8, $9",
             )
@@ -645,6 +657,7 @@ impl Db for PostgresDb {
             .with_context(|| format!("inserting snapshot {cutoff_time:?} for {object_id:?}"))?;
         } else {
             // Just update the `cutoff_time` snapshot to record it's the creation snapshot
+            reord::point().await;
             sqlx::query("UPDATE snapshots SET is_creation = TRUE WHERE snapshot_id = $1")
                 .bind(cutoff_time)
                 .execute(&mut *transaction)
@@ -657,6 +670,7 @@ impl Db for PostgresDb {
         }
 
         // We now have all the new information. We can delete the events.
+        reord::point().await;
         sqlx::query("DELETE FROM events WHERE object_id = $1 AND event_id <= $2")
             .bind(object_id)
             .bind(cutoff_time)
@@ -666,6 +680,8 @@ impl Db for PostgresDb {
                 format!("deleting all events for {object_id:?} before {cutoff_time:?}")
             })?;
 
+        std::mem::drop(object_lock);
+        reord::point().await;
         Ok(())
     }
 
@@ -683,6 +699,7 @@ async fn check_required_binaries(
     mut binaries: Vec<BinPtr>,
 ) -> Result<(), DbOpError> {
     // FOR KEY SHARE: prevent DELETE of the binaries while `t` is running
+    reord::point().await;
     let present_ids = sqlx::query("SELECT id FROM binaries WHERE id = ANY ($1) FOR KEY SHARE")
         .bind(&binaries)
         .fetch_all(&mut **t)
@@ -708,6 +725,7 @@ async fn get_impl<T: Object>(
     const EVENT_ID: usize = 0;
     const EVENT_DATA: usize = 1;
 
+    reord::point().await;
     let creation_snapshot = sqlx::query!(
         "
             SELECT snapshot_id, snapshot_version, snapshot
@@ -727,6 +745,7 @@ async fn get_impl<T: Object>(
         None => return Ok(None),
     };
 
+    reord::point().await;
     let events =
         sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
             .bind(ptr)
@@ -734,6 +753,7 @@ async fn get_impl<T: Object>(
             .await
             .with_context(|| format!("fetching all events for object {ptr:?}"))?;
 
+    reord::point().await;
     let latest_snapshot = sqlx::query!(
         "
             SELECT snapshot_id, snapshot_version, snapshot
@@ -820,6 +840,7 @@ async fn apply_events_between<T: Object>(
     from: EventId,
     to: EventId,
 ) -> anyhow::Result<()> {
+    reord::point().await;
     let mut events = sqlx::query!(
         "
             SELECT event_id, data
