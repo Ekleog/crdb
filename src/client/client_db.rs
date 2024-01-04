@@ -86,7 +86,7 @@ impl<A: Authenticator> Db for ClientDb<A> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         self.api
             .submit::<T, _>(object, event_id, event.clone(), cb)
             .await?;

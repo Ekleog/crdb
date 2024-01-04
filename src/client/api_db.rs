@@ -64,7 +64,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         event_id: EventId,
         event: Arc<T::Event>,
         _cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         todo!()
     }
 

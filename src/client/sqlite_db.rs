@@ -53,7 +53,7 @@ impl Db for SqliteDb {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         todo!()
     }
 

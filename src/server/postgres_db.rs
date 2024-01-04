@@ -411,7 +411,7 @@ impl Db for PostgresDb {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -432,12 +432,18 @@ impl Db for PostgresDb {
         .map_err(DbOpError::Other)?;
         reord::point().await;
         match creation_snapshot {
-            None => anyhow::bail!("Object {object_id:?} does not exist yet in database"),
-            Some(s) => anyhow::ensure!(
-                s.snapshot_id < event_id.to_uuid(),
-                "Event {event_id:?} is being submitted before object creation time {:?}",
-                s.snapshot_id
-            ),
+            None => {
+                return Err(DbOpError::Other(anyhow!(
+                    "Object {object_id:?} does not exist yet in database"
+                )))
+            }
+            Some(s) if s.snapshot_id >= event_id.to_uuid() => {
+                return Err(DbOpError::Other(anyhow!(
+                    "Event {event_id:?} is being submitted before object creation time {:?}",
+                    s.snapshot_id
+                )))
+            }
+            _ => (),
         }
 
         // Insert the event itself
@@ -474,10 +480,11 @@ impl Db for PostgresDb {
             .with_context(|| format!("checking pre-existing snapshot for {event_id:?} is the same"))
             .map_err(DbOpError::Other)?
             .rows_affected();
-            anyhow::ensure!(
-                affected == 1,
-                "Event {event_id:?} already existed with a different value set"
-            );
+            if affected != 1 {
+                return Err(DbOpError::Other(anyhow!(
+                    "Event {event_id:?} already existed with a different value set"
+                )));
+            }
             // Nothing else to do, event was already inserted
             std::mem::drop(object_lock);
             reord::point().await;
@@ -510,7 +517,8 @@ impl Db for PostgresDb {
         )
         .fetch_one(&mut *transaction)
         .await
-        .with_context(|| format!("fetching the last snapshot for object {object_id:?}"))?;
+        .with_context(|| format!("fetching the last snapshot for object {object_id:?}"))
+        .map_err(DbOpError::Other)?;
         let mut object =
             parse_snapshot::<T>(last_snapshot.snapshot_version, last_snapshot.snapshot)
                 .with_context(|| format!("parsing last snapshot for object {object_id:?}"))
@@ -535,7 +543,8 @@ impl Db for PostgresDb {
                 EventId::from_uuid(last_snapshot.snapshot_id),
                 EventId::from_u128(event_id.as_u128() - 1),
             )
-            .await?;
+            .await
+            .map_err(DbOpError::Other)?;
         }
 
         // Add the current event to the last snapshot
@@ -606,11 +615,15 @@ impl Db for PostgresDb {
             std::mem::drop(events_since_inserted);
 
             // Save the latest snapshot
-            let users_who_can_read = object.users_who_can_read(cb).await.with_context(|| {
-                format!(
+            let users_who_can_read = object
+                .users_who_can_read(cb)
+                .await
+                .with_context(|| {
+                    format!(
                     "listing users who can read for snapshot {event_id:?} of object {object_id:?}"
                 )
-            })?;
+                })
+                .map_err(DbOpError::Other)?;
             reord::point().await;
             sqlx::query(
                 "INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, TRUE, $4, $5, $6, $7, $8)",

@@ -214,9 +214,12 @@ impl<D: Db> Db for CacheDb<D> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DbOpError> {
         let mut cache = self.cache.write().await;
-        if cache.submit::<T>(object_id, event_id, event.clone())? {
+        if cache
+            .submit::<T>(object_id, event_id, event.clone())
+            .map_err(DbOpError::Other)?
+        {
             self.db
                 .submit::<T, _>(object_id, event_id, event, cb)
                 .await?;

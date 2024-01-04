@@ -180,7 +180,7 @@ pub trait Db: 'static + Send + Sync {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> impl Send + Future<Output = anyhow::Result<()>>;
+    ) -> impl Send + Future<Output = Result<(), DbOpError>>;
     fn create_all<T: Object, C: CanDoCallbacks>(
         &self,
         o: FullObject,
