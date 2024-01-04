@@ -155,11 +155,10 @@ pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
     fn new_objects(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewObject>>;
-    /// This function returns all new events for events on objects that have been
-    /// subscribed on. Objects subscribed on are all the objects that have ever been
-    /// created with `created`, or obtained with `get` or `query`, as well as all
-    /// objects received through `new_objects`, excluding objects explicitly unsubscribed
-    /// from
+    /// This function returns all new events for events on objects that have been subscribed
+    /// on. Objects subscribed on are all the objects that have ever been created
+    /// with `created`, or obtained with `get` or `query`, as well as all objects
+    /// received through `new_objects`, excluding objects explicitly unsubscribed from
     fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewEvent>>;
     fn new_recreations(
         &self,
