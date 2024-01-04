@@ -84,7 +84,6 @@ impl Db for PostgresDb {
         cb: &C,
     ) -> Result<(), DbOpError> {
         reord::point().await;
-
         let mut t = self
             .db
             .begin()
@@ -92,7 +91,6 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")
             .map_err(DbOpError::Other)?;
 
-        reord::point().await;
 
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
@@ -106,6 +104,7 @@ impl Db for PostgresDb {
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
         let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
+        reord::point().await;
         let affected =
             sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING")
                 .bind(created_at)
@@ -121,9 +120,9 @@ impl Db for PostgresDb {
                 .with_context(|| format!("inserting snapshot {created_at:?}"))
                 .map_err(DbOpError::Other)?
                 .rows_affected();
-        reord::point().await;
         if affected != 1 {
             // Check for equality with pre-existing
+            reord::point().await;
             let affected = sqlx::query(
                 "
                     SELECT 1 FROM snapshots
@@ -150,6 +149,7 @@ impl Db for PostgresDb {
                     "Snapshot {created_at:?} already existed with a different value set"
                 )));
             }
+            std::mem::drop(object_lock);
             reord::point().await;
             return Ok(());
         }
@@ -164,8 +164,8 @@ impl Db for PostgresDb {
                     )
                 })
             })?;
-        reord::point().await;
 
+        reord::point().await;
         t.commit()
             .await
             .with_context(|| format!("committing transaction that created {object_id:?}"))
@@ -182,6 +182,7 @@ impl Db for PostgresDb {
         event: Arc<T::Event>,
         cb: &C,
     ) -> anyhow::Result<()> {
+        reord::point().await;
         let mut transaction = self
             .db
             .begin()
@@ -190,6 +191,7 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
 
         // Lock the object
+        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         let creation_snapshot = sqlx::query!(
             "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation FOR UPDATE",
             object_id.to_uuid(),
@@ -198,6 +200,7 @@ impl Db for PostgresDb {
         .await
         .with_context(|| format!("locking object {object_id:?} in database"))
         .map_err(DbOpError::Other)?;
+        reord::point().await;
         match creation_snapshot {
             None => anyhow::bail!("Object {object_id:?} does not exist yet in database"),
             Some(s) => anyhow::ensure!(
@@ -210,6 +213,7 @@ impl Db for PostgresDb {
         // Insert the event itself
         let event_json = sqlx::types::Json(&event);
         let required_binaries = event.required_binaries();
+        reord::point().await;
         let affected =
             sqlx::query("INSERT INTO events VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
                 .bind(event_id)
@@ -223,6 +227,7 @@ impl Db for PostgresDb {
                 .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
+            reord::point().await;
             let affected = sqlx::query(
                 "
                     SELECT 1 FROM events
@@ -244,10 +249,13 @@ impl Db for PostgresDb {
                 "Event {event_id:?} already existed with a different value set"
             );
             // Nothing else to do, event was already inserted
+            std::mem::drop(object_lock);
+            reord::point().await;
             return Ok(());
         }
 
         // Clear all snapshots after the event
+        reord::point().await;
         sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id > $2")
             .bind(object_id)
             .bind(event_id)
@@ -259,6 +267,7 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
 
         // Find the last snapshot for the object
+        reord::point().await;
         let last_snapshot = sqlx::query!(
             "
                 SELECT snapshot_id, is_latest, snapshot_version, snapshot
@@ -279,6 +288,7 @@ impl Db for PostgresDb {
 
         // Remove the "latest snapshot" flag for the object
         // Note that this can be a no-op if the latest snapshot was already deleted above
+        reord::point().await;
         sqlx::query("UPDATE snapshots SET is_latest = FALSE WHERE object_id = $1 AND is_latest")
             .bind(object_id)
             .execute(&mut *transaction)
@@ -311,6 +321,7 @@ impl Db for PostgresDb {
                 )
             })
             .map_err(DbOpError::Other)?;
+        reord::point().await;
         sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9)")
             .bind(event_id)
             .bind(TypeId(*T::type_ulid()))
@@ -329,6 +340,7 @@ impl Db for PostgresDb {
         // If needed, re-compute the last snapshot
         if !last_snapshot.is_latest {
             // List all the events since the inserted event
+            reord::point().await;
             let mut events_since_inserted = sqlx::query!(
                 "
                     SELECT event_id, data
@@ -369,6 +381,7 @@ impl Db for PostgresDb {
                     "listing users who can read for snapshot {event_id:?} of object {object_id:?}"
                 )
             })?;
+            reord::point().await;
             sqlx::query(
                 "INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, TRUE, $4, $5, $6, $7, $8)",
             )
@@ -387,6 +400,8 @@ impl Db for PostgresDb {
             .await
             .with_context(|| format!("inserting event {event_id:?} into table"))
             .map_err(DbOpError::Other)?;
+            std::mem::drop(object_lock);
+            reord::point().await;
         }
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
