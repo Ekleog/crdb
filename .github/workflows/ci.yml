@@ -19,6 +19,10 @@ jobs:
         with:
           crate: cargo-nextest
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
+        with:
+          workspaces: |
+            .
+            examples/basic
       - uses: ikalnytskyi/action-setup-postgres@510dee7c6d0b2cdf7d94d3f983aefd7f39ecf342
         with:
           username: postgres
