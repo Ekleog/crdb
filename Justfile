@@ -27,10 +27,10 @@ rebuild-offline-queries: make-test-db
     dropdb crdb-test
 
 test-crate:
-    SQLX_OFFLINE="true" cargo test --all-features
+    SQLX_OFFLINE="true" cargo nextest run --all-features
 
 test-crate-no-pg:
-    SQLX_OFFLINE="true" cargo test --all-features -- --skip server::postgres_db
+    SQLX_OFFLINE="true" cargo nextest run --all-features -E 'all() - test(server::postgres_db::)'
 
 test-example-basic: build-example-basic-client test-example-basic-host
 
