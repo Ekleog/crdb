@@ -3,7 +3,7 @@ use anyhow::Context;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let db_url = "test";
-    let db = sqlx::postgres::PgPoolOptions::new()
+    let db = crdb::sqlx::postgres::PgPoolOptions::new()
         .max_connections(50)
         .connect(&db_url)
         .await
