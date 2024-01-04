@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+env:
+  DATABASE_URL: "postgres://postgres:postgres@localhost/crdb"
+
 jobs:
   just-test:
     name: just test
@@ -18,6 +21,9 @@ jobs:
       - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
         with:
           crate: cargo-nextest
+      - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
+        with:
+          crate: sqlx-cli
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
         with:
           workspaces: |
@@ -27,5 +33,6 @@ jobs:
         with:
           username: postgres
           password: postgres
-          database: postgres
-      - run: DATABASE_URL="postgres://postgres:postgres@localhost/postgres" just test
+          database: crdb
+      - run: sqlx migrate run --source src/server/migrations
+      - run: just test
