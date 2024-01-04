@@ -34,10 +34,7 @@ ulid = "1.1"
 axum = { version = "0.7.2", optional = true }
 indexed_db_futures = { version = "0.4.1", optional = true }
 paste = { version = "1.0", optional = true }
-# Note that this patch is https://github.com/launchbadge/sqlx/pull/2961.
-# It is not useful for production, but local development and esp. testing do require it.
-# So, the solution of just using it here should work fine for now.
-sqlx = { version = "0.7.3", features = ["runtime-tokio"], optional = true, git = "https://github.com/Ekleog/sqlx", rev = "f007dd901e835e7cbecb0c104982eb775d5556c3" }
+sqlx = { version = "0.7.3", features = ["runtime-tokio"], optional = true }
 uuid = { version = "1.6", optional = true }
 
 [dev-dependencies]
