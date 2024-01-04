@@ -92,7 +92,39 @@ impl PostgresDb {
             .await
             .unwrap()
             .rows_affected()
-        )
+        );
+
+        // All non-creation snapshots match an event
+        assert_eq!(
+            0,
+            sqlx::query(
+                "
+                    SELECT snapshot_id AS id FROM snapshots WHERE NOT is_creation
+                    EXCEPT
+                    SELECT event_id AS id FROM events
+                "
+            )
+            .execute(&self.db)
+            .await
+            .unwrap()
+            .rows_affected()
+        );
+
+        // Snapshot and events at the same time are on the same object
+        assert_eq!(
+            0,
+            sqlx::query(
+                "
+                    SELECT snapshot_id FROM snapshots
+                    LEFT JOIN events ON snapshots.snapshot_id = events.event_id
+                    WHERE snapshots.object_id != events.object_id
+                "
+            )
+            .execute(&self.db)
+            .await
+            .unwrap()
+            .rows_affected()
+        );
     }
 
     #[cfg(test)]
@@ -171,6 +203,10 @@ impl PostgresDb {
                 .fetch_all(&self.db)
                 .await
                 .unwrap();
+
+            let object =
+                parse_snapshot::<T>(snapshots[0].snapshot_version, snapshots[0].snapshot.clone())
+                    .unwrap();
 
             // TODO
         }
