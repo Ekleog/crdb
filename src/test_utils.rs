@@ -149,7 +149,7 @@ impl crate::Event for TestEvent1 {
 
 struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
-    events: HashMap<EventId, Option<Arc<dyn DynSized>>>,
+    events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
     objects: HashMap<ObjectId, FullObject>,
     binaries: HashMap<BinPtr, Arc<Vec<u8>>>,
 }
@@ -228,7 +228,7 @@ impl Db for MemDb {
         // This is a new insert, do it
         this.objects
             .insert(id, FullObject::new(id, created_at, object));
-        this.events.insert(created_at, None);
+        this.events.insert(created_at, (id, None));
 
         Ok(())
     }
@@ -241,12 +241,17 @@ impl Db for MemDb {
         _cb: &C,
     ) -> Result<(), DbOpError> {
         let mut this = self.0.lock().await;
-        if let Some(e) = this.events.get(&event_id) {
+        if let Some((o, e)) = this.events.get(&event_id) {
             let Some(e) = e else {
                 return Err(DbOpError::Other(anyhow!(
                     "inserting event at the same time as a creation snapshot"
                 )));
             };
+            if *o != object {
+                return Err(DbOpError::Other(anyhow!(
+                    "event already inserted for different object"
+                )));
+            }
             if !eq::<T::Event>(&**e, &*event as _).map_err(DbOpError::Other)? {
                 return Err(DbOpError::Other(anyhow!(
                     "event already inserted with different value"
@@ -264,7 +269,7 @@ impl Db for MemDb {
             Some(o) => {
                 o.apply::<T>(event_id, event.clone())
                     .map_err(DbOpError::Other)?;
-                this.events.insert(event_id, Some(event));
+                this.events.insert(event_id, (object, Some(event)));
                 Ok(())
             }
         }
