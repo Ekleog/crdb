@@ -3,6 +3,7 @@ use crate::{
     db_trait::{Db, DbOpError, EventId, ObjectId, Timestamp},
     test_utils::{
         self, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
+        OBJECT_ID_2,
     },
 };
 use anyhow::Context;
@@ -351,8 +352,45 @@ fn db_keeps_invariants() {
     let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(50)
+        .with_shrink_time(std::time::Duration::from_millis(0))
         .with_type()
         .for_each(move |ops| db_keeps_invariants_impl(&cluster, ops))
+}
+
+#[test]
+fn regression_events_1342_fails_to_notice_conflict_on_3() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    db_keeps_invariants_impl(
+        &cluster,
+        &vec![
+            Create {
+                id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObject1(b"123".to_vec())),
+            },
+            Submit {
+                object: 0,
+                event_id: EVENT_ID_3,
+                event: Arc::new(TestEvent1::Clear),
+            },
+            Submit {
+                object: 0,
+                event_id: EVENT_ID_4,
+                event: Arc::new(TestEvent1::Clear),
+            },
+            Submit {
+                object: 0,
+                event_id: EVENT_ID_2,
+                event: Arc::new(TestEvent1::Clear),
+            },
+            Create {
+                id: OBJECT_ID_2,
+                created_at: EVENT_ID_3,
+                object: Arc::new(TestObject1(b"456".to_vec())),
+            },
+        ],
+    );
 }
 
 // TODO: add a fuzzer using `reord` that checks for concurrency

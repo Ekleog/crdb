@@ -384,6 +384,23 @@ impl Db for PostgresDb {
             return Ok(());
         }
 
+        // We just inserted. Check that no event existed at this id
+        reord::point().await;
+        let affected = sqlx::query("SELECT event_id FROM events WHERE event_id = $1 FOR UPDATE")
+            .bind(created_at)
+            .execute(&mut *t)
+            .await
+            .with_context(|| format!("checking that no event existed with this id yet"))
+            .map_err(DbOpError::Other)?
+            .rows_affected();
+        if affected != 0 {
+            std::mem::drop(object_lock);
+            reord::point().await;
+            return Err(DbOpError::Other(anyhow!(
+                "Snapshot {created_at:?} has an ulid conflict with a pre-existing event"
+            )));
+        }
+
         // Check that all required binaries are present, always as the last lock obtained in the transaction
         check_required_binaries(&mut t, required_binaries)
             .await
