@@ -54,6 +54,106 @@ impl PostgresDb {
     pub async fn disconnect_session_ref(&self, session: SessionRef) -> anyhow::Result<()> {
         todo!()
     }
+
+    #[cfg(test)]
+    async fn assert_invariants(&self) {
+        // All binaries are present
+        assert_eq!(
+            0,
+            sqlx::query(
+                "
+                    SELECT unnest(required_binaries)
+                    FROM snapshots
+                    UNION
+                    SELECT unnest(required_binaries)
+                    FROM events
+                    EXCEPT
+                    SELECT id
+                    FROM binaries
+                ",
+            )
+            .execute(&self.db)
+            .await
+            .unwrap()
+            .rows_affected()
+        );
+
+        // For each object
+        let objects =
+            sqlx::query!("SELECT object_id FROM snapshots UNION SELECT object_id FROM events")
+                .fetch_all(&self.db)
+                .await
+                .unwrap();
+        for o in objects {
+            // It has a creation and a latest snapshot
+            let creation: uuid::Uuid = sqlx::query(
+                "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation",
+            )
+            .bind(o.object_id)
+            .fetch_one(&self.db)
+            .await
+            .unwrap()
+            .get(0);
+            let latest: uuid::Uuid =
+                sqlx::query("SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_latest")
+                    .bind(o.object_id)
+                    .fetch_one(&self.db)
+                    .await
+                    .unwrap()
+                    .get(0);
+
+            // They surround all events and snapshots
+            assert_eq!(
+                0,
+                sqlx::query(
+                    "
+                        SELECT snapshot_id
+                        FROM snapshots
+                        WHERE object_id = $1
+                        AND (snapshot_id < $2 OR snapshot_id > $3)
+                    ",
+                )
+                .bind(o.object_id)
+                .bind(creation)
+                .bind(latest)
+                .execute(&self.db)
+                .await
+                .unwrap()
+                .rows_affected()
+            );
+            assert_eq!(
+                0,
+                sqlx::query(
+                    "
+                        SELECT event_id
+                        FROM events
+                        WHERE object_id = $1
+                        AND (event_id <= $2 OR event_id > $3)
+                    ",
+                )
+                .bind(o.object_id)
+                .bind(creation)
+                .bind(latest)
+                .execute(&self.db)
+                .await
+                .unwrap()
+                .rows_affected()
+            );
+
+            // Rebuilding the object gives the same snapshots
+            let snapshots =
+                sqlx::query!("SELECT * FROM snapshots WHERE object_id = $1", o.object_id)
+                    .fetch_all(&self.db)
+                    .await
+                    .unwrap();
+            let events = sqlx::query!("SELECT * FROM events WHERE object_id = $1", o.object_id)
+                .fetch_all(&self.db)
+                .await
+                .unwrap();
+
+            // TODO
+        }
+    }
 }
 
 // TODO: add a mechanism to auto-recreate all objects after some time elapsed
