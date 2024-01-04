@@ -1,12 +1,13 @@
 use super::PostgresDb;
 use crate::{
-    db_trait::{Db, EventId, ObjectId, Timestamp},
+    cache::ObjectCache,
+    db_trait::{Db, DbOpError, EventId, ObjectId, Timestamp},
     test_utils::{
         TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
     },
 };
 use anyhow::Context;
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 use ulid::Ulid;
 
 #[sqlx::test]
@@ -150,18 +151,40 @@ enum Op {
 
 struct FuzzState {
     objects: Vec<ObjectId>,
-    object_creations: Vec<Arc<TestObject1>>,
-    object_created_at: Vec<EventId>,
+    mem_db: ObjectCache,
 }
 
 impl FuzzState {
     fn new() -> FuzzState {
         FuzzState {
             objects: Vec::new(),
-            object_creations: Vec::new(),
-            object_created_at: Vec::new(),
+            mem_db: ObjectCache::new(usize::MAX),
         }
     }
+}
+
+fn cmp_anyhow<T: Debug + Eq>(pg: anyhow::Result<T>, mem: anyhow::Result<T>) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        (pg.is_err() && mem.is_err()) || (pg.as_ref().unwrap() == mem.as_ref().unwrap()),
+        "postgres result != mem result:\n==========\nPostgres:\n{pg:?}\n==========\nMem:\n{mem:?}"
+    );
+    Ok(())
+}
+
+fn cmp_db<T: Debug + Eq>(
+    pg_res: Result<T, DbOpError>,
+    mem_res: anyhow::Result<T>,
+) -> anyhow::Result<()> {
+    match (&pg_res, &mem_res) {
+        (Ok(pg), Ok(mem)) => anyhow::ensure!(
+            pg == mem,
+            "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"
+        ),
+        (Err(DbOpError::Other(_pg)), Err(_mem)) => (), // TODO: add more checks? (and in cmp_anyhow too)
+        (Err(DbOpError::MissingBinPtrs(_)), _) => todo!(),
+        (_, _) => anyhow::bail!("postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"),
+    }
+    Ok(())
 }
 
 async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
@@ -171,74 +194,65 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
             created_at,
             object,
         } => {
-            let preexisting = s.objects.iter().position(|o| o == id);
-            if preexisting.is_none() {
-                s.objects.push(*id);
-                s.object_creations.push(object.clone());
-                s.object_created_at.push(*created_at);
-                db.create(*id, *created_at, object.clone(), db).await?;
-            } else {
-                let o = preexisting.unwrap();
-                if s.object_creations[o] == *object && *created_at == s.object_created_at[o] {
-                    db.create(*id, *created_at, object.clone(), db).await?;
-                } else {
-                    // TODO: be more restrictive on exactly what errors are allowed here and below
-                    anyhow::ensure!(
-                        db.create(*id, *created_at, object.clone(), db)
-                            .await
-                            .is_err(),
-                        "Creating an object multiple times with different values should fail"
-                    );
-                }
-            }
+            s.objects.push(*id);
+            let pg = db.create(*id, *created_at, object.clone(), db).await;
+            let mem = s
+                .mem_db
+                .create(*id, *created_at, object.clone())
+                .map(|_| ());
+            cmp_db(pg, mem)?;
         }
         Op::Submit {
             object,
             event_id,
             event,
         } => {
-            if let Some(o) = s.objects.get(*object) {
-                db.submit::<TestObject1, _>(*o, *event_id, event.clone(), db)
-                    .await?;
-            } else {
-                anyhow::ensure!(
-                    db.submit::<TestObject1, _>(
-                        ObjectId(Ulid::new()),
-                        *event_id,
-                        event.clone(),
-                        db
-                    )
-                    .await
-                    .is_err(),
-                    "Submitting event to unknown object should fail"
-                );
-            }
+            let o = s
+                .objects
+                .get(*object)
+                .copied()
+                .unwrap_or_else(|| ObjectId(Ulid::new()));
+            let pg = db
+                .submit::<TestObject1, _>(o, *event_id, event.clone(), db)
+                .await;
+            let mem = s
+                .mem_db
+                .submit::<TestObject1>(o, *event_id, event.clone())
+                .map(|_| ());
+            cmp_db(pg, mem)?;
         }
         Op::Get { object } => {
-            if let Some(o) = s.objects.get(*object) {
-                // TODO: be a bit more specific?
-                anyhow::ensure!(db.get::<TestObject1>(*o).await?.is_some());
-            } else {
-                anyhow::ensure!(
-                    db.get::<TestObject1>(ObjectId(Ulid::new()))
-                        .await?
-                        .is_none(),
-                    "Getting unknown object should fail"
-                );
-            }
+            // TODO: use get_snapshot_at instead of last_snapshot
+            let o = s
+                .objects
+                .get(*object)
+                .copied()
+                .unwrap_or_else(|| ObjectId(Ulid::new()));
+            let pg: anyhow::Result<Option<Arc<TestObject1>>> = match db.get::<TestObject1>(o).await
+            {
+                Err(e) => Err(e).context("getting {o:?} in database"),
+                Ok(None) => Ok(None),
+                Ok(Some(o)) => match o.last_snapshot::<TestObject1>() {
+                    Ok(o) => Ok(Some(o)),
+                    Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                },
+            };
+            let mem: anyhow::Result<Option<Arc<TestObject1>>> = s
+                .mem_db
+                .get(&o)
+                .map(|o| o.last_snapshot::<TestObject1>())
+                .transpose();
+            cmp_anyhow(pg, mem)?;
         }
         Op::Recreate { object, time } => {
-            if let Some(o) = s.objects.get(*object) {
-                // TODO: update s.object_creations and s.created_at
-                db.recreate::<TestObject1, _>(*time, *o, db).await?;
-            } else {
-                anyhow::ensure!(
-                    db.recreate::<TestObject1, _>(*time, ObjectId(Ulid::new()), db)
-                        .await
-                        .is_err(),
-                    "Recreating unknown object should fail"
-                );
-            }
+            let o = s
+                .objects
+                .get(*object)
+                .copied()
+                .unwrap_or_else(|| ObjectId(Ulid::new()));
+            let pg = db.recreate::<TestObject1, _>(*time, o, db).await;
+            let mem = s.mem_db.recreate::<TestObject1>(o, *time);
+            cmp_anyhow(pg, mem)?;
         }
     }
     Ok(())
