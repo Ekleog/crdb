@@ -774,6 +774,7 @@ impl Db for PostgresDb {
                 "Re-creating object {object_id:?} at time {time:?} which is less than an hour old"
             );
         }
+        let time_id = EventId::last_id_at(time)?;
 
         reord::point().await;
         let mut transaction = self
@@ -791,7 +792,7 @@ impl Db for PostgresDb {
         .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("locking {object_id:?} for re-creation"))?;
-        if EventId::from_uuid(creation_snapshot.snapshot_id) >= EventId::last_id_at(time) {
+        if EventId::from_uuid(creation_snapshot.snapshot_id) >= time_id {
             // Already created after the requested time
             std::mem::drop(object_lock);
             reord::point().await;
@@ -810,15 +811,12 @@ impl Db for PostgresDb {
                 LIMIT 1
             ",
             object_id as ObjectId,
-            EventId::last_id_at(time) as EventId,
+            time_id as EventId,
         )
         .fetch_optional(&mut *transaction)
         .await
         .with_context(|| {
-            format!(
-                "recovering the last event for {object_id:?} before cutoff time {:?}",
-                EventId::last_id_at(time)
-            )
+            format!("recovering the last event for {object_id:?} before cutoff time {time_id:?}")
         })?;
         let cutoff_time = match event {
             None => return Ok(()), // Nothing to do, there was no event before the cutoff already

@@ -36,8 +36,9 @@ macro_rules! impl_for_id {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
 
-            pub(crate) fn last_id_at(time: Timestamp) -> Self {
-                Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1))
+            pub(crate) fn last_id_at(time: Timestamp) -> anyhow::Result<Self> {
+                anyhow::ensure!(time.time_ms() < (1 << Ulid::TIME_BITS), "Provided timestamp {time:?} is outside the range of valid ULIDs");
+                Ok(Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1)))
             }
 
             pub(crate) fn from_u128(v: u128) -> Self {
