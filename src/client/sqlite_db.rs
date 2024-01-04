@@ -19,22 +19,19 @@ impl SqliteDb {
 #[allow(unused_variables)] // TODO: remove
 impl Db for SqliteDb {
     async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
-        // todo!()
         futures::stream::empty()
     }
 
     async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
-        // todo!()
         futures::stream::empty()
     }
 
     async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
-        // todo!()
         futures::stream::empty()
     }
 
     async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
-        todo!()
+        unimplemented!()
     }
 
     async fn create<T: Object, C: CanDoCallbacks>(
