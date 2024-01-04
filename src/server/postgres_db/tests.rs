@@ -1,11 +1,12 @@
 use super::PostgresDb;
 use crate::{
-    db_trait::Db,
+    db_trait::{Db, EventId, ObjectId, Timestamp},
     test_utils::{
         TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
     },
 };
-use std::sync::Arc;
+use anyhow::Context;
+use std::{collections::HashMap, sync::Arc};
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {

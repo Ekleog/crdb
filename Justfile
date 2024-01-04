@@ -11,6 +11,12 @@ doc:
 
 test-no-pg: test-crate-no-pg test-example-basic
 
+setup-pg-tests:
+    sudo -u postgres rm -rf /tmp/crdb-test
+    psql postgres -c "DROP TABLESPACE in_memory" || true
+    sudo -u postgres mkdir -p /tmp/crdb-test
+    psql postgres -c "CREATE TABLESPACE in_memory LOCATION '/tmp/crdb-test'"
+
 make-test-db:
     dropdb crdb-test || true
     createdb crdb-test

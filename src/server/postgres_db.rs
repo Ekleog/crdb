@@ -23,7 +23,7 @@ pub(crate) struct PostgresDb {
 
 #[allow(unused_variables, dead_code)] // TODO: remove
 impl PostgresDb {
-    pub async fn connect(db: sqlx::postgres::PgPool) -> anyhow::Result<PostgresDb> {
+    pub async fn connect(db: sqlx::PgPool) -> anyhow::Result<PostgresDb> {
         sqlx::migrate!("src/server/migrations")
             .run(&db)
             .await
