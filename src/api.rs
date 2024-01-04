@@ -192,7 +192,7 @@ pub fn parse_snapshot<T: Object>(
     }
 }
 
-#[derive(educe::Educe)]
+#[derive(Clone, Eq, PartialEq, educe::Educe, serde::Deserialize, serde::Serialize)]
 #[educe(Debug(named_field = false))]
 pub struct DbPtr<T: Object> {
     #[educe(Debug(method = std::fmt::Display::fmt))]
@@ -200,6 +200,14 @@ pub struct DbPtr<T: Object> {
     #[educe(Debug(ignore))]
     _phantom: PhantomData<T>,
 }
+
+impl<T: Object> deepsize::DeepSizeOf for DbPtr<T> {
+    fn deep_size_of_children(&self, _context: &mut deepsize::Context) -> usize {
+        0
+    }
+}
+
+impl<T: Object> Copy for DbPtr<T> {}
 
 impl<T: Object> DbPtr<T> {
     pub fn from(id: ObjectId) -> DbPtr<T> {
@@ -211,6 +219,16 @@ impl<T: Object> DbPtr<T> {
 
     pub fn to_object_id(&self) -> ObjectId {
         ObjectId(self.id)
+    }
+}
+
+#[cfg(test)]
+impl<T: Object> bolero::TypeGenerator for DbPtr<T> {
+    fn generate<D: bolero::Driver>(driver: &mut D) -> Option<DbPtr<T>> {
+        <[u8; 16]>::generate(driver).map(|b| Self {
+            id: Ulid::from_bytes(b),
+            _phantom: PhantomData,
+        })
     }
 }
 

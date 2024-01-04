@@ -5,7 +5,7 @@ use crate::{
         Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,
     },
     full_object::{DynSized, FullObject},
-    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, DbPtr, Object, Query, Timestamp, User,
 };
 use anyhow::{anyhow, Context};
 use futures::prelude::Stream;
@@ -219,6 +219,84 @@ impl Object for TestObjectPerms {
 }
 
 impl crate::Event for TestEventPerms {
+    fn required_binaries(&self) -> Vec<BinPtr> {
+        Vec::new()
+    }
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    bolero::generator::TypeGenerator,
+    deepsize::DeepSizeOf,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+pub struct TestObjectDelegatePerms(pub DbPtr<TestObjectPerms>);
+
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    bolero::generator::TypeGenerator,
+    deepsize::DeepSizeOf,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+pub enum TestEventDelegatePerms {
+    Set(DbPtr<TestObjectPerms>),
+}
+
+impl Object for TestObjectDelegatePerms {
+    type Event = TestEventDelegatePerms;
+
+    fn type_ulid() -> &'static ulid::Ulid {
+        &TYPE_ID_3.0
+    }
+
+    async fn can_create<'a, C: CanDoCallbacks>(
+        &'a self,
+        _user: User,
+        _db: &'a C,
+    ) -> anyhow::Result<bool> {
+        unimplemented!()
+    }
+
+    async fn can_apply<'a, C: CanDoCallbacks>(
+        &'a self,
+        _user: User,
+        _event: &'a Self::Event,
+        _db: &'a C,
+    ) -> anyhow::Result<bool> {
+        unimplemented!()
+    }
+
+    async fn users_who_can_read<'a, C: CanDoCallbacks>(
+        &'a self,
+        db: &'a C,
+    ) -> anyhow::Result<Vec<User>> {
+        Ok(vec![db.get(self.0).await?.unwrap().0])
+    }
+
+    fn apply(&mut self, event: &Self::Event) {
+        match event {
+            TestEventDelegatePerms::Set(p) => self.0 = *p,
+        }
+    }
+
+    fn is_heavy(&self) -> bool {
+        false
+    }
+
+    fn required_binaries(&self) -> Vec<BinPtr> {
+        Vec::new()
+    }
+}
+
+impl crate::Event for TestEventDelegatePerms {
     fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
     }
