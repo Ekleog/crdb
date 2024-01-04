@@ -242,7 +242,12 @@ impl Db for MemDb {
     ) -> Result<(), DbOpError> {
         let mut this = self.0.lock().await;
         if let Some(e) = this.events.get(&event_id) {
-            if !eq::<T::Event>(&*e, &*event as _).map_err(DbOpError::Other)? {
+            let Some(e) = e else {
+                return Err(DbOpError::Other(anyhow!(
+                    "inserting event at the same time as a creation snapshot"
+                )));
+            };
+            if !eq::<T::Event>(&**e, &*event as _).map_err(DbOpError::Other)? {
                 return Err(DbOpError::Other(anyhow!(
                     "event already inserted with different value"
                 )));
