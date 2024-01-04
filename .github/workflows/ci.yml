@@ -19,7 +19,9 @@ jobs:
         with:
           crate: cargo-nextest
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
-      - uses: Harmon758/postgresql-action@0be19fa37850b22cb4c9bbf28a03abbf44abd863
+      - uses: ikalnytskyi/action-setup-postgres@510dee7c6d0b2cdf7d94d3f983aefd7f39ecf342
         with:
-          postgresql version: latest
-      - run: just test
+          username: postgres
+          password: postgres
+          database: postgres
+      - run: DATABASE_URL="postgres://postgres:postgres@localhost/postgres" just test
