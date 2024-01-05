@@ -445,14 +445,13 @@ impl Db for MemDb {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        Ok(self
-            .0
-            .lock()
-            .await
-            .objects
-            .get(&ptr)
-            .map(|(_, o)| o)
-            .cloned())
+        match self.0.lock().await.objects.get(&ptr) {
+            None => Ok(None),
+            Some((ty, _)) if *ty == TypeId(*T::type_ulid()) => {
+                Err(anyhow!("Getting with the wrong type"))
+            }
+            Some((_, o)) => Ok(Some(o.clone())),
+        }
     }
 
     async fn query<T: Object>(
