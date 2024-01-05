@@ -3,6 +3,7 @@ use crate::{
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
+use anyhow::Context;
 use futures::Stream;
 use std::sync::Arc;
 
@@ -10,12 +11,19 @@ use std::sync::Arc;
 mod tests;
 
 pub struct SqliteDb {
-    // TODO
+    _db: sqlx::SqlitePool,
 }
 
 impl SqliteDb {
-    pub fn new() -> SqliteDb {
-        todo!()
+    pub async fn connect_impl(db: sqlx::SqlitePool) -> anyhow::Result<SqliteDb> {
+        sqlx::migrate!("src/client/migrations")
+            .run(&db)
+            .await
+            .context("running migrations on sqlite database")?;
+        Ok(SqliteDb { _db: db })
+    }
+    pub async fn connect(url: &str) -> anyhow::Result<SqliteDb> {
+        Self::connect_impl(sqlx::SqlitePool::connect(url).await?).await
     }
 }
 

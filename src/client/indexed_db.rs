@@ -1,6 +1,6 @@
 use crate::{
-    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewRecreation, ObjectId},
-    BinPtr, Object, Query, Timestamp, User,
+    db_trait::{Db, EventId, DynNewEvent, DynNewObject, DynNewRecreation, ObjectId},
+    BinPtr, Object, Query, Timestamp, User, full_object::FullObject
 };
 use futures::Stream;
 use std::sync::Arc;
@@ -10,24 +10,24 @@ pub struct IndexedDb {
 }
 
 impl IndexedDb {
-    pub fn new() -> IndexedDb {
+    pub async fn connect(url: &str) -> anyhow::Result<IndexedDb> {
         todo!()
     }
 }
 
 #[allow(unused_variables)] // TODO: remove
 impl Db for IndexedDb {
-    async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
+    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = NewEvent> {
+    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_recreations(&self) -> impl Send + Stream<Item = NewRecreation> {
+    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
         // todo!()
         futures::stream::empty()
     }

@@ -1,35 +1,39 @@
-CREATE TABLE sessions (
-    session_token UUID PRIMARY KEY NOT NULL, -- The actual session token, used for auth
-    session_ref UUID UNIQUE NOT NULL, -- An UUID used to refer to the session by other sessions
-    user_id UUID NOT NULL,
-    name VARCHAR NOT NULL,
-    login_time TIMESTAMP NOT NULL,
-    last_active TIMESTAMP NOT NULL
-);
+
+-- BLOBs are ULIDs if not specified otherwise
 
 CREATE TABLE binaries (
-    id UUID PRIMARY KEY NOT NULL,
-    data BYTEA NOT NULL
+    binary_id BLOB PRIMARY KEY NOT NULL,
+    data BLOB NOT NULL
 );
 
 CREATE TABLE snapshots (
-    snapshot_id UUID PRIMARY KEY NOT NULL, -- the timestamp ULID, cast to an UUID
-    type_id UUID NOT NULL,
-    object_id UUID NOT NULL,
+    snapshot_id BLOB PRIMARY KEY NOT NULL,
+    type_id BLOB NOT NULL,
+    object_id BLOB NOT NULL,
     is_creation BOOLEAN NOT NULL,
     is_latest BOOLEAN NOT NULL,
     snapshot_version INTEGER NOT NULL,
-    snapshot JSONB NOT NULL,
-    users_who_can_read UUID ARRAY NOT NULL, -- Note: this is guaranteed to be up-to-date only for the `is_latest` snapshot
-    is_heavy BOOLEAN NOT NULL,
-    required_binaries UUID ARRAY NOT NULL
+    snapshot BLOB NOT NULL, -- JSONB
+    is_heavy BOOLEAN NOT NULL
+);
+
+CREATE TABLE snapshots_binaries (
+    snapshot_id BLOB NOT NULL REFERENCES snapshots (snapshot_id),
+    binary_id BLOB NOT NULL REFERENCES binaries (binary_id),
+    PRIMARY KEY (binary_id, snapshot_id)
 );
 
 CREATE TABLE events (
-    event_id UUID PRIMARY KEY NOT NULL, -- the timestamp ULID, cast to an UUID
-    object_id UUID NOT NULL,
-    data JSONB NOT NULL,
-    required_binaries UUID ARRAY NOT NULL
+    event_id BLOB PRIMARY KEY NOT NULL,
+    object_id BLOB NOT NULL,
+    data BLOB NOT NULL, -- JSONB
+    required_binaries BLOB ARRAY NOT NULL
+);
+
+CREATE TABLE events_binaries (
+    event_id BLOB NOT NULL REFERENCES events (event_id),
+    binary_id BLOB NOT NULL REFERENCES binaries (binary_id),
+    PRIMARY KEY (binary_id, event_id)
 );
 
 CREATE UNIQUE INDEX snapshot_creations ON snapshots (object_id) WHERE is_creation;

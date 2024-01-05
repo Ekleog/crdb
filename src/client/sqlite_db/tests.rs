@@ -1,3 +1,5 @@
+#![allow(unused_variables, dead_code, unused_imports)] // TODO: remove
+
 use super::SqliteDb;
 use crate::{
     db_trait::{Db, DbOpError, EventId, ObjectId, Timestamp},
@@ -12,7 +14,7 @@ use ulid::Ulid;
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::SqlitePool) {
-    //let db = SqliteDb::connect(db).await.expect("connecting to db");
+    let db = SqliteDb::connect_impl(db).await.expect("connecting to db");
     /*
     db.create(
         OBJECT_ID_1,
