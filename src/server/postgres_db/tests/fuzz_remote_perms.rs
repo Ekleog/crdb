@@ -155,7 +155,7 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                     Ok(None) => Ok(None),
                     Ok(Some(o)) => match o.last_snapshot::<TestObjectPerms>() {
                         Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
                     },
                 };
             let mem: anyhow::Result<Option<Arc<TestObjectPerms>>> =
@@ -164,7 +164,7 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                     Ok(None) => Ok(None),
                     Ok(Some(o)) => match o.last_snapshot::<TestObjectPerms>() {
                         Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
                     },
                 };
             cmp_anyhow(pg, mem)?;
@@ -182,7 +182,7 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                     Ok(None) => Ok(None),
                     Ok(Some(o)) => match o.last_snapshot::<TestObjectDelegatePerms>() {
                         Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
                     },
                 };
             let mem: anyhow::Result<Option<Arc<TestObjectDelegatePerms>>> =
@@ -191,7 +191,7 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                     Ok(None) => Ok(None),
                     Ok(Some(o)) => match o.last_snapshot::<TestObjectDelegatePerms>() {
                         Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
                     },
                 };
             cmp_anyhow(pg, mem)?;

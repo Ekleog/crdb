@@ -107,7 +107,7 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                 Ok(None) => Ok(None),
                 Ok(Some(o)) => match o.last_snapshot::<TestObject1>() {
                     Ok(o) => Ok(Some(o)),
-                    Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                    Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
                 },
             };
             let mem: anyhow::Result<Option<Arc<TestObject1>>> =
@@ -116,7 +116,7 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
                     Ok(None) => Ok(None),
                     Ok(Some(o)) => match o.last_snapshot::<TestObject1>() {
                         Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).context("getting last snapshot of {o:?}"),
+                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
                     },
                 };
             cmp_anyhow(pg, mem)?;
