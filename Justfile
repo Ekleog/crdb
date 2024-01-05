@@ -51,3 +51,15 @@ fuzz-pg-perms:
         -j 8 \
         server::postgres_db::tests::fuzz_remote_perms::fuzz \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_remote_perms__fuzz/corpus.nounit
+
+fuzz-pg-threads:
+    cargo bolero test --all-features \
+        -j 8 \
+        server::postgres_db::tests::fuzz_two_threads::fuzz_no_lock_check \
+        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_two_threads__fuzz_no_lock_check/corpus.nounit
+
+fuzz-pg-locks:
+    cargo bolero test --all-features \
+        -j 8 \
+        server::postgres_db::tests::fuzz_two_threads::fuzz_checking_locks \
+        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_two_threads__fuzz_checking_locks/corpus.nounit
