@@ -6,6 +6,9 @@ use crate::{
 use futures::Stream;
 use std::sync::Arc;
 
+#[cfg(test)]
+mod tests;
+
 pub struct SqliteDb {
     // TODO
 }
