@@ -181,7 +181,7 @@ impl FullObject {
                     .clone()
                     .arc_to_any()
                     .downcast::<T>()
-                    .map_err(|_| anyhow!("Downcasting already-typed element"))?);
+                    .map_err(|_| anyhow!("Wrong type for snapshot downcast"))?);
             }
             let (_, last_change) = this.changes.last_key_value().unwrap();
             if let Some(s) = &last_change.snapshot_after {
@@ -189,7 +189,7 @@ impl FullObject {
                     .clone()
                     .arc_to_any()
                     .downcast::<T>()
-                    .map_err(|_| anyhow!("Downcasting already-typed element"))?);
+                    .map_err(|_| anyhow!("Wrong type for snapshot downcast"))?);
             }
         }
         Ok(self
