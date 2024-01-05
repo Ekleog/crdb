@@ -7,6 +7,7 @@ use crate::{
 };
 use std::{fmt::Debug, sync::Arc};
 
+mod fuzz_remote_perms;
 mod fuzz_simple;
 
 #[sqlx::test]

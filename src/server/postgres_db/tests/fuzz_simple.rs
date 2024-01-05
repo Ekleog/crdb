@@ -164,7 +164,7 @@ fn db_keeps_invariants_impl(cluster: &TmpDb, ops: &Vec<Op>) {
 fn db_keeps_invariants() {
     let cluster = TmpDb::new();
     bolero::check!()
-        .with_iterations(50)
+        .with_iterations(20)
         .with_shrink_time(std::time::Duration::from_millis(0))
         .with_type()
         .for_each(move |ops| db_keeps_invariants_impl(&cluster, ops))

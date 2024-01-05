@@ -278,7 +278,10 @@ impl Object for TestObjectDelegatePerms {
         &'a self,
         db: &'a C,
     ) -> anyhow::Result<Vec<User>> {
-        Ok(vec![db.get(self.0).await?.unwrap().0])
+        let Some(remote) = db.get(self.0).await? else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![remote.0])
     }
 
     fn apply(&mut self, event: &Self::Event) {
