@@ -228,7 +228,7 @@ async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result
     Ok(())
 }
 
-fn db_keeps_invariants_impl(cluster: &TmpDb, ops: &Vec<Op>) {
+fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async move {
@@ -258,5 +258,5 @@ fn fuzz() {
         .with_iterations(20)
         .with_shrink_time(std::time::Duration::from_millis(0))
         .with_type()
-        .for_each(move |ops| db_keeps_invariants_impl(&cluster, ops))
+        .for_each(move |ops| fuzz_impl(&cluster, ops))
 }
