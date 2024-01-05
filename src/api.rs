@@ -78,8 +78,10 @@ macro_rules! impl_for_id {
     };
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Eq, PartialEq, educe::Educe, serde::Deserialize, serde::Serialize)]
+#[educe(Debug)]
 pub struct User {
+    #[educe(Debug(method(std::fmt::Display::fmt)))]
     pub id: Ulid,
 }
 

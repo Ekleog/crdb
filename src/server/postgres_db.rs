@@ -1051,14 +1051,12 @@ async fn get_impl<T: Object>(
     reord::point().await;
     let creation_snapshot = sqlx::query!(
         "
-            SELECT snapshot_id, snapshot_version, snapshot
+            SELECT snapshot_id, type_id, snapshot_version, snapshot
             FROM snapshots
             WHERE object_id = $1
-            AND type_id = $2
             AND is_creation
         ",
-        ptr.to_uuid(),
-        uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
+        ptr as ObjectId,
     )
     .fetch_optional(&mut *transaction)
     .await
@@ -1067,6 +1065,11 @@ async fn get_impl<T: Object>(
         Some(s) => s,
         None => return Ok(None),
     };
+    let db_type = TypeId::from_uuid(creation_snapshot.type_id);
+    let expected_type = TypeId(*T::type_ulid());
+    if db_type != expected_type {
+        return Err(anyhow!("Found object {ptr:?}, but it had type {db_type:?}, and not the expected type {expected_type:?}"));
+    }
 
     reord::point().await;
     let events =

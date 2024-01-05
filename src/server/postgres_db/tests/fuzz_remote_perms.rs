@@ -5,7 +5,7 @@ use crate::{
     test_utils::{
         self, TestEventDelegatePerms, TestEventPerms, TestObjectDelegatePerms, TestObjectPerms,
     },
-    Timestamp,
+    Timestamp, User,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -259,4 +259,23 @@ fn fuzz() {
         .with_shrink_time(std::time::Duration::from_millis(0))
         .with_type()
         .for_each(move |ops| fuzz_impl(&cluster, ops))
+}
+
+#[test]
+fn regression_get_with_wrong_type_did_not_fail() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            CreatePerm {
+                id: ObjectId(Ulid::from_string("0000000000000000000000002D").unwrap()),
+                created_at: EventId(Ulid::from_string("000000000000000000006001S7").unwrap()),
+                object: Arc::new(TestObjectPerms(User {
+                    id: Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
+                })),
+            },
+            GetDelegator { object: 0 },
+        ],
+    );
 }
