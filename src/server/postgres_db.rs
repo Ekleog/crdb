@@ -11,7 +11,12 @@ use crate::{
 use anyhow::{anyhow, Context};
 use futures::{Stream, StreamExt};
 use sqlx::Row;
-use std::{collections::BTreeMap, sync::Arc, time::SystemTime};
+use std::{
+    collections::BTreeMap,
+    hash::{Hash, Hasher},
+    sync::Arc,
+    time::SystemTime,
+};
 use ulid::Ulid;
 
 #[cfg(test)]
@@ -19,6 +24,22 @@ mod tests;
 
 pub(crate) struct PostgresDb {
     db: sqlx::PgPool,
+}
+
+fn object_lock(e: ObjectId) -> i64 {
+    // Locks are short-lived, when we close the session they'll be removed so we can just use the default hasher
+    let mut hasher = std::hash::DefaultHasher::new();
+    0u8.hash(&mut hasher);
+    e.hash(&mut hasher);
+    hasher.finish() as i64
+}
+
+fn event_lock(e: EventId) -> i64 {
+    // Locks are short-lived, when we close the session they'll be removed so we can just use the default hasher
+    let mut hasher = std::hash::DefaultHasher::new();
+    0u8.hash(&mut hasher);
+    e.hash(&mut hasher);
+    hasher.finish() as i64
 }
 
 #[allow(unused_variables, dead_code)] // TODO: remove
@@ -322,6 +343,18 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")
             .map_err(DbOpError::Other)?;
 
+        // Acquire the locks required to create the object
+        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
+        let event_lock = reord::Lock::take_named(format!("{created_at:?}")).await;
+        sqlx::query("SELECT pg_advisory_xact_lock($1), pg_advisory_xact_lock($2)")
+            .bind(self::object_lock(object_id))
+            .bind(self::event_lock(created_at))
+            .execute(&mut *t)
+            .await
+            .with_context(|| format!("acquiring locks on {object_id:?} and {created_at:?}"))
+            .map_err(DbOpError::Other)?;
+        reord::point().await;
+
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
         let snapshot_version = T::snapshot_version();
@@ -333,7 +366,6 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
-        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         reord::point().await;
         let affected =
             sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING")
@@ -379,6 +411,7 @@ impl Db for PostgresDb {
                     "Snapshot {created_at:?} already existed with a different value set"
                 )));
             }
+            std::mem::drop(event_lock);
             std::mem::drop(object_lock);
             reord::point().await;
             return Ok(());
@@ -386,7 +419,7 @@ impl Db for PostgresDb {
 
         // We just inserted. Check that no event existed at this id
         reord::point().await;
-        let affected = sqlx::query("SELECT event_id FROM events WHERE event_id = $1 FOR UPDATE")
+        let affected = sqlx::query("SELECT event_id FROM events WHERE event_id = $1")
             .bind(created_at)
             .execute(&mut *t)
             .await
@@ -394,6 +427,7 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?
             .rows_affected();
         if affected != 0 {
+            std::mem::drop(event_lock);
             std::mem::drop(object_lock);
             reord::point().await;
             return Err(DbOpError::Other(anyhow!(
@@ -417,6 +451,7 @@ impl Db for PostgresDb {
             .await
             .with_context(|| format!("committing transaction that created {object_id:?}"))
             .map_err(DbOpError::Other)?;
+        std::mem::drop(event_lock);
         std::mem::drop(object_lock);
         reord::point().await;
         Ok(())
@@ -437,11 +472,23 @@ impl Db for PostgresDb {
             .context("acquiring postgresql transaction")
             .map_err(DbOpError::Other)?;
 
-        // Lock the object
+        // Acquire the locks required to submit the event
         let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
+        let event_lock = reord::Lock::take_named(format!("{event_id:?}")).await;
+        reord::point().await;
+        sqlx::query("SELECT pg_advisory_xact_lock($1), pg_advisory_xact_lock($2)")
+            .bind(self::object_lock(object_id))
+            .bind(self::event_lock(event_id))
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| format!("acquiring locks on {object_id:?} and {event_id:?}"))
+            .map_err(DbOpError::Other)?;
+
+        // Check the object does exist
+        reord::point().await;
         let creation_snapshot = sqlx::query!(
-            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation FOR UPDATE",
-            object_id.to_uuid(),
+            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation",
+            object_id as ObjectId,
         )
         .fetch_optional(&mut *transaction)
         .await
@@ -503,6 +550,7 @@ impl Db for PostgresDb {
                 )));
             }
             // Nothing else to do, event was already inserted
+            std::mem::drop(event_lock);
             std::mem::drop(object_lock);
             reord::point().await;
             return Ok(());
@@ -660,6 +708,7 @@ impl Db for PostgresDb {
             .await
             .with_context(|| format!("inserting event {event_id:?} into table"))
             .map_err(DbOpError::Other)?;
+            std::mem::drop(event_lock);
             std::mem::drop(object_lock);
             reord::point().await;
         }
@@ -800,15 +849,25 @@ impl Db for PostgresDb {
             .await
             .context("acquiring postgresql transaction")?;
 
-        // Lock the object
+        // Acquire the lock required to recreate the object
+        // This will not create a new event id, and thus does not need a lock besides the object one
         let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(self::object_lock(object_id))
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| format!("acquiring lock on {object_id:?}"))
+            .map_err(DbOpError::Other)?;
+
+        // Get the creation snapshot
+        reord::point().await;
         let creation_snapshot = sqlx::query!(
-            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation FOR UPDATE",
+            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation",
             object_id as ObjectId,
         )
         .fetch_one(&mut *transaction)
         .await
-        .with_context(|| format!("locking {object_id:?} for re-creation"))?;
+        .with_context(|| format!("getting creation snapshot of {object_id:?} for re-creation"))?;
         if EventId::from_uuid(creation_snapshot.snapshot_id) >= time_id {
             // Already created after the requested time
             std::mem::drop(object_lock);
