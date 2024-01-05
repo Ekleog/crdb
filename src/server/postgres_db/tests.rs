@@ -9,6 +9,7 @@ use std::{fmt::Debug, sync::Arc};
 
 mod fuzz_remote_perms;
 mod fuzz_simple;
+mod fuzz_two_threads;
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
@@ -199,5 +200,3 @@ impl Drop for TmpDb {
             .expect("Failed stopping the postgres server");
     }
 }
-
-// TODO: add a fuzzer using `reord` that checks for concurrency
