@@ -305,7 +305,7 @@ impl crate::Event for TestEventDelegatePerms {
 struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
     events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
-    objects: HashMap<ObjectId, FullObject>,
+    objects: HashMap<ObjectId, (TypeId, FullObject)>,
     binaries: HashMap<BinPtr, Arc<Vec<u8>>>,
 }
 
@@ -360,7 +360,10 @@ impl Db for MemDb {
         let mut this = self.0.lock().await;
 
         // First, check for duplicates
-        if let Some(o) = this.objects.get(&id) {
+        if let Some((ty, o)) = this.objects.get(&id) {
+            if *ty != TypeId(*T::type_ulid()) {
+                return Err(DbOpError::Other(anyhow!("wrong type")));
+            }
             let c = o.creation_info();
             if created_at != c.created_at {
                 return Err(DbOpError::Other(anyhow!(
@@ -381,8 +384,13 @@ impl Db for MemDb {
         }
 
         // This is a new insert, do it
-        this.objects
-            .insert(id, FullObject::new(id, created_at, object));
+        this.objects.insert(
+            id,
+            (
+                TypeId(*T::type_ulid()),
+                FullObject::new(id, created_at, object),
+            ),
+        );
         this.events.insert(created_at, (id, None));
 
         Ok(())
@@ -418,10 +426,13 @@ impl Db for MemDb {
             None => Err(DbOpError::Other(anyhow!(
                 "object not yet present in database"
             ))),
-            Some(o) if o.creation_info().created_at >= event_id => {
+            Some((_, o)) if o.creation_info().created_at >= event_id => {
                 Err(DbOpError::Other(anyhow!("event is too early for object")))
             }
-            Some(o) => {
+            Some((ty, o)) => {
+                if *ty != TypeId(*T::type_ulid()) {
+                    return Err(DbOpError::Other(anyhow!("wrong type")));
+                }
                 o.apply::<T>(event_id, event.clone())
                     .map_err(DbOpError::Other)?;
                 this.events.insert(event_id, (object, Some(event)));
@@ -431,7 +442,14 @@ impl Db for MemDb {
     }
 
     async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        Ok(self.0.lock().await.objects.get(&ptr).cloned())
+        Ok(self
+            .0
+            .lock()
+            .await
+            .objects
+            .get(&ptr)
+            .map(|(_, o)| o)
+            .cloned())
     }
 
     async fn query<T: Object>(
@@ -452,9 +470,10 @@ impl Db for MemDb {
         _cb: &C,
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
-        let Some(o) = this.objects.get(&object) else {
+        let Some((ty, o)) = this.objects.get(&object) else {
             anyhow::bail!("object does not exist");
         };
+        anyhow::ensure!(*ty == TypeId(*T::type_ulid()), "wrong type");
         o.recreate_at::<T>(time).context("recreating object")?;
         Ok(())
     }
