@@ -151,9 +151,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord:
             let s = Arc::new(FuzzState::new());
 
             // Start the test
-            eprintln!("initing tests");
             reord::init_test(config).await;
-            eprintln!("inited tests");
             let a = {
                 let db = db.clone();
                 let s = s.clone();
@@ -167,13 +165,10 @@ fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord:
                 tokio::task::spawn(reord::new_task(apply_ops(1, db, s, ops)))
             };
             let h = reord::start(2).await;
-            eprintln!("before join");
             let (a, b, h) = tokio::join!(a, b, h);
-            eprintln!("after join");
             a.unwrap();
             b.unwrap();
             h.unwrap();
-            eprintln!("after unwraps");
         });
 }
 
