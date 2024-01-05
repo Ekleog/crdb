@@ -862,12 +862,17 @@ impl Db for PostgresDb {
         // Get the creation snapshot
         reord::point().await;
         let creation_snapshot = sqlx::query!(
-            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation",
+            "SELECT snapshot_id, type_id FROM snapshots WHERE object_id = $1 AND is_creation",
             object_id as ObjectId,
         )
         .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("getting creation snapshot of {object_id:?} for re-creation"))?;
+        let db_type = TypeId::from_uuid(creation_snapshot.type_id);
+        let provided_type = TypeId(*T::type_ulid());
+        if db_type != provided_type {
+            return Err(anyhow!("Provided type {provided_type:?} does not match actual in-database type {db_type:?} for object {object_id:?}"));
+        }
         if EventId::from_uuid(creation_snapshot.snapshot_id) >= time_id {
             // Already created after the requested time
             std::mem::drop(object_lock);

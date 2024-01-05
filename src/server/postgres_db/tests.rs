@@ -117,7 +117,8 @@ async fn smoke_test(db: sqlx::PgPool) {
 
 fn cmp_anyhow<T: Debug + Eq>(pg: anyhow::Result<T>, mem: anyhow::Result<T>) -> anyhow::Result<()> {
     anyhow::ensure!(
-        (pg.is_err() && mem.is_err()) || (pg.as_ref().unwrap() == mem.as_ref().unwrap()),
+        (pg.is_err() && mem.is_err())
+            || (pg.as_ref().map_err(|_| ()) == mem.as_ref().map_err(|_| ())),
         "postgres result != mem result:\n==========\nPostgres:\n{pg:?}\n==========\nMem:\n{mem:?}"
     );
     Ok(())
