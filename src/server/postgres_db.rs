@@ -344,8 +344,11 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
 
         // Acquire the locks required to create the object
-        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
-        let event_lock = reord::Lock::take_named(format!("{created_at:?}")).await;
+        let reord_lock = reord::Lock::take_atomic(vec![
+            reord::LockInfo::Named(format!("{object_id:?}")),
+            reord::LockInfo::Named(format!("{created_at:?}")),
+        ])
+        .await;
         sqlx::query("SELECT pg_advisory_xact_lock($1), pg_advisory_xact_lock($2)")
             .bind(self::object_lock(object_id))
             .bind(self::event_lock(created_at))
@@ -411,8 +414,7 @@ impl Db for PostgresDb {
                     "Snapshot {created_at:?} already existed with a different value set"
                 )));
             }
-            std::mem::drop(event_lock);
-            std::mem::drop(object_lock);
+            std::mem::drop(reord_lock);
             reord::point().await;
             return Ok(());
         }
@@ -427,8 +429,7 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?
             .rows_affected();
         if affected != 0 {
-            std::mem::drop(event_lock);
-            std::mem::drop(object_lock);
+            std::mem::drop(reord_lock);
             reord::point().await;
             return Err(DbOpError::Other(anyhow!(
                 "Snapshot {created_at:?} has an ulid conflict with a pre-existing event"
@@ -451,8 +452,7 @@ impl Db for PostgresDb {
             .await
             .with_context(|| format!("committing transaction that created {object_id:?}"))
             .map_err(DbOpError::Other)?;
-        std::mem::drop(event_lock);
-        std::mem::drop(object_lock);
+        std::mem::drop(reord_lock);
         reord::point().await;
         Ok(())
     }
@@ -473,8 +473,11 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
 
         // Acquire the locks required to submit the event
-        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
-        let event_lock = reord::Lock::take_named(format!("{event_id:?}")).await;
+        let reord_lock = reord::Lock::take_atomic(vec![
+            reord::LockInfo::Named(format!("{object_id:?}")),
+            reord::LockInfo::Named(format!("{event_id:?}")),
+        ])
+        .await;
         reord::point().await;
         sqlx::query("SELECT pg_advisory_xact_lock($1), pg_advisory_xact_lock($2)")
             .bind(self::object_lock(object_id))
@@ -550,8 +553,7 @@ impl Db for PostgresDb {
                 )));
             }
             // Nothing else to do, event was already inserted
-            std::mem::drop(event_lock);
-            std::mem::drop(object_lock);
+            std::mem::drop(reord_lock);
             reord::point().await;
             return Ok(());
         }
@@ -708,8 +710,7 @@ impl Db for PostgresDb {
             .await
             .with_context(|| format!("inserting event {event_id:?} into table"))
             .map_err(DbOpError::Other)?;
-            std::mem::drop(event_lock);
-            std::mem::drop(object_lock);
+            std::mem::drop(reord_lock);
             reord::point().await;
         }
 
