@@ -119,9 +119,14 @@ async fn smoke_test(db: sqlx::PgPool) {
     );
     db.assert_invariants_generic().await;
     db.assert_invariants_for::<TestObject1>().await;
-    db.vacuum(Some(EVENT_ID_3.time()), Some(OBJECT_ID_3.time()), |_| ())
-        .await
-        .unwrap();
+    db.vacuum(
+        Some(EVENT_ID_3.time()),
+        Some(OBJECT_ID_3.time()),
+        &db,
+        |_| (),
+    )
+    .await
+    .unwrap();
     db.assert_invariants_generic().await;
     db.assert_invariants_for::<TestObject1>().await;
 }

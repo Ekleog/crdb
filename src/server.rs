@@ -75,7 +75,12 @@ impl<C: ServerConfig> Server<C> {
         kill_sessions_older_than: Option<Timestamp>,
     ) -> anyhow::Result<()> {
         self.postgres_db
-            .vacuum(no_new_changes_before, kill_sessions_older_than, |_| todo!())
+            .vacuum(
+                no_new_changes_before,
+                kill_sessions_older_than,
+                &*self.db,
+                |_| todo!(),
+            )
             .await
     }
 }
