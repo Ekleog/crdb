@@ -217,6 +217,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .bind(users_who_can_read)
         .bind(&users_who_can_read_depends_on)
+        .bind(object_id)
         .execute(&mut *transaction)
         .await
         .with_context(|| {
