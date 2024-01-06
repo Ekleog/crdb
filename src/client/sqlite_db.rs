@@ -1,9 +1,11 @@
 use crate::{
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId},
+    db_trait::{
+        Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,
+    },
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use futures::Stream;
 use std::sync::Arc;
 
@@ -102,13 +104,13 @@ impl Db for SqliteDb {
             .bind(object_id)
             .bind(snapshot_version)
             .bind(object_json)
-            .execute(&mut *t)
+            .fetch_all(&mut *t)
             .await
             .with_context(|| {
                 format!("checking pre-existing snapshot for {created_at:?} is the same")
             })
             .map_err(DbOpError::Other)?
-            .rows_affected();
+            .len();
             if affected != 1 {
                 return Err(DbOpError::Other(anyhow!(
                     "Snapshot {created_at:?} already existed with a different value set"
@@ -122,11 +124,11 @@ impl Db for SqliteDb {
         reord::point().await;
         let affected = sqlx::query("SELECT event_id FROM events WHERE event_id = $1")
             .bind(created_at)
-            .execute(&mut *t)
+            .fetch_all(&mut *t)
             .await
             .with_context(|| format!("checking that no event existed with this id yet"))
             .map_err(DbOpError::Other)?
-            .rows_affected();
+            .len();
         if affected != 0 {
             reord::point().await;
             return Err(DbOpError::Other(anyhow!(

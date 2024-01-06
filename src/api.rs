@@ -12,6 +12,7 @@ pub use query::{JsonNumber, JsonPathItem, Query};
 
 macro_rules! impl_for_id {
     ($type:ty) => {
+        #[cfg(any(feature = "server", feature = "client-native"))]
         impl $type {
             pub(crate) fn to_uuid(&self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.id.to_bytes())
