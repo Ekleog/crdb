@@ -87,12 +87,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     /// `no_new_changes_before` if it is set.
     pub async fn vacuum(
         &self,
-        _no_new_changes_before: Option<Timestamp>,
+        no_new_changes_before: Option<Timestamp>,
         kill_sessions_older_than: Option<Timestamp>,
         _notify_recreation: impl Fn(DynNewRecreation),
     ) -> anyhow::Result<()> {
         // TODO: add vacuum to the fuzzers
         if let Some(t) = kill_sessions_older_than {
+            // Discard all sessions that were last active too long ago
             // TODO: see https://github.com/launchbadge/sqlx/issues/2972
             sqlx::query!(
                 "DELETE FROM sessions WHERE last_active < $1",
@@ -102,8 +103,56 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .context("cleaning up old sessions")?;
         }
-        // TODO: discard snapshots that are not creation/latest, discard can_read/rdeps of creation snapshots
-        // TODO: auto-recreate all objects after some time elapsed, notifying users of the recreation
+        {
+            // Discard all unrequired snapshots, as well as unused fields of creation snapshots
+            // In addition, auto-recreate the objects that need re-creation
+            let mut objects = sqlx::query!(
+                "
+                    SELECT DISTINCT object_id
+                    FROM snapshots
+                    WHERE (NOT (is_creation OR is_latest))
+                    OR ((NOT is_latest)
+                        AND (users_who_can_read IS NOT NULL
+                            OR users_who_can_read_depends_on IS NOT NULL
+                            OR reverse_dependents_to_update IS NOT NULL))
+                    OR ((NOT is_creation) AND snapshot_id < $1)
+                ",
+                match no_new_changes_before {
+                    Some(t) => EventId::last_id_at(t)?,
+                    None => EventId::from_u128(0),
+                } as EventId
+            )
+            .fetch(&self.db);
+            while let Some(o) = objects.next().await {
+                let o = ObjectId::from_uuid(
+                    o.context("listing objects with snapshots to cleanup")?
+                        .object_id,
+                );
+                let _lock = self.object_locks.async_lock(o).await;
+                sqlx::query(
+                    "DELETE FROM snapshots WHERE object_id = $1 AND NOT (is_creation OR is_latest)",
+                )
+                .bind(o)
+                .execute(&self.db)
+                .await
+                .with_context(|| format!("deleting useless snapshots from {o:?}"))?;
+                sqlx::query(
+                    "
+                        UPDATE snapshots
+                        SET users_who_can_read = NULL,
+                            users_who_can_read_depends_on = NULL,
+                            reverse_dependents_to_update IS NOT NULL
+                        WHERE object_id = $1
+                        AND NOT is_latest
+                    ",
+                )
+                .bind(o)
+                .execute(&self.db)
+                .await
+                .with_context(|| format!("resetting creation snapshot of {o:?}"))?;
+                // TODO: auto-recreate o if configured to auto-recreate, notifying users of the recreation
+            }
+        }
         // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
         // TODO: postgres VACUUM ANALYZE
         todo!()

@@ -20,7 +20,7 @@ CREATE TABLE snapshots (
     is_latest BOOLEAN NOT NULL,
     snapshot_version INTEGER NOT NULL,
     snapshot JSONB NOT NULL,
-    -- The two below are nullable, and set to a correct value only for is_latest snapshots
+    -- The three below are nullable, and set to a correct value only for is_latest snapshots
     users_who_can_read UUID ARRAY,
     users_who_can_read_depends_on UUID ARRAY, -- List of all the other objects on which `users_who_can_read` depends
     reverse_dependents_to_update UUID ARRAY, -- List of reverse dependents that have not had their permissions updated yet
