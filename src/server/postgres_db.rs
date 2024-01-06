@@ -164,7 +164,20 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 }
             }
         }
-        // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
+        // Get rid of no-longer-referenced binaries
+        sqlx::query(
+            "
+                DELETE FROM binaries
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM snapshots WHERE binary_id = ANY(required_binaries)
+                    UNION
+                    SELECT 1 FROM events WHERE binary_id = ANY(required_binaries)
+                )
+            ",
+        )
+        .execute(&self.db)
+        .await
+        .context("deleting no-longer-referenced binaries")?;
         // TODO: postgres VACUUM ANALYZE
         Ok(())
     }
@@ -983,13 +996,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             0,
             sqlx::query(
                 "
-                    SELECT unnest(required_binaries)
-                    FROM snapshots
-                    UNION
-                    SELECT unnest(required_binaries)
-                    FROM events
+                    (
+                        SELECT unnest(required_binaries)
+                        FROM snapshots
+                        UNION
+                        SELECT unnest(required_binaries)
+                        FROM events
+                    )
                     EXCEPT
-                    SELECT id
+                    SELECT binary_id
                     FROM binaries
                 ",
             )
@@ -1400,12 +1415,13 @@ async fn check_required_binaries(
 ) -> Result<(), DbOpError> {
     // FOR KEY SHARE: prevent DELETE of the binaries while `t` is running
     reord::point().await;
-    let present_ids = sqlx::query("SELECT id FROM binaries WHERE id = ANY ($1) FOR KEY SHARE")
-        .bind(&binaries)
-        .fetch_all(&mut **t)
-        .await
-        .context("listing binaries already present in database")
-        .map_err(DbOpError::Other)?;
+    let present_ids =
+        sqlx::query("SELECT binary_id FROM binaries WHERE binary_id = ANY ($1) FOR KEY SHARE")
+            .bind(&binaries)
+            .fetch_all(&mut **t)
+            .await
+            .context("listing binaries already present in database")
+            .map_err(DbOpError::Other)?;
     binaries.retain(|b| {
         present_ids
             .iter()

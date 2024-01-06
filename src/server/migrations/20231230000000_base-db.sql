@@ -8,7 +8,7 @@ CREATE TABLE sessions (
 );
 
 CREATE TABLE binaries (
-    id UUID PRIMARY KEY NOT NULL,
+    binary_id UUID PRIMARY KEY NOT NULL,
     data BYTEA NOT NULL
 );
 
