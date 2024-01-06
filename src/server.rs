@@ -69,7 +69,13 @@ impl<C: ServerConfig> Server<C> {
     ///
     /// After running this, the database will reject any new change that would happen before
     /// `no_new_changes_before` if it is set.
-    pub async fn vacuum(&self, no_new_changes_before: Option<Timestamp>) -> anyhow::Result<()> {
-        self.postgres_db.vacuum(no_new_changes_before).await
+    pub async fn vacuum(
+        &self,
+        no_new_changes_before: Option<Timestamp>,
+        kill_sessions_older_than: Option<Timestamp>,
+    ) -> anyhow::Result<()> {
+        self.postgres_db
+            .vacuum(no_new_changes_before, kill_sessions_older_than, |_| todo!())
+            .await
     }
 }

@@ -85,8 +85,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     ///
     /// After running this, the database will reject any new change that would happen before
     /// `no_new_changes_before` if it is set.
-    pub async fn vacuum(&self, no_new_changes_before: Option<Timestamp>) -> anyhow::Result<()> {
-        let _no_new_changes_before = no_new_changes_before.unwrap_or(Timestamp::from_ms(0));
+    pub async fn vacuum(
+        &self,
+        _no_new_changes_before: Option<Timestamp>,
+        _kill_sessions_older_than: Option<Timestamp>,
+        _notify_recreation: impl Fn(DynNewRecreation),
+    ) -> anyhow::Result<()> {
+        // TODO: cleanup old sessions?
+        // TODO: discard snapshots that are not creation/latest, discard can_read/rdeps of creation snapshots
         // TODO: auto-recreate all objects after some time elapsed, notifying users of the recreation
         // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
         // TODO: postgres VACUUM ANALYZE
