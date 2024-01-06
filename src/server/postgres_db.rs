@@ -88,10 +88,20 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn vacuum(
         &self,
         _no_new_changes_before: Option<Timestamp>,
-        _kill_sessions_older_than: Option<Timestamp>,
+        kill_sessions_older_than: Option<Timestamp>,
         _notify_recreation: impl Fn(DynNewRecreation),
     ) -> anyhow::Result<()> {
-        // TODO: cleanup old sessions?
+        // TODO: add vacuum to the fuzzers
+        if let Some(t) = kill_sessions_older_than {
+            // TODO: see https://github.com/launchbadge/sqlx/issues/2972
+            sqlx::query!(
+                "DELETE FROM sessions WHERE last_active < $1",
+                t.time_ms() as i64
+            )
+            .execute(&self.db)
+            .await
+            .context("cleaning up old sessions")?;
+        }
         // TODO: discard snapshots that are not creation/latest, discard can_read/rdeps of creation snapshots
         // TODO: auto-recreate all objects after some time elapsed, notifying users of the recreation
         // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
