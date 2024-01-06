@@ -22,6 +22,7 @@ impl SqliteDb {
             .context("running migrations on sqlite database")?;
         Ok(SqliteDb { _db: db })
     }
+    
     pub async fn connect(url: &str) -> anyhow::Result<SqliteDb> {
         Self::connect_impl(sqlx::SqlitePool::connect(url).await?).await
     }
