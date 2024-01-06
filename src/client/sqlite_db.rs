@@ -1,9 +1,9 @@
 use crate::{
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId},
     full_object::FullObject,
     BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use futures::Stream;
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use std::sync::Arc;
 mod tests;
 
 pub struct SqliteDb {
-    _db: sqlx::SqlitePool,
+    db: sqlx::SqlitePool,
 }
 
 impl SqliteDb {
@@ -20,9 +20,9 @@ impl SqliteDb {
             .run(&db)
             .await
             .context("running migrations on sqlite database")?;
-        Ok(SqliteDb { _db: db })
+        Ok(SqliteDb { db })
     }
-    
+
     pub async fn connect(url: &str) -> anyhow::Result<SqliteDb> {
         Self::connect_impl(sqlx::SqlitePool::connect(url).await?).await
     }
@@ -48,7 +48,7 @@ impl Db for SqliteDb {
 
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
@@ -58,11 +58,11 @@ impl Db for SqliteDb {
             .db
             .begin()
             .await
-            .context("acquiring postgresql transaction")
+            .context("acquiring sqlite transaction")
             .map_err(DbOpError::Other)?;
 
         // TODO add reord lock over whole database
-        
+
         reord::point().await;
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
@@ -70,20 +70,21 @@ impl Db for SqliteDb {
         let object_json = sqlx::types::Json(&object);
         let is_heavy = object.is_heavy();
         reord::point().await;
-        let affected =
-            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6)
-                         ON CONFLICT DO NOTHING")
-                .bind(created_at)
-                .bind(type_id)
-                .bind(object_id)
-                .bind(snapshot_version)
-                .bind(object_json)
-                .bind(is_heavy)
-                .execute(&mut *t)
-                .await
-                .with_context(|| format!("inserting snapshot {created_at:?}"))
-                .map_err(DbOpError::Other)?
-                .rows_affected();
+        let affected = sqlx::query(
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6)
+                         ON CONFLICT DO NOTHING",
+        )
+        .bind(created_at)
+        .bind(type_id)
+        .bind(object_id)
+        .bind(snapshot_version)
+        .bind(object_json)
+        .bind(is_heavy)
+        .execute(&mut *t)
+        .await
+        .with_context(|| format!("inserting snapshot {created_at:?}"))
+        .map_err(DbOpError::Other)?
+        .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
             reord::point().await;
@@ -113,7 +114,6 @@ impl Db for SqliteDb {
                     "Snapshot {created_at:?} already existed with a different value set"
                 )));
             }
-            std::mem::drop(reord_lock);
             reord::point().await;
             return Ok(());
         }
@@ -128,7 +128,6 @@ impl Db for SqliteDb {
             .map_err(DbOpError::Other)?
             .rows_affected();
         if affected != 0 {
-            std::mem::drop(reord_lock);
             reord::point().await;
             return Err(DbOpError::Other(anyhow!(
                 "Snapshot {created_at:?} has an ulid conflict with a pre-existing event"
@@ -137,21 +136,21 @@ impl Db for SqliteDb {
 
         // TODO fill binary tables
         for binary_id in object.required_binaries() {
-            sqlx::query("INSERT INTO snapshots_binaries VALUES ($&, $2)")
-                .bind(snapshot_id)
+            reord::point().await;
+            sqlx::query("INSERT INTO snapshots_binaries VALUES ($1, $2)")
+                .bind(created_at)
                 .bind(binary_id)
                 .execute(&mut *t)
                 .await
-                .with_context(|| format!("marking {snapshot_id:?} as using {binary_id:?}"))
+                .with_context(|| format!("marking {created_at:?} as using {binary_id:?}"))
                 .map_err(DbOpError::Other)?;
         }
-        
+
         reord::point().await;
         t.commit()
             .await
             .with_context(|| format!("committing transaction that created {object_id:?}"))
             .map_err(DbOpError::Other)?;
-        std::mem::drop(reord_lock);
         reord::point().await;
         Ok(())
     }

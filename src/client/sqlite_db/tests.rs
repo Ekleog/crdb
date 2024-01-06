@@ -15,7 +15,7 @@ use ulid::Ulid;
 #[sqlx::test]
 async fn smoke_test(db: sqlx::SqlitePool) {
     let db = SqliteDb::connect_impl(db).await.expect("connecting to db");
-    /*
+
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
@@ -24,6 +24,7 @@ async fn smoke_test(db: sqlx::SqlitePool) {
     )
     .await
     .expect("creating test object 1 failed");
+    /*
     db.assert_invariants_generic().await;
     db.assert_invariants_for::<TestObject1>().await;
     db.create(

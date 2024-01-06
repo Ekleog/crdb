@@ -1,7 +1,7 @@
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, DbOpError},
+    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
     full_object::FullObject,
-    BinPtr, Object, Query, Timestamp, User, CanDoCallbacks,
+    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
 };
 use futures::Stream;
 use std::sync::Arc;
