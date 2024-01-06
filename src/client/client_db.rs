@@ -18,11 +18,12 @@ impl<A: Authenticator> ClientDb<A> {
     pub async fn connect<C: ApiConfig>(
         base_url: Arc<String>,
         auth: Arc<A>,
+        local_db: &str,
         cache_watermark: usize,
     ) -> anyhow::Result<ClientDb<A>> {
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
-        let db = CacheDb::new::<C>(Arc::new(LocalDb::new()), cache_watermark);
+        let db = CacheDb::new::<C>(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
         db.also_watch_from::<C, _>(&api);
         Ok(ClientDb { api, db })
     }

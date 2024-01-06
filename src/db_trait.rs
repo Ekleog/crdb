@@ -86,6 +86,32 @@ macro_rules! impl_for_id {
             }
         }
 
+        #[cfg(feature = "client-native")]
+        impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
+            fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode_by_ref(&self.to_uuid(), buf)
+            }
+            fn encode(self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode(self.to_uuid(), buf)
+            }
+            fn produces(&self) -> Option<sqlx::sqlite::SqliteTypeInfo> {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::produces(&self.to_uuid())
+            }
+            fn size_hint(&self) -> usize {
+                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::size_hint(&self.to_uuid())
+            }
+        }
+
+        #[cfg(feature = "client-native")]
+        impl sqlx::Type<sqlx::Sqlite> for $type {
+            fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+                <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::type_info()
+            }
+            fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
+                <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
+            }
+        }
+
         #[cfg(test)]
         impl bolero::generator::TypeGenerator for $type {
             fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
@@ -165,11 +191,10 @@ pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
     fn new_objects(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewObject>>;
-    /// This function returns all new events for events on objects that have been
-    /// subscribed on. Objects subscribed on are all the objects that have ever been
-    /// created with `created`, or obtained with `get` or `query`, as well as all
-    /// objects received through `new_objects`, excluding objects explicitly unsubscribed
-    /// from
+    /// This function returns all new events for events on objects that have been subscribed
+    /// on. Objects subscribed on are all the objects that have ever been created
+    /// with `created`, or obtained with `get` or `query`, as well as all objects
+    /// received through `new_objects`, excluding objects explicitly unsubscribed from
     fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewEvent>>;
     fn new_recreations(
         &self,

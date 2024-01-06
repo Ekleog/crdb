@@ -12,9 +12,9 @@ mod test_utils;
 
 pub use db_trait::Timestamp;
 
-#[cfg(any(feature = "client"))]
+#[cfg(feature = "client")]
 mod client;
-#[cfg(any(feature = "client"))]
+#[cfg(feature = "client")]
 pub use client::{NewEvent, NewObject, NewRecreation};
 #[cfg(not(feature = "client"))]
 mod client {
