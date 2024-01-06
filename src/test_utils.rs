@@ -336,6 +336,17 @@ impl MemDb {
             binaries: HashMap::new(),
         })))
     }
+
+    pub async fn recreate_all<T: Object>(&self, time: Timestamp) -> anyhow::Result<()> {
+        let mut this = self.0.lock().await;
+        EventId::last_id_at(time).context("provided time is too far in the future")?;
+        for (ty, o) in this.objects.values_mut() {
+            if *ty == TypeId(*T::type_ulid()) {
+                o.recreate_at::<T>(time).context("recreating object")?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn eq<T: 'static + Any + Send + Sync + Eq>(

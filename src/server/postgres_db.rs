@@ -92,7 +92,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         cb: &C,
         notify_recreation: impl Fn(DynNewRecreation),
     ) -> anyhow::Result<()> {
-        // TODO: add vacuum to the fuzzers
         if let Some(t) = kill_sessions_older_than {
             // Discard all sessions that were last active too long ago
             // TODO: see https://github.com/launchbadge/sqlx/issues/2972

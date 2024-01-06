@@ -44,6 +44,9 @@ enum Op {
         data: Vec<u8>,
     },
     */
+    Vacuum {
+        recreate_at: Option<Timestamp>,
+    },
 }
 
 struct FuzzState {
@@ -132,6 +135,20 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .mem_db
                 .recreate::<TestObject1, _>(*time, o, &s.mem_db)
                 .await;
+            cmp_anyhow(pg, mem)?;
+        }
+        Op::Vacuum { recreate_at: None } => {
+            db.vacuum(None, None, db, |r| {
+                panic!("got unexpected recreation {r:?}")
+            })
+            .await
+            .unwrap();
+        }
+        Op::Vacuum {
+            recreate_at: Some(recreate_at),
+        } => {
+            let mem = s.mem_db.recreate_all::<TestObject1>(*recreate_at).await;
+            let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
             cmp_anyhow(pg, mem)?;
         }
     }

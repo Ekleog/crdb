@@ -143,7 +143,7 @@ pub struct DynNewEvent {
     pub event: Arc<dyn DynSized>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DynNewRecreation {
     pub type_id: TypeId,
     pub object_id: ObjectId,
