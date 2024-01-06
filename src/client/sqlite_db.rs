@@ -42,7 +42,7 @@ impl Db for SqliteDb {
         futures::stream::empty()
     }
 
-    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
+    async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
         unimplemented!()
     }
 
@@ -53,7 +53,107 @@ impl Db for SqliteDb {
         object: Arc<T>,
         cb: &C,
     ) -> Result<(), DbOpError> {
-        todo!()
+        reord::point().await;
+        let mut t = self
+            .db
+            .begin()
+            .await
+            .context("acquiring postgresql transaction")
+            .map_err(DbOpError::Other)?;
+
+        // TODO add reord lock over whole database
+        
+        reord::point().await;
+        // Object ID uniqueness is enforced by the `snapshot_creations` unique index
+        let type_id = TypeId(*T::type_ulid());
+        let snapshot_version = T::snapshot_version();
+        let object_json = sqlx::types::Json(&object);
+        let is_heavy = object.is_heavy();
+        reord::point().await;
+        let affected =
+            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6)
+                         ON CONFLICT DO NOTHING")
+                .bind(created_at)
+                .bind(type_id)
+                .bind(object_id)
+                .bind(snapshot_version)
+                .bind(object_json)
+                .bind(is_heavy)
+                .execute(&mut *t)
+                .await
+                .with_context(|| format!("inserting snapshot {created_at:?}"))
+                .map_err(DbOpError::Other)?
+                .rows_affected();
+        if affected != 1 {
+            // Check for equality with pre-existing
+            reord::point().await;
+            let affected = sqlx::query(
+                "
+                    SELECT snapshot_id FROM snapshots
+                    WHERE snapshot_id = $1
+                    AND object_id = $2
+                    AND is_creation = TRUE
+                    AND snapshot_version = $3
+                    AND snapshot = $4
+                ",
+            )
+            .bind(created_at)
+            .bind(object_id)
+            .bind(snapshot_version)
+            .bind(object_json)
+            .execute(&mut *t)
+            .await
+            .with_context(|| {
+                format!("checking pre-existing snapshot for {created_at:?} is the same")
+            })
+            .map_err(DbOpError::Other)?
+            .rows_affected();
+            if affected != 1 {
+                return Err(DbOpError::Other(anyhow!(
+                    "Snapshot {created_at:?} already existed with a different value set"
+                )));
+            }
+            std::mem::drop(reord_lock);
+            reord::point().await;
+            return Ok(());
+        }
+
+        // We just inserted. Check that no event existed at this id
+        reord::point().await;
+        let affected = sqlx::query("SELECT event_id FROM events WHERE event_id = $1")
+            .bind(created_at)
+            .execute(&mut *t)
+            .await
+            .with_context(|| format!("checking that no event existed with this id yet"))
+            .map_err(DbOpError::Other)?
+            .rows_affected();
+        if affected != 0 {
+            std::mem::drop(reord_lock);
+            reord::point().await;
+            return Err(DbOpError::Other(anyhow!(
+                "Snapshot {created_at:?} has an ulid conflict with a pre-existing event"
+            )));
+        }
+
+        // TODO fill binary tables
+        for binary_id in object.required_binaries() {
+            sqlx::query("INSERT INTO snapshots_binaries VALUES ($&, $2)")
+                .bind(snapshot_id)
+                .bind(binary_id)
+                .execute(&mut *t)
+                .await
+                .with_context(|| format!("marking {snapshot_id:?} as using {binary_id:?}"))
+                .map_err(DbOpError::Other)?;
+        }
+        
+        reord::point().await;
+        t.commit()
+            .await
+            .with_context(|| format!("committing transaction that created {object_id:?}"))
+            .map_err(DbOpError::Other)?;
+        std::mem::drop(reord_lock);
+        reord::point().await;
+        Ok(())
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(

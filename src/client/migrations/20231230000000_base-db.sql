@@ -27,7 +27,6 @@ CREATE TABLE events (
     event_id BLOB PRIMARY KEY NOT NULL,
     object_id BLOB NOT NULL,
     data BLOB NOT NULL, -- JSONB
-    required_binaries BLOB ARRAY NOT NULL
 );
 
 CREATE TABLE events_binaries (
