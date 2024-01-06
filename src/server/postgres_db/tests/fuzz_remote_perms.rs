@@ -3,9 +3,10 @@ use crate::{
     db_trait::{Db, EventId, ObjectId},
     server::postgres_db::PostgresDb,
     test_utils::{
-        self, TestEventDelegatePerms, TestEventPerms, TestObjectDelegatePerms, TestObjectPerms,
+        self, db::ServerConfig, TestEventDelegatePerms, TestEventPerms, TestObjectDelegatePerms,
+        TestObjectPerms,
     },
-    Timestamp, User,
+    DbPtr, Timestamp, User,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -76,7 +77,7 @@ impl FuzzState {
     }
 }
 
-async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::CreatePerm {
             id,
@@ -276,6 +277,31 @@ fn regression_get_with_wrong_type_did_not_fail() {
                 })),
             },
             GetDelegator { object: 0 },
+        ],
+    );
+}
+
+#[test]
+fn regression_changing_remote_objects_did_not_refresh_perms() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            CreateDelegator {
+                id: ObjectId(Ulid::from_string("00000000000G000000000G0000").unwrap()),
+                created_at: EventId(Ulid::from_string("00ZYNG001A2C09BP0708000000").unwrap()),
+                object: Arc::new(TestObjectDelegatePerms(
+                    DbPtr::from_string("00000000000000000000000000").unwrap(),
+                )),
+            },
+            CreatePerm {
+                id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000001QZZ40FSZ7WZKY26000").unwrap()),
+                object: Arc::new(TestObjectPerms(User {
+                    id: Ulid::from_string("00000002004G0004007G054MJJ").unwrap(),
+                })),
+            },
         ],
     );
 }

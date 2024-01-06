@@ -121,7 +121,7 @@ macro_rules! generate_client {
                 pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<$object>>>> {
                     async move {
                         Ok(match self.db.get::<$object>(object.to_object_id()).await? {
-                            Some(mut o) => Some(o.last_snapshot()?),
+                            Some(o) => Some(o.last_snapshot()?),
                             None => None,
                         })
                     }

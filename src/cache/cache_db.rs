@@ -198,13 +198,16 @@ impl<D: Db> Db for CacheDb<D> {
         object: Arc<T>,
         cb: &C,
     ) -> Result<(), DbOpError> {
-        let mut cache = self.cache.write().await;
-        if cache
-            .create(id, created_at, object.clone())
-            .map_err(DbOpError::Other)?
-        {
-            self.db.create(id, created_at, object, cb).await?;
-        }
+        // First change db, then the cache, because db can rely on the `get`s from the
+        // cache to compute `users_who_can_read`, and this in turn means that the cache
+        // should never (lock reads or) return not up-to-date information, nor return
+        // information that has not yet been validated by the database.
+        self.db.create(id, created_at, object.clone(), cb).await?;
+        self.cache
+            .write()
+            .await
+            .create(id, created_at, object)
+            .map_err(DbOpError::Other)?;
         Ok(())
     }
 
@@ -215,15 +218,18 @@ impl<D: Db> Db for CacheDb<D> {
         event: Arc<T::Event>,
         cb: &C,
     ) -> Result<(), DbOpError> {
-        let mut cache = self.cache.write().await;
-        if cache
-            .submit::<T>(object_id, event_id, event.clone())
-            .map_err(DbOpError::Other)?
-        {
-            self.db
-                .submit::<T, _>(object_id, event_id, event, cb)
-                .await?;
-        }
+        // First change db, then the cache, because db can rely on the `get`s from the
+        // cache to compute `users_who_can_read`, and this in turn means that the cache
+        // should never (lock reads or) return not up-to-date information, nor return
+        // information that has not yet been validated by the database.
+        self.db
+            .submit::<T, _>(object_id, event_id, event.clone(), cb)
+            .await?;
+        self.cache
+            .write()
+            .await
+            .submit::<T>(object_id, event_id, event)
+            .map_err(DbOpError::Other)?;
         Ok(())
     }
 
@@ -285,9 +291,8 @@ impl<D: Db> Db for CacheDb<D> {
         object: ObjectId,
         cb: &C,
     ) -> anyhow::Result<()> {
-        let mut cache = self.cache.write().await;
-        cache.recreate::<T>(object, time)?;
-        self.db.recreate::<T, C>(time, object, cb).await
+        self.db.recreate::<T, C>(time, object, cb).await?;
+        self.cache.write().await.recreate::<T>(object, time)
     }
 
     async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {

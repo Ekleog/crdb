@@ -305,6 +305,20 @@ impl crate::Event for TestEventDelegatePerms {
     }
 }
 
+crate::db! {
+    pub mod db {
+        auth: (),
+        api_config: ApiConfig,
+        server_config: ServerConfig,
+        client_db: ClientDb,
+        objects: {
+            test1: super::TestObject1,
+            perms: super::TestObjectPerms,
+            delegate_perms: super::TestObjectDelegatePerms,
+        },
+    }
+}
+
 struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
     events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,

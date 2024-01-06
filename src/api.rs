@@ -122,7 +122,7 @@ pub struct User {
 
 impl_for_id!(User);
 
-mod private {
+pub(crate) mod private {
     pub trait Sealed {}
 }
 
@@ -196,6 +196,20 @@ pub trait Object:
         event: &'a Self::Event,
         db: &'a C,
     ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
+    /// Note that `db.get` calls will be cached. So:
+    /// - Use `db.get` as little as possible, to avoid useless cache thrashing
+    /// - Make sure to always read objects in a given order. You should consider all your objects as
+    ///   forming a DAG, and each object's `users_who_can_read` function should:
+    ///   - Only ever operate on a topological sort of the DAG
+    ///   - Only call `db.get` on objects after this object on the topological sort
+    ///   Failing to do this might lead to deadlocks within the database, which will result in internal
+    ///   server errors from postgresql.
+    ///   For example, if you have A -> B -> C and A -> C, A's `users_who_can_read` should first call
+    ///   `get` on `B` before calling it on `C`, because otherwise B could be running the same function
+    ///   on `C` and causing a deadlock.
+    ///   Similarly, if A and B both depend on C and D, then `users_who_can_read` for A and B should
+    ///   always lock C and D in the same order, to avoid deadlocks.
+    ///   In other words, you should consider `db.get()` as taking a lock on the obtained object.
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
@@ -207,7 +221,6 @@ pub trait Object:
     fn required_binaries(&self) -> Vec<BinPtr>;
 }
 
-#[cfg(feature = "server")]
 pub fn parse_snapshot<T: Object>(
     snapshot_version: i32,
     snapshot_data: serde_json::Value,
@@ -256,6 +269,14 @@ impl<T: Object> DbPtr<T> {
 
     pub fn to_object_id(&self) -> ObjectId {
         ObjectId(self.id)
+    }
+
+    #[cfg(test)]
+    pub fn from_string(s: &str) -> anyhow::Result<DbPtr<T>> {
+        Ok(DbPtr {
+            id: Ulid::from_string(s)?,
+            _phantom: PhantomData,
+        })
     }
 }
 
@@ -312,7 +333,7 @@ pub struct ClientMessage {
     request: Request,
 }
 
-pub trait Config: crate::private::Sealed + CacheConfig {
+pub trait ApiConfig: crate::private::Sealed + CacheConfig {
     /// Panics if there are two types with the same ULID configured
     fn check_ulids();
 }

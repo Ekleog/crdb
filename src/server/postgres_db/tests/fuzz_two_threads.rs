@@ -2,7 +2,7 @@ use super::{cmp_anyhow, cmp_db, TmpDb};
 use crate::{
     db_trait::{Db, EventId, ObjectId},
     server::postgres_db::PostgresDb,
-    test_utils::{self, TestEvent1, TestObject1},
+    test_utils::{self, db::ServerConfig, TestEvent1, TestObject1},
     Timestamp,
 };
 use anyhow::Context;
@@ -45,7 +45,7 @@ impl FuzzState {
     }
 }
 
-async fn apply_op(db: &PostgresDb, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Create {
             id,
@@ -129,7 +129,12 @@ async fn apply_op(db: &PostgresDb, s: &FuzzState, op: &Op) -> anyhow::Result<()>
     Ok(())
 }
 
-async fn apply_ops(thread: usize, db: Arc<PostgresDb>, s: Arc<FuzzState>, ops: Arc<Vec<Op>>) {
+async fn apply_ops(
+    thread: usize,
+    db: Arc<PostgresDb<ServerConfig>>,
+    s: Arc<FuzzState>,
+    ops: Arc<Vec<Op>>,
+) {
     for (i, op) in ops.iter().enumerate() {
         apply_op(&db, &s, op)
             .await
@@ -169,6 +174,8 @@ fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord:
             a.unwrap();
             b.unwrap();
             h.unwrap();
+            db.assert_invariants_generic().await;
+            db.assert_invariants_for::<TestObject1>().await;
         });
 }
 

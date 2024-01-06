@@ -76,6 +76,16 @@ macro_rules! impl_for_id {
             }
         }
 
+        #[cfg(feature = "server")]
+        impl sqlx::postgres::PgHasArrayType for $type {
+            fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_type_info()
+            }
+            fn array_compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_compatible(ty)
+            }
+        }
+
         #[cfg(feature = "client-native")]
         impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
             fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
@@ -212,6 +222,7 @@ pub trait Db: 'static + Send + Sync {
         o: FullObject,
         cb: &C,
     ) -> impl Send + Future<Output = anyhow::Result<()>> {
+        // TODO: move to CacheDb
         async move {
             let (creation, changes) = o.extract_all_clone();
             self.create::<T, _>(
@@ -260,7 +271,7 @@ pub trait Db: 'static + Send + Sync {
         time: Timestamp,
         object: ObjectId,
         cb: &C,
-    ) -> impl Send + Future<Output = anyhow::Result<()>>;
+    ) -> impl Send + Future<Output = anyhow::Result<()>>; // TODO: make DbOpError
 
     fn create_binary(
         &self,

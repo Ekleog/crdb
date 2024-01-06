@@ -1,5 +1,5 @@
 use crate::{
-    api::{self, ServerMessage},
+    api::{ApiConfig, ServerMessage},
     cache::CacheDb,
     db_trait::ObjectId,
     User,
@@ -17,7 +17,8 @@ use ulid::Ulid;
 mod config;
 mod postgres_db;
 
-pub use config::Config;
+pub use self::postgres_db::{ComboLock, PostgresDb};
+pub use config::ServerConfig;
 
 pub struct Session {
     pub user_id: User,
@@ -28,20 +29,20 @@ pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize
     fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
 }
 
-struct SessionToken(Ulid);
+pub struct SessionToken(Ulid);
 
-struct SessionRef(Ulid);
+pub struct SessionRef(Ulid);
 
-pub struct Server<C: Config> {
+pub struct Server<C: ServerConfig> {
     _config: C,
-    _db: Arc<CacheDb<postgres_db::PostgresDb>>,
+    _db: Arc<CacheDb<PostgresDb<C>>>,
     _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
     _sessions: HashMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
 }
 
-impl<C: Config> Server<C> {
+impl<C: ServerConfig> Server<C> {
     pub async fn new(config: C, db: sqlx::PgPool, cache_watermark: usize) -> anyhow::Result<Self> {
-        <C::ApiConfig as api::Config>::check_ulids();
+        <C::ApiConfig as ApiConfig>::check_ulids();
         Ok(Server {
             _config: config,
             _db: CacheDb::new::<C::ApiConfig>(

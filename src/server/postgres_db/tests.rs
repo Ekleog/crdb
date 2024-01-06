@@ -2,7 +2,8 @@ use super::PostgresDb;
 use crate::{
     db_trait::{Db, DbOpError},
     test_utils::{
-        TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
+        db::ServerConfig, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
+        OBJECT_ID_1,
     },
 };
 use std::{fmt::Debug, sync::Arc};
@@ -13,7 +14,9 @@ mod fuzz_two_threads;
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
-    let db = PostgresDb::connect(db).await.expect("connecting to db");
+    let db = PostgresDb::<ServerConfig>::connect(db)
+        .await
+        .expect("connecting to db");
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
