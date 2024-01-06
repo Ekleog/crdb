@@ -26,7 +26,7 @@ CREATE TABLE snapshots_binaries (
 CREATE TABLE events (
     event_id BLOB PRIMARY KEY NOT NULL,
     object_id BLOB NOT NULL,
-    data BLOB NOT NULL, -- JSONB
+    data BLOB NOT NULL -- JSONB
 );
 
 CREATE TABLE events_binaries (
