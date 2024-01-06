@@ -296,40 +296,43 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object: &T,
         cb: &'a C,
     ) -> anyhow::Result<Vec<ComboLock<'a>>> {
-        let (users_who_can_read, users_who_can_read_depends_on, locks) =
-            if is_latest {
-                let (a, b, c) = self
-            .get_users_who_can_read::<T, _>(&object_id, object, cb)
-            .await
-            .with_context(|| {
-                format!("listing users who can read for snapshot {snapshot_id:?} of {object_id:?}")
-            })?;
-                (Some(a), Some(b), c)
-            } else {
-                (None, None, Vec::new())
-            };
+        let (users_who_can_read, users_who_can_read_depends_on, locks) = if is_latest {
+            let (a, b, c) = self
+                .get_users_who_can_read::<T, _>(&object_id, object, cb)
+                .await
+                .with_context(|| {
+                    format!(
+                        "listing users who can read for snapshot {snapshot_id:?} of {object_id:?}"
+                    )
+                })?;
+            (Some(a), Some(b), c)
+        } else {
+            (None, None, Vec::new())
+        };
         assert!(
             !is_latest || rdeps.is_some(),
             "Latest snapshots must always list their reverse dependencies"
         );
 
         reord::point().await;
-        sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)")
-            .bind(snapshot_id)
-            .bind(TypeId(*T::type_ulid()))
-            .bind(object_id)
-            .bind(is_creation)
-            .bind(is_latest)
-            .bind(T::snapshot_version())
-            .bind(sqlx::types::Json(object))
-            .bind(users_who_can_read)
-            .bind(users_who_can_read_depends_on)
-            .bind(rdeps)
-            .bind(object.is_heavy())
-            .bind(object.required_binaries())
-            .execute(&mut *transaction)
-            .await
-            .with_context(|| format!("inserting event {snapshot_id:?} into table"))?;
+        sqlx::query(
+            "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        )
+        .bind(snapshot_id)
+        .bind(TypeId(*T::type_ulid()))
+        .bind(object_id)
+        .bind(is_creation)
+        .bind(is_latest)
+        .bind(T::snapshot_version())
+        .bind(sqlx::types::Json(object))
+        .bind(users_who_can_read)
+        .bind(users_who_can_read_depends_on)
+        .bind(rdeps)
+        .bind(object.is_heavy())
+        .bind(object.required_binaries())
+        .execute(&mut *transaction)
+        .await
+        .with_context(|| format!("inserting snapshot {snapshot_id:?} into table"))?;
 
         Ok(locks)
     }
