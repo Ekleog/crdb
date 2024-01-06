@@ -1,6 +1,7 @@
 use crate::{
-    db_trait::{Db, EventId, DynNewEvent, DynNewObject, DynNewRecreation, ObjectId},
-    BinPtr, Object, Query, Timestamp, User, full_object::FullObject
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, DbOpError},
+    full_object::FullObject,
+    BinPtr, Object, Query, Timestamp, User, CanDoCallbacks,
 };
 use futures::Stream;
 use std::sync::Arc;
@@ -10,7 +11,7 @@ pub struct IndexedDb {
 }
 
 impl IndexedDb {
-    pub async fn connect(url: &str) -> anyhow::Result<IndexedDb> {
+    pub async fn connect(_url: &str) -> anyhow::Result<IndexedDb> {
         todo!()
     }
 }
@@ -36,21 +37,23 @@ impl Db for IndexedDb {
         todo!()
     }
 
-    async fn create<T: Object>(
+    async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> anyhow::Result<()> {
+        cb: &C,
+    ) -> anyhow::Result<(), DbOpError> {
         todo!()
     }
 
-    async fn submit<T: Object>(
+    async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-    ) -> anyhow::Result<()> {
+        cb: &C,
+    ) -> anyhow::Result<(), DbOpError> {
         todo!()
     }
 
@@ -69,7 +72,12 @@ impl Db for IndexedDb {
         Ok(futures::stream::empty())
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        cb: &C,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 
