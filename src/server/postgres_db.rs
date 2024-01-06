@@ -141,7 +141,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                         UPDATE snapshots
                         SET users_who_can_read = NULL,
                             users_who_can_read_depends_on = NULL,
-                            reverse_dependents_to_update IS NOT NULL
+                            reverse_dependents_to_update = NULL
                         WHERE object_id = $1
                         AND NOT is_latest
                     ",
@@ -155,7 +155,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
         // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
         // TODO: postgres VACUUM ANALYZE
-        todo!()
+        Ok(())
     }
 
     pub async fn get_users_who_can_read<'a, T: Object, C: CanDoCallbacks>(

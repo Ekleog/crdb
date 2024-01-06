@@ -3,7 +3,7 @@ use crate::{
     db_trait::{Db, DbOpError},
     test_utils::{
         db::ServerConfig, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
-        OBJECT_ID_1,
+        OBJECT_ID_1, OBJECT_ID_3,
     },
 };
 use std::{fmt::Debug, sync::Arc};
@@ -117,6 +117,13 @@ async fn smoke_test(db: sqlx::PgPool) {
             .expect("getting last snapshot")
             .0
     );
+    db.assert_invariants_generic().await;
+    db.assert_invariants_for::<TestObject1>().await;
+    db.vacuum(Some(EVENT_ID_3.time()), Some(OBJECT_ID_3.time()), |_| ())
+        .await
+        .unwrap();
+    db.assert_invariants_generic().await;
+    db.assert_invariants_for::<TestObject1>().await;
 }
 
 fn cmp_anyhow<T: Debug + Eq>(pg: anyhow::Result<T>, mem: anyhow::Result<T>) -> anyhow::Result<()> {
