@@ -136,7 +136,6 @@ impl Db for SqliteDb {
             )));
         }
 
-        // TODO fill binary tables
         for binary_id in object.required_binaries() {
             reord::point().await;
             sqlx::query("INSERT INTO snapshots_binaries VALUES ($1, $2)")
