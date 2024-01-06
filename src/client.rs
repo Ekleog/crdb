@@ -1,17 +1,17 @@
 mod api_db;
 mod client_db;
 mod config;
-#[cfg(target = "wasm32-unknown-unknown")]
+#[cfg(not(feature = "client-native"))]
 mod indexed_db;
-#[cfg(not(target = "wasm32-unknown-unknown"))]
+#[cfg(feature = "client-native")]
 mod sqlite_db;
 
 pub use api_db::ApiDb;
 pub use client_db::ClientDb;
 pub use config::{NewEvent, NewObject, NewRecreation};
-#[cfg(target = "wasm32-unknown-unknown")]
+#[cfg(not(feature = "client-native"))]
 pub use indexed_db::IndexedDb as LocalDb;
-#[cfg(not(target = "wasm32-unknown-unknown"))]
+#[cfg(feature = "client-native")]
 pub use sqlite_db::SqliteDb as LocalDb;
 
 pub trait Authenticator:

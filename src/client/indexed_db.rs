@@ -1,6 +1,7 @@
 use crate::{
-    db_trait::{Db, EventId, FullObject, NewEvent, NewObject, NewRecreation, ObjectId},
-    BinPtr, Object, Query, Timestamp, User,
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, DbOpError},
+    full_object::FullObject,
+    BinPtr, Object, Query, Timestamp, User, CanDoCallbacks,
 };
 use futures::Stream;
 use std::sync::Arc;
@@ -10,24 +11,24 @@ pub struct IndexedDb {
 }
 
 impl IndexedDb {
-    pub fn new() -> IndexedDb {
+    pub async fn connect(_url: &str) -> anyhow::Result<IndexedDb> {
         todo!()
     }
 }
 
 #[allow(unused_variables)] // TODO: remove
 impl Db for IndexedDb {
-    async fn new_objects(&self) -> impl Send + Stream<Item = NewObject> {
+    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = NewEvent> {
+    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_recreations(&self) -> impl Send + Stream<Item = NewRecreation> {
+    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
         // todo!()
         futures::stream::empty()
     }
@@ -36,21 +37,23 @@ impl Db for IndexedDb {
         todo!()
     }
 
-    async fn create<T: Object>(
+    async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> anyhow::Result<()> {
+        cb: &C,
+    ) -> anyhow::Result<(), DbOpError> {
         todo!()
     }
 
-    async fn submit<T: Object>(
+    async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-    ) -> anyhow::Result<()> {
+        cb: &C,
+    ) -> anyhow::Result<(), DbOpError> {
         todo!()
     }
 
@@ -69,7 +72,12 @@ impl Db for IndexedDb {
         Ok(futures::stream::empty())
     }
 
-    async fn recreate<T: Object>(&self, time: Timestamp, object: ObjectId) -> anyhow::Result<()> {
+    async fn recreate<T: Object, C: CanDoCallbacks>(
+        &self,
+        time: Timestamp,
+        object: ObjectId,
+        cb: &C,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 
