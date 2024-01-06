@@ -20,7 +20,9 @@ CREATE TABLE snapshots (
     is_latest BOOLEAN NOT NULL,
     snapshot_version INTEGER NOT NULL,
     snapshot JSONB NOT NULL,
-    users_who_can_read UUID ARRAY NOT NULL, -- Note: this is guaranteed to be up-to-date only for the `is_latest` snapshot
+    -- The two below are nullable, and set to a correct value only for is_latest snapshots
+    users_who_can_read UUID ARRAY, -- Note: this is guaranteed to be up-to-date only for the `is_latest` snapshot
+    users_who_can_read_depends_on UUID ARRAY, -- List of all the other objects on which `users_who_can_read` depends
     is_heavy BOOLEAN NOT NULL,
     required_binaries UUID ARRAY NOT NULL
 );

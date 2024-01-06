@@ -45,11 +45,16 @@
       },
       {
         "ordinal": 8,
+        "name": "users_who_can_read_depends_on",
+        "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 9,
         "name": "is_heavy",
         "type_info": "Bool"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "required_binaries",
         "type_info": "UuidArray"
       }
@@ -67,7 +72,8 @@
       false,
       false,
       false,
-      false,
+      true,
+      true,
       false,
       false
     ]

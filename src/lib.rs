@@ -42,17 +42,20 @@ pub mod crdb_internal {
     #[cfg(feature = "client")]
     pub use crate::client::ClientDb;
     #[cfg(feature = "server")]
-    pub use crate::server::Config as ServerConfig;
+    pub use crate::server::{PostgresDb, ServerConfig};
     pub use crate::{
-        api::{CanDoCallbacks, Config as ApiConfig},
+        api::{parse_snapshot, ApiConfig, CanDoCallbacks},
         cache::{CacheConfig, ObjectCache},
-        db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
+        db_trait::{
+            Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,
+        },
         hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,
     };
     pub use anyhow;
     pub use futures::{self, future, stream, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
+    pub use serde_json;
     pub use std::{
         future::Future,
         ops::Bound,
@@ -99,7 +102,6 @@ macro_rules! db {
             use $crate::crdb_internal as crdb;
             use crdb::anyhow::Context as CrdbContext;
             use crdb::Db as CrdbDb;
-            use crdb::future::FutureExt as CrdbFutureExt;
             use crdb::stream::StreamExt as CrdbStreamExt;
 
             $crate::generate_api!($authenticator | $api_config | $($object),*);

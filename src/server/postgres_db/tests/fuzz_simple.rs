@@ -3,8 +3,8 @@ use crate::{
     db_trait::{Db, EventId, ObjectId},
     server::postgres_db::PostgresDb,
     test_utils::{
-        self, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
-        OBJECT_ID_2,
+        self, db::ServerConfig, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3,
+        EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
     },
     Timestamp,
 };
@@ -60,7 +60,7 @@ impl FuzzState {
     }
 }
 
-async fn apply_op(db: &PostgresDb, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Create {
             id,

@@ -1,4 +1,4 @@
-use super::{Session, SessionRef, SessionToken};
+use super::{ServerConfig, Session, SessionRef, SessionToken};
 use crate::{
     api::{parse_snapshot, query::Bind},
     db_trait::{
@@ -6,50 +6,46 @@ use crate::{
         TypeId,
     },
     full_object::{Change, FullObject},
-    BinPtr, CanDoCallbacks, Event, Object, Query, User,
+    BinPtr, CanDoCallbacks, DbPtr, Event, Object, Query, User,
 };
 use anyhow::{anyhow, Context};
-use futures::{Stream, StreamExt};
+use futures::{stream, Stream, StreamExt};
+use lockable::{LockPool, Lockable};
 use sqlx::Row;
 use std::{
-    collections::BTreeMap,
-    hash::{Hash, Hasher},
+    collections::{hash_map, BTreeMap, HashMap},
+    marker::PhantomData,
     sync::Arc,
     time::SystemTime,
 };
+use tokio::sync::Mutex;
 use ulid::Ulid;
 
 #[cfg(test)]
 mod tests;
 
-pub(crate) struct PostgresDb {
+pub struct PostgresDb<Config: ServerConfig> {
     db: sqlx::PgPool,
-}
-
-fn object_lock(e: ObjectId) -> i64 {
-    // Locks are short-lived, when we close the session they'll be removed so we can just use the default hasher
-    let mut hasher = std::hash::DefaultHasher::new();
-    0u8.hash(&mut hasher);
-    e.hash(&mut hasher);
-    hasher.finish() as i64
-}
-
-fn event_lock(e: EventId) -> i64 {
-    // Locks are short-lived, when we close the session they'll be removed so we can just use the default hasher
-    let mut hasher = std::hash::DefaultHasher::new();
-    0u8.hash(&mut hasher);
-    e.hash(&mut hasher);
-    hasher.finish() as i64
+    event_locks: LockPool<EventId>,
+    object_locks: LockPool<ObjectId>,
+    object_rdeps_locks: LockPool<ObjectId>,
+    _phantom: PhantomData<Config>,
 }
 
 #[allow(unused_variables, dead_code)] // TODO: remove
-impl PostgresDb {
-    pub async fn connect(db: sqlx::PgPool) -> anyhow::Result<PostgresDb> {
+impl<Config: ServerConfig> PostgresDb<Config> {
+    pub async fn connect(db: sqlx::PgPool) -> anyhow::Result<PostgresDb<Config>> {
         sqlx::migrate!("src/server/migrations")
             .run(&db)
             .await
             .context("running migrations on postgresql database")?;
-        Ok(PostgresDb { db })
+        Ok(PostgresDb {
+            db,
+            event_locks: LockPool::new(),
+            object_locks: LockPool::new(),
+            object_rdeps_locks: LockPool::new(),
+            _phantom: PhantomData,
+        })
     }
 
     pub async fn login_session(&self, session: Session) -> anyhow::Result<SessionToken> {
@@ -74,6 +70,176 @@ impl PostgresDb {
 
     pub async fn disconnect_session_ref(&self, session: SessionRef) -> anyhow::Result<()> {
         todo!()
+    }
+
+    async fn get_users_who_can_read<'a, T: Object, C: CanDoCallbacks>(
+        &'a self,
+        object_id: &ObjectId,
+        object: &T,
+        cb: &C,
+    ) -> anyhow::Result<(Vec<User>, Vec<ObjectId>, Vec<impl 'a + Sized>)> {
+        struct TrackingCanDoCallbacks<'a, 'b, C: CanDoCallbacks> {
+            cb: &'a C,
+            object_rdeps_locks: &'b LockPool<ObjectId>,
+            locks: Mutex<
+                HashMap<
+                    ObjectId,
+                    (
+                        reord::Lock,
+                        <LockPool<ObjectId> as Lockable<ObjectId, ()>>::Guard<'b>,
+                    ),
+                >,
+            >,
+        }
+
+        impl<'a, 'b, C: CanDoCallbacks> crate::api::private::Sealed for TrackingCanDoCallbacks<'a, 'b, C> {}
+
+        impl<'a, 'b, C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'a, 'b, C> {
+            async fn get<T: Object>(&self, ptr: crate::DbPtr<T>) -> anyhow::Result<Option<Arc<T>>> {
+                let id = ObjectId(ptr.id);
+                if let hash_map::Entry::Vacant(v) = self.locks.lock().await.entry(id) {
+                    v.insert((
+                        reord::Lock::take_named(format!("{id:?}-rdeps")).await,
+                        self.object_rdeps_locks.async_lock(id).await,
+                    ));
+                }
+                Ok(self
+                    .cb
+                    .get::<T>(DbPtr::from(ObjectId(ptr.id)))
+                    .await
+                    .with_context(|| format!("requesting {ptr:?} from database"))?)
+            }
+        }
+
+        let cb = TrackingCanDoCallbacks {
+            cb,
+            object_rdeps_locks: &self.object_rdeps_locks,
+            locks: Mutex::new(HashMap::new()),
+        };
+
+        let users_who_can_read = object.users_who_can_read(&cb).await.with_context(|| {
+            format!("figuring out the list of users who can read {object_id:?}")
+        })?;
+        let cb_locks = cb.locks.into_inner();
+        let mut users_who_can_read_depends_on = Vec::with_capacity(cb_locks.len());
+        let mut locks = Vec::with_capacity(cb_locks.len());
+        for (o, l) in cb_locks {
+            users_who_can_read_depends_on.push(o);
+            locks.push(l);
+        }
+        Ok((users_who_can_read, users_who_can_read_depends_on, locks))
+    }
+
+    pub async fn update_users_who_can_read<T: Object, C: CanDoCallbacks>(
+        &self,
+        object: &T,
+        cb: &C,
+    ) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    /// Returns the list of all reverse-dependencies of `object_id`, sorted by increasing value.
+    ///
+    /// The returned list includes `object_id` itself, for convenience.
+    async fn get_rdeps(
+        &self,
+        transaction: &mut sqlx::PgConnection,
+        object_id: ObjectId,
+    ) -> anyhow::Result<Vec<ObjectId>> {
+        let mut rdeps = sqlx::query!(
+            "
+                SELECT object_id
+                FROM snapshots
+                WHERE $1 = ANY (users_who_can_read_depends_on)
+                AND is_latest
+                AND object_id != $1
+            ",
+            object_id as ObjectId,
+        )
+        .map(|o| ObjectId::from_uuid(o.object_id))
+        .fetch_all(&mut *transaction)
+        .await
+        .with_context(|| format!("fetching the list of reverse-dependencies for {object_id:?}"))?;
+        rdeps.push(object_id);
+        rdeps.sort_unstable();
+        Ok(rdeps)
+    }
+
+    async fn update_rdeps<C: CanDoCallbacks>(
+        &self,
+        transaction: &mut sqlx::PgConnection,
+        object_id: ObjectId,
+        rdeps: &[ObjectId],
+        cb: &C,
+    ) -> anyhow::Result<()> {
+        for o in rdeps {
+            if *o != object_id {
+                let res = sqlx::query!(
+                    "
+                        SELECT type_id, snapshot_version, snapshot FROM snapshots
+                        WHERE object_id = $1
+                        AND is_latest
+                    ",
+                    *o as ObjectId,
+                )
+                .fetch_one(&mut *transaction)
+                .await
+                .with_context(|| format!("fetching latest snapshot for object {o:?}"))?;
+                Config::update_users_who_can_read(
+                    &self,
+                    TypeId::from_uuid(res.type_id),
+                    res.snapshot_version,
+                    res.snapshot,
+                    cb,
+                )
+                .await
+                .with_context(|| format!("updating users_who_can_read cache of {o:?}"))?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn write_snapshot<'a, T: Object, C: CanDoCallbacks>(
+        &'a self,
+        transaction: &mut sqlx::PgConnection,
+        snapshot_id: EventId,
+        object_id: ObjectId,
+        is_creation: bool,
+        is_latest: bool,
+        object: &T,
+        cb: &C,
+    ) -> anyhow::Result<impl 'a + Sized> {
+        let (users_who_can_read, users_who_can_read_depends_on, locks) =
+            if is_latest {
+                let (a, b, c) = self
+            .get_users_who_can_read::<T, _>(&object_id, object, cb)
+            .await
+            .with_context(|| {
+                format!("listing users who can read for snapshot {snapshot_id:?} of {object_id:?}")
+            })?;
+                (Some(a), Some(b), c)
+            } else {
+                (None, None, Vec::new())
+            };
+
+        reord::point().await;
+        sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)")
+            .bind(snapshot_id)
+            .bind(TypeId(*T::type_ulid()))
+            .bind(object_id)
+            .bind(is_creation)
+            .bind(is_latest)
+            .bind(T::snapshot_version())
+            .bind(sqlx::types::Json(object))
+            .bind(users_who_can_read)
+            .bind(users_who_can_read_depends_on)
+            .bind(object.is_heavy())
+            .bind(object.required_binaries())
+            .execute(&mut *transaction)
+            .await
+            .with_context(|| format!("inserting event {snapshot_id:?} into table"))?;
+
+        Ok(locks)
     }
 
     #[cfg(test)]
@@ -296,13 +462,15 @@ impl PostgresDb {
             assert!(snapshots[snapshots.len() - 1].is_latest);
             assert_eq!(
                 snapshots[snapshots.len() - 1].users_who_can_read,
-                object
-                    .users_who_can_read(self)
-                    .await
-                    .unwrap()
-                    .into_iter()
-                    .map(|u| u.to_uuid())
-                    .collect::<Vec<_>>()
+                Some(
+                    object
+                        .users_who_can_read(self)
+                        .await
+                        .unwrap()
+                        .into_iter()
+                        .map(|u| u.to_uuid())
+                        .collect::<Vec<_>>()
+                )
             );
         }
     }
@@ -311,7 +479,7 @@ impl PostgresDb {
 // TODO: add a mechanism to auto-recreate all objects after some time elapsed
 // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
 
-impl Db for PostgresDb {
+impl<Config: ServerConfig> Db for PostgresDb<Config> {
     async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
         futures::stream::empty()
     }
@@ -336,7 +504,7 @@ impl Db for PostgresDb {
         cb: &C,
     ) -> Result<(), DbOpError> {
         reord::point().await;
-        let mut t = self
+        let mut transaction = self
             .db
             .begin()
             .await
@@ -344,26 +512,29 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
 
         // Acquire the locks required to create the object
-        let reord_lock = reord::Lock::take_atomic(vec![
-            reord::LockInfo::Named(format!("{object_id:?}")),
-            reord::LockInfo::Named(format!("{created_at:?}")),
-        ])
-        .await;
-        sqlx::query("SELECT pg_advisory_xact_lock($1), pg_advisory_xact_lock($2)")
-            .bind(self::object_lock(object_id))
-            .bind(self::event_lock(created_at))
-            .execute(&mut *t)
+        let _lock = reord::Lock::take_named(format!("{created_at:?}")).await;
+        let _lock = self.event_locks.async_lock(created_at).await;
+        let _lock = reord::Lock::take_named(format!("{object_id:?}-rdeps")).await;
+        let _lock = self.object_rdeps_locks.async_lock(object_id).await;
+        let rdeps = self
+            .get_rdeps(&mut *transaction, object_id)
             .await
-            .with_context(|| format!("acquiring locks on {object_id:?} and {created_at:?}"))
+            .with_context(|| format!("listing reverse-dependencies of {object_id:?}"))
             .map_err(DbOpError::Other)?;
+        let _locks = stream::iter(rdeps.iter())
+            .then(|o| reord::Lock::take_named(format!("{o:?}")))
+            .collect::<Vec<_>>();
+        let _locks = stream::iter(rdeps.iter())
+            .then(|o| self.object_locks.async_lock(*o))
+            .collect::<Vec<_>>();
         reord::point().await;
 
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = TypeId(*T::type_ulid());
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
-        let users_who_can_read = object
-            .users_who_can_read(cb)
+        let (users_who_can_read, users_who_can_read_depends_on, _locks) = self
+            .get_users_who_can_read(&object_id, &*object, cb)
             .await
             .with_context(|| format!("listing users who can read object {object_id:?}"))
             .map_err(DbOpError::Other)?;
@@ -371,16 +542,17 @@ impl Db for PostgresDb {
         let required_binaries = object.required_binaries();
         reord::point().await;
         let affected =
-            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING")
+            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING")
                 .bind(created_at)
                 .bind(type_id)
                 .bind(object_id)
                 .bind(snapshot_version)
                 .bind(object_json)
-                .bind(users_who_can_read)
+                .bind(&users_who_can_read)
+                .bind(&users_who_can_read_depends_on)
                 .bind(is_heavy)
                 .bind(&required_binaries)
-                .execute(&mut *t)
+                .execute(&mut *transaction)
                 .await
                 .with_context(|| format!("inserting snapshot {created_at:?}"))
                 .map_err(DbOpError::Other)?
@@ -402,7 +574,7 @@ impl Db for PostgresDb {
             .bind(object_id)
             .bind(snapshot_version)
             .bind(object_json)
-            .execute(&mut *t)
+            .execute(&mut *transaction)
             .await
             .with_context(|| {
                 format!("checking pre-existing snapshot for {created_at:?} is the same")
@@ -414,8 +586,7 @@ impl Db for PostgresDb {
                     "Snapshot {created_at:?} already existed with a different value set"
                 )));
             }
-            std::mem::drop(reord_lock);
-            reord::point().await;
+
             return Ok(());
         }
 
@@ -423,21 +594,24 @@ impl Db for PostgresDb {
         reord::point().await;
         let affected = sqlx::query("SELECT event_id FROM events WHERE event_id = $1")
             .bind(created_at)
-            .execute(&mut *t)
+            .execute(&mut *transaction)
             .await
             .with_context(|| format!("checking that no event existed with this id yet"))
             .map_err(DbOpError::Other)?
             .rows_affected();
         if affected != 0 {
-            std::mem::drop(reord_lock);
-            reord::point().await;
             return Err(DbOpError::Other(anyhow!(
                 "Snapshot {created_at:?} has an ulid conflict with a pre-existing event"
             )));
         }
 
+        // Update the reverse-dependencies, now that we have updated the object itself.
+        self.update_rdeps(&mut *transaction, object_id, &rdeps, cb)
+            .await
+            .map_err(DbOpError::Other)?;
+
         // Check that all required binaries are present, always as the last lock obtained in the transaction
-        check_required_binaries(&mut t, required_binaries)
+        check_required_binaries(&mut transaction, required_binaries)
             .await
             .map_err(|e| {
                 e.with_context(|| {
@@ -448,12 +622,11 @@ impl Db for PostgresDb {
             })?;
 
         reord::point().await;
-        t.commit()
+        transaction
+            .commit()
             .await
             .with_context(|| format!("committing transaction that created {object_id:?}"))
             .map_err(DbOpError::Other)?;
-        std::mem::drop(reord_lock);
-        reord::point().await;
         Ok(())
     }
 
@@ -473,22 +646,24 @@ impl Db for PostgresDb {
             .map_err(DbOpError::Other)?;
 
         // Acquire the locks required to submit the event
-        let reord_lock = reord::Lock::take_atomic(vec![
-            reord::LockInfo::Named(format!("{object_id:?}")),
-            reord::LockInfo::Named(format!("{event_id:?}")),
-        ])
-        .await;
-        reord::point().await;
-        sqlx::query("SELECT pg_advisory_xact_lock($1), pg_advisory_xact_lock($2)")
-            .bind(self::object_lock(object_id))
-            .bind(self::event_lock(event_id))
-            .execute(&mut *transaction)
+        let _lock = reord::Lock::take_named(format!("{event_id:?}")).await;
+        let _lock = self.event_locks.async_lock(event_id).await;
+        let _lock = reord::Lock::take_named(format!("{object_id:?}-rdeps")).await;
+        let _lock = self.object_rdeps_locks.async_lock(object_id).await;
+        let rdeps = self
+            .get_rdeps(&mut *transaction, object_id)
             .await
-            .with_context(|| format!("acquiring locks on {object_id:?} and {event_id:?}"))
+            .with_context(|| format!("fetching reverse dependencies of {object_id:?}"))
             .map_err(DbOpError::Other)?;
-
-        // Check the object does exist
+        let _locks = stream::iter(rdeps.iter())
+            .then(|o| reord::Lock::take_named(format!("{o:?}")))
+            .collect::<Vec<_>>();
+        let _locks = stream::iter(rdeps.iter())
+            .then(|o| self.object_locks.async_lock(*o))
+            .collect::<Vec<_>>();
         reord::point().await;
+
+        // Check the object does exist and is not too new
         let creation_snapshot = sqlx::query!(
             "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation",
             object_id as ObjectId,
@@ -553,8 +728,6 @@ impl Db for PostgresDb {
                 )));
             }
             // Nothing else to do, event was already inserted
-            std::mem::drop(reord_lock);
-            reord::point().await;
             return Ok(());
         }
 
@@ -618,29 +791,17 @@ impl Db for PostgresDb {
         object.apply(&event);
 
         // Save the new snapshot (the new event was already saved above)
-        let users_who_can_read = object
-            .users_who_can_read(cb)
+        let mut _locks = self
+            .write_snapshot(
+                &mut transaction,
+                event_id,
+                object_id,
+                false,
+                last_snapshot.is_latest,
+                &object,
+                cb,
+            )
             .await
-            .with_context(|| {
-                format!(
-                    "listing users who can read for snapshot {event_id:?} of object {object_id:?}"
-                )
-            })
-            .map_err(DbOpError::Other)?;
-        reord::point().await;
-        sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9)")
-            .bind(event_id)
-            .bind(TypeId(*T::type_ulid()))
-            .bind(object_id)
-            .bind(last_snapshot.is_latest)
-            .bind(T::snapshot_version())
-            .bind(sqlx::types::Json(&object))
-            .bind(users_who_can_read)
-            .bind(object.is_heavy())
-            .bind(object.required_binaries())
-            .execute(&mut *transaction)
-            .await
-            .with_context(|| format!("inserting event {event_id:?} into table"))
             .map_err(DbOpError::Other)?;
 
         // If needed, re-compute the last snapshot
@@ -682,37 +843,28 @@ impl Db for PostgresDb {
             std::mem::drop(events_since_inserted);
 
             // Save the latest snapshot
-            let users_who_can_read = object
-                .users_who_can_read(cb)
-                .await
-                .with_context(|| {
-                    format!(
-                    "listing users who can read for snapshot {event_id:?} of object {object_id:?}"
-                )
-                })
-                .map_err(DbOpError::Other)?;
-            reord::point().await;
-            sqlx::query(
-                "INSERT INTO snapshots VALUES ($1, $2, $3, FALSE, TRUE, $4, $5, $6, $7, $8)",
-            )
-            .bind(
+            let snapshot_id = EventId::from_uuid(
                 last_event_id
                     .expect("Entered the 'recomputing last snapshot' stage without any new events"),
-            )
-            .bind(TypeId(*T::type_ulid()))
-            .bind(object_id)
-            .bind(T::snapshot_version())
-            .bind(sqlx::types::Json(&object))
-            .bind(users_who_can_read)
-            .bind(object.is_heavy())
-            .bind(object.required_binaries())
-            .execute(&mut *transaction)
-            .await
-            .with_context(|| format!("inserting event {event_id:?} into table"))
-            .map_err(DbOpError::Other)?;
-            std::mem::drop(reord_lock);
-            reord::point().await;
+            );
+            _locks = self
+                .write_snapshot(
+                    &mut transaction,
+                    snapshot_id,
+                    object_id,
+                    false,
+                    true,
+                    &object,
+                    cb,
+                )
+                .await
+                .map_err(DbOpError::Other)?;
         }
+
+        // Update all the other objects that depend on this one
+        self.update_rdeps(&mut *transaction, object_id, &rdeps, cb)
+            .await
+            .map_err(DbOpError::Other)?;
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
         check_required_binaries(&mut transaction, event.required_binaries())
@@ -852,13 +1004,10 @@ impl Db for PostgresDb {
 
         // Acquire the lock required to recreate the object
         // This will not create a new event id, and thus does not need a lock besides the object one
-        let object_lock = reord::Lock::take_named(format!("{object_id:?}")).await;
-        sqlx::query("SELECT pg_advisory_xact_lock($1)")
-            .bind(self::object_lock(object_id))
-            .execute(&mut *transaction)
-            .await
-            .with_context(|| format!("acquiring lock on {object_id:?}"))
-            .map_err(DbOpError::Other)?;
+        // In addition, the last snapshot value will not change, which means that no reverse-dependencies
+        // locks need to be taken
+        let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
+        let _lock = self.object_locks.async_lock(object_id).await;
 
         // Get the creation snapshot
         reord::point().await;
@@ -876,8 +1025,6 @@ impl Db for PostgresDb {
         }
         if EventId::from_uuid(creation_snapshot.snapshot_id) >= time_id {
             // Already created after the requested time
-            std::mem::drop(object_lock);
-            reord::point().await;
             return Ok(());
         }
 
@@ -961,24 +1108,18 @@ impl Db for PostgresDb {
             // Insert the new creation snapshot. This cannot conflict because we deleted
             // the previous creation snapshot just above. There was no snapshot at this event
             // before, so it cannot be the latest snapshot.
-            let users_who_can_read = object.users_who_can_read(cb).await.with_context(|| {
-                format!("listing users who can read {object_id:?} at snapshot {cutoff_time:?}")
-            })?;
-            reord::point().await;
-            sqlx::query(
-                "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, FALSE, $5, $6, $7, $8, $9",
+            // Note that we do not save the locks here. This is okay, because this is never a latest snapshot,
+            // and thus cannot need the remote locks.
+            self.write_snapshot(
+                &mut *transaction,
+                cutoff_time,
+                object_id,
+                true,
+                false,
+                &object,
+                cb,
             )
-            .bind(cutoff_time)
-            .bind(TypeId(*T::type_ulid()))
-            .bind(object_id)
-            .bind(T::snapshot_version())
-            .bind(sqlx::types::Json(&object))
-            .bind(users_who_can_read)
-            .bind(object.is_heavy())
-            .bind(object.required_binaries())
-            .execute(&mut *transaction)
-            .await
-            .with_context(|| format!("inserting snapshot {cutoff_time:?} for {object_id:?}"))?;
+            .await?;
         } else {
             // Just update the `cutoff_time` snapshot to record it's the creation snapshot
             reord::point().await;
@@ -1004,8 +1145,6 @@ impl Db for PostgresDb {
                 format!("deleting all events for {object_id:?} before {cutoff_time:?}")
             })?;
 
-        std::mem::drop(object_lock);
-        reord::point().await;
         Ok(())
     }
 
@@ -1041,7 +1180,7 @@ async fn check_required_binaries(
     Ok(())
 }
 
-/// Note: this assumes that `transaction` is set to REPEATABLE READ for consistency
+/// Note: this assumes that `transaction` is set to REPEATABLE READ for consistency, or that `ptr` is locked
 async fn get_impl<T: Object>(
     transaction: &mut sqlx::PgConnection,
     ptr: ObjectId,

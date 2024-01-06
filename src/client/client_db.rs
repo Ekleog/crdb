@@ -1,6 +1,6 @@
 use super::{ApiDb, Authenticator, LocalDb};
 use crate::{
-    api,
+    api::ApiConfig,
     cache::CacheDb,
     db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
     full_object::FullObject,
@@ -15,7 +15,7 @@ pub struct ClientDb<A: Authenticator> {
 }
 
 impl<A: Authenticator> ClientDb<A> {
-    pub async fn connect<C: api::Config>(
+    pub async fn connect<C: ApiConfig>(
         base_url: Arc<String>,
         auth: Arc<A>,
         cache_watermark: usize,
