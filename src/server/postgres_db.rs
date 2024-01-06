@@ -104,6 +104,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .context("cleaning up old sessions")?;
         }
+
         {
             // Discard all unrequired snapshots, as well as unused fields of creation snapshots
             // In addition, auto-recreate the objects that need re-creation
@@ -164,6 +165,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 }
             }
         }
+
         // Get rid of no-longer-referenced binaries
         sqlx::query(
             "
@@ -178,7 +180,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .execute(&self.db)
         .await
         .context("deleting no-longer-referenced binaries")?;
-        // TODO: postgres VACUUM ANALYZE
+
+        // Finally, take care of the database itself
+        sqlx::query("VACUUM ANALYZE")
+            .execute(&self.db)
+            .await
+            .context("vacuuming database")?;
+
         Ok(())
     }
 

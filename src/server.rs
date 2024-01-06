@@ -43,6 +43,7 @@ pub struct Server<C: ServerConfig> {
 
 impl<C: ServerConfig> Server<C> {
     pub async fn new(config: C, db: sqlx::PgPool, cache_watermark: usize) -> anyhow::Result<Self> {
+        // TODO: force configuring a vacuuming schedule
         <C::ApiConfig as ApiConfig>::check_ulids();
         let postgres_db = Arc::new(postgres_db::PostgresDb::connect(db).await?);
         Ok(Server {
