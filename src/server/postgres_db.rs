@@ -95,6 +95,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         if let Some(t) = kill_sessions_older_than {
             // Discard all sessions that were last active too long ago
             // TODO: see https://github.com/launchbadge/sqlx/issues/2972
+            reord::point().await;
             sqlx::query!(
                 "DELETE FROM sessions WHERE last_active < $1",
                 t.time_ms() as i64
@@ -107,6 +108,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         {
             // Discard all unrequired snapshots, as well as unused fields of creation snapshots
             // In addition, auto-recreate the objects that need re-creation
+            reord::point().await;
             let mut objects = sqlx::query!(
                 "
                     SELECT DISTINCT object_id, type_id
@@ -127,7 +129,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             while let Some(row) = objects.next().await {
                 let row = row.context("listing objects with snapshots to cleanup")?;
                 let object_id = ObjectId::from_uuid(row.object_id);
+                let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
                 let _lock = self.object_locks.async_lock(object_id).await;
+                reord::point().await;
                 sqlx::query(
                     "DELETE FROM snapshots WHERE object_id = $1 AND NOT (is_creation OR is_latest)",
                 )
@@ -135,6 +139,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .execute(&self.db)
                 .await
                 .with_context(|| format!("deleting useless snapshots from {object_id:?}"))?;
+                reord::point().await;
                 sqlx::query(
                     "
                         UPDATE snapshots
@@ -151,10 +156,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .with_context(|| format!("resetting creation snapshot of {object_id:?}"))?;
                 if let Some(time) = no_new_changes_before {
                     let type_id = TypeId::from_uuid(row.type_id);
+                    reord::point().await;
                     let did_recreate = Config::recreate(&self, type_id, object_id, time, cb)
                         .await
                         .with_context(|| format!("recreating {object_id:?} at time {time:?}"))?;
                     if did_recreate {
+                        reord::point().await;
                         notify_recreation(DynNewRecreation {
                             type_id,
                             object_id,
@@ -166,6 +173,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
 
         // Get rid of no-longer-referenced binaries
+        reord::point().await;
         sqlx::query(
             "
                 DELETE FROM binaries
@@ -181,6 +189,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .context("deleting no-longer-referenced binaries")?;
 
         // Finally, take care of the database itself
+        reord::point().await;
         sqlx::query("VACUUM ANALYZE")
             .execute(&self.db)
             .await
