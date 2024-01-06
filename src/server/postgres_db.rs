@@ -39,7 +39,6 @@ pub type ComboLock<'a> = (
     <lockable::LockPool<ObjectId> as lockable::Lockable<ObjectId, ()>>::Guard<'a>,
 );
 
-#[allow(unused_variables, dead_code)] // TODO: remove
 impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn connect(db: sqlx::PgPool) -> anyhow::Result<PostgresDb<Config>> {
         sqlx::migrate!("src/server/migrations")
@@ -54,27 +53,43 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })
     }
 
-    pub async fn login_session(&self, session: Session) -> anyhow::Result<SessionToken> {
+    pub async fn login_session(&self, _session: Session) -> anyhow::Result<SessionToken> {
         todo!()
     }
 
-    pub async fn retrieve_session(&self, token: SessionToken) -> anyhow::Result<User> {
+    pub async fn retrieve_session(&self, _token: SessionToken) -> anyhow::Result<User> {
         todo!()
     }
 
-    pub async fn rename_session(&self, token: SessionToken, new_name: &str) -> anyhow::Result<()> {
+    pub async fn rename_session(
+        &self,
+        _token: SessionToken,
+        _new_name: &str,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 
-    pub async fn list_sessions(&self, user: User) -> anyhow::Result<Vec<(SessionRef, Session)>> {
+    pub async fn list_sessions(&self, _user: User) -> anyhow::Result<Vec<(SessionRef, Session)>> {
         todo!()
     }
 
-    pub async fn disconnect_session_token(&self, token: SessionToken) -> anyhow::Result<()> {
+    pub async fn disconnect_session_token(&self, _token: SessionToken) -> anyhow::Result<()> {
         todo!()
     }
 
-    pub async fn disconnect_session_ref(&self, session: SessionRef) -> anyhow::Result<()> {
+    pub async fn disconnect_session_ref(&self, _session: SessionRef) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    /// Cleans up and optimizes up the database
+    ///
+    /// After running this, the database will reject any new change that would happen before
+    /// `no_new_changes_before` if it is set.
+    pub async fn vacuum(&self, no_new_changes_before: Option<Timestamp>) -> anyhow::Result<()> {
+        let _no_new_changes_before = no_new_changes_before.unwrap_or(Timestamp::from_ms(0));
+        // TODO: auto-recreate all objects after some time elapsed, notifying users of the recreation
+        // TODO: add a mechanism to GC binaries that are no longer required after object re-creation
+        // TODO: postgres VACUUM ANALYZE
         todo!()
     }
 
@@ -949,9 +964,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
     }
 }
-
-// TODO: add a mechanism to auto-recreate all objects after some time elapsed
-// TODO: add a mechanism to GC binaries that are no longer required after object re-creation
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
     async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
