@@ -50,11 +50,16 @@
       },
       {
         "ordinal": 9,
+        "name": "reverse_dependents_to_update",
+        "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 10,
         "name": "is_heavy",
         "type_info": "Bool"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "required_binaries",
         "type_info": "UuidArray"
       }
@@ -72,6 +77,7 @@
       false,
       false,
       false,
+      true,
       true,
       true,
       false,

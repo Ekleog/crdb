@@ -42,9 +42,9 @@ pub mod crdb_internal {
     #[cfg(feature = "client")]
     pub use crate::client::ClientDb;
     #[cfg(feature = "server")]
-    pub use crate::server::{PostgresDb, ServerConfig};
+    pub use crate::server::{ComboLock, PostgresDb, ServerConfig};
     pub use crate::{
-        api::{parse_snapshot, ApiConfig, CanDoCallbacks},
+        api::{parse_snapshot, ApiConfig, CanDoCallbacks, User},
         cache::{CacheConfig, ObjectCache},
         db_trait::{
             Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,

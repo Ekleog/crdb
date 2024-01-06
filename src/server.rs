@@ -17,7 +17,7 @@ use ulid::Ulid;
 mod config;
 mod postgres_db;
 
-pub use self::postgres_db::PostgresDb;
+pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
 pub struct Session {
