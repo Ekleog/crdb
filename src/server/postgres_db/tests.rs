@@ -134,8 +134,8 @@ fn cmp_db<T: Debug + Eq>(
 ) -> anyhow::Result<()> {
     use crate::Error::*;
     let is_eq = match (&pg_res, &mem_res) {
+        (_, Err(Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
         (Ok(pg), Ok(mem)) => pg == mem,
-        (Err(_), Err(Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
         (Err(pg_err), Err(mem_err)) => match (pg_err, mem_err) {
             (MissingBinPtrs(a), MissingBinPtrs(b)) => a == b,
             (InvalidTimestamp(a), InvalidTimestamp(b)) => a == b,
