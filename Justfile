@@ -43,7 +43,7 @@ fuzz-object-cache:
 fuzz-pg-basic:
     cargo bolero test --all-features \
         -j 8 \
-        server::postgres_db::tests::fuzz_simple::db_keeps_invariants \
+        server::postgres_db::tests::fuzz_simple::fuzz \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_simple__db_keeps_invariants/corpus.nounit
 
 fuzz-pg-perms:
