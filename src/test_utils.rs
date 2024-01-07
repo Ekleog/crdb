@@ -439,6 +439,11 @@ impl Db for MemDb {
         }
         match this.objects.get(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
+            Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id: *T::type_ulid(),
+                real_type_id: *ty,
+            }),
             Some((_, o)) if o.creation_info().created_at >= event_id => {
                 Err(crate::Error::EventTooEarly {
                     object_id,
@@ -446,14 +451,7 @@ impl Db for MemDb {
                     created_at: o.creation_info().created_at,
                 })
             }
-            Some((ty, o)) => {
-                if ty != T::type_ulid() {
-                    return Err(crate::Error::WrongType {
-                        object_id,
-                        expected_type_id: *T::type_ulid(),
-                        real_type_id: *ty,
-                    });
-                }
+            Some((_, o)) => {
                 o.apply::<T>(event_id, event.clone())?;
                 this.events.insert(event_id, (object_id, Some(event)));
                 Ok(())
