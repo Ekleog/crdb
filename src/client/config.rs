@@ -1,7 +1,4 @@
-use crate::{
-    db_trait::{EventId, Timestamp},
-    DbPtr, Object,
-};
+use crate::{DbPtr, EventId, Object, Timestamp};
 use std::sync::Arc;
 
 pub struct NewObject<T: Object> {
@@ -52,8 +49,8 @@ macro_rules! generate_client {
                 self.db.create_binary(id, value)
             }
 
-            pub fn get_binary(&self, id: crdb::BinPtr) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
-                self.db.get_binary(id)
+            pub fn get_binary(&self, binary_id: crdb::BinPtr) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
+                self.db.get_binary(binary_id)
             }
 
             $(crdb::paste! {
@@ -62,7 +59,7 @@ macro_rules! generate_client {
                         self.db
                             .new_objects()
                             .await
-                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::type_ulid()))
+                            .filter(|o| crdb::future::ready(o.type_id == *<$object as crdb::Object>::type_ulid()))
                             .map(|o| $crate::NewObject {
                                 ptr: crdb::DbPtr::from(o.id),
                                 object: o.object.arc_to_any().downcast::<$object>()
@@ -76,7 +73,7 @@ macro_rules! generate_client {
                         self.db
                             .new_events()
                             .await
-                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::type_ulid()))
+                            .filter(|o| crdb::future::ready(o.type_id == *<$object as crdb::Object>::type_ulid()))
                             .map(|o| $crate::NewEvent {
                                 object: crdb::DbPtr::from(o.object_id),
                                 id: o.id,
@@ -91,7 +88,7 @@ macro_rules! generate_client {
                         self.db
                             .new_recreations()
                             .await
-                            .filter(|o| crdb::future::ready(o.type_id.0 == *<$object as crdb::Object>::type_ulid()))
+                            .filter(|o| crdb::future::ready(o.type_id == *<$object as crdb::Object>::type_ulid()))
                             .map(|o| $crate::NewRecreation {
                                 object: crdb::DbPtr::from(o.object_id),
                                 time: o.time,
@@ -112,18 +109,16 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: crdb::Arc<<$object as crdb::Object>::Event>) -> impl '_ + Send + crdb::Future<Output = Result<(), crdb::DbOpError>> {
+                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: crdb::Arc<<$object as crdb::Object>::Event>) -> impl '_ + Send + crdb::Future<Output = Result<(), crdb::Error>> {
                     let id = self.ulid.lock().unwrap().generate();
                     let id = id.expect("Failed to generate ulid for event submission");
                     self.db.submit::<$object, _>(object.to_object_id(), crdb::EventId(id), event, &self.db)
                 }
 
-                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<$object>>>> {
+                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::Result<crdb::Arc<$object>>> {
                     async move {
-                        Ok(match self.db.get::<$object>(object.to_object_id()).await? {
-                            Some(o) => Some(o.last_snapshot()?),
-                            None => None,
-                        })
+                        self.db.get::<$object>(object.to_object_id()).await?.last_snapshot()
+                            .wrap_with_context(|| format!("getting last snapshot of {object:?}"))
                     }
                 }
 
@@ -132,7 +127,7 @@ macro_rules! generate_client {
                     include_heavy: bool,
                     ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
                     q: crdb::Query,
-                ) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<impl '_ + Send + crdb::Stream<Item = anyhow::Result<crdb::Arc<$object>>>>> {
+                ) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<impl '_ + Send + crdb::Stream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
                         Ok(self.db.query::<$object>(
                             self.db.user(),
@@ -143,7 +138,7 @@ macro_rules! generate_client {
                         .await?
                         .then(|o| async move {
                             o?.last_snapshot()
-                                .context("recovering the last snapshot of known-type object")
+                                .wrap_context("recovering the last snapshot of known-type object")
                         }))
                     }
                 }

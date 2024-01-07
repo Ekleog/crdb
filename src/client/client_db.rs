@@ -2,9 +2,9 @@ use super::{ApiDb, Authenticator, LocalDb};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
+    BinPtr, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use futures::{future, Stream, StreamExt};
 use std::sync::Arc;
@@ -70,39 +70,39 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.api.unsubscribe(ptr).await
     }
 
-    async fn create<T: Object, C: CanDoCallbacks>(
+    async fn create<T: Object, C: crate::CanDoCallbacks>(
         &self,
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         self.api.create(id, created_at, object.clone(), cb).await?;
         self.db.create(id, created_at, object, cb).await
     }
 
-    async fn submit<T: Object, C: CanDoCallbacks>(
+    async fn submit<T: Object, C: crate::CanDoCallbacks>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         self.api
             .submit::<T, _>(object, event_id, event.clone(), cb)
             .await?;
         self.db.submit::<T, _>(object, event_id, event, cb).await
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        if let Some(res) = Db::get::<T>(&*self.db, ptr).await? {
-            return Ok(Some(res));
+    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+        match self.db.get::<T>(object_id).await {
+            Ok(r) => return Ok(r),
+            Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
+            Err(e) => return Err(e),
         }
-        let Some(o) = Db::get::<T>(&*self.api, ptr).await? else {
-            return Ok(None);
-        };
-        self.db.create_all::<T, _>(o.clone(), &*self.db).await?;
-        Ok(Some(o))
+        let res = self.api.get::<T>(object_id).await?;
+        self.db.create_all::<T, _>(res.clone(), &*self.db).await?;
+        Ok(res)
     }
 
     async fn query<T: Object>(
@@ -111,7 +111,7 @@ impl<A: Authenticator> Db for ClientDb<A> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
         if !include_heavy {
             return self
                 .db
@@ -137,12 +137,12 @@ impl<A: Authenticator> Db for ClientDb<A> {
         ))
     }
 
-    async fn recreate<T: Object, C: CanDoCallbacks>(
+    async fn recreate<T: Object, C: crate::CanDoCallbacks>(
         &self,
         time: Timestamp,
         object: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         self.db.recreate::<T, C>(time, object, cb).await?;
         self.api.recreate::<T, C>(time, object, cb).await
     }
@@ -152,14 +152,14 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.api.create_binary(id, value).await
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        if let Some(res) = self.db.get_binary(ptr).await? {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        if let Some(res) = self.db.get_binary(binary_id).await? {
             return Ok(Some(res));
         }
-        let Some(res) = self.api.get_binary(ptr).await? else {
+        let Some(res) = self.api.get_binary(binary_id).await? else {
             return Ok(None);
         };
-        self.db.create_binary(ptr, res.clone()).await?;
+        self.db.create_binary(binary_id, res.clone()).await?;
         Ok(Some(res))
     }
 }

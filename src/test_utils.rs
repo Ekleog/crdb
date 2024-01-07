@@ -1,13 +1,12 @@
 #![allow(dead_code)] // test utils can be or not eb used but get copy-pasted anyway
 
 use crate::{
-    db_trait::{
-        Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,
-    },
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
+    error::ResultExt,
     full_object::{DynSized, FullObject},
-    BinPtr, CanDoCallbacks, DbPtr, Object, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, DbPtr, EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use futures::prelude::Stream;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -95,8 +94,8 @@ impl TestObject1 {
 impl Object for TestObject1 {
     type Event = TestEvent1;
 
-    fn type_ulid() -> &'static ulid::Ulid {
-        &TYPE_ID_1.0
+    fn type_ulid() -> &'static TypeId {
+        &TYPE_ID_1
     }
 
     async fn can_create<'a, C: CanDoCallbacks>(
@@ -175,8 +174,8 @@ pub enum TestEventPerms {
 impl Object for TestObjectPerms {
     type Event = TestEventPerms;
 
-    fn type_ulid() -> &'static ulid::Ulid {
-        &TYPE_ID_2.0
+    fn type_ulid() -> &'static TypeId {
+        &TYPE_ID_2
     }
 
     async fn can_create<'a, C: CanDoCallbacks>(
@@ -253,8 +252,8 @@ pub enum TestEventDelegatePerms {
 impl Object for TestObjectDelegatePerms {
     type Event = TestEventDelegatePerms;
 
-    fn type_ulid() -> &'static ulid::Ulid {
-        &TYPE_ID_3.0
+    fn type_ulid() -> &'static TypeId {
+        &TYPE_ID_3
     }
 
     async fn can_create<'a, C: CanDoCallbacks>(
@@ -278,9 +277,10 @@ impl Object for TestObjectDelegatePerms {
         &'a self,
         db: &'a C,
     ) -> anyhow::Result<Vec<User>> {
-        let Ok(Some(remote)) = db.get(self.0).await else {
-            // TODO: fail on db internal db error
-            return Ok(Vec::new());
+        let remote = match db.get(self.0).await {
+            Ok(r) => r,
+            Err(crate::Error::Other(e)) => panic!("got unexpected error {e:?}"),
+            _ => return Ok(Vec::new()), // protocol not respected
         };
         Ok(vec![remote.0])
     }
@@ -338,12 +338,12 @@ impl MemDb {
         })))
     }
 
-    pub async fn recreate_all<T: Object>(&self, time: Timestamp) -> anyhow::Result<()> {
+    pub async fn recreate_all<T: Object>(&self, time: Timestamp) -> crate::Result<()> {
         let mut this = self.0.lock().await;
-        EventId::last_id_at(time).context("provided time is too far in the future")?;
+        EventId::last_id_at(time)?;
         for (ty, o) in this.objects.values_mut() {
-            if *ty == TypeId(*T::type_ulid()) {
-                o.recreate_at::<T>(time).context("recreating object")?;
+            if ty == T::type_ulid() {
+                o.recreate_at::<T>(time).wrap_context("recreating object")?;
             }
         }
         Ok(())
@@ -381,102 +381,95 @@ impl Db for MemDb {
 
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         _cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         let mut this = self.0.lock().await;
 
         // First, check for duplicates
-        if let Some((ty, o)) = this.objects.get(&id) {
-            if *ty != TypeId(*T::type_ulid()) {
-                return Err(DbOpError::Other(anyhow!("wrong type")));
+        if let Some((ty, o)) = this.objects.get(&object_id) {
+            if ty != T::type_ulid() {
+                return Err(crate::Error::WrongType {
+                    object_id,
+                    expected_type_id: *T::type_ulid(),
+                    real_type_id: *ty,
+                });
             }
             let c = o.creation_info();
-            if created_at != c.created_at {
-                return Err(DbOpError::Other(anyhow!(
-                    "object {id:?} already existed with different creation time"
-                )));
-            }
-            if !eq::<T>(&*c.creation, &*object as _).map_err(DbOpError::Other)? {
-                return Err(DbOpError::Other(anyhow!(
-                    "object {id:?} already existed with different creation value"
-                )));
+            if created_at != c.created_at || !eq::<T>(&*c.creation, &*object as _).unwrap() {
+                return Err(crate::Error::ObjectAlreadyExists(object_id));
             }
             return Ok(());
         }
         if let Some(_) = this.events.get(&created_at) {
-            return Err(DbOpError::Other(anyhow!(
-                "creating object at the same time as an existing event"
-            )));
+            return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
         // This is a new insert, do it
         this.objects.insert(
-            id,
+            object_id,
             (
-                TypeId(*T::type_ulid()),
-                FullObject::new(id, created_at, object),
+                *T::type_ulid(),
+                FullObject::new(object_id, created_at, object),
             ),
         );
-        this.events.insert(created_at, (id, None));
+        this.events.insert(created_at, (object_id, None));
 
         Ok(())
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
-        object: ObjectId,
+        object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         _cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         let mut this = self.0.lock().await;
         if let Some((o, e)) = this.events.get(&event_id) {
             let Some(e) = e else {
-                return Err(DbOpError::Other(anyhow!(
-                    "inserting event at the same time as a creation snapshot"
-                )));
+                return Err(crate::Error::EventAlreadyExists(event_id));
             };
-            if *o != object {
-                return Err(DbOpError::Other(anyhow!(
-                    "event already inserted for different object"
-                )));
-            }
-            if !eq::<T::Event>(&**e, &*event as _).map_err(DbOpError::Other)? {
-                return Err(DbOpError::Other(anyhow!(
-                    "event already inserted with different value"
-                )));
+            if *o != object_id || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false) {
+                return Err(crate::Error::EventAlreadyExists(event_id));
             }
             return Ok(());
         }
-        match this.objects.get(&object) {
-            None => Err(DbOpError::Other(anyhow!(
-                "object not yet present in database"
-            ))),
+        match this.objects.get(&object_id) {
+            None => Err(crate::Error::ObjectDoesNotExist(object_id)),
             Some((_, o)) if o.creation_info().created_at >= event_id => {
-                Err(DbOpError::Other(anyhow!("event is too early for object")))
+                Err(crate::Error::EventTooEarly {
+                    object_id,
+                    event_id,
+                    created_at: o.creation_info().created_at,
+                })
             }
             Some((ty, o)) => {
-                if *ty != TypeId(*T::type_ulid()) {
-                    return Err(DbOpError::Other(anyhow!("wrong type")));
+                if ty != T::type_ulid() {
+                    return Err(crate::Error::WrongType {
+                        object_id,
+                        expected_type_id: *T::type_ulid(),
+                        real_type_id: *ty,
+                    });
                 }
-                o.apply::<T>(event_id, event.clone())
-                    .map_err(DbOpError::Other)?;
-                this.events.insert(event_id, (object, Some(event)));
+                o.apply::<T>(event_id, event.clone())?;
+                this.events.insert(event_id, (object_id, Some(event)));
                 Ok(())
             }
         }
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
-        match self.0.lock().await.objects.get(&ptr) {
-            None => Ok(None),
-            Some((ty, _)) if *ty != TypeId(*T::type_ulid()) => {
-                Err(anyhow!("Getting with the wrong type"))
-            }
-            Some((_, o)) => Ok(Some(o.clone())),
+    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+        match self.0.lock().await.objects.get(&object_id) {
+            None => Err(crate::Error::ObjectDoesNotExist(object_id)),
+            Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id: *T::type_ulid(),
+                real_type_id: *ty,
+            }),
+            Some((_, o)) => Ok(o.clone()),
         }
     }
 
@@ -486,7 +479,7 @@ impl Db for MemDb {
         _include_heavy: bool,
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         _q: Query,
-    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
         // TODO
         Ok(futures::stream::empty())
     }
@@ -494,15 +487,21 @@ impl Db for MemDb {
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         time: Timestamp,
-        object: ObjectId,
+        object_id: ObjectId,
         _cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         let this = self.0.lock().await;
-        let Some((ty, o)) = this.objects.get(&object) else {
-            anyhow::bail!("object does not exist");
+        let Some((ty, o)) = this.objects.get(&object_id) else {
+            return Err(crate::Error::ObjectDoesNotExist(object_id));
         };
-        anyhow::ensure!(*ty == TypeId(*T::type_ulid()), "wrong type");
-        o.recreate_at::<T>(time).context("recreating object")?;
+        if ty != T::type_ulid() {
+            return Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id: *T::type_ulid(),
+                real_type_id: *ty,
+            });
+        }
+        o.recreate_at::<T>(time).wrap_context("recreating object")?;
         Ok(())
     }
 
@@ -510,7 +509,7 @@ impl Db for MemDb {
         unimplemented!()
     }
 
-    async fn get_binary(&self, _ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, _object_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         unimplemented!()
     }
 }

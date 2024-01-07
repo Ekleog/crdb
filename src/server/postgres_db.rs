@@ -1,14 +1,12 @@
 use super::{ServerConfig, Session, SessionRef, SessionToken};
 use crate::{
     api::{parse_snapshot, query::Bind},
-    db_trait::{
-        Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, Timestamp,
-        TypeId,
-    },
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, Timestamp},
+    error::ResultExt,
     full_object::{Change, FullObject},
-    BinPtr, CanDoCallbacks, DbPtr, Event, Object, Query, User,
+    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId, User,
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use futures::{Stream, StreamExt};
 use lockable::{LockPool, Lockable};
 use sqlx::Row;
@@ -91,7 +89,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         kill_sessions_older_than: Option<Timestamp>,
         cb: &C,
         notify_recreation: impl Fn(DynNewRecreation),
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         if let Some(t) = kill_sessions_older_than {
             // Discard all sessions that were last active too long ago
             // TODO: see https://github.com/launchbadge/sqlx/issues/2972
@@ -102,7 +100,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             )
             .execute(&self.db)
             .await
-            .context("cleaning up old sessions")?;
+            .wrap_context("cleaning up old sessions")?;
         }
 
         {
@@ -127,7 +125,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             )
             .fetch(&self.db);
             while let Some(row) = objects.next().await {
-                let row = row.context("listing objects with snapshots to cleanup")?;
+                let row = row.wrap_context("listing objects with snapshots to cleanup")?;
                 let object_id = ObjectId::from_uuid(row.object_id);
                 let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
                 let _lock = self.object_locks.async_lock(object_id).await;
@@ -138,7 +136,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(object_id)
                 .execute(&self.db)
                 .await
-                .with_context(|| format!("deleting useless snapshots from {object_id:?}"))?;
+                .wrap_with_context(|| format!("deleting useless snapshots from {object_id:?}"))?;
                 reord::point().await;
                 sqlx::query(
                     "
@@ -153,13 +151,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(object_id)
                 .execute(&self.db)
                 .await
-                .with_context(|| format!("resetting creation snapshot of {object_id:?}"))?;
+                .wrap_with_context(|| format!("resetting creation snapshot of {object_id:?}"))?;
                 if let Some(time) = no_new_changes_before {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
                     let did_recreate = Config::recreate(&self, type_id, object_id, time, cb)
                         .await
-                        .with_context(|| format!("recreating {object_id:?} at time {time:?}"))?;
+                        .wrap_with_context(|| {
+                            format!("recreating {object_id:?} at time {time:?}")
+                        })?;
                     if did_recreate {
                         reord::point().await;
                         notify_recreation(DynNewRecreation {
@@ -186,14 +186,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .execute(&self.db)
         .await
-        .context("deleting no-longer-referenced binaries")?;
+        .wrap_context("deleting no-longer-referenced binaries")?;
 
         // Finally, take care of the database itself
         reord::point().await;
         sqlx::query("VACUUM ANALYZE")
             .execute(&self.db)
             .await
-            .context("vacuuming database")?;
+            .wrap_context("vacuuming database")?;
 
         Ok(())
     }
@@ -223,8 +223,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         impl<'a, 'b, C: CanDoCallbacks> crate::api::private::Sealed for TrackingCanDoCallbacks<'a, 'b, C> {}
 
         impl<'a, 'b, C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'a, 'b, C> {
-            async fn get<T: Object>(&self, ptr: crate::DbPtr<T>) -> anyhow::Result<Option<Arc<T>>> {
-                let id = ObjectId(ptr.id);
+            async fn get<T: Object>(&self, object_id: crate::DbPtr<T>) -> crate::Result<Arc<T>> {
+                let id = ObjectId(object_id.id);
                 if id != self.already_taken_lock {
                     if let hash_map::Entry::Vacant(v) = self.locks.lock().await.entry(id) {
                         v.insert((
@@ -233,11 +233,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                         ));
                     }
                 }
-                Ok(self
-                    .cb
-                    .get::<T>(DbPtr::from(ObjectId(ptr.id)))
+                self.cb
+                    .get::<T>(DbPtr::from(ObjectId(object_id.id)))
                     .await
-                    .with_context(|| format!("requesting {ptr:?} from database"))?)
+                    .wrap_with_context(|| format!("requesting {object_id:?} from database"))
             }
         }
 
@@ -444,7 +443,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
         .bind(snapshot_id)
-        .bind(TypeId(*T::type_ulid()))
+        .bind(T::type_ulid())
         .bind(object_id)
         .bind(is_creation)
         .bind(is_latest)
@@ -468,14 +467,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         reord::point().await;
         let mut transaction = self
             .db
             .begin()
             .await
-            .context("acquiring postgresql transaction")
-            .map_err(DbOpError::Other)?;
+            .wrap_context("acquiring postgresql transaction")?;
 
         // Acquire the locks required to create the object
         let _lock = reord::Lock::take_named(format!("{created_at:?}")).await;
@@ -485,19 +483,17 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         reord::point().await;
 
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
-        let type_id = TypeId(*T::type_ulid());
+        let type_id = *T::type_ulid();
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
         let (users_who_can_read, users_who_can_read_depends_on, _locks) = self
             .get_users_who_can_read(&object_id, &*object, cb)
             .await
-            .with_context(|| format!("listing users who can read object {object_id:?}"))
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| format!("listing users who can read object {object_id:?}"))?;
         let rdeps = self
             .get_rdeps(&mut *transaction, object_id)
             .await
-            .with_context(|| format!("listing reverse dependencies of {object_id:?}"))
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| format!("listing reverse dependencies of {object_id:?}"))?;
         let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
         reord::point().await;
@@ -515,8 +511,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(&required_binaries)
                 .execute(&mut *transaction)
                 .await
-                .with_context(|| format!("inserting snapshot {created_at:?}"))
-                .map_err(DbOpError::Other)?
+                .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))
+                ?
                 .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
@@ -537,15 +533,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(object_json)
             .execute(&mut *transaction)
             .await
-            .with_context(|| {
+            .wrap_with_context(|| {
                 format!("checking pre-existing snapshot for {created_at:?} is the same")
-            })
-            .map_err(DbOpError::Other)?
+            })?
             .rows_affected();
             if affected != 1 {
-                return Err(DbOpError::Other(anyhow!(
-                    "Snapshot {created_at:?} already existed with a different value set"
-                )));
+                return Err(crate::Error::EventAlreadyExists(created_at));
             }
 
             return Ok(());
@@ -557,32 +550,24 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(created_at)
             .execute(&mut *transaction)
             .await
-            .with_context(|| format!("checking that no event existed with this id yet"))
-            .map_err(DbOpError::Other)?
+            .wrap_with_context(|| format!("checking that no event existed with this id yet"))?
             .rows_affected();
         if affected != 0 {
-            return Err(DbOpError::Other(anyhow!(
-                "Snapshot {created_at:?} has an ulid conflict with a pre-existing event"
-            )));
+            return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
         check_required_binaries(&mut transaction, required_binaries)
             .await
-            .map_err(|e| {
-                e.with_context(|| {
-                    format!(
-                        "checking that all binaries for object {object_id:?} are already present"
-                    )
-                })
+            .wrap_with_context(|| {
+                format!("checking that all binaries for object {object_id:?} are already present")
             })?;
 
         reord::point().await;
         transaction
             .commit()
             .await
-            .with_context(|| format!("committing transaction that created {object_id:?}"))
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
 
         Ok(())
     }
@@ -593,14 +578,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         reord::point().await;
         let mut transaction = self
             .db
             .begin()
             .await
-            .context("acquiring postgresql transaction")
-            .map_err(DbOpError::Other)?;
+            .wrap_context("acquiring postgresql transaction")?;
 
         // Acquire the locks required to submit the event
         let _lock = reord::Lock::take_named(format!("{event_id:?}")).await;
@@ -611,8 +595,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let rdeps = self
             .get_rdeps(&mut *transaction, object_id)
             .await
-            .with_context(|| format!("fetching reverse dependencies of {object_id:?}"))
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| format!("fetching reverse dependencies of {object_id:?}"))?;
 
         // Check the object does exist and is not too new
         reord::point().await;
@@ -622,20 +605,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .fetch_optional(&mut *transaction)
         .await
-        .with_context(|| format!("locking object {object_id:?} in database"))
-        .map_err(DbOpError::Other)?;
+        .wrap_with_context(|| format!("locking object {object_id:?} in database"))?;
         reord::point().await;
         match creation_snapshot {
             None => {
-                return Err(DbOpError::Other(anyhow!(
-                    "Object {object_id:?} does not exist yet in database"
-                )))
+                return Err(crate::Error::ObjectDoesNotExist(object_id));
             }
             Some(s) if s.snapshot_id >= event_id.to_uuid() => {
-                return Err(DbOpError::Other(anyhow!(
-                    "Event {event_id:?} is being submitted before object creation time {:?}",
-                    s.snapshot_id
-                )))
+                return Err(crate::Error::EventTooEarly {
+                    event_id,
+                    object_id,
+                    created_at: EventId::from_uuid(s.snapshot_id),
+                });
             }
             _ => (),
         }
@@ -652,8 +633,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(required_binaries)
                 .execute(&mut *transaction)
                 .await
-                .with_context(|| format!("inserting event {event_id:?} in database"))
-                .map_err(DbOpError::Other)?
+                .wrap_with_context(|| format!("inserting event {event_id:?} in database"))?
                 .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
@@ -671,13 +651,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(event_json)
             .execute(&self.db)
             .await
-            .with_context(|| format!("checking pre-existing snapshot for {event_id:?} is the same"))
-            .map_err(DbOpError::Other)?
+            .wrap_with_context(|| {
+                format!("checking pre-existing snapshot for {event_id:?} is the same")
+            })?
             .rows_affected();
             if affected != 1 {
-                return Err(DbOpError::Other(anyhow!(
-                    "Event {event_id:?} already existed with a different value set"
-                )));
+                return Err(crate::Error::EventAlreadyExists(event_id));
             }
             // Nothing else to do, event was already inserted
             return Ok(());
@@ -690,10 +669,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(event_id)
             .execute(&mut *transaction)
             .await
-            .with_context(|| {
+            .wrap_with_context(|| {
                 format!("clearing all snapshots for object {object_id:?} after event {event_id:?}")
-            })
-            .map_err(DbOpError::Other)?;
+            })?;
 
         // Find the last snapshot for the object
         reord::point().await;
@@ -709,12 +687,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .fetch_one(&mut *transaction)
         .await
-        .with_context(|| format!("fetching the last snapshot for object {object_id:?}"))
-        .map_err(DbOpError::Other)?;
+        .wrap_with_context(|| format!("fetching the last snapshot for object {object_id:?}"))?;
         let mut object =
             parse_snapshot::<T>(last_snapshot.snapshot_version, last_snapshot.snapshot)
-                .with_context(|| format!("parsing last snapshot for object {object_id:?}"))
-                .map_err(DbOpError::Other)?;
+                .wrap_with_context(|| format!("parsing last snapshot for object {object_id:?}"))?;
 
         // Remove the "latest snapshot" flag for the object
         // Note that this can be a no-op if the latest snapshot was already deleted above
@@ -723,20 +699,19 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(object_id)
             .execute(&mut *transaction)
             .await
-            .with_context(|| format!("removing latest-snapshot flag for object {object_id:?}"))
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| {
+                format!("removing latest-snapshot flag for object {object_id:?}")
+            })?;
 
         // Apply all events between the last snapshot (excluded) and the current event (excluded)
         if !last_snapshot.is_latest {
-            apply_events_between(
-                &mut *transaction,
-                &mut object,
-                object_id,
-                EventId::from_uuid(last_snapshot.snapshot_id),
-                EventId::from_u128(event_id.as_u128() - 1),
-            )
-            .await
-            .map_err(DbOpError::Other)?;
+            let from = EventId::from_uuid(last_snapshot.snapshot_id);
+            let to = EventId::from_u128(event_id.as_u128() - 1);
+            apply_events_between(&mut *transaction, &mut object, object_id, from, to)
+                .await
+                .wrap_with_context(|| {
+                    format!("applying all events on {object_id:?} between {from:?} and {to:?}")
+                })?;
         }
 
         // Add the current event to the last snapshot
@@ -759,7 +734,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 cb,
             )
             .await
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| format!("writing snapshot {event_id:?} for {object_id:?}"))?;
 
         // If needed, re-compute the last snapshot
         if !last_snapshot.is_latest {
@@ -779,21 +754,17 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .fetch(&mut *transaction);
             let mut last_event_id = None;
             while let Some(e) = events_since_inserted.next().await {
-                let e = e
-                    .with_context(|| {
-                        format!("fetching all events for {object_id:?} after {event_id:?}")
-                    })
-                    .map_err(DbOpError::Other)?;
+                let e = e.wrap_with_context(|| {
+                    format!("fetching all events for {object_id:?} after {event_id:?}")
+                })?;
                 last_event_id = Some(e.event_id);
-                let e = serde_json::from_value::<T::Event>(e.data)
-                    .with_context(|| {
-                        format!(
-                            "parsing event {:?} of type {:?}",
-                            e.event_id,
-                            T::type_ulid()
-                        )
-                    })
-                    .map_err(DbOpError::Other)?;
+                let e = serde_json::from_value::<T::Event>(e.data).wrap_with_context(|| {
+                    format!(
+                        "parsing event {:?} of type {:?}",
+                        e.event_id,
+                        T::type_ulid()
+                    )
+                })?;
 
                 object.apply(&e);
             }
@@ -816,27 +787,21 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     cb,
                 )
                 .await
-                .map_err(DbOpError::Other)?;
+                .wrap_with_context(|| {
+                    format!("writing snapshot {snapshot_id:?} for {object_id:?}")
+                })?;
         }
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
         check_required_binaries(&mut transaction, event.required_binaries())
             .await
-            .map_err(|e| {
-                e.with_context(|| {
-                    format!(
-                        "checking that all binaries for object {object_id:?} are already present"
-                    )
-                })
+            .wrap_with_context(|| {
+                format!("checking that all binaries for object {object_id:?} are already present")
             })?;
 
-        transaction
-            .commit()
-            .await
-            .with_context(|| {
-                format!("committing transaction adding event {event_id:?} to object {object_id:?}")
-            })
-            .map_err(DbOpError::Other)?;
+        transaction.commit().await.wrap_with_context(|| {
+            format!("committing transaction adding event {event_id:?} to object {object_id:?}")
+        })?;
 
         Ok(())
     }
@@ -849,7 +814,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         time: Timestamp,
         object_id: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<bool> {
+    ) -> crate::Result<bool> {
         if time.time_ms()
             > SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -868,7 +833,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .db
             .begin()
             .await
-            .context("acquiring postgresql transaction")?;
+            .wrap_context("acquiring postgresql transaction")?;
 
         // Get the creation snapshot
         reord::point().await;
@@ -878,11 +843,17 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .fetch_one(&mut *transaction)
         .await
-        .with_context(|| format!("getting creation snapshot of {object_id:?} for re-creation"))?;
-        let db_type = TypeId::from_uuid(creation_snapshot.type_id);
-        let provided_type = TypeId(*T::type_ulid());
-        if db_type != provided_type {
-            return Err(anyhow!("Provided type {provided_type:?} does not match actual in-database type {db_type:?} for object {object_id:?}"));
+        .wrap_with_context(|| {
+            format!("getting creation snapshot of {object_id:?} for re-creation")
+        })?;
+        let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
+        let expected_type_id = *T::type_ulid();
+        if real_type_id != expected_type_id {
+            return Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id,
+                real_type_id,
+            });
         }
         if EventId::from_uuid(creation_snapshot.snapshot_id) >= time_id {
             // Already created after the requested time
@@ -905,7 +876,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .fetch_optional(&mut *transaction)
         .await
-        .with_context(|| {
+        .wrap_with_context(|| {
             format!("recovering the last event for {object_id:?} before cutoff time {time_id:?}")
         })?;
         let cutoff_time = match event {
@@ -929,7 +900,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .fetch_one(&mut *transaction)
         .await
-        .with_context(|| {
+        .wrap_with_context(|| {
             format!("fetching latest snapshot before {cutoff_time:?} for object {object_id:?}")
         })?;
 
@@ -940,7 +911,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(cutoff_time)
             .execute(&mut *transaction)
             .await
-            .with_context(|| {
+            .wrap_with_context(|| {
                 format!("deleting all snapshots for {object_id:?} before {cutoff_time:?}")
             })?;
 
@@ -949,7 +920,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
             // Apply all the events between latest snapshot (excluded) and asked recreation time (included)
             let mut object = parse_snapshot::<T>(snapshot.snapshot_version, snapshot.snapshot)
-                .with_context(|| {
+                .wrap_with_context(|| {
                     format!(
                         "parsing snapshot {:?} as {:?}",
                         snapshot.snapshot_id,
@@ -957,14 +928,20 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     )
                 })?;
 
+            let snapshot_id = EventId::from_uuid(snapshot.snapshot_id);
             apply_events_between(
                 &mut *transaction,
                 &mut object,
                 object_id,
-                EventId::from_uuid(snapshot.snapshot_id),
+                snapshot_id,
                 cutoff_time,
             )
-            .await?;
+            .await
+            .wrap_with_context(|| {
+                format!(
+                    "applying on {object_id:?} events between {snapshot_id:?} and {cutoff_time:?}"
+                )
+            })?;
 
             // Insert the new creation snapshot. This cannot conflict because we deleted
             // the previous creation snapshot just above. There was no snapshot at this event
@@ -981,7 +958,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 &object,
                 cb,
             )
-            .await?;
+            .await
+            .wrap_with_context(|| format!("writing snapshot {cutoff_time:?} for {object_id:?}"))?;
         } else {
             // Just update the `cutoff_time` snapshot to record it's the creation snapshot
             reord::point().await;
@@ -989,7 +967,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(cutoff_time)
                 .execute(&mut *transaction)
                 .await
-                .with_context(|| {
+                .wrap_with_context(|| {
                     format!(
                         "marking snapshot {cutoff_time:?} as the creation one for {object_id:?}"
                     )
@@ -1003,7 +981,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(cutoff_time)
             .execute(&mut *transaction)
             .await
-            .with_context(|| {
+            .wrap_with_context(|| {
                 format!("deleting all events for {object_id:?} before {cutoff_time:?}")
             })?;
 
@@ -1106,7 +1084,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // For each object
         let objects = sqlx::query!(
             "SELECT object_id FROM snapshots WHERE type_id = $1",
-            TypeId(*T::type_ulid()) as TypeId
+            T::type_ulid() as &TypeId
         )
         .fetch_all(&self.db)
         .await
@@ -1183,10 +1161,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .unwrap();
 
-            assert_eq!(
-                TypeId::from_uuid(snapshots[0].type_id),
-                TypeId(*T::type_ulid())
-            );
+            assert_eq!(TypeId::from_uuid(snapshots[0].type_id), *T::type_ulid());
             assert!(snapshots[0].is_creation);
             let mut object =
                 parse_snapshot::<T>(snapshots[0].snapshot_version, snapshots[0].snapshot.clone())
@@ -1225,7 +1200,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 }
                 let s = &snapshots[snapshot_idx];
                 snapshot_idx += 1;
-                assert_eq!(TypeId::from_uuid(s.type_id), TypeId(*T::type_ulid()));
+                assert_eq!(TypeId::from_uuid(s.type_id), *T::type_ulid());
                 let snapshot = parse_snapshot::<T>(s.snapshot_version, s.snapshot.clone()).unwrap();
                 assert!(object == snapshot);
                 assert_eq!(s.is_heavy, snapshot.is_heavy());
@@ -1286,13 +1261,15 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         self.create_impl(object_id, created_at, object, cb).await?;
 
         // Update the reverse-dependencies, now that we have updated the object itself.
         self.update_rdeps(object_id, cb)
             .await
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| {
+                format!("updating permissions for reverse-dependencies of {object_id:?}")
+            })?;
 
         Ok(())
     }
@@ -1303,34 +1280,36 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         self.submit_impl::<T, C>(object_id, event_id, event, cb)
             .await?;
 
         // Update all the other objects that depend on this one
         self.update_rdeps(object_id, cb)
             .await
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| {
+                format!("updating permissions of reverse-dependencies fo {object_id:?}")
+            })?;
 
         Ok(())
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
+    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
         reord::point().await;
         let mut transaction = self
             .db
             .begin()
             .await
-            .context("acquiring postgresql transaction")?;
+            .wrap_context("acquiring postgresql transaction")?;
 
         // Atomically perform all the reads here
         reord::point().await;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *transaction)
             .await
-            .context("setting transaction as repeatable read")?;
+            .wrap_context("setting transaction as repeatable read")?;
 
-        get_impl::<T>(&mut *transaction, ptr).await
+        get_impl::<T>(&mut *transaction, object_id).await
     }
 
     async fn query<T: Object>(
@@ -1339,7 +1318,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -1368,7 +1347,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             q.where_clause(5)
         );
         let mut query = sqlx::query(&query)
-            .bind(TypeId(*T::type_ulid()))
+            .bind(T::type_ulid())
             .bind(user)
             .bind(include_heavy)
             .bind(EventId(Ulid::from_parts(
@@ -1393,11 +1372,11 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
 
         Ok(async_stream::stream! {
             for id in ids {
-                let object = get_impl::<T>(&mut *transaction, ObjectId::from_uuid(id.get(0))).await;
+                let object_id = ObjectId::from_uuid(id.get(0));
+                let object = get_impl::<T>(&mut *transaction, object_id).await;
                 match object {
-                    Err(e) => yield Err(e),
-                    Ok(None) => panic!("Found object that matches query, but was unable to get it"),
-                    Ok(Some(o)) => yield Ok(o),
+                    Err(crate::Error::ObjectDoesNotExist(o)) if o == object_id => panic!("Found {o:?} that matches query, but was unable to get it"),
+                    res => yield res,
                 }
             }
         })
@@ -1408,7 +1387,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         time: Timestamp,
         object_id: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         // Acquire the lock required to recreate the object
         // This will not create a new event id, and thus does not need a lock besides the object one
         // In addition, the last snapshot value will not change, which means that no reverse-dependencies
@@ -1425,7 +1404,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         todo!()
     }
 
-    async fn get_binary(&self, _ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }
@@ -1433,7 +1412,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
 async fn check_required_binaries(
     t: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     mut binaries: Vec<BinPtr>,
-) -> Result<(), DbOpError> {
+) -> crate::Result<()> {
     // FOR KEY SHARE: prevent DELETE of the binaries while `t` is running
     reord::point().await;
     let present_ids =
@@ -1441,24 +1420,23 @@ async fn check_required_binaries(
             .bind(&binaries)
             .fetch_all(&mut **t)
             .await
-            .context("listing binaries already present in database")
-            .map_err(DbOpError::Other)?;
+            .wrap_context("listing binaries already present in database")?;
     binaries.retain(|b| {
         present_ids
             .iter()
             .any(|i| i.get::<uuid::Uuid, _>(0) == b.to_uuid())
     });
     if !binaries.is_empty() {
-        return Err(DbOpError::MissingBinPtrs(binaries));
+        return Err(crate::Error::MissingBinPtrs(binaries));
     }
     Ok(())
 }
 
-/// Note: this assumes that `transaction` is set to REPEATABLE READ for consistency, or that `ptr` is locked
+/// Note: this assumes that `transaction` is set to REPEATABLE READ for consistency, or that `object_id` is locked
 async fn get_impl<T: Object>(
     transaction: &mut sqlx::PgConnection,
-    ptr: ObjectId,
-) -> anyhow::Result<Option<FullObject>> {
+    object_id: ObjectId,
+) -> crate::Result<FullObject> {
     const EVENT_ID: usize = 0;
     const EVENT_DATA: usize = 1;
 
@@ -1470,28 +1448,32 @@ async fn get_impl<T: Object>(
             WHERE object_id = $1
             AND is_creation
         ",
-        ptr as ObjectId,
+        object_id as ObjectId,
     )
     .fetch_optional(&mut *transaction)
     .await
-    .with_context(|| format!("fetching creation snapshot for object {ptr:?}"))?;
+    .wrap_with_context(|| format!("fetching creation snapshot for object {object_id:?}"))?;
     let creation_snapshot = match creation_snapshot {
         Some(s) => s,
-        None => return Ok(None),
+        None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
     };
-    let db_type = TypeId::from_uuid(creation_snapshot.type_id);
-    let expected_type = TypeId(*T::type_ulid());
-    if db_type != expected_type {
-        return Err(anyhow!("Found object {ptr:?}, but it had type {db_type:?}, and not the expected type {expected_type:?}"));
+    let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
+    let expected_type_id = *T::type_ulid();
+    if real_type_id != expected_type_id {
+        return Err(crate::Error::WrongType {
+            object_id,
+            expected_type_id,
+            real_type_id,
+        });
     }
 
     reord::point().await;
     let events =
         sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
-            .bind(ptr)
+            .bind(object_id)
             .fetch_all(&mut *transaction)
             .await
-            .with_context(|| format!("fetching all events for object {ptr:?}"))?;
+            .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
 
     reord::point().await;
     let latest_snapshot = sqlx::query!(
@@ -1502,12 +1484,12 @@ async fn get_impl<T: Object>(
             AND type_id = $2
             AND is_latest
         ",
-        ptr.to_uuid(),
-        uuid::Uuid::from_bytes(T::type_ulid().to_bytes()),
+        object_id as ObjectId,
+        T::type_ulid() as &TypeId,
     )
     .fetch_one(&mut *transaction)
     .await
-    .with_context(|| format!("fetching latest snapshot for object {ptr:?}"))?;
+    .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
 
     // Build the FullObject from the parts
     let creation = Arc::new(
@@ -1515,7 +1497,7 @@ async fn get_impl<T: Object>(
             creation_snapshot.snapshot_version,
             creation_snapshot.snapshot,
         )
-        .with_context(|| {
+        .wrap_with_context(|| {
             format!(
                 "parsing snapshot {:?} as type {:?}",
                 creation_snapshot.snapshot_id,
@@ -1537,7 +1519,7 @@ async fn get_impl<T: Object>(
         changes.insert(
             event_id,
             Change::new(Arc::new(
-                serde_json::from_value::<T::Event>(e.get(EVENT_DATA)).with_context(|| {
+                serde_json::from_value::<T::Event>(e.get(EVENT_DATA)).wrap_with_context(|| {
                     format!("parsing event {event_id:?} as type {:?}", T::type_ulid())
                 })?,
             )),
@@ -1546,7 +1528,7 @@ async fn get_impl<T: Object>(
     if let Some(mut c) = changes.last_entry() {
         c.get_mut().set_snapshot(Arc::new(
             parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
-                .with_context(|| {
+                .wrap_with_context(|| {
                     format!(
                         "parsing snapshot {:?} as type {:?}",
                         latest_snapshot.snapshot_id,
@@ -1563,12 +1545,12 @@ async fn get_impl<T: Object>(
         );
     }
 
-    Ok(Some(FullObject::from_parts(
-        ptr,
+    Ok(FullObject::from_parts(
+        object_id,
         EventId::from_uuid(creation_snapshot.snapshot_id),
         creation,
         changes,
-    )))
+    ))
 }
 
 /// `from` is excluded
@@ -1596,20 +1578,16 @@ async fn apply_events_between<T: Object>(
     )
     .fetch(&mut *transaction);
     while let Some(e) = events.next().await {
-        let e = e
-            .with_context(|| {
-                format!("fetching all events for {object_id:?} betwen {from:?} and {to:?}")
-            })
-            .map_err(DbOpError::Other)?;
-        let e = serde_json::from_value::<T::Event>(e.data)
-            .with_context(|| {
-                format!(
-                    "parsing event {:?} of type {:?}",
-                    e.event_id,
-                    T::type_ulid()
-                )
-            })
-            .map_err(DbOpError::Other)?;
+        let e = e.with_context(|| {
+            format!("fetching all events for {object_id:?} betwen {from:?} and {to:?}")
+        })?;
+        let e = serde_json::from_value::<T::Event>(e.data).with_context(|| {
+            format!(
+                "parsing event {:?} of type {:?}",
+                e.event_id,
+                T::type_ulid()
+            )
+        })?;
 
         object.apply(&e);
     }

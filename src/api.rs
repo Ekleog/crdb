@@ -1,7 +1,5 @@
 use crate::{
-    cache::CacheConfig,
-    db_trait::{Db, EventId, ObjectId, TypeId},
-    Timestamp,
+    cache::CacheConfig, db_trait::Db, error::ResultExt, EventId, ObjectId, Timestamp, TypeId,
 };
 use anyhow::Context;
 use std::{any::Any, collections::HashSet, future::Future, marker::PhantomData, sync::Arc};
@@ -130,19 +128,18 @@ pub trait CanDoCallbacks: Send + Sync + private::Sealed {
     fn get<T: Object>(
         &self,
         ptr: DbPtr<T>,
-    ) -> impl '_ + Send + Future<Output = anyhow::Result<Option<Arc<T>>>>;
+    ) -> impl '_ + Send + Future<Output = crate::Result<Arc<T>>>;
 }
 
 impl<D: Db> private::Sealed for D {}
 
 impl<D: Db> CanDoCallbacks for D {
-    async fn get<T: Object>(&self, ptr: DbPtr<T>) -> anyhow::Result<Option<Arc<T>>> {
-        Ok(<D as Db>::get::<T>(&self, ObjectId(ptr.id))
+    async fn get<T: Object>(&self, object_id: DbPtr<T>) -> crate::Result<Arc<T>> {
+        Ok(<D as Db>::get::<T>(&self, ObjectId(object_id.id))
             .await
-            .with_context(|| format!("requesting {ptr:?} from database"))?
-            .map(|o| o.last_snapshot())
-            .transpose()
-            .with_context(|| format!("retrieving last snapshot for {ptr:?}"))?)
+            .wrap_with_context(|| format!("requesting {object_id:?} from database"))?
+            .last_snapshot()
+            .wrap_with_context(|| format!("retrieving last snapshot for {object_id:?}"))?)
     }
 }
 
@@ -170,7 +167,7 @@ pub trait Object:
     /// in the event being rejected by the server.
     type Event: Event;
 
-    fn type_ulid() -> &'static Ulid;
+    fn type_ulid() -> &'static TypeId;
     fn snapshot_version() -> i32 {
         0
     }
@@ -350,16 +347,16 @@ macro_rules! generate_api {
                 let ulids = [$(<$object as crdb::Object>::type_ulid()),*];
                 for u in ulids.iter() {
                     if ulids.iter().filter(|i| *i == u).count() != 1 {
-                        panic!("Type ULID {u} was used multiple times!");
+                        panic!("Type ULID {u:?} was used multiple times!");
                     }
                 }
             }
         }
 
         impl crdb::CacheConfig for $config {
-            async fn create(cache: &mut crdb::ObjectCache, o: crdb::DynNewObject) -> crdb::anyhow::Result<bool> {
+            async fn create(cache: &mut crdb::ObjectCache, o: crdb::DynNewObject) -> crdb::Result<bool> {
                 $(
-                    if o.type_id.0 == *<$object as crdb::Object>::type_ulid() {
+                    if o.type_id == *<$object as crdb::Object>::type_ulid() {
                         let object = o.object
                             .arc_to_any()
                             .downcast::<$object>()
@@ -367,12 +364,12 @@ macro_rules! generate_api {
                         return cache.create::<$object>(o.id, o.created_at, object);
                     }
                 )*
-                crdb::anyhow::bail!("got new object with unknown type {:?}", o.type_id)
+                Err(crdb::Error::TypeDoesNotExist(o.type_id))
             }
 
-            async fn submit(cache: &mut crdb::ObjectCache, e: crdb::DynNewEvent) -> crdb::anyhow::Result<bool> {
+            async fn submit(cache: &mut crdb::ObjectCache, e: crdb::DynNewEvent) -> crdb::Result<bool> {
                 $(
-                    if e.type_id.0 == *<$object as crdb::Object>::type_ulid() {
+                    if e.type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = e.event
                             .arc_to_any()
                             .downcast::<<$object as crdb::Object>::Event>()
@@ -380,21 +377,21 @@ macro_rules! generate_api {
                         return cache.submit::<$object>(e.object_id, e.id, event);
                     }
                 )*
-                crdb::anyhow::bail!("got new event with unknown type {:?}", e.type_id)
+                Err(crdb::Error::TypeDoesNotExist(e.type_id))
             }
 
-            async fn recreate(cache: &mut crdb::ObjectCache, s: crdb::DynNewRecreation) -> crdb::anyhow::Result<()> {
+            async fn recreate(cache: &mut crdb::ObjectCache, s: crdb::DynNewRecreation) -> crdb::Result<()> {
                 $(
-                    if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
+                    if s.type_id == *<$object as crdb::Object>::type_ulid() {
                         return cache.recreate::<$object>(s.object_id, s.time);
                     }
                 )*
-                crdb::anyhow::bail!("got new re-creation with unknown type {:?}", s.type_id)
+                Err(crdb::Error::TypeDoesNotExist(s.type_id))
             }
 
-            async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, cb: &C) -> Result<(), crdb::DbOpError> {
+            async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, cb: &C) -> crdb::Result<()> {
                 $(
-                    if o.type_id.0 == *<$object as crdb::Object>::type_ulid() {
+                    if o.type_id == *<$object as crdb::Object>::type_ulid() {
                         let object = o.object
                             .arc_to_any()
                             .downcast::<$object>()
@@ -402,12 +399,12 @@ macro_rules! generate_api {
                         return db.create::<$object, _>(o.id, o.created_at, object, cb).await;
                     }
                 )*
-                Err(crdb::DbOpError::Other(crdb::anyhow::anyhow!("got new object with unknown type {:?}", o.type_id)))
+                Err(crdb::Error::TypeDoesNotExist(o.type_id))
             }
 
-            async fn submit_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, e: crdb::DynNewEvent, cb: &C) -> Result<(), crdb::DbOpError> {
+            async fn submit_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, e: crdb::DynNewEvent, cb: &C) -> crdb::Result<()> {
                 $(
-                    if e.type_id.0 == *<$object as crdb::Object>::type_ulid() {
+                    if e.type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = e.event
                             .arc_to_any()
                             .downcast::<<$object as crdb::Object>::Event>()
@@ -415,16 +412,16 @@ macro_rules! generate_api {
                         return db.submit::<$object, _>(e.object_id, e.id, event, cb).await;
                     }
                 )*
-                Err(crdb::DbOpError::Other(crdb::anyhow::anyhow!("got new event with unknown type {:?}", e.type_id)))
+                Err(crdb::Error::TypeDoesNotExist(e.type_id))
             }
 
-            async fn recreate_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, s: crdb::DynNewRecreation, cb: &C) -> crdb::anyhow::Result<()> {
+            async fn recreate_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, s: crdb::DynNewRecreation, cb: &C) -> crdb::Result<()> {
                 $(
-                    if s.type_id.0 == *<$object as crdb::Object>::type_ulid() {
+                    if s.type_id == *<$object as crdb::Object>::type_ulid() {
                         return db.recreate::<$object, C>(s.time, s.object_id, cb).await;
                     }
                 )*
-                crdb::anyhow::bail!("got new re-creation with unknown type {:?}", s.type_id)
+                Err(crdb::Error::TypeDoesNotExist(s.type_id))
             }
         }
     };

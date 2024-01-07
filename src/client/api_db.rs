@@ -1,8 +1,8 @@
 use super::Authenticator;
 use crate::{
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use futures::Stream;
 use std::sync::Arc;
@@ -54,7 +54,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         created_at: EventId,
         object: Arc<T>,
         _cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -64,11 +64,11 @@ impl<A: Authenticator> Db for ApiDb<A> {
         event_id: EventId,
         event: Arc<T::Event>,
         _cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
+    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
         todo!()
     }
 
@@ -78,7 +78,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
         // todo!()
         Ok(futures::stream::empty())
     }
@@ -88,15 +88,15 @@ impl<A: Authenticator> Db for ApiDb<A> {
         time: Timestamp,
         object: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+    async fn create_binary(&self, binary_id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }

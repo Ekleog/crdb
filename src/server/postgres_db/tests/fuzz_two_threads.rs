@@ -1,11 +1,11 @@
-use super::{cmp_anyhow, cmp_db, TmpDb};
+use super::{cmp_db, TmpDb};
 use crate::{
-    db_trait::{Db, EventId, ObjectId},
+    db_trait::Db,
+    error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{self, db::ServerConfig, TestEvent1, TestObject1},
-    Timestamp,
+    EventId, ObjectId, Timestamp,
 };
-use anyhow::Context;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use ulid::Ulid;
@@ -93,25 +93,21 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: anyhow::Result<Option<Arc<TestObject1>>> = match db.get::<TestObject1>(o).await
-            {
-                Err(e) => Err(e).context("getting {o:?} in database"),
-                Ok(None) => Ok(None),
-                Ok(Some(o)) => match o.last_snapshot::<TestObject1>() {
-                    Ok(o) => Ok(Some(o)),
-                    Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
+            let pg: crate::Result<Arc<TestObject1>> = match db.get::<TestObject1>(o).await {
+                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                Ok(o) => match o.last_snapshot::<TestObject1>() {
+                    Ok(o) => Ok(o),
+                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
-            let mem: anyhow::Result<Option<Arc<TestObject1>>> =
-                match s.mem_db.get::<TestObject1>(o).await {
-                    Err(e) => Err(e).context("getting {o:?} in mem db"),
-                    Ok(None) => Ok(None),
-                    Ok(Some(o)) => match o.last_snapshot::<TestObject1>() {
-                        Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp_anyhow(pg, mem)?;
+            let mem: crate::Result<Arc<TestObject1>> = match s.mem_db.get::<TestObject1>(o).await {
+                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
+                Ok(o) => match o.last_snapshot::<TestObject1>() {
+                    Ok(o) => Ok(o),
+                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                },
+            };
+            cmp_db(pg, mem)?;
         }
         Op::Recreate { object, time } => {
             let o = s
@@ -126,7 +122,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .recreate::<TestObject1, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_anyhow(pg, mem)?;
+            cmp_db(pg, mem)?;
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -140,7 +136,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
         } => {
             let mem = s.mem_db.recreate_all::<TestObject1>(*recreate_at).await;
             let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp_anyhow(pg, mem)?;
+            cmp_db(pg, mem)?;
         }
     }
     Ok(())
@@ -155,7 +151,7 @@ async fn apply_ops(
     for (i, op) in ops.iter().enumerate() {
         apply_op(&db, &s, op)
             .await
-            .with_context(|| format!("applying {i}th op of thread {thread}: {op:?}"))
+            .wrap_with_context(|| format!("applying {i}th op of thread {thread}: {op:?}"))
             .unwrap();
     }
 }
@@ -211,7 +207,6 @@ fn fuzz_checking_locks() {
     let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(20)
-        .with_shrink_time(std::time::Duration::from_millis(0))
         .with_type()
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);

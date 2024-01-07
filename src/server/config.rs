@@ -1,9 +1,5 @@
 use super::postgres_db::{ComboLock, PostgresDb};
-use crate::{
-    api::ApiConfig,
-    db_trait::{ObjectId, TypeId},
-    CanDoCallbacks, Timestamp, User,
-};
+use crate::{api::ApiConfig, CanDoCallbacks, ObjectId, Timestamp, TypeId, User};
 use std::future::Future;
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
@@ -19,7 +15,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         snapshot_version: i32,
         snapshot: serde_json::Value,
         cb: &'a C,
-    ) -> impl 'a + Send + Future<Output = anyhow::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
+    ) -> impl 'a + Send + Future<Output = crate::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
 
     fn recreate<'a, C: CanDoCallbacks>(
         call_on: &'a PostgresDb<Self>,
@@ -27,7 +23,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         object_id: ObjectId,
         time: Timestamp,
         cb: &'a C,
-    ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
+    ) -> impl 'a + Send + Future<Output = crate::Result<bool>>;
 }
 
 #[doc(hidden)]
@@ -48,16 +44,17 @@ macro_rules! generate_server {
                 snapshot_version: i32,
                 snapshot: crdb::serde_json::Value,
                 cb: &'a C,
-            ) -> crdb::anyhow::Result<(Vec<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
+            ) -> crdb::Result<(Vec<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
                 $(
-                    if type_id == crdb::TypeId(*<$object as crdb::Object>::type_ulid()) {
+                    if type_id == *<$object as crdb::Object>::type_ulid() {
                         let snapshot = crdb::parse_snapshot::<$object>(snapshot_version, snapshot)
-                            .context("parsing the snapshot")?;
-                        let res = call_on.get_users_who_can_read(&object_id, &snapshot, cb).await?;
+                            .wrap_with_context(|| format!("parsing snapshot for {object_id:?}"))?;
+                        let res = call_on.get_users_who_can_read(&object_id, &snapshot, cb).await
+                            .wrap_with_context(|| format!("listing users who can read {object_id:?}"))?;
                         return Ok(res);
                     }
                 )*
-                Err(crdb::anyhow::anyhow!("Unknown type ID: {type_id:?}"))
+                Err(crdb::Error::TypeDoesNotExist(type_id))
             }
 
             async fn recreate<'a, C: crdb::CanDoCallbacks>(
@@ -66,13 +63,13 @@ macro_rules! generate_server {
                 object_id: crdb::ObjectId,
                 time: crdb::Timestamp,
                 cb: &'a C,
-            ) -> crdb::anyhow::Result<bool> {
+            ) -> crdb::Result<bool> {
                 $(
-                    if type_id == crdb::TypeId(*<$object as crdb::Object>::type_ulid()) {
+                    if type_id == *<$object as crdb::Object>::type_ulid() {
                         return call_on.recreate_impl::<$object, C>(time, object_id, cb).await;
                     }
                 )*
-                Err(crdb::anyhow::anyhow!("Unknown type ID: {type_id:?}"))
+                Err(crdb::Error::TypeDoesNotExist(type_id))
             }
         }
     };

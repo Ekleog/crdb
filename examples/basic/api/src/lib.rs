@@ -1,4 +1,4 @@
-use crdb::{CanDoCallbacks, User};
+use crdb::{CanDoCallbacks, TypeId, User};
 use ulid::Ulid;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -13,11 +13,11 @@ pub struct Foo;
 impl crdb::Object for Foo {
     type Event = FooEvent;
 
-    fn type_ulid() -> &'static Ulid {
-        static ID: Ulid = match Ulid::from_string("01HJFF7CPZH8X0YXG2V0K4M1GA") {
+    fn type_ulid() -> &'static TypeId {
+        static ID: TypeId = TypeId(match Ulid::from_string("01HJFF7CPZH8X0YXG2V0K4M1GA") {
             Ok(id) => id,
             Err(_) => panic!(),
-        };
+        });
         &ID
     }
 

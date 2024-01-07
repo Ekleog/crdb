@@ -1,8 +1,7 @@
 use crate::{
     api::{ApiConfig, ServerMessage},
     cache::CacheDb,
-    db_trait::ObjectId,
-    Timestamp, User,
+    ObjectId, Timestamp, User,
 };
 use anyhow::Context;
 use axum::http::StatusCode;
@@ -74,7 +73,7 @@ impl<C: ServerConfig> Server<C> {
         &self,
         no_new_changes_before: Option<Timestamp>,
         kill_sessions_older_than: Option<Timestamp>,
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         self.postgres_db
             .vacuum(
                 no_new_changes_before,

@@ -1,6 +1,6 @@
 use super::PostgresDb;
 use crate::{
-    db_trait::{Db, DbOpError},
+    db_trait::Db,
     test_utils::{
         db::ServerConfig, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
         OBJECT_ID_1, OBJECT_ID_3,
@@ -72,7 +72,6 @@ async fn smoke_test(db: sqlx::PgPool) {
         db.get::<TestObject1>(OBJECT_ID_1)
             .await
             .expect("getting object 1")
-            .expect("object 1 is supposed to exist")
             .last_snapshot::<TestObject1>()
             .expect("getting last snapshot")
             .0
@@ -92,7 +91,6 @@ async fn smoke_test(db: sqlx::PgPool) {
         db.get::<TestObject1>(OBJECT_ID_1)
             .await
             .expect("getting object 1")
-            .expect("object 1 is supposed to exist")
             .last_snapshot::<TestObject1>()
             .expect("getting last snapshot")
             .0
@@ -112,7 +110,6 @@ async fn smoke_test(db: sqlx::PgPool) {
         db.get::<TestObject1>(OBJECT_ID_1)
             .await
             .expect("getting object 1")
-            .expect("object 1 is supposed to exist")
             .last_snapshot::<TestObject1>()
             .expect("getting last snapshot")
             .0
@@ -131,31 +128,58 @@ async fn smoke_test(db: sqlx::PgPool) {
     db.assert_invariants_for::<TestObject1>().await;
 }
 
-fn cmp_anyhow<T: Debug + Eq>(pg: anyhow::Result<T>, mem: anyhow::Result<T>) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        (pg.is_err() && mem.is_err())
-            || (pg.as_ref().map_err(|_| ()) == mem.as_ref().map_err(|_| ())),
-        "postgres result != mem result:\n==========\nPostgres:\n{pg:?}\n==========\nMem:\n{mem:?}"
-    );
-    Ok(())
-}
-
 fn cmp_db<T: Debug + Eq>(
-    pg_res: Result<T, DbOpError>,
-    mem_res: Result<T, DbOpError>,
+    pg_res: crate::Result<T>,
+    mem_res: crate::Result<T>,
 ) -> anyhow::Result<()> {
-    match (&pg_res, &mem_res) {
-        (Ok(pg), Ok(mem)) => anyhow::ensure!(
-            pg == mem,
-            "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"
-        ),
-        (Err(DbOpError::Other(_pg)), Err(_mem)) => (), // TODO: add more checks? (and in cmp_anyhow too)
-        (Err(DbOpError::MissingBinPtrs(pg)), Err(DbOpError::MissingBinPtrs(mem))) => anyhow::ensure!(
-            pg == mem,
-            "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"
-        ),
-        (_, _) => anyhow::bail!("postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}"),
-    }
+    use crate::Error::*;
+    let is_eq = match (&pg_res, &mem_res) {
+        (Ok(pg), Ok(mem)) => pg == mem,
+        (Err(_), Err(Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
+        (Err(pg_err), Err(mem_err)) => match (pg_err, mem_err) {
+            (MissingBinPtrs(a), MissingBinPtrs(b)) => a == b,
+            (InvalidTimestamp(a), InvalidTimestamp(b)) => a == b,
+            (ObjectAlreadyExists(a), ObjectAlreadyExists(b)) => a == b,
+            (EventAlreadyExists(a), EventAlreadyExists(b)) => a == b,
+            (ObjectDoesNotExist(a), ObjectDoesNotExist(b)) => a == b,
+            (TypeDoesNotExist(a), TypeDoesNotExist(b)) => a == b,
+            (
+                EventTooEarly {
+                    event_id: event_id_1,
+                    object_id: object_id_1,
+                    created_at: created_at_1,
+                },
+                EventTooEarly {
+                    event_id: event_id_2,
+                    object_id: object_id_2,
+                    created_at: created_at_2,
+                },
+            ) => {
+                event_id_1 == event_id_2
+                    && object_id_1 == object_id_2
+                    && created_at_1 == created_at_2
+            }
+            (
+                WrongType {
+                    object_id: object_id_1,
+                    expected_type_id: expected_type_id_1,
+                    real_type_id: real_type_id_1,
+                },
+                WrongType {
+                    object_id: object_id_2,
+                    expected_type_id: expected_type_id_2,
+                    real_type_id: real_type_id_2,
+                },
+            ) => {
+                object_id_1 == object_id_2
+                    && expected_type_id_1 == expected_type_id_2
+                    && real_type_id_1 == real_type_id_2
+            }
+            _ => false,
+        },
+        _ => false,
+    };
+    anyhow::ensure!(is_eq, "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}");
     Ok(())
 }
 

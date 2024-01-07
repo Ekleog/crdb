@@ -1,8 +1,4 @@
-use crate::{
-    db_trait::{EventId, ObjectId},
-    full_object::FullObject,
-    Object, Timestamp,
-};
+use crate::{error::ResultExt, full_object::FullObject, EventId, Object, ObjectId, Timestamp};
 use anyhow::{anyhow, Context};
 use std::{
     collections::{btree_map, hash_map, BTreeMap, HashMap},
@@ -52,33 +48,33 @@ impl ObjectCache {
 
     fn create_impl<T: Object>(
         &mut self,
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> anyhow::Result<bool> {
-        let cache_entry = self.objects.entry(id);
+    ) -> crate::Result<bool> {
+        let cache_entry = self.objects.entry(object_id);
         match cache_entry {
             hash_map::Entry::Occupied(mut entry) => {
                 let (t, o) = entry.get_mut();
                 let o = o.creation_info();
-                anyhow::ensure!(
-                    o.created_at == created_at
-                        && o.id == id
-                        && o.creation
-                            .ref_to_any()
-                            .downcast_ref::<T>()
-                            .map(|v| v == &*object)
-                            .unwrap_or(false),
-                    "Object {id:?} was already created with a different initial value"
-                );
+                if o.created_at != created_at
+                    || o.id != object_id
+                    || o.creation
+                        .ref_to_any()
+                        .downcast_ref::<T>()
+                        .map(|v| v != &*object)
+                        .unwrap_or(true)
+                {
+                    return Err(crate::Error::ObjectAlreadyExists(object_id));
+                }
                 std::mem::drop(o);
-                *t = Self::touched(&mut self.last_accessed, id, *t);
+                *t = Self::touched(&mut self.last_accessed, object_id, *t);
                 Ok(false)
             }
             hash_map::Entry::Vacant(v) => {
-                let o = FullObject::new(id, created_at, object);
+                let o = FullObject::new(object_id, created_at, object);
                 self.size += o.deep_size_of();
-                let t = Self::created(&mut self.last_accessed, id);
+                let t = Self::created(&mut self.last_accessed, object_id);
                 v.insert((t, o));
                 Ok(true)
             }
@@ -125,7 +121,7 @@ impl ObjectCache {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> anyhow::Result<bool> {
+    ) -> crate::Result<bool> {
         let res = self.create_impl(id, created_at, object);
         self.apply_watermark();
         res
@@ -152,7 +148,7 @@ impl ObjectCache {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-    ) -> anyhow::Result<bool> {
+    ) -> crate::Result<bool> {
         let Some((t, object)) = self.objects.get_mut(&object_id) else {
             self.apply_watermark();
             return Ok(true); // Object was absent
@@ -160,14 +156,14 @@ impl ObjectCache {
         let updater = SizeUpdater::new(&mut self.size, &object);
         let res = object
             .apply::<T>(event_id, event)
-            .with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
+            .wrap_with_context(|| format!("applying {event_id:?} on {object_id:?}"))?;
         *t = Self::touched(&mut self.last_accessed, object_id, *t);
         std::mem::drop(updater);
         self.apply_watermark();
         Ok(res)
     }
 
-    pub fn recreate<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> anyhow::Result<()> {
+    pub fn recreate<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> crate::Result<()> {
         if let Some((t, o)) = self.objects.get_mut(&object) {
             let updater = SizeUpdater::new(&mut self.size, &o);
             o.recreate_at::<T>(time)?;

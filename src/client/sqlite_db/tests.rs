@@ -2,11 +2,12 @@
 
 use super::SqliteDb;
 use crate::{
-    db_trait::{Db, DbOpError, EventId, ObjectId, Timestamp},
+    db_trait::Db,
     test_utils::{
         self, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
         OBJECT_ID_2,
     },
+    EventId, ObjectId, Timestamp,
 };
 use anyhow::Context;
 use std::{fmt::Debug, sync::Arc};

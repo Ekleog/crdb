@@ -1,10 +1,10 @@
 use super::{BinariesCache, CacheConfig, ObjectCache};
 use crate::{
-    db_trait::{Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId},
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
+    error::ResultExt,
     full_object::FullObject,
-    hash_binary, BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
+    hash_binary, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, User,
 };
-use anyhow::Context;
 use futures::{pin_mut, Stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -170,6 +170,39 @@ impl<D: Db> CacheDb<D> {
         // Probably both cache & binaries should be dealt with together by moving the
         // watermark handling to the CacheDb level
     }
+
+    #[cfg(feature = "client")]
+    pub async fn create_all<T: Object, C: CanDoCallbacks>(
+        &self,
+        o: FullObject,
+        cb: &C,
+    ) -> crate::Result<()> {
+        let (creation, changes) = o.extract_all_clone();
+        self.create::<T, _>(
+            creation.id,
+            creation.created_at,
+            creation
+                .creation
+                .arc_to_any()
+                .downcast::<T>()
+                .expect("Type provided to `CacheDb::create_all` is wrong"),
+            cb,
+        )
+        .await?;
+        for (event_id, c) in changes.into_iter() {
+            self.submit::<T, _>(
+                creation.id,
+                event_id,
+                c.event
+                    .arc_to_any()
+                    .downcast::<T::Event>()
+                    .expect("Type provided to `CacheDb::create_all` is wrong"),
+                cb,
+            )
+            .await?;
+        }
+        Ok(())
+    }
 }
 
 impl<D: Db> Db for CacheDb<D> {
@@ -197,17 +230,13 @@ impl<D: Db> Db for CacheDb<D> {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         // First change db, then the cache, because db can rely on the `get`s from the
         // cache to compute `users_who_can_read`, and this in turn means that the cache
         // should never (lock reads or) return not up-to-date information, nor return
         // information that has not yet been validated by the database.
         self.db.create(id, created_at, object.clone(), cb).await?;
-        self.cache
-            .write()
-            .await
-            .create(id, created_at, object)
-            .map_err(DbOpError::Other)?;
+        self.cache.write().await.create(id, created_at, object)?;
         Ok(())
     }
 
@@ -217,7 +246,7 @@ impl<D: Db> Db for CacheDb<D> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         // First change db, then the cache, because db can rely on the `get`s from the
         // cache to compute `users_who_can_read`, and this in turn means that the cache
         // should never (lock reads or) return not up-to-date information, nor return
@@ -228,33 +257,30 @@ impl<D: Db> Db for CacheDb<D> {
         self.cache
             .write()
             .await
-            .submit::<T>(object_id, event_id, event)
-            .map_err(DbOpError::Other)?;
+            .submit::<T>(object_id, event_id, event)?;
         Ok(())
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
+    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
         {
             let cache = self.cache.read().await;
-            if let Some(res) = cache.get(&ptr) {
-                return Ok(Some(res.clone()));
+            if let Some(res) = cache.get(&object_id) {
+                return Ok(res.clone());
             }
         }
-        let Some(res) = self.db.get::<T>(ptr).await? else {
-            return Ok(None);
-        };
+        let res = self.db.get::<T>(object_id).await?;
         debug_assert!(
-            res.id() == ptr,
-            "Got result with id {:?} instead of expected id {ptr:?}",
+            res.id() == object_id,
+            "Got result with id {:?} instead of expected id {object_id:?}",
             res.id()
         );
         {
             let mut cache = self.cache.write().await;
             cache
                 .insert::<T>(res.clone())
-                .with_context(|| format!("inserting object {ptr:?} in the cache"))?;
+                .wrap_with_context(|| format!("inserting object {object_id:?} in the cache"))?;
         }
-        Ok(Some(res))
+        Ok(res)
     }
 
     async fn query<T: Object>(
@@ -263,7 +289,7 @@ impl<D: Db> Db for CacheDb<D> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
         // We cannot use the object cache here, because it is not guaranteed to even
         // contain all the non-heavy objects, due to being an LRU cache. So, immediately
         // delegate to the underlying database, which should forward to either PostgreSQL
@@ -290,7 +316,7 @@ impl<D: Db> Db for CacheDb<D> {
         time: Timestamp,
         object: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         self.db.recreate::<T, C>(time, object, cb).await?;
         self.cache.write().await.recreate::<T>(object, time)
     }
@@ -305,14 +331,14 @@ impl<D: Db> Db for CacheDb<D> {
         self.db.create_binary(id, value).await
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        if let Some(res) = self.binaries.read().await.get(&ptr) {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        if let Some(res) = self.binaries.read().await.get(&binary_id) {
             return Ok(Some(res.clone()));
         }
-        let Some(res) = self.db.get_binary(ptr).await? else {
+        let Some(res) = self.db.get_binary(binary_id).await? else {
             return Ok(None);
         };
-        self.binaries.write().await.insert(ptr, res.clone());
+        self.binaries.write().await.insert(binary_id, res.clone());
         Ok(Some(res))
     }
 }

@@ -20,7 +20,7 @@ impl BinariesCache {
         self.data.insert(id, value);
     }
 
-    pub fn get(&self, id: &BinPtr) -> Option<Arc<Vec<u8>>> {
-        self.data.get(id).cloned()
+    pub fn get(&self, binary_id: &BinPtr) -> Option<Arc<Vec<u8>>> {
+        self.data.get(binary_id).cloned()
     }
 }

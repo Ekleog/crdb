@@ -1,14 +1,14 @@
-use super::{cmp_anyhow, cmp_db, TmpDb};
+use super::{cmp_db, TmpDb};
 use crate::{
-    db_trait::{Db, EventId, ObjectId},
+    db_trait::Db,
+    error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{
         self, db::ServerConfig, TestEventDelegatePerms, TestEventPerms, TestObjectDelegatePerms,
         TestObjectPerms,
     },
-    DbPtr, Timestamp, User,
+    DbPtr, EventId, ObjectId, Timestamp, User,
 };
-use anyhow::Context;
 use std::sync::Arc;
 use ulid::Ulid;
 
@@ -153,25 +153,22 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: anyhow::Result<Option<Arc<TestObjectPerms>>> =
-                match db.get::<TestObjectPerms>(o).await {
-                    Err(e) => Err(e).context("getting {o:?} in database"),
-                    Ok(None) => Ok(None),
-                    Ok(Some(o)) => match o.last_snapshot::<TestObjectPerms>() {
-                        Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            let mem: anyhow::Result<Option<Arc<TestObjectPerms>>> =
+            let pg: crate::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await {
+                Err(e) => Err(e).wrap_context("getting {o:?} in database"),
+                Ok(o) => match o.last_snapshot::<TestObjectPerms>() {
+                    Ok(o) => Ok(o),
+                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                },
+            };
+            let mem: crate::Result<Arc<TestObjectPerms>> =
                 match s.mem_db.get::<TestObjectPerms>(o).await {
-                    Err(e) => Err(e).context("getting {o:?} in mem db"),
-                    Ok(None) => Ok(None),
-                    Ok(Some(o)) => match o.last_snapshot::<TestObjectPerms>() {
-                        Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
+                    Err(e) => Err(e).wrap_context("getting {o:?} in mem db"),
+                    Ok(o) => match o.last_snapshot::<TestObjectPerms>() {
+                        Ok(o) => Ok(o),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_anyhow(pg, mem)?;
+            cmp_db(pg, mem)?;
         }
         Op::GetDelegator { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -180,25 +177,25 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: anyhow::Result<Option<Arc<TestObjectDelegatePerms>>> =
+            let pg: crate::Result<Arc<TestObjectDelegatePerms>> =
                 match db.get::<TestObjectDelegatePerms>(o).await {
-                    Err(e) => Err(e).context("getting {o:?} in database"),
-                    Ok(None) => Ok(None),
-                    Ok(Some(o)) => match o.last_snapshot::<TestObjectDelegatePerms>() {
-                        Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
+                    Err(e) => Err(e).wrap_context("getting {o:?} in database"),
+
+                    Ok(o) => match o.last_snapshot::<TestObjectDelegatePerms>() {
+                        Ok(o) => Ok(o),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            let mem: anyhow::Result<Option<Arc<TestObjectDelegatePerms>>> =
+            let mem: crate::Result<Arc<TestObjectDelegatePerms>> =
                 match s.mem_db.get::<TestObjectDelegatePerms>(o).await {
-                    Err(e) => Err(e).context("getting {o:?} in mem db"),
-                    Ok(None) => Ok(None),
-                    Ok(Some(o)) => match o.last_snapshot::<TestObjectDelegatePerms>() {
-                        Ok(o) => Ok(Some(o)),
-                        Err(e) => Err(e).with_context(|| format!("getting last snapshot of {o:?}")),
+                    Err(e) => Err(e).wrap_context("getting {o:?} in mem db"),
+
+                    Ok(o) => match o.last_snapshot::<TestObjectDelegatePerms>() {
+                        Ok(o) => Ok(o),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_anyhow(pg, mem)?;
+            cmp_db(pg, mem)?;
         }
         Op::RecreatePerm { object, time } => {
             let o = s
@@ -211,7 +208,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .mem_db
                 .recreate::<TestObjectPerms, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_anyhow(pg, mem)?;
+            cmp_db(pg, mem)?;
         }
         Op::RecreateDelegator { object, time } => {
             let o = s
@@ -226,7 +223,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .mem_db
                 .recreate::<TestObjectDelegatePerms, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_anyhow(pg, mem)?;
+            cmp_db(pg, mem)?;
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -249,7 +246,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             })()
             .await;
             let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp_anyhow(pg, mem)?;
+            cmp_db(pg, mem)?;
         }
     }
     Ok(())
@@ -269,7 +266,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
             for (i, op) in ops.iter().enumerate() {
                 apply_op(&db, &mut s, op)
                     .await
-                    .with_context(|| format!("applying {i}th op: {op:?}"))
+                    .wrap_with_context(|| format!("applying {i}th op: {op:?}"))
                     .unwrap();
                 db.assert_invariants_generic().await;
                 db.assert_invariants_for::<TestObjectPerms>().await;
@@ -283,7 +280,6 @@ fn fuzz() {
     let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(20)
-        .with_shrink_time(std::time::Duration::from_millis(0))
         .with_type()
         .for_each(move |ops| fuzz_impl(&cluster, ops))
 }

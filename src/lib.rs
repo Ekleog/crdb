@@ -1,16 +1,18 @@
 mod api;
-pub use api::{
-    BinPtr, CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query, User,
-};
-
 mod cache;
 mod db_trait;
+mod error;
 mod full_object;
-
+mod ids;
 #[cfg(test)]
 mod test_utils;
 
+pub use api::{
+    BinPtr, CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query, User,
+};
 pub use db_trait::Timestamp;
+pub use error::{Error, Result};
+pub use ids::{EventId, ObjectId, TypeId};
 
 #[cfg(feature = "client")]
 mod client;
@@ -46,10 +48,10 @@ pub mod crdb_internal {
     pub use crate::{
         api::{parse_snapshot, ApiConfig, CanDoCallbacks, User},
         cache::{CacheConfig, ObjectCache},
-        db_trait::{
-            Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,
-        },
-        hash_binary, private, BinPtr, DbPtr, Object, Query, Timestamp,
+        db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
+        error::ResultExt,
+        hash_binary, private, BinPtr, DbPtr, Error, EventId, Object, ObjectId, Query, Result,
+        Timestamp, TypeId,
     };
     pub use anyhow;
     pub use futures::{self, future, stream, Stream};
@@ -100,8 +102,8 @@ macro_rules! db {
     ) => {
         $v mod $module {
             use $crate::crdb_internal as crdb;
-            use crdb::anyhow::Context as CrdbContext;
             use crdb::Db as CrdbDb;
+            use crdb::ResultExt as CrdbResultExt;
             use crdb::stream::StreamExt as CrdbStreamExt;
 
             $crate::generate_api!($authenticator | $api_config | $($object),*);

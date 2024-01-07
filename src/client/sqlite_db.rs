@@ -1,11 +1,10 @@
 use crate::{
-    db_trait::{
-        Db, DbOpError, DynNewEvent, DynNewObject, DynNewRecreation, EventId, ObjectId, TypeId,
-    },
+    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
+    error::ResultExt,
     full_object::FullObject,
-    BinPtr, CanDoCallbacks, Object, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, User,
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use futures::Stream;
 use std::sync::Arc;
 
@@ -54,20 +53,19 @@ impl Db for SqliteDb {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         reord::point().await;
         let mut t = self
             .db
             .begin()
             .await
-            .context("acquiring sqlite transaction")
-            .map_err(DbOpError::Other)?;
+            .wrap_context("acquiring sqlite transaction")?;
 
         // TODO add reord lock over whole database
 
         reord::point().await;
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
-        let type_id = TypeId(*T::type_ulid());
+        let type_id = *T::type_ulid();
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
         let is_heavy = object.is_heavy();
@@ -84,8 +82,7 @@ impl Db for SqliteDb {
         .bind(is_heavy)
         .execute(&mut *t)
         .await
-        .with_context(|| format!("inserting snapshot {created_at:?}"))
-        .map_err(DbOpError::Other)?
+        .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
         .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
@@ -106,15 +103,12 @@ impl Db for SqliteDb {
             .bind(object_json)
             .fetch_all(&mut *t)
             .await
-            .with_context(|| {
+            .wrap_with_context(|| {
                 format!("checking pre-existing snapshot for {created_at:?} is the same")
-            })
-            .map_err(DbOpError::Other)?
+            })?
             .len();
             if affected != 1 {
-                return Err(DbOpError::Other(anyhow!(
-                    "Snapshot {created_at:?} already existed with a different value set"
-                )));
+                return Err(crate::Error::EventAlreadyExists(created_at));
             }
             reord::point().await;
             return Ok(());
@@ -126,14 +120,11 @@ impl Db for SqliteDb {
             .bind(created_at)
             .fetch_all(&mut *t)
             .await
-            .with_context(|| format!("checking that no event existed with this id yet"))
-            .map_err(DbOpError::Other)?
+            .wrap_with_context(|| format!("checking that no event existed with this id yet"))?
             .len();
         if affected != 0 {
             reord::point().await;
-            return Err(DbOpError::Other(anyhow!(
-                "Snapshot {created_at:?} has an ulid conflict with a pre-existing event"
-            )));
+            return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
         for binary_id in object.required_binaries() {
@@ -143,15 +134,13 @@ impl Db for SqliteDb {
                 .bind(binary_id)
                 .execute(&mut *t)
                 .await
-                .with_context(|| format!("marking {created_at:?} as using {binary_id:?}"))
-                .map_err(DbOpError::Other)?;
+                .wrap_with_context(|| format!("marking {created_at:?} as using {binary_id:?}"))?;
         }
 
         reord::point().await;
         t.commit()
             .await
-            .with_context(|| format!("committing transaction that created {object_id:?}"))
-            .map_err(DbOpError::Other)?;
+            .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
         reord::point().await;
         Ok(())
     }
@@ -162,11 +151,11 @@ impl Db for SqliteDb {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> Result<(), DbOpError> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn get<T: Object>(&self, ptr: ObjectId) -> anyhow::Result<Option<FullObject>> {
+    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
         todo!()
     }
 
@@ -176,7 +165,7 @@ impl Db for SqliteDb {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>> {
+    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
         // todo!()
         Ok(futures::stream::empty())
     }
@@ -186,7 +175,7 @@ impl Db for SqliteDb {
         time: Timestamp,
         object: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -194,7 +183,7 @@ impl Db for SqliteDb {
         todo!()
     }
 
-    async fn get_binary(&self, ptr: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }

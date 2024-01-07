@@ -1,9 +1,5 @@
 use super::ObjectCache;
-use crate::{
-    db_trait::{EventId, ObjectId},
-    test_utils::*,
-    Timestamp,
-};
+use crate::{test_utils::*, EventId, ObjectId, Timestamp};
 use std::sync::Arc;
 
 #[derive(Debug, bolero::generator::TypeGenerator)]

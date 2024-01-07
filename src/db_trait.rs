@@ -1,131 +1,11 @@
 use crate::{
     api::{BinPtr, Query},
     full_object::{DynSized, FullObject},
-    CanDoCallbacks, Object, User,
+    CanDoCallbacks, EventId, Object, ObjectId, TypeId, User,
 };
-use anyhow::anyhow;
 use futures::Stream;
 use std::{future::Future, sync::Arc};
 use ulid::Ulid;
-
-#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
-#[educe(Debug)]
-pub struct ObjectId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
-#[educe(Debug)]
-pub struct EventId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
-#[educe(Debug)]
-pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-
-macro_rules! impl_for_id {
-    ($type:ty) => {
-        #[allow(dead_code)]
-        impl $type {
-            pub(crate) fn time(&self) -> Timestamp {
-                Timestamp(self.0.timestamp_ms())
-            }
-
-            #[cfg(feature = "server")]
-            pub(crate) fn to_uuid(&self) -> uuid::Uuid {
-                uuid::Uuid::from_bytes(self.0.to_bytes())
-            }
-
-            #[cfg(feature = "server")]
-            pub(crate) fn from_uuid(id: uuid::Uuid) -> Self {
-                Self(Ulid::from_bytes(*id.as_bytes()))
-            }
-
-            pub(crate) fn last_id_at(time: Timestamp) -> anyhow::Result<Self> {
-                anyhow::ensure!(time.time_ms() < (1 << Ulid::TIME_BITS), "Provided timestamp {time:?} is outside the range of valid ULIDs");
-                Ok(Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1)))
-            }
-
-            pub(crate) fn from_u128(v: u128) -> Self {
-                Self(Ulid::from_bytes(v.to_be_bytes()))
-            }
-
-            pub(crate) fn as_u128(&self) -> u128 {
-                u128::from_be_bytes(self.0.to_bytes())
-            }
-        }
-
-        #[cfg(feature = "server")]
-        impl<'q> sqlx::encode::Encode<'q, sqlx::Postgres> for $type {
-            fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode_by_ref(&self.to_uuid(), buf)
-            }
-            fn encode(self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode(self.to_uuid(), buf)
-            }
-            fn produces(&self) -> Option<sqlx::postgres::PgTypeInfo> {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::produces(&self.to_uuid())
-            }
-            fn size_hint(&self) -> usize {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::size_hint(&self.to_uuid())
-            }
-        }
-
-        #[cfg(feature = "server")]
-        impl sqlx::Type<sqlx::Postgres> for $type {
-            fn type_info() -> sqlx::postgres::PgTypeInfo {
-                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
-            }
-            fn compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
-                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::compatible(ty)
-            }
-        }
-
-        #[cfg(feature = "server")]
-        impl sqlx::postgres::PgHasArrayType for $type {
-            fn array_type_info() -> sqlx::postgres::PgTypeInfo {
-                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_type_info()
-            }
-            fn array_compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
-                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_compatible(ty)
-            }
-        }
-
-        #[cfg(feature = "client-native")]
-        impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
-            fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode_by_ref(&self.to_uuid(), buf)
-            }
-            fn encode(self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode(self.to_uuid(), buf)
-            }
-            fn produces(&self) -> Option<sqlx::sqlite::SqliteTypeInfo> {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::produces(&self.to_uuid())
-            }
-            fn size_hint(&self) -> usize {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::size_hint(&self.to_uuid())
-            }
-        }
-
-        #[cfg(feature = "client-native")]
-        impl sqlx::Type<sqlx::Sqlite> for $type {
-            fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
-                <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::type_info()
-            }
-            fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
-                <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
-            }
-        }
-
-        #[cfg(test)]
-        impl bolero::generator::TypeGenerator for $type {
-            fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
-                Some(Self(Ulid::from_bytes(<[u8; 16] as bolero::generator::TypeGenerator>::generate::<D>(driver)?)))
-            }
-        }
-
-        deepsize::known_deep_size!(0; $type); // These types does not allocate
-    };
-}
-
-impl_for_id!(ObjectId);
-impl_for_id!(EventId);
-impl_for_id!(TypeId);
 
 #[derive(Clone)]
 pub struct DynNewObject {
@@ -168,25 +48,6 @@ impl Timestamp {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum DbOpError {
-    #[error("Missing binary pointers: {0:?}")]
-    MissingBinPtrs(Vec<BinPtr>),
-
-    #[error(transparent)]
-    Other(anyhow::Error),
-}
-
-impl DbOpError {
-    pub fn with_context<F: FnOnce() -> String>(self, f: F) -> DbOpError {
-        match self {
-            DbOpError::MissingBinPtrs(b) => DbOpError::MissingBinPtrs(b),
-            DbOpError::Other(e) => DbOpError::Other(e.context(f())),
-        }
-    }
-}
-
 pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
@@ -205,57 +66,23 @@ pub trait Db: 'static + Send + Sync {
 
     fn create<T: Object, C: CanDoCallbacks>(
         &self,
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> impl Send + Future<Output = Result<(), DbOpError>>;
+    ) -> impl Send + Future<Output = crate::Result<()>>;
     fn submit<T: Object, C: CanDoCallbacks>(
         &self,
-        object: ObjectId,
+        object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> impl Send + Future<Output = Result<(), DbOpError>>;
-    fn create_all<T: Object, C: CanDoCallbacks>(
-        &self,
-        o: FullObject,
-        cb: &C,
-    ) -> impl Send + Future<Output = anyhow::Result<()>> {
-        // TODO: move to CacheDb
-        async move {
-            let (creation, changes) = o.extract_all_clone();
-            self.create::<T, _>(
-                creation.id,
-                creation.created_at,
-                creation
-                    .creation
-                    .arc_to_any()
-                    .downcast::<T>()
-                    .map_err(|_| anyhow!("API returned object of unexpected type"))?,
-                cb,
-            )
-            .await?;
-            for (event_id, c) in changes.into_iter() {
-                self.submit::<T, _>(
-                    creation.id,
-                    event_id,
-                    c.event
-                        .arc_to_any()
-                        .downcast::<T::Event>()
-                        .map_err(|_| anyhow!("API returned object of unexpected type"))?,
-                    cb,
-                )
-                .await?;
-            }
-            Ok(())
-        }
-    }
+    ) -> impl Send + Future<Output = crate::Result<()>>;
 
     fn get<T: Object>(
         &self,
         ptr: ObjectId,
-    ) -> impl Send + Future<Output = anyhow::Result<Option<FullObject>>>;
+    ) -> impl Send + Future<Output = crate::Result<FullObject>>;
     /// Note: this function can also be used to populate the cache, as the cache will include
     /// any item returned by this function.
     fn query<T: Object>(
@@ -264,14 +91,14 @@ pub trait Db: 'static + Send + Sync {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = anyhow::Result<FullObject>>>>;
+    ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = crate::Result<FullObject>>>>;
 
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         time: Timestamp,
         object: ObjectId,
         cb: &C,
-    ) -> impl Send + Future<Output = anyhow::Result<()>>; // TODO: make DbOpError
+    ) -> impl Send + Future<Output = crate::Result<()>>;
 
     fn create_binary(
         &self,

@@ -1,4 +1,4 @@
-export RUST_BACKTRACE := "short"
+# export RUST_BACKTRACE := "short"
 
 fmt:
     cargo fmt

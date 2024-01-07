@@ -1,15 +1,11 @@
-use crate::{
-    db_trait::{EventId, ObjectId},
-    Object, Timestamp,
-};
-use anyhow::{anyhow, Context};
+use crate::{error::ResultExt, EventId, Object, ObjectId, Timestamp};
+use anyhow::anyhow;
 use std::{
     any::Any,
     collections::BTreeMap,
     ops::{Bound, RangeBounds},
     sync::{Arc, RwLock},
 };
-use ulid::Ulid;
 
 #[cfg(test)]
 mod tests;
@@ -164,11 +160,11 @@ impl FullObject {
         self.data.read().unwrap().deep_size_of()
     }
 
-    pub fn apply<T: Object>(&self, id: EventId, event: Arc<T::Event>) -> anyhow::Result<bool> {
+    pub fn apply<T: Object>(&self, id: EventId, event: Arc<T::Event>) -> crate::Result<bool> {
         self.data.write().unwrap().apply::<T>(id, event)
     }
 
-    pub fn recreate_at<T: Object>(&self, at: Timestamp) -> anyhow::Result<()> {
+    pub fn recreate_at<T: Object>(&self, at: Timestamp) -> crate::Result<()> {
         self.data.write().unwrap().recreate_at::<T>(at)
     }
 
@@ -206,30 +202,34 @@ impl FullObjectImpl {
     /// already been applied. Returns an error if another event with the same id had already
     /// been applied, if the event is earlier than the object's last recreation time, or if
     /// the provided `T` is wrong.
-    pub fn apply<T: Object>(&mut self, id: EventId, event: Arc<T::Event>) -> anyhow::Result<bool> {
-        anyhow::ensure!(
-            id > self.created_at,
-            "Submitted event {id:?} before the last recreation time ({:?}) of object {:?}",
-            self.created_at,
-            self.id,
-        );
-        if let Some(c) = self.changes.get(&id) {
-            anyhow::ensure!(
-                (*c.event)
-                    .ref_to_any()
-                    .downcast_ref::<T::Event>()
-                    .map(|e| e == &*event)
-                    .unwrap_or(false),
-                "Event {id:?} was already pushed to object {:?} with a different value",
-                self.id,
-            );
+    pub fn apply<T: Object>(
+        &mut self,
+        event_id: EventId,
+        event: Arc<T::Event>,
+    ) -> crate::Result<bool> {
+        if event_id <= self.created_at {
+            return Err(crate::Error::EventTooEarly {
+                event_id,
+                object_id: self.id,
+                created_at: self.created_at,
+            });
+        }
+        if let Some(c) = self.changes.get(&event_id) {
+            if (*c.event)
+                .ref_to_any()
+                .downcast_ref::<T::Event>()
+                .map(|e| e != &*event)
+                .unwrap_or(true)
+            {
+                return Err(crate::Error::EventAlreadyExists(event_id));
+            }
             return Ok(false);
         }
 
         // Get the snapshot to just before the new event
         let (_, mut last_snapshot) = self
-            .get_snapshot_at::<T>(Bound::Excluded(id))
-            .with_context(|| format!("applying event {id:?}"))?;
+            .get_snapshot_at::<T>(Bound::Excluded(event_id))
+            .wrap_with_context(|| format!("applying event {event_id:?}"))?;
 
         // Apply the new event
         let last_snapshot_mut: &mut T = Arc::make_mut(&mut last_snapshot);
@@ -239,15 +239,15 @@ impl FullObjectImpl {
             snapshot_after: Some(last_snapshot),
         };
         assert!(
-            self.changes.insert(id, new_change).is_none(),
-            "Object {:?} already had an event with id {id:?} despite earlier check",
+            self.changes.insert(event_id, new_change).is_none(),
+            "Object {:?} already had an event with id {event_id:?} despite earlier check",
             self.id,
         );
 
         // Finally, invalidate all snapshots since the event
         let to_invalidate = self
             .changes
-            .range_mut((Bound::Excluded(id), Bound::Unbounded));
+            .range_mut((Bound::Excluded(event_id), Bound::Unbounded));
         for c in to_invalidate {
             c.1.snapshot_after = None;
         }
@@ -255,13 +255,8 @@ impl FullObjectImpl {
         Ok(true)
     }
 
-    pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            at <= Timestamp::max_for_ulid(),
-            "Recreating object at timestamp {at:?}, which is invalid for ULIDs"
-        );
-        let max_new_created_at =
-            EventId(Ulid::from_parts(at.time_ms(), (1 << Ulid::RAND_BITS) - 1));
+    pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> crate::Result<()> {
+        let max_new_created_at = EventId::last_id_at(at)?;
 
         // First, check that we're not trying to roll the creation back in time, as this would result
         // in passing invalid input to `get_snapshot_at`.
@@ -269,8 +264,14 @@ impl FullObjectImpl {
             return Ok(());
         }
 
-        let (new_created_at, snapshot) =
-            self.get_snapshot_at::<T>(Bound::Excluded(max_new_created_at))?;
+        let (new_created_at, snapshot) = self
+            .get_snapshot_at::<T>(Bound::Included(max_new_created_at))
+            .wrap_with_context(|| {
+                format!(
+                    "getting last snapshot before {max_new_created_at:?} for object {:?}",
+                    self.id
+                )
+            })?;
         self.created_at = new_created_at;
         self.creation = snapshot;
         self.changes = self.changes.split_off(&new_created_at);
@@ -301,13 +302,17 @@ impl FullObjectImpl {
         );
         // Find the last snapshot before `at`
         let (_, last_snapshot_time, last_snapshot) = self.last_snapshot_before(at);
-        let mut last_snapshot = last_snapshot.arc_to_any().downcast::<T>().map_err(|_| {
-            anyhow!(
-                "Failed downcasting {:?} to type {:?}",
-                self.id,
-                T::type_ulid()
-            )
-        })?;
+        let mut last_snapshot = last_snapshot
+            .arc_to_any()
+            .downcast::<T>()
+            .map_err(|_| {
+                anyhow!(
+                    "Failed downcasting {:?} to type {:?}",
+                    self.id,
+                    T::type_ulid()
+                )
+            })
+            .map_err(crate::Error::Other)?;
         let last_snapshot_mut = Arc::make_mut(&mut last_snapshot);
 
         // Iterate through the changes since the last snapshot to just before the event
