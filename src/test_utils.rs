@@ -424,15 +424,6 @@ impl Db for MemDb {
         _cb: &C,
     ) -> crate::Result<()> {
         let mut this = self.0.lock().await;
-        if let Some((o, e)) = this.events.get(&event_id) {
-            let Some(e) = e else {
-                return Err(crate::Error::EventAlreadyExists(event_id));
-            };
-            if *o != object_id || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false) {
-                return Err(crate::Error::EventAlreadyExists(event_id));
-            }
-            return Ok(());
-        }
         match this.objects.get(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
             Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
@@ -448,6 +439,15 @@ impl Db for MemDb {
                 })
             }
             Some((_, o)) => {
+                if let Some((o, e)) = this.events.get(&event_id) {
+                    let Some(e) = e else {
+                        return Err(crate::Error::EventAlreadyExists(event_id));
+                    };
+                    if *o != object_id || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false) {
+                        return Err(crate::Error::EventAlreadyExists(event_id));
+                    }
+                    return Ok(());
+                }
                 o.apply::<T>(event_id, event.clone())?;
                 this.events.insert(event_id, (object_id, Some(event)));
                 Ok(())

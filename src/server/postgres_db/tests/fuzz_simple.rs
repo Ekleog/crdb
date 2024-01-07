@@ -254,7 +254,7 @@ fn regression_wrong_error_on_object_already_exists() {
 }
 
 #[test]
-fn repro() {
+fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() {
     use Op::*;
     let cluster = TmpDb::new();
     fuzz_impl(
