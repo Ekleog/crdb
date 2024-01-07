@@ -419,12 +419,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         rdeps: Option<&[ObjectId]>,
         object: &T,
         cb: &'a C,
-    ) -> anyhow::Result<Vec<ComboLock<'a>>> {
+    ) -> crate::Result<Vec<ComboLock<'a>>> {
         let (users_who_can_read, users_who_can_read_depends_on, locks) = if is_latest {
             let (a, b, c) = self
                 .get_users_who_can_read::<T, _>(&object_id, object, cb)
                 .await
-                .with_context(|| {
+                .wrap_with_context(|| {
                     format!(
                         "listing users who can read for snapshot {snapshot_id:?} of {object_id:?}"
                     )
@@ -439,7 +439,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         );
 
         reord::point().await;
-        sqlx::query(
+        let result = sqlx::query(
             "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
         .bind(snapshot_id)
@@ -455,10 +455,16 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(object.is_heavy())
         .bind(object.required_binaries())
         .execute(&mut *transaction)
-        .await
-        .with_context(|| format!("inserting snapshot {snapshot_id:?} into table"))?;
+        .await;
 
-        Ok(locks)
+        match result {
+            Ok(_) => Ok(locks),
+            Err(sqlx::Error::Database(err)) if err.constraint() == Some("snapshots_pkey") => {
+                Err(crate::Error::EventAlreadyExists(snapshot_id))
+            }
+            Err(e) => Err(e)
+                .wrap_with_context(|| format!("inserting snapshot {snapshot_id:?} into table")),
+        }
     }
 
     async fn create_impl<T: Object, C: CanDoCallbacks>(

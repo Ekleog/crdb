@@ -273,3 +273,29 @@ fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() 
         ],
     )
 }
+
+#[test]
+fn regression_submit_on_other_snapshot_date_fails() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Create {
+                id: ObjectId(Ulid::from_string("0000000000000004PAVG100000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 214, 0])),
+            },
+            Create {
+                id: ObjectId(Ulid::from_string("00000000000000000JS8000000").unwrap()),
+                created_at: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
+                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 1, 0])),
+            },
+            Submit {
+                object: 0,
+                event_id: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
+                event: Arc::new(TestEvent1::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+            },
+        ],
+    );
+}
