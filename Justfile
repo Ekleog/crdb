@@ -7,9 +7,7 @@ fmt:
 test NAME='': (test-crate NAME) (test-example-basic NAME)
 
 doc:
-    # this somehow breaks regular doc?
-    # RUSTDOCFLAGS="-Z unstable-options --document-hidden-items"
-    cargo doc --all-features --document-private-items
+    cargo doc --all-features --examples
 
 test-no-pg NAME='': (test-crate-no-pg NAME) (test-example-basic NAME)
 
