@@ -520,13 +520,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 "
                     SELECT 1 FROM snapshots
                     WHERE snapshot_id = $1
-                    AND object_id = $2
-                    AND is_creation = TRUE
-                    AND snapshot_version = $3
-                    AND snapshot = $4
+                    AND type_id = $2
+                    AND object_id = $3
+                    AND is_creation
+                    AND snapshot_version = $4
+                    AND snapshot = $5
                 ",
             )
             .bind(created_at)
+            .bind(T::type_ulid())
             .bind(object_id)
             .bind(snapshot_version)
             .bind(object_json)
