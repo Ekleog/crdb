@@ -343,3 +343,28 @@ fn regression_self_referencing_object_deadlocks() {
         }],
     );
 }
+
+#[test]
+fn regression_submit_wrong_type_ignores_failure() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            CreateDelegator {
+                id: ObjectId(Ulid::from_string("00000000000000000000000002").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000410000000000X3K").unwrap()),
+                object: Arc::new(TestObjectDelegatePerms(
+                    DbPtr::from_string("0000062VK4C5S68QV3DXQ6CAG7").unwrap(),
+                )),
+            },
+            SubmitPerm {
+                object: 0,
+                event_id: EventId(Ulid::from_string("0003ZZZZR00000000000000000").unwrap()),
+                event: Arc::new(TestEventPerms::Set(User {
+                    id: Ulid::from_string("00000000000000000000000000").unwrap(),
+                })),
+            },
+        ],
+    );
+}

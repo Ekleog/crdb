@@ -597,10 +597,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_with_context(|| format!("fetching reverse dependencies of {object_id:?}"))?;
 
-        // Check the object does exist and is not too new
+        // Check the object does exist, is of the right type and is not too new
         reord::point().await;
         let creation_snapshot = sqlx::query!(
-            "SELECT snapshot_id FROM snapshots WHERE object_id = $1 AND is_creation",
+            "SELECT snapshot_id, type_id FROM snapshots WHERE object_id = $1 AND is_creation",
             object_id as ObjectId,
         )
         .fetch_optional(&mut *transaction)
@@ -610,6 +610,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         match creation_snapshot {
             None => {
                 return Err(crate::Error::ObjectDoesNotExist(object_id));
+            }
+            Some(s) if TypeId::from_uuid(s.type_id) != *T::type_ulid() => {
+                return Err(crate::Error::WrongType {
+                    object_id,
+                    expected_type_id: *T::type_ulid(),
+                    real_type_id: TypeId::from_uuid(s.type_id),
+                })
             }
             Some(s) if s.snapshot_id >= event_id.to_uuid() => {
                 return Err(crate::Error::EventTooEarly {
