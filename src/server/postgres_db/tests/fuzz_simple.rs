@@ -299,3 +299,32 @@ fn regression_submit_on_other_snapshot_date_fails() {
         ],
     );
 }
+
+#[test]
+fn regression_vacuum_did_not_actually_recreate_objects() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Create {
+                id: ObjectId(Ulid::from_string("00000A58N21A8JM00000000000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object: Arc::new(TestObject1(vec![55, 0, 0, 0, 0, 0, 0, 0])),
+            },
+            Submit {
+                object: 0,
+                event_id: EventId(Ulid::from_string("00001000040000000000000000").unwrap()),
+                event: Arc::new(TestEvent1::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
+            },
+            Vacuum {
+                recreate_at: Some(Timestamp::from_ms(408021893130)),
+            },
+            Submit {
+                object: 0,
+                event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
+                event: Arc::new(TestEvent1::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
+            },
+        ],
+    );
+}

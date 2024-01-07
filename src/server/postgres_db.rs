@@ -1014,6 +1014,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 format!("deleting all events for {object_id:?} before {cutoff_time:?}")
             })?;
 
+        // Finally, commit the transaction
+        transaction.commit().await.wrap_with_context(|| {
+            format!("committing transaction that recreated {object_id:?} at {cutoff_time:?}")
+        })?;
+
         Ok(true)
     }
 
