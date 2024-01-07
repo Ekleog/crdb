@@ -152,7 +152,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
     Ok(())
 }
 
-fn db_keeps_invariants_impl(cluster: &TmpDb, ops: &Vec<Op>) {
+fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async move {
@@ -175,19 +175,19 @@ fn db_keeps_invariants_impl(cluster: &TmpDb, ops: &Vec<Op>) {
 }
 
 #[test]
-fn db_keeps_invariants() {
+fn fuzz() {
     let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(20)
         .with_type()
-        .for_each(move |ops| db_keeps_invariants_impl(&cluster, ops))
+        .for_each(move |ops| fuzz_impl(&cluster, ops))
 }
 
 #[test]
 fn regression_events_1342_fails_to_notice_conflict_on_3() {
     use Op::*;
     let cluster = TmpDb::new();
-    db_keeps_invariants_impl(
+    fuzz_impl(
         &cluster,
         &vec![
             Create {
@@ -217,4 +217,17 @@ fn regression_events_1342_fails_to_notice_conflict_on_3() {
             },
         ],
     );
+}
+
+#[test]
+fn regession_proper_error_on_recreate_inexistent() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Recreate {
+            object: 0,
+            time: Timestamp::from_ms(0),
+        }],
+    )
 }

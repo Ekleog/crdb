@@ -841,11 +841,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "SELECT snapshot_id, type_id FROM snapshots WHERE object_id = $1 AND is_creation",
             object_id as ObjectId,
         )
-        .fetch_one(&mut *transaction)
+        .fetch_optional(&mut *transaction)
         .await
         .wrap_with_context(|| {
             format!("getting creation snapshot of {object_id:?} for re-creation")
-        })?;
+        })?
+        .ok_or(crate::Error::ObjectDoesNotExist(object_id))?;
         let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
         let expected_type_id = *T::type_ulid();
         if real_type_id != expected_type_id {
