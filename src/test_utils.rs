@@ -390,15 +390,11 @@ impl Db for MemDb {
 
         // First, check for duplicates
         if let Some((ty, o)) = this.objects.get(&object_id) {
-            if ty != T::type_ulid() {
-                return Err(crate::Error::WrongType {
-                    object_id,
-                    expected_type_id: *T::type_ulid(),
-                    real_type_id: *ty,
-                });
-            }
             let c = o.creation_info();
-            if created_at != c.created_at || !eq::<T>(&*c.creation, &*object as _).unwrap() {
+            if ty != T::type_ulid()
+                || created_at != c.created_at
+                || !eq::<T>(&*c.creation, &*object as _).unwrap()
+            {
                 return Err(crate::Error::ObjectAlreadyExists(object_id));
             }
             return Ok(());
