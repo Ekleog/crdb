@@ -252,3 +252,24 @@ fn regression_wrong_error_on_object_already_exists() {
         ],
     )
 }
+
+#[test]
+fn repro() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Create {
+                id: ObjectId(Ulid::from_string("0001SPAWVKD5QPWQV100000000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object: Arc::new(TestObject1(vec![0, 143, 0, 0, 0, 0, 126, 59])),
+            },
+            Create {
+                id: ObjectId(Ulid::from_string("0058076SBKEDMPYVJZC4000000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object: Arc::new(TestObject1(vec![0, 0, 244, 0, 105, 111, 110, 0])),
+            },
+        ],
+    )
+}

@@ -511,8 +511,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(&required_binaries)
                 .execute(&mut *transaction)
                 .await
-                .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))
-                ?
+                .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
                 .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
@@ -538,7 +537,21 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             })?
             .rows_affected();
             if affected != 1 {
-                return Err(crate::Error::ObjectAlreadyExists(object_id));
+                // There is a conflict. Is it an object conflict or an event conflict?
+                let object_exists_affected =
+                    sqlx::query("SELECT 1 FROM snapshots WHERE object_id = $1")
+                        .bind(object_id)
+                        .execute(&mut *transaction)
+                        .await
+                        .wrap_with_context(|| {
+                            format!("checking whether {object_id:?} already exists")
+                        })?
+                        .rows_affected();
+                return if object_exists_affected == 1 {
+                    Err(crate::Error::ObjectAlreadyExists(object_id))
+                } else {
+                    Err(crate::Error::EventAlreadyExists(created_at))
+                };
             }
 
             return Ok(());
