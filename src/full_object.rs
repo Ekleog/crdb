@@ -140,6 +140,10 @@ impl FullObject {
         }
     }
 
+    pub fn created_at(&self) -> EventId {
+        self.data.read().unwrap().created_at
+    }
+
     pub fn changes_clone(&self) -> BTreeMap<EventId, Change> {
         self.data.read().unwrap().changes.clone()
     }

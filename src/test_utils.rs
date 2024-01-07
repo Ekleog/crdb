@@ -8,7 +8,11 @@ use crate::{
 };
 use anyhow::Context;
 use futures::prelude::Stream;
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{
+    any::Any,
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
@@ -340,10 +344,29 @@ impl MemDb {
 
     pub async fn recreate_all<T: Object>(&self, time: Timestamp) -> crate::Result<()> {
         let mut this = self.0.lock().await;
+        let this = &mut *this; // disable implicit deref+reborrow and get a real &mut, for borrow splitting
         EventId::last_id_at(time)?;
         for (ty, o) in this.objects.values_mut() {
             if ty == T::type_ulid() {
+                let mut events_before = o
+                    .changes_clone()
+                    .into_iter()
+                    .map(|(e, _)| e)
+                    .collect::<HashSet<EventId>>();
+                events_before.insert(o.created_at());
                 o.recreate_at::<T>(time).wrap_context("recreating object")?;
+                let mut events_after = o
+                    .changes_clone()
+                    .into_iter()
+                    .map(|(e, _)| e)
+                    .collect::<HashSet<EventId>>();
+                events_after.insert(o.created_at());
+                // Discard all removed events from self.events too
+                for e in events_before.difference(&events_after) {
+                    this.events.remove(&e);
+                }
+                // And mark the new "creation event" as a creation event
+                this.events.get_mut(&o.created_at()).unwrap().1 = None;
             }
         }
         Ok(())
