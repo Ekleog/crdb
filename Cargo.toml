@@ -40,6 +40,6 @@ uuid = { version = "1.6", optional = true }
 
 [dev-dependencies]
 bolero = "0.10.0"
-reord = { version = "0.1.0", features = ["test"] }
+reord = { version = "0.1.4", features = ["test"] }
 tempfile = "3.9"
 tokio = { version = "1.35", features = ["full"] }
