@@ -92,7 +92,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     ) -> crate::Result<()> {
         if let Some(t) = kill_sessions_older_than {
             // Discard all sessions that were last active too long ago
-            // TODO: see https://github.com/launchbadge/sqlx/issues/2972
             reord::point().await;
             sqlx::query!(
                 "DELETE FROM sessions WHERE last_active < $1",
