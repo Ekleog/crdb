@@ -278,7 +278,8 @@ impl Object for TestObjectDelegatePerms {
         &'a self,
         db: &'a C,
     ) -> anyhow::Result<Vec<User>> {
-        let Some(remote) = db.get(self.0).await? else {
+        let Ok(Some(remote)) = db.get(self.0).await else {
+            // TODO: fail on db internal db error
             return Ok(Vec::new());
         };
         Ok(vec![remote.0])

@@ -331,3 +331,19 @@ fn regression_changing_remote_objects_did_not_refresh_perms() {
         ],
     );
 }
+
+#[test]
+fn regression_self_referencing_object_deadlocks() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![CreateDelegator {
+            id: ObjectId(Ulid::from_string("00008000000030000000000000").unwrap()),
+            created_at: EventId(Ulid::from_string("00000000002000001J00000001").unwrap()),
+            object: Arc::new(TestObjectDelegatePerms(
+                DbPtr::from_string("00008000000030000000000000").unwrap(),
+            )),
+        }],
+    );
+}

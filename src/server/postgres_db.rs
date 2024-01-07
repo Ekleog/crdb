@@ -198,6 +198,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(())
     }
 
+    /// This function assumes that the lock on `object_id` is already taken.
     pub async fn get_users_who_can_read<'a, T: Object, C: CanDoCallbacks>(
         &'a self,
         object_id: &ObjectId,
@@ -206,6 +207,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     ) -> anyhow::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)> {
         struct TrackingCanDoCallbacks<'a, 'b, C: CanDoCallbacks> {
             cb: &'a C,
+            already_taken_lock: ObjectId,
             object_locks: &'b LockPool<ObjectId>,
             locks: Mutex<
                 HashMap<
@@ -223,11 +225,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         impl<'a, 'b, C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'a, 'b, C> {
             async fn get<T: Object>(&self, ptr: crate::DbPtr<T>) -> anyhow::Result<Option<Arc<T>>> {
                 let id = ObjectId(ptr.id);
-                if let hash_map::Entry::Vacant(v) = self.locks.lock().await.entry(id) {
-                    v.insert((
-                        reord::Lock::take_named(format!("{id:?}")).await,
-                        self.object_locks.async_lock(id).await,
-                    ));
+                if id != self.already_taken_lock {
+                    if let hash_map::Entry::Vacant(v) = self.locks.lock().await.entry(id) {
+                        v.insert((
+                            reord::Lock::take_named(format!("{id:?}")).await,
+                            self.object_locks.async_lock(id).await,
+                        ));
+                    }
                 }
                 Ok(self
                     .cb
@@ -239,6 +243,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         let cb = TrackingCanDoCallbacks {
             cb,
+            already_taken_lock: *object_id,
             object_locks: &self.object_locks,
             locks: Mutex::new(HashMap::new()),
         };
@@ -1407,7 +1412,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         // Acquire the lock required to recreate the object
         // This will not create a new event id, and thus does not need a lock besides the object one
         // In addition, the last snapshot value will not change, which means that no reverse-dependencies
-        // locks need to be taken
+        // updating needs to happen
         let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         let _lock = self.object_locks.async_lock(object_id).await;
 
