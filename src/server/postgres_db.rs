@@ -538,7 +538,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             })?
             .rows_affected();
             if affected != 1 {
-                return Err(crate::Error::EventAlreadyExists(created_at));
+                return Err(crate::Error::ObjectAlreadyExists(object_id));
             }
 
             return Ok(());

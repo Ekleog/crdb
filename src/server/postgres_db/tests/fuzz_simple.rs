@@ -231,3 +231,24 @@ fn regession_proper_error_on_recreate_inexistent() {
         }],
     )
 }
+
+#[test]
+fn regression_wrong_error_on_object_already_exists() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Create {
+                id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 2, 0, 252])),
+            },
+            Create {
+                id: OBJECT_ID_1,
+                created_at: EVENT_ID_2,
+                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+            },
+        ],
+    )
+}
