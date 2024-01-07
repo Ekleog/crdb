@@ -491,6 +491,7 @@ impl Db for MemDb {
         _cb: &C,
     ) -> crate::Result<()> {
         let this = self.0.lock().await;
+        EventId::last_id_at(time)?; // start by checking the timestamp
         let Some((ty, o)) = this.objects.get(&object_id) else {
             return Err(crate::Error::ObjectDoesNotExist(object_id));
         };
