@@ -36,30 +36,30 @@ test-example-basic-host NAME='':
 
 fuzz-object-cache:
     cargo bolero test --all-features \
-        -j 8 \
+        -j 4 \
         cache::object_cache::tests::cache_state_stays_valid \
         --corpus-dir src/cache/object_cache/__fuzz__/cache__object_cache__tests__cache_state_stays_valid/corpus.nounit
 
 fuzz-pg-basic:
     cargo bolero test --all-features \
-        -j 8 \
+        -j 4 \
         server::postgres_db::tests::fuzz_simple::fuzz \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_simple__db_keeps_invariants/corpus.nounit
 
 fuzz-pg-perms:
     cargo bolero test --all-features \
-        -j 8 \
+        -j 4 \
         server::postgres_db::tests::fuzz_remote_perms::fuzz \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_remote_perms__fuzz/corpus.nounit
 
 fuzz-pg-threads:
     cargo bolero test --all-features \
-        -j 8 \
+        -j 4 \
         server::postgres_db::tests::fuzz_two_threads::fuzz_no_lock_check \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_two_threads__fuzz_no_lock_check/corpus.nounit
 
 fuzz-pg-locks:
     cargo bolero test --all-features \
-        -j 8 \
+        -j 4 \
         server::postgres_db::tests::fuzz_two_threads::fuzz_checking_locks \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_two_threads__fuzz_checking_locks/corpus.nounit
