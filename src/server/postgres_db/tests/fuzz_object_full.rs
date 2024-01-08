@@ -181,7 +181,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
 fn fuzz() {
     let cluster = TmpDb::new();
     bolero::check!()
-        .with_iterations(10)
+        .with_iterations(20)
         .with_type()
         .for_each(move |ops| fuzz_impl(&cluster, ops))
 }

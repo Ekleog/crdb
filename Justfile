@@ -69,3 +69,15 @@ fuzz-pg-full:
         -j 4 \
         server::postgres_db::tests::fuzz_object_full::fuzz \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_object_full__fuzz/corpus.nounit
+
+fuzz-pg-threads-royale:
+    cargo bolero test --all-features \
+        -j 4 \
+        server::postgres_db::tests::fuzz_battle_royale::fuzz_no_lock_check \
+        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_battle_royale__fuzz_no_lock_check/corpus.nounit
+
+fuzz-pg-locks-royale:
+    cargo bolero test --all-features \
+        -j 4 \
+        server::postgres_db::tests::fuzz_battle_royale::fuzz_checking_locks \
+        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_battle_royale__fuzz_checking_locks/corpus.nounit
