@@ -1443,7 +1443,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
-        sqlx::query("INSERT INTO binaries VALUES ($1, $2) ON CONFLICT IGNORE")
+        sqlx::query("INSERT INTO binaries VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(binary_id)
             .bind(&*data)
             .execute(&self.db)

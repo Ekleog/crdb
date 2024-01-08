@@ -185,3 +185,16 @@ fn fuzz() {
         .with_type()
         .for_each(move |ops| fuzz_impl(&cluster, ops))
 }
+
+#[test]
+fn regression_create_binary_always_failed() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![CreateBinary {
+            data: Arc::new(vec![60, 164, 171, 171, 123, 98, 174, 193, 202, 183, 86]),
+            fake_id: None,
+        }],
+    )
+}
