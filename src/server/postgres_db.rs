@@ -56,7 +56,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         &self,
         session: Session,
     ) -> crate::Result<(SessionToken, SessionRef)> {
-        crate::check_string(&session.session_name)?;
         let token = SessionToken(Ulid::from_bytes(rand::thread_rng().gen()));
         sqlx::query("INSERT INTO sessions VALUES ($1, $2, $3, $4, $5, $6, $7)")
             .bind(token)

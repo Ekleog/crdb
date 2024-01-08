@@ -88,7 +88,10 @@ impl<T> ResultExt for sqlx::Result<T> {
     fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
         match self {
             Err(sqlx::Error::Database(err))
-                if err.code().map(|c| c == "22P05").unwrap_or(false) =>
+                if err
+                    .code()
+                    .map(|c| c == "22P05" || c == "22021")
+                    .unwrap_or(false) =>
             {
                 Err(Error::NullByteInString)
             }
