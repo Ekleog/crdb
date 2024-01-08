@@ -3,8 +3,8 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{self, db::ServerConfig, TestEventFull, TestObjectFull},
-    BinPtr, EventId, ObjectId, Timestamp,
+    test_utils::{self, db::ServerConfig, TestEventFull, TestObjectFull, USER_ID_NULL},
+    BinPtr, EventId, Object, ObjectId, Timestamp,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -67,6 +67,11 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             created_at,
             object,
         } => {
+            let mut object = object.clone();
+            Arc::make_mut(&mut object).standardize();
+            if !object.can_create(USER_ID_NULL, *id, &s.mem_db).await? {
+                return Ok(());
+            }
             s.objects.push(*id);
             let pg = db.create(*id, *created_at, object.clone(), db).await;
             let mem = s

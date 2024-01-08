@@ -1,5 +1,5 @@
 use super::ulid;
-use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, TypeId, User};
+use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User};
 use anyhow::Context;
 use futures::FutureExt;
 use std::future::Future;
@@ -44,6 +44,12 @@ pub enum TestEventFull {
     RmUser(User),
 }
 
+impl TestObjectFull {
+    pub fn standardize(&mut self) {
+        self.deps.sort_unstable();
+    }
+}
+
 impl Object for TestObjectFull {
     type Event = TestEventFull;
 
@@ -55,14 +61,20 @@ impl Object for TestObjectFull {
     async fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         _user: User,
+        self_id: ObjectId,
         _db: &'a C,
     ) -> anyhow::Result<bool> {
-        unimplemented!()
+        Ok(self
+            .deps
+            .last()
+            .map(|d| d.to_object_id() > self_id)
+            .unwrap_or(true))
     }
 
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
         _user: User,
+        _self_id: ObjectId,
         _event: &'a Self::Event,
         _db: &'a C,
     ) -> anyhow::Result<bool> {
@@ -91,7 +103,7 @@ impl Object for TestObjectFull {
         match event {
             TestEventFull::AddDep(d) => {
                 // Try to keep the vecs small while fuzzing. Also, make sure to stay a DAG.
-                if self.deps.len() < 4 && *d >= self_id {
+                if self.deps.len() < 4 && *d > self_id {
                     self.deps.push(*d);
                     self.deps.sort_unstable();
                 }

@@ -1,6 +1,5 @@
+use crate::{EventId, ObjectId, TypeId, User};
 use ulid::Ulid;
-
-use crate::{EventId, ObjectId, TypeId};
 
 pub const fn ulid(s: &str) -> Ulid {
     match Ulid::from_string(s) {
@@ -29,3 +28,10 @@ pub const TYPE_ID_2: TypeId = TypeId(ulid("30000000000000000000000020"));
 pub const TYPE_ID_3: TypeId = TypeId(ulid("30000000000000000000000030"));
 pub const TYPE_ID_4: TypeId = TypeId(ulid("30000000000000000000000040"));
 pub const TYPE_ID_5: TypeId = TypeId(ulid("30000000000000000000000050"));
+
+pub const USER_ID_NULL: User = User(ulid("00000000000000000000000000"));
+pub const USER_ID_1: User = User(ulid("20000000000000000000000010"));
+pub const USER_ID_2: User = User(ulid("20000000000000000000000020"));
+pub const USER_ID_3: User = User(ulid("20000000000000000000000030"));
+pub const USER_ID_4: User = User(ulid("20000000000000000000000040"));
+pub const USER_ID_5: User = User(ulid("20000000000000000000000050"));

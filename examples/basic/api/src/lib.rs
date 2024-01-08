@@ -1,4 +1,4 @@
-use crdb::{CanDoCallbacks, DbPtr, TypeId, User};
+use crdb::{CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
 use ulid::Ulid;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -24,6 +24,7 @@ impl crdb::Object for Foo {
     async fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
+        self_id: ObjectId,
         db: &'a C,
     ) -> anyhow::Result<bool> {
         todo!()
@@ -31,6 +32,7 @@ impl crdb::Object for Foo {
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
+        self_id: ObjectId,
         event: &'a Self::Event,
         db: &'a C,
     ) -> anyhow::Result<bool> {

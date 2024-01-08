@@ -1,5 +1,5 @@
 use super::ulid;
-use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, TypeId, User};
+use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User};
 
 #[derive(
     Clone,
@@ -38,6 +38,7 @@ impl Object for TestObjectPerms {
     async fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         _user: User,
+        _self_id: ObjectId,
         _db: &'a C,
     ) -> anyhow::Result<bool> {
         unimplemented!()
@@ -46,6 +47,7 @@ impl Object for TestObjectPerms {
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
         _user: User,
+        _self_id: ObjectId,
         _event: &'a Self::Event,
         _db: &'a C,
     ) -> anyhow::Result<bool> {

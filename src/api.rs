@@ -69,6 +69,7 @@ pub trait Object:
     fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
+        self_id: ObjectId,
         db: &'a C,
     ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
     /// Note that permissions are always checked with the latest version of the object on the server.
@@ -79,6 +80,7 @@ pub trait Object:
     fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
+        self_id: ObjectId,
         event: &'a Self::Event,
         db: &'a C,
     ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
