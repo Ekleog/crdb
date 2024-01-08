@@ -81,3 +81,9 @@ fuzz-pg-locks-royale:
         -j 4 \
         server::postgres_db::tests::fuzz_battle_royale::fuzz_checking_locks \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_battle_royale__fuzz_checking_locks/corpus.nounit
+
+fuzz-pg-sessions:
+    cargo bolero test --all-features \
+        -j 4 \
+        server::postgres_db::tests::fuzz_sessions::fuzz \
+        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_sessions__fuzz/corpus.nounit
