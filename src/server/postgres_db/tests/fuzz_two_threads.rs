@@ -210,7 +210,7 @@ fn fuzz_checking_locks() {
         .with_type()
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);
-            config.check_addressed_locks_work_for = Some(Duration::from_millis(100));
+            config.check_addressed_locks_work_for = Some(Duration::from_millis(500));
             config.check_named_locks_work_for = Some(Duration::from_millis(100));
             fuzz_impl(&cluster, ops, config)
         })
