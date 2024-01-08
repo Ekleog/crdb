@@ -21,6 +21,8 @@ impl<A: Authenticator> ClientDb<A> {
         local_db: &str,
         cache_watermark: usize,
     ) -> anyhow::Result<ClientDb<A>> {
+        // TODO: add a concept of "locked" objects and binaries that cannot be vacuumed out of the
+        // local db, because they have not been acknowledged by the server yet
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
         let db = CacheDb::new::<C>(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
@@ -147,9 +149,9 @@ impl<A: Authenticator> Db for ClientDb<A> {
         self.api.recreate::<T, C>(time, object, cb).await
     }
 
-    async fn create_binary(&self, id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
-        self.db.create_binary(id, value.clone()).await?;
-        self.api.create_binary(id, value).await
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+        self.db.create_binary(binary_id, data.clone()).await?;
+        self.api.create_binary(binary_id, data).await
     }
 
     async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {

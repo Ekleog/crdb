@@ -23,6 +23,9 @@ pub enum Error {
     #[error("{0:?} does not exist in datapase")]
     TypeDoesNotExist(TypeId),
 
+    #[error("{0:?} is not the hash of the provided value")]
+    BinaryHashMismatch(BinPtr),
+
     #[error(
         "{event_id:?} is too early to be submitted on {object_id:?} created at {created_at:?}"
     )]

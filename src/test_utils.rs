@@ -523,11 +523,11 @@ impl Db for MemDb {
         Ok(())
     }
 
-    async fn create_binary(&self, _id: BinPtr, _value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+    async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<Vec<u8>>) -> crate::Result<()> {
         unimplemented!()
     }
 
-    async fn get_binary(&self, _object_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         unimplemented!()
     }
 }

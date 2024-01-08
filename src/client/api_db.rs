@@ -92,7 +92,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         todo!()
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, value: Arc<Vec<u8>>) -> anyhow::Result<()> {
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
         todo!()
     }
 

@@ -44,9 +44,9 @@ macro_rules! generate_client {
                 self.db.disconnect()
             }
 
-            pub fn create_binary(&self, value: crdb::Arc<Vec<u8>>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
-                let id = crdb::hash_binary(&*value);
-                self.db.create_binary(id, value)
+            pub fn create_binary(&self, data: crdb::Arc<Vec<u8>>) -> impl '_ + Send + crdb::Future<Output = crdb::Result<()>> {
+                let binary_id = crdb::hash_binary(&*data);
+                self.db.create_binary(binary_id, data)
             }
 
             pub fn get_binary(&self, binary_id: crdb::BinPtr) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {

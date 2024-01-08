@@ -102,11 +102,11 @@ pub trait Db: 'static + Send + Sync {
 
     fn create_binary(
         &self,
-        id: BinPtr,
-        value: Arc<Vec<u8>>,
-    ) -> impl Send + Future<Output = anyhow::Result<()>>;
+        binary_id: BinPtr,
+        data: Arc<Vec<u8>>,
+    ) -> impl Send + Future<Output = crate::Result<()>>;
     fn get_binary(
         &self,
-        ptr: BinPtr,
+        binary_id: BinPtr,
     ) -> impl Send + Future<Output = anyhow::Result<Option<Arc<Vec<u8>>>>>;
 }

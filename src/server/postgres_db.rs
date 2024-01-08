@@ -1433,8 +1433,17 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn create_binary(&self, _id: BinPtr, _value: Arc<Vec<u8>>) -> anyhow::Result<()> {
-        todo!()
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+        if crate::hash_binary(&data) != binary_id {
+            return Err(crate::Error::BinaryHashMismatch(binary_id));
+        }
+        sqlx::query("INSERT INTO binaries VALUES ($1, $2) ON CONFLICT IGNORE")
+            .bind(binary_id)
+            .bind(&*data)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("inserting binary {binary_id:?} into database"))?;
+        Ok(())
     }
 
     async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
