@@ -98,6 +98,7 @@ impl Db for MemDb {
 
         // First, check for duplicates
         if let Some((ty, o)) = this.objects.get(&object_id) {
+            crate::check_strings(&serde_json::to_value(&object).unwrap())?;
             let c = o.creation_info();
             if ty != T::type_ulid()
                 || created_at != c.created_at
