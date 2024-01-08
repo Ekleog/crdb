@@ -1479,7 +1479,7 @@ async fn check_required_binaries(
     binaries.retain(|b| {
         present_ids
             .iter()
-            .any(|i| i.get::<uuid::Uuid, _>(0) == b.to_uuid())
+            .all(|i| i.get::<uuid::Uuid, _>(0) != b.to_uuid())
     });
     if !binaries.is_empty() {
         return Err(crate::Error::MissingBinaries(binaries));
