@@ -1,4 +1,4 @@
-use super::{ServerConfig, Session, SessionInfo, SessionRef, SessionToken};
+use super::{NewSession, ServerConfig, Session, SessionRef, SessionToken};
 use crate::{
     api::{parse_snapshot, query::Bind},
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, Timestamp},
@@ -9,6 +9,7 @@ use crate::{
 use anyhow::Context;
 use futures::{Stream, StreamExt};
 use lockable::{LockPool, Lockable};
+use rand::Rng;
 use sqlx::Row;
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
@@ -51,15 +52,31 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })
     }
 
-    pub async fn login_session(&self, _session: Session) -> anyhow::Result<SessionToken> {
+    pub async fn login_session(
+        &self,
+        session: NewSession,
+    ) -> anyhow::Result<(SessionToken, SessionRef)> {
+        let session = Session::new(session);
+        let token = SessionToken(Ulid::from_bytes(rand::thread_rng().gen()));
+        sqlx::query("INSERT INTO sessions VALUES ($1, $2, $3, $4, $5, $6, $7)")
+            .bind(token)
+            .bind(session.session_ref)
+            .bind(session.user_id)
+            .bind(&session.session_name)
+            .bind(session.login_time.time_ms_i())
+            .bind(session.last_active.time_ms_i())
+            .bind(session.expiration_time.map(|t| t.time_ms_i()))
+            .execute(&self.db)
+            .await
+            .with_context(|| format!("logging in new session {token:?} with data {session:?}"))?;
+        Ok((token, session.session_ref))
+    }
+
+    pub async fn resume_session(&self, _token: SessionToken) -> anyhow::Result<Session> {
         todo!()
     }
 
-    pub async fn retrieve_session(&self, _token: SessionToken) -> anyhow::Result<User> {
-        todo!()
-    }
-
-    pub async fn mark_active(&self, _token: SessionToken) -> anyhow::Result<()> {
+    pub async fn mark_session_active(&self, _token: SessionToken) -> anyhow::Result<()> {
         // Note: this should be a noop if the session was already marked as active
         // in the last ~minute or so, in order to avoid thrashing the database
         todo!()
@@ -73,7 +90,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         todo!()
     }
 
-    pub async fn list_sessions(&self, _user: User) -> anyhow::Result<Vec<SessionInfo>> {
+    pub async fn list_sessions(&self, _user: User) -> anyhow::Result<Vec<Session>> {
         todo!()
     }
 

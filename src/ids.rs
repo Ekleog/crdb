@@ -47,6 +47,10 @@ macro_rules! impl_for_id {
     ($type:ty) => {
         #[allow(dead_code)]
         impl $type {
+            pub(crate) fn now() -> Self {
+                Self(Ulid::new())
+            }
+
             pub(crate) fn time(&self) -> Timestamp {
                 Timestamp::from_ms(self.0.timestamp_ms())
             }
@@ -149,6 +153,8 @@ macro_rules! impl_for_id {
         deepsize::known_deep_size!(0; $type); // These types does not allocate
     };
 }
+
+pub(crate) use impl_for_id;
 
 impl_for_id!(ObjectId);
 impl_for_id!(EventId);

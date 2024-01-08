@@ -4,7 +4,7 @@ use crate::{
     BinPtr, CanDoCallbacks, EventId, Object, ObjectId, TypeId, User,
 };
 use futures::Stream;
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::SystemTime};
 use ulid::Ulid;
 
 #[derive(Clone)]
@@ -35,6 +35,18 @@ pub struct DynNewRecreation {
 pub struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 impl Timestamp {
+    pub fn now() -> Timestamp {
+        Timestamp(
+            u64::try_from(
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+            )
+            .unwrap(),
+        )
+    }
+
     pub fn from_ms(v: u64) -> Timestamp {
         Timestamp(v)
     }
@@ -45,6 +57,11 @@ impl Timestamp {
 
     pub fn time_ms(&self) -> u64 {
         self.0
+    }
+
+    #[cfg(feature = "server")]
+    pub fn time_ms_i(&self) -> i64 {
+        i64::try_from(self.0).unwrap()
     }
 }
 

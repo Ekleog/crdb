@@ -1,7 +1,7 @@
 use crate::{
     api::{ApiConfig, ServerMessage},
     cache::CacheDb,
-    ObjectId, Timestamp, User,
+    ids, ObjectId, Timestamp, User,
 };
 use anyhow::Context;
 use axum::http::StatusCode;
@@ -19,26 +19,49 @@ mod postgres_db;
 pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
-pub struct Session {
+#[derive(Clone, Debug)]
+pub struct NewSession {
     pub user_id: User,
     pub session_name: String,
+    pub expiration_time: Option<Timestamp>,
 }
 
-pub struct SessionInfo {
+#[derive(Clone, Debug)]
+pub struct Session {
     pub user_id: User,
     pub session_ref: SessionRef,
     pub session_name: String,
     pub login_time: Timestamp,
     pub last_active: Timestamp,
+    pub expiration_time: Option<Timestamp>,
+}
+
+impl Session {
+    fn new(s: NewSession) -> Session {
+        let now = Timestamp::now();
+        Session {
+            user_id: s.user_id,
+            session_ref: SessionRef::now(),
+            session_name: s.session_name,
+            login_time: now,
+            last_active: now,
+            expiration_time: s.expiration_time,
+        }
+    }
 }
 
 pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
     fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct SessionToken(Ulid);
 
+#[derive(Clone, Copy, Debug)]
 pub struct SessionRef(Ulid);
+
+ids::impl_for_id!(SessionToken);
+ids::impl_for_id!(SessionRef);
 
 pub struct Server<C: ServerConfig> {
     _config: C,
