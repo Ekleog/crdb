@@ -1,4 +1,4 @@
-use crate::{error::ResultExt, EventId, Object, ObjectId, Timestamp};
+use crate::{error::ResultExt, DbPtr, EventId, Object, ObjectId, Timestamp};
 use anyhow::anyhow;
 use std::{
     any::Any,
@@ -237,7 +237,7 @@ impl FullObjectImpl {
 
         // Apply the new event
         let last_snapshot_mut: &mut T = Arc::make_mut(&mut last_snapshot);
-        last_snapshot_mut.apply(&*event);
+        last_snapshot_mut.apply(DbPtr::from(self.id), &*event);
         let new_change = Change {
             event,
             snapshot_after: Some(last_snapshot),
@@ -327,6 +327,7 @@ impl FullObjectImpl {
         for (id, change) in to_apply {
             last_event_time = *id;
             last_snapshot_mut.apply(
+                DbPtr::from(self.id),
                 (*change.event)
                     .ref_to_any()
                     .downcast_ref()

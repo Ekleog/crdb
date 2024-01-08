@@ -1,5 +1,5 @@
 use super::ulid;
-use crate::{BinPtr, CanDoCallbacks, Object, TypeId, User};
+use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, TypeId, User};
 
 #[derive(
     Clone,
@@ -59,7 +59,7 @@ impl Object for TestObjectPerms {
         Ok(vec![self.0])
     }
 
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
         match event {
             TestEventPerms::Set(u) => self.0 = *u,
         }

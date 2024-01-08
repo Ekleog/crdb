@@ -43,7 +43,7 @@ impl crdb::Object for Foo {
         todo!()
     }
 
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event) {
         todo!()
     }
 

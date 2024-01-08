@@ -101,7 +101,7 @@ pub trait Object:
         db: &'a C,
     ) -> impl 'a + Send + Future<Output = anyhow::Result<Vec<User>>>;
 
-    fn apply(&mut self, event: &Self::Event);
+    fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 
     fn is_heavy(&self) -> bool;
     fn required_binaries(&self) -> Vec<BinPtr>;

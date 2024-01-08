@@ -64,7 +64,7 @@ impl Object for TestObjectDelegatePerms {
         Ok(vec![remote.0])
     }
 
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
         match event {
             TestEventDelegatePerms::Set(p) => self.0 = *p,
         }

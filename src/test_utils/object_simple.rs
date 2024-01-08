@@ -1,5 +1,5 @@
 use super::ulid;
-use crate::{BinPtr, CanDoCallbacks, Event, Object, TypeId, User};
+use crate::{BinPtr, CanDoCallbacks, DbPtr, Event, Object, TypeId, User};
 
 #[derive(
     Clone,
@@ -84,7 +84,7 @@ impl Object for TestObjectSimple {
         Ok(Vec::new())
     }
 
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
         match event {
             TestEventSimple::Set(v) => self.0 = v.clone(),
             TestEventSimple::Append(v) => self.0.extend(v.iter().cloned()),

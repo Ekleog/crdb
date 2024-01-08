@@ -748,7 +748,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
 
         // Add the current event to the last snapshot
-        object.apply(&event);
+        object.apply(DbPtr::from(object_id), &event);
 
         // Save the new snapshot (the new event was already saved above)
         let mut _locks = self
@@ -799,7 +799,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     )
                 })?;
 
-                object.apply(&e);
+                object.apply(DbPtr::from(object_id), &e);
             }
             std::mem::drop(events_since_inserted);
 
@@ -1233,7 +1233,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                         .collect::<Vec<_>>(),
                     e.required_binaries
                 );
-                object.apply(&event);
+                object.apply(DbPtr::from(ObjectId::from_uuid(o.object_id)), &event);
                 if snapshots[snapshot_idx].snapshot_id != e.event_id {
                     continue;
                 }
@@ -1644,7 +1644,7 @@ async fn apply_events_between<T: Object>(
             )
         })?;
 
-        object.apply(&e);
+        object.apply(DbPtr::from(object_id), &e);
     }
     Ok(())
 }
