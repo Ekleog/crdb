@@ -1446,8 +1446,15 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        todo!()
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        Ok(sqlx::query!(
+            "SELECT data FROM binaries WHERE binary_id = $1",
+            binary_id as BinPtr
+        )
+        .fetch_optional(&self.db)
+        .await
+        .wrap_with_context(|| format!("getting {binary_id:?} from database"))?
+        .map(|res| Arc::new(res.data)))
     }
 }
 
