@@ -1,4 +1,4 @@
-use super::TmpDb;
+use super::{cmp_db, TmpDb};
 use crate::{
     server::PostgresDb,
     test_utils::{db::ServerConfig, USER_ID_1},
@@ -10,15 +10,18 @@ use std::collections::HashMap;
 #[derive(Debug, bolero::generator::TypeGenerator)]
 enum Op {
     Login(NewSession),
+    Resume(usize),
 }
 
 struct FuzzState {
+    tokens: Vec<SessionToken>,
     sessions: HashMap<SessionToken, Session>,
 }
 
 impl FuzzState {
     fn new() -> FuzzState {
         FuzzState {
+            tokens: Vec::new(),
             sessions: HashMap::new(),
         }
     }
@@ -40,10 +43,23 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 }
                 Err(e) => Err(e).context("logging session in")?,
             };
-            assert!(
+            anyhow::ensure!(
                 s.sessions.insert(tok, session).is_none(),
                 "db returned a session token conflict"
             );
+            s.tokens.push(tok);
+        }
+        Op::Resume(session) => {
+            let token = s
+                .tokens
+                .get(*session)
+                .copied()
+                .unwrap_or_else(SessionToken::new);
+            let pg = db.resume_session(token).await;
+            match s.sessions.get(&token) {
+                None => cmp_db(pg, Err(crate::Error::InvalidToken(token)))?,
+                Some(session) => cmp_db(pg, Ok(session.clone()))?,
+            }
         }
     }
     Ok(())
