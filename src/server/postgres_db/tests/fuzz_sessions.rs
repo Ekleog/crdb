@@ -13,6 +13,7 @@ enum Op {
     Login(NewSession),
     Resume(usize),
     MarkActive(usize, Timestamp),
+    Rename(usize, String),
     ListSessions(usize),
 }
 
@@ -103,6 +104,20 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
                 Some(session) => {
                     session.last_active = *at;
+                    cmp(pg, Ok(()))?;
+                }
+            }
+        }
+        Op::Rename(session, new_name) => {
+            let token = s.token_for(*session);
+            let pg = db.rename_session(token, new_name).await;
+            if let Err(e) = crate::check_string(new_name) {
+                return cmp(pg, Err(e));
+            }
+            match s.sessions.get_mut(&token) {
+                None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
+                Some(session) => {
+                    session.session_name = new_name.clone();
                     cmp(pg, Ok(()))?;
                 }
             }

@@ -112,12 +112,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(())
     }
 
-    pub async fn rename_session(
-        &self,
-        _token: SessionToken,
-        _new_name: &str,
-    ) -> anyhow::Result<()> {
-        todo!()
+    pub async fn rename_session(&self, token: SessionToken, new_name: &str) -> crate::Result<()> {
+        let affected = sqlx::query("UPDATE sessions SET name = $1 WHERE session_token = $2")
+            .bind(new_name)
+            .bind(token)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("renaming session {token:?} into {new_name:?}"))?
+            .rows_affected();
+        if affected != 1 {
+            return Err(crate::Error::InvalidToken(token));
+        }
+        Ok(())
     }
 
     pub async fn list_sessions(&self, user: User) -> anyhow::Result<Vec<Session>> {
