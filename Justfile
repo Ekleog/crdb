@@ -63,3 +63,9 @@ fuzz-pg-locks:
         -j 4 \
         server::postgres_db::tests::fuzz_two_threads::fuzz_checking_locks \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_two_threads__fuzz_checking_locks/corpus.nounit
+
+fuzz-pg-full:
+    cargo bolero test --all-features \
+        -j 4 \
+        server::postgres_db::tests::fuzz_object_full::fuzz \
+        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_object_full__fuzz/corpus.nounit
