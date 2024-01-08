@@ -294,9 +294,9 @@ fn regression_get_with_wrong_type_did_not_fail() {
             CreatePerm {
                 id: ObjectId(Ulid::from_string("0000000000000000000000002D").unwrap()),
                 created_at: EventId(Ulid::from_string("000000000000000000006001S7").unwrap()),
-                object: Arc::new(TestObjectPerms(User {
-                    id: Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
-                })),
+                object: Arc::new(TestObjectPerms(User(
+                    Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
+                ))),
             },
             GetDelegator { object: 0 },
         ],
@@ -320,9 +320,9 @@ fn regression_changing_remote_objects_did_not_refresh_perms() {
             CreatePerm {
                 id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000001QZZ40FSZ7WZKY26000").unwrap()),
-                object: Arc::new(TestObjectPerms(User {
-                    id: Ulid::from_string("00000002004G0004007G054MJJ").unwrap(),
-                })),
+                object: Arc::new(TestObjectPerms(User(
+                    Ulid::from_string("00000002004G0004007G054MJJ").unwrap(),
+                ))),
             },
         ],
     );
@@ -361,9 +361,9 @@ fn regression_submit_wrong_type_ignores_failure() {
             SubmitPerm {
                 object: 0,
                 event_id: EventId(Ulid::from_string("0003ZZZZR00000000000000000").unwrap()),
-                event: Arc::new(TestEventPerms::Set(User {
-                    id: Ulid::from_string("00000000000000000000000000").unwrap(),
-                })),
+                event: Arc::new(TestEventPerms::Set(User(
+                    Ulid::from_string("00000000000000000000000000").unwrap(),
+                ))),
             },
         ],
     );

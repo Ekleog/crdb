@@ -7,10 +7,10 @@ mod ids;
 #[cfg(test)]
 mod test_utils;
 
-pub use api::{CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query, User};
+pub use api::{CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query};
 pub use db_trait::Timestamp;
 pub use error::{Error, Result};
-pub use ids::{BinPtr, EventId, ObjectId, TypeId};
+pub use ids::{BinPtr, EventId, ObjectId, TypeId, User};
 
 #[cfg(feature = "client")]
 mod client;
@@ -44,12 +44,12 @@ pub mod crdb_internal {
     #[cfg(feature = "server")]
     pub use crate::server::{ComboLock, PostgresDb, ServerConfig};
     pub use crate::{
-        api::{parse_snapshot, ApiConfig, CanDoCallbacks, User},
+        api::{parse_snapshot, ApiConfig, CanDoCallbacks},
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
         error::ResultExt,
         hash_binary, private, BinPtr, DbPtr, Error, EventId, Object, ObjectId, Query, Result,
-        Timestamp, TypeId,
+        Timestamp, TypeId, User,
     };
     pub use anyhow;
     pub use futures::{self, future, stream, Stream};

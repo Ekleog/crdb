@@ -13,8 +13,35 @@ pub struct EventId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 #[educe(Debug)]
 pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct BinPtr(pub(crate) Ulid);
+#[derive(
+    Clone,
+    Copy,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    educe::Educe,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+#[educe(Debug)]
+pub struct BinPtr(#[educe(Debug(method(std::fmt::Display::fmt)))] pub(crate) Ulid);
+
+#[derive(
+    Clone,
+    Copy,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    educe::Educe,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+#[educe(Debug)]
+pub struct User(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
 macro_rules! impl_for_id {
     ($type:ty) => {
@@ -127,3 +154,4 @@ impl_for_id!(ObjectId);
 impl_for_id!(EventId);
 impl_for_id!(TypeId);
 impl_for_id!(BinPtr);
+impl_for_id!(User);

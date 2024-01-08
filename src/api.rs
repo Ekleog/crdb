@@ -1,6 +1,6 @@
 use crate::{
     cache::CacheConfig, db_trait::Db, error::ResultExt, BinPtr, EventId, ObjectId, Timestamp,
-    TypeId,
+    TypeId, User,
 };
 use anyhow::Context;
 use std::{any::Any, collections::HashSet, future::Future, marker::PhantomData, sync::Arc};
@@ -8,118 +8,6 @@ use ulid::Ulid;
 
 pub(crate) mod query;
 pub use query::{JsonNumber, JsonPathItem, Query};
-
-macro_rules! impl_for_id {
-    ($type:ty) => {
-        #[cfg(any(feature = "server", feature = "client-native"))]
-        impl $type {
-            pub(crate) fn to_uuid(&self) -> uuid::Uuid {
-                uuid::Uuid::from_bytes(self.id.to_bytes())
-            }
-        }
-
-        #[cfg(feature = "server")]
-        impl<'q> sqlx::encode::Encode<'q, sqlx::Postgres> for $type {
-            fn encode_by_ref(
-                &self,
-                buf: &mut sqlx::postgres::PgArgumentBuffer,
-            ) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode_by_ref(
-                    &self.to_uuid(),
-                    buf,
-                )
-            }
-            fn encode(self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode(
-                    self.to_uuid(),
-                    buf,
-                )
-            }
-            fn produces(&self) -> Option<sqlx::postgres::PgTypeInfo> {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::produces(&self.to_uuid())
-            }
-            fn size_hint(&self) -> usize {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::size_hint(&self.to_uuid())
-            }
-        }
-
-        #[cfg(feature = "server")]
-        impl sqlx::Type<sqlx::Postgres> for $type {
-            fn type_info() -> sqlx::postgres::PgTypeInfo {
-                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
-            }
-            fn compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
-                <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::compatible(ty)
-            }
-        }
-
-        #[cfg(feature = "server")]
-        impl sqlx::postgres::PgHasArrayType for $type {
-            fn array_type_info() -> sqlx::postgres::PgTypeInfo {
-                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_type_info()
-            }
-            fn array_compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
-                <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_compatible(ty)
-            }
-        }
-
-        #[cfg(feature = "client-native")]
-        impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
-            fn encode_by_ref(
-                &self,
-                buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
-            ) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode_by_ref(
-                    &self.to_uuid(),
-                    buf,
-                )
-            }
-            fn encode(self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode(
-                    self.to_uuid(),
-                    buf,
-                )
-            }
-            fn produces(&self) -> Option<sqlx::sqlite::SqliteTypeInfo> {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::produces(&self.to_uuid())
-            }
-            fn size_hint(&self) -> usize {
-                <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::size_hint(&self.to_uuid())
-            }
-        }
-
-        #[cfg(feature = "client-native")]
-        impl sqlx::Type<sqlx::Sqlite> for $type {
-            fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
-                <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::type_info()
-            }
-            fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
-                <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
-            }
-        }
-
-        #[cfg(test)]
-        impl bolero::TypeGenerator for $type {
-            fn generate<D: bolero::Driver>(driver: &mut D) -> Option<$type> {
-                <[u8; 16]>::generate(driver).map(|b| Self {
-                    id: Ulid::from_bytes(b),
-                })
-            }
-        }
-
-        // No allocations in the Ulid-only-containing types
-        deepsize::known_deep_size!(0; $type);
-    };
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, educe::Educe, serde::Deserialize, serde::Serialize)]
-#[educe(Debug)]
-pub struct User {
-    #[educe(Debug(method(std::fmt::Display::fmt)))]
-    pub id: Ulid,
-}
-
-impl_for_id!(User);
 
 pub(crate) mod private {
     pub trait Sealed {}
