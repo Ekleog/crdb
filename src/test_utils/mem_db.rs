@@ -32,33 +32,42 @@ impl MemDb {
 
     pub async fn recreate_all<T: Object>(&self, time: Timestamp) -> crate::Result<()> {
         let mut this = self.0.lock().await;
-        let this = &mut *this; // disable implicit deref+reborrow and get a real &mut, for borrow splitting
+        let this = &mut *this; // disable auto-deref-and-reborrow, get a real mutable borrow
         EventId::last_id_at(time)?;
-        for (ty, o) in this.objects.values_mut() {
+        for (ty, o) in this.objects.values() {
             if ty == T::type_ulid() {
-                let mut events_before = o
-                    .changes_clone()
-                    .into_iter()
-                    .map(|(e, _)| e)
-                    .collect::<HashSet<EventId>>();
-                events_before.insert(o.created_at());
-                o.recreate_at::<T>(time).wrap_context("recreating object")?;
-                let mut events_after = o
-                    .changes_clone()
-                    .into_iter()
-                    .map(|(e, _)| e)
-                    .collect::<HashSet<EventId>>();
-                events_after.insert(o.created_at());
-                // Discard all removed events from self.events too
-                for e in events_before.difference(&events_after) {
-                    this.events.remove(&e);
-                }
-                // And mark the new "creation event" as a creation event
-                this.events.get_mut(&o.created_at()).unwrap().1 = None;
+                recreate::<T>(o, time, &mut this.events)?;
             }
         }
         Ok(())
     }
+}
+
+fn recreate<T: Object>(
+    o: &FullObject,
+    time: Timestamp,
+    this_events: &mut HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
+) -> crate::Result<()> {
+    let mut events_before = o
+        .changes_clone()
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect::<HashSet<EventId>>();
+    events_before.insert(o.created_at());
+    o.recreate_at::<T>(time).wrap_context("recreating object")?;
+    let mut events_after = o
+        .changes_clone()
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect::<HashSet<EventId>>();
+    events_after.insert(o.created_at());
+    // Discard all removed events from self.events too
+    for e in events_before.difference(&events_after) {
+        this_events.remove(&e);
+    }
+    // And mark the new "creation event" as a creation event
+    this_events.get_mut(&o.created_at()).unwrap().1 = None;
+    Ok(())
 }
 
 impl Db for MemDb {
@@ -183,7 +192,8 @@ impl Db for MemDb {
         object_id: ObjectId,
         _cb: &C,
     ) -> crate::Result<()> {
-        let this = self.0.lock().await;
+        let mut this = self.0.lock().await;
+        let this = &mut *this; // get a real borrow and not a RefMut struct
         EventId::last_id_at(time)?; // start by checking the timestamp
         let Some((ty, o)) = this.objects.get(&object_id) else {
             return Err(crate::Error::ObjectDoesNotExist(object_id));
@@ -195,7 +205,7 @@ impl Db for MemDb {
                 real_type_id: *ty,
             });
         }
-        o.recreate_at::<T>(time).wrap_context("recreating object")?;
+        recreate::<T>(o, time, &mut this.events).wrap_context("recreating object")?;
         Ok(())
     }
 
