@@ -1,7 +1,8 @@
 use super::FullObject;
 use crate::{
     test_utils::{
-        TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
+        TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
+        OBJECT_ID_1,
     },
     Timestamp,
 };
@@ -11,17 +12,25 @@ use std::sync::Arc;
 
 #[test]
 fn regression_apply_1324_does_not_type_error() {
-    let o = FullObject::new(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()));
-    o.apply::<TestObject1>(EVENT_ID_3, Arc::new(TestEvent1::Set(b"3".to_vec())))
+    let o = FullObject::new(
+        OBJECT_ID_1,
+        EVENT_ID_1,
+        Arc::new(TestObjectSimple::stub_1()),
+    );
+    o.apply::<TestObjectSimple>(EVENT_ID_3, Arc::new(TestEventSimple::Set(b"3".to_vec())))
         .unwrap();
-    o.apply::<TestObject1>(EVENT_ID_2, Arc::new(TestEvent1::Set(b"2".to_vec())))
+    o.apply::<TestObjectSimple>(EVENT_ID_2, Arc::new(TestEventSimple::Set(b"2".to_vec())))
         .unwrap();
-    o.apply::<TestObject1>(EVENT_ID_4, Arc::new(TestEvent1::Set(b"4".to_vec())))
+    o.apply::<TestObjectSimple>(EVENT_ID_4, Arc::new(TestEventSimple::Set(b"4".to_vec())))
         .unwrap();
 }
 
 #[test]
 fn regression_overflow_in_timestamp() {
-    let o = FullObject::new(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()));
-    let _ = o.recreate_at::<TestObject1>(Timestamp::from_ms(u64::MAX)); // timestamp is invalid, error out
+    let o = FullObject::new(
+        OBJECT_ID_1,
+        EVENT_ID_1,
+        Arc::new(TestObjectSimple::stub_1()),
+    );
+    let _ = o.recreate_at::<TestObjectSimple>(Timestamp::from_ms(u64::MAX)); // timestamp is invalid, error out
 }

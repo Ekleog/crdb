@@ -4,8 +4,8 @@ use crate::{
     error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{
-        self, db::ServerConfig, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3,
-        EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
+        self, db::ServerConfig, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2,
+        EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
     },
     EventId, ObjectId, Timestamp,
 };
@@ -18,12 +18,12 @@ enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
-        object: Arc<TestObject1>,
+        object: Arc<TestObjectSimple>,
     },
     Submit {
         object: usize,
         event_id: EventId,
-        event: Arc<TestEvent1>,
+        event: Arc<TestEventSimple>,
     },
     Get {
         object: usize,
@@ -90,11 +90,11 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let pg = db
-                .submit::<TestObject1, _>(o, *event_id, event.clone(), db)
+                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
             let mem = s
                 .mem_db
-                .submit::<TestObject1, _>(o, *event_id, event.clone(), &s.mem_db)
+                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
             cmp_db(pg, mem)?;
         }
@@ -105,20 +105,22 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObject1>> = match db.get::<TestObject1>(o).await {
+            let pg: crate::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
+            {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.last_snapshot::<TestObject1>() {
+                Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
                     Ok(o) => Ok(o),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
-            let mem: crate::Result<Arc<TestObject1>> = match s.mem_db.get::<TestObject1>(o).await {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
-                Ok(o) => match o.last_snapshot::<TestObject1>() {
-                    Ok(o) => Ok(o),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
+            let mem: crate::Result<Arc<TestObjectSimple>> =
+                match s.mem_db.get::<TestObjectSimple>(o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
+                    Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
+                        Ok(o) => Ok(o),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                    },
+                };
             cmp_db(pg, mem)?;
         }
         Op::Recreate { object, time } => {
@@ -127,10 +129,10 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db.recreate::<TestObject1, _>(*time, o, db).await;
+            let pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
             let mem = s
                 .mem_db
-                .recreate::<TestObject1, _>(*time, o, &s.mem_db)
+                .recreate::<TestObjectSimple, _>(*time, o, &s.mem_db)
                 .await;
             cmp_db(pg, mem)?;
         }
@@ -144,7 +146,10 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
         Op::Vacuum {
             recreate_at: Some(recreate_at),
         } => {
-            let mem = s.mem_db.recreate_all::<TestObject1>(*recreate_at).await;
+            let mem = s
+                .mem_db
+                .recreate_all::<TestObjectSimple>(*recreate_at)
+                .await;
             let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
             cmp_db(pg, mem)?;
         }
@@ -169,7 +174,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
                     .with_context(|| format!("applying {i}th op: {op:?}"))
                     .unwrap();
                 db.assert_invariants_generic().await;
-                db.assert_invariants_for::<TestObject1>().await;
+                db.assert_invariants_for::<TestObjectSimple>().await;
             }
         });
 }
@@ -193,27 +198,27 @@ fn regression_events_1342_fails_to_notice_conflict_on_3() {
             Create {
                 id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
-                object: Arc::new(TestObject1(b"123".to_vec())),
+                object: Arc::new(TestObjectSimple(b"123".to_vec())),
             },
             Submit {
                 object: 0,
                 event_id: EVENT_ID_3,
-                event: Arc::new(TestEvent1::Clear),
+                event: Arc::new(TestEventSimple::Clear),
             },
             Submit {
                 object: 0,
                 event_id: EVENT_ID_4,
-                event: Arc::new(TestEvent1::Clear),
+                event: Arc::new(TestEventSimple::Clear),
             },
             Submit {
                 object: 0,
                 event_id: EVENT_ID_2,
-                event: Arc::new(TestEvent1::Clear),
+                event: Arc::new(TestEventSimple::Clear),
             },
             Create {
                 id: OBJECT_ID_2,
                 created_at: EVENT_ID_3,
-                object: Arc::new(TestObject1(b"456".to_vec())),
+                object: Arc::new(TestObjectSimple(b"456".to_vec())),
             },
         ],
     );
@@ -242,12 +247,12 @@ fn regression_wrong_error_on_object_already_exists() {
             Create {
                 id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
-                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 2, 0, 252])),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 2, 0, 252])),
             },
             Create {
                 id: OBJECT_ID_1,
                 created_at: EVENT_ID_2,
-                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
         ],
     )
@@ -263,12 +268,12 @@ fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() 
             Create {
                 id: ObjectId(Ulid::from_string("0001SPAWVKD5QPWQV100000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
-                object: Arc::new(TestObject1(vec![0, 143, 0, 0, 0, 0, 126, 59])),
+                object: Arc::new(TestObjectSimple(vec![0, 143, 0, 0, 0, 0, 126, 59])),
             },
             Create {
                 id: ObjectId(Ulid::from_string("0058076SBKEDMPYVJZC4000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
-                object: Arc::new(TestObject1(vec![0, 0, 244, 0, 105, 111, 110, 0])),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 244, 0, 105, 111, 110, 0])),
             },
         ],
     )
@@ -284,17 +289,17 @@ fn regression_submit_on_other_snapshot_date_fails() {
             Create {
                 id: ObjectId(Ulid::from_string("0000000000000004PAVG100000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
-                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 214, 0])),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 214, 0])),
             },
             Create {
                 id: ObjectId(Ulid::from_string("00000000000000000JS8000000").unwrap()),
                 created_at: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
-                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 1, 0])),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 1, 0])),
             },
             Submit {
                 object: 0,
                 event_id: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
-                event: Arc::new(TestEvent1::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+                event: Arc::new(TestEventSimple::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
         ],
     );
@@ -310,12 +315,12 @@ fn regression_vacuum_did_not_actually_recreate_objects() {
             Create {
                 id: ObjectId(Ulid::from_string("00000A58N21A8JM00000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
-                object: Arc::new(TestObject1(vec![55, 0, 0, 0, 0, 0, 0, 0])),
+                object: Arc::new(TestObjectSimple(vec![55, 0, 0, 0, 0, 0, 0, 0])),
             },
             Submit {
                 object: 0,
                 event_id: EventId(Ulid::from_string("00001000040000000000000000").unwrap()),
-                event: Arc::new(TestEvent1::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
+                event: Arc::new(TestEventSimple::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
             },
             Vacuum {
                 recreate_at: Some(Timestamp::from_ms(408021893130)),
@@ -323,7 +328,7 @@ fn regression_vacuum_did_not_actually_recreate_objects() {
             Submit {
                 object: 0,
                 event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
-                event: Arc::new(TestEvent1::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
+                event: Arc::new(TestEventSimple::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
             },
         ],
     );
@@ -339,17 +344,17 @@ fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict()
             Create {
                 id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
-                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 75, 0])),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 75, 0])),
             },
             Submit {
                 object: 0,
                 event_id: EventId(Ulid::from_string("00000000510002P00000000000").unwrap()),
-                event: Arc::new(TestEvent1::Append(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+                event: Arc::new(TestEventSimple::Append(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
             Create {
                 id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000188000NG0000").unwrap()),
-                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 1, 0, 0, 4])),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 1, 0, 0, 4])),
             },
         ],
     );

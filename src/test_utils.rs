@@ -20,7 +20,7 @@ pub use stubs::*;
     serde::Deserialize,
     serde::Serialize,
 )]
-pub struct TestObject1(
+pub struct TestObjectSimple(
     #[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] pub Vec<u8>,
 );
 
@@ -34,35 +34,35 @@ pub struct TestObject1(
     serde::Deserialize,
     serde::Serialize,
 )]
-pub enum TestEvent1 {
+pub enum TestEventSimple {
     Set(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>),
     Append(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>),
     Clear,
 }
 
-impl TestObject1 {
-    pub fn new(v: Vec<u8>) -> TestObject1 {
-        TestObject1(v)
+impl TestObjectSimple {
+    pub fn new(v: Vec<u8>) -> TestObjectSimple {
+        TestObjectSimple(v)
     }
-    pub fn stub_1() -> TestObject1 {
-        TestObject1(b"10000001".to_vec())
+    pub fn stub_1() -> TestObjectSimple {
+        TestObjectSimple(b"10000001".to_vec())
     }
-    pub fn stub_2() -> TestObject1 {
-        TestObject1(b"10000001".to_vec())
+    pub fn stub_2() -> TestObjectSimple {
+        TestObjectSimple(b"10000001".to_vec())
     }
-    pub fn stub_3() -> TestObject1 {
-        TestObject1(b"10000001".to_vec())
+    pub fn stub_3() -> TestObjectSimple {
+        TestObjectSimple(b"10000001".to_vec())
     }
-    pub fn stub_4() -> TestObject1 {
-        TestObject1(b"10000001".to_vec())
+    pub fn stub_4() -> TestObjectSimple {
+        TestObjectSimple(b"10000001".to_vec())
     }
-    pub fn stub_5() -> TestObject1 {
-        TestObject1(b"10000001".to_vec())
+    pub fn stub_5() -> TestObjectSimple {
+        TestObjectSimple(b"10000001".to_vec())
     }
 }
 
-impl Object for TestObject1 {
-    type Event = TestEvent1;
+impl Object for TestObjectSimple {
+    type Event = TestEventSimple;
 
     fn type_ulid() -> &'static TypeId {
         &TYPE_ID_1
@@ -94,9 +94,9 @@ impl Object for TestObject1 {
 
     fn apply(&mut self, event: &Self::Event) {
         match event {
-            TestEvent1::Set(v) => self.0 = v.clone(),
-            TestEvent1::Append(v) => self.0.extend(v.iter().cloned()),
-            TestEvent1::Clear => self.0.clear(),
+            TestEventSimple::Set(v) => self.0 = v.clone(),
+            TestEventSimple::Append(v) => self.0.extend(v.iter().cloned()),
+            TestEventSimple::Clear => self.0.clear(),
         }
     }
 
@@ -109,7 +109,7 @@ impl Object for TestObject1 {
     }
 }
 
-impl crate::Event for TestEvent1 {
+impl crate::Event for TestEventSimple {
     fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
     }
@@ -283,7 +283,7 @@ crate::db! {
         server_config: ServerConfig,
         client_db: ClientDb,
         objects: {
-            test1: super::TestObject1,
+            test1: super::TestObjectSimple,
             perms: super::TestObjectPerms,
             delegate_perms: super::TestObjectDelegatePerms,
         },

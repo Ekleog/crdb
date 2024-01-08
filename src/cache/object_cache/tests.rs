@@ -7,13 +7,13 @@ enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
-        object: TestObject1,
+        object: TestObjectSimple,
     },
     Remove(usize),
     Submit {
         object: usize,
         event_id: EventId,
-        event: TestEvent1,
+        event: TestEventSimple,
     },
     Recreate {
         object: usize,
@@ -62,14 +62,14 @@ fn cache_state_stays_valid_impl((watermark, ops): &(usize, Vec<Op>)) {
                 event_id,
                 event,
             } => {
-                objects
-                    .get(*object)
-                    .map(|id| cache.submit::<TestObject1>(*id, *event_id, Arc::new(event.clone())));
+                objects.get(*object).map(|id| {
+                    cache.submit::<TestObjectSimple>(*id, *event_id, Arc::new(event.clone()))
+                });
             }
             Op::Recreate { object, time } => {
                 objects
                     .get(*object)
-                    .map(|id| cache.recreate::<TestObject1>(*id, *time));
+                    .map(|id| cache.recreate::<TestObjectSimple>(*id, *time));
             }
             Op::Get { object, location } => {
                 objects
@@ -107,13 +107,17 @@ fn cache_state_stays_valid() {
 fn regression_submit_before_object_tracks_size_ok() {
     let mut cache = ObjectCache::new(1000);
     cache
-        .create(OBJECT_ID_1, EVENT_ID_2, Arc::new(TestObject1::stub_1()))
+        .create(
+            OBJECT_ID_1,
+            EVENT_ID_2,
+            Arc::new(TestObjectSimple::stub_1()),
+        )
         .unwrap();
     // ignore submit result, as we'll be expecting a failure here
-    let _ = cache.submit::<TestObject1>(
+    let _ = cache.submit::<TestObjectSimple>(
         OBJECT_ID_1,
         EVENT_ID_1,
-        Arc::new(TestEvent1::Set(b"12345678".to_vec())),
+        Arc::new(TestEventSimple::Set(b"12345678".to_vec())),
     );
     cache.assert_invariants(|| "regression test".to_string());
 }
@@ -122,13 +126,17 @@ fn regression_submit_before_object_tracks_size_ok() {
 fn regression_submit_after_object_tracks_ids_ok() {
     let mut cache = ObjectCache::new(1000);
     cache
-        .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .create(
+            OBJECT_ID_1,
+            EVENT_ID_1,
+            Arc::new(TestObjectSimple::stub_1()),
+        )
         .unwrap();
     cache
-        .submit::<TestObject1>(
+        .submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_2,
-            Arc::new(TestEvent1::Set(b"12345678".to_vec())),
+            Arc::new(TestEventSimple::Set(b"12345678".to_vec())),
         )
         .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
@@ -138,27 +146,31 @@ fn regression_submit_after_object_tracks_ids_ok() {
 fn regression_submit_order_1324_leads_to_type_corruption() {
     let mut cache = ObjectCache::new(1000);
     cache
-        .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .create(
+            OBJECT_ID_1,
+            EVENT_ID_1,
+            Arc::new(TestObjectSimple::stub_1()),
+        )
         .unwrap();
     cache
-        .submit::<TestObject1>(
+        .submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_3,
-            Arc::new(TestEvent1::Append(b"5678".to_vec())),
+            Arc::new(TestEventSimple::Append(b"5678".to_vec())),
         )
         .unwrap();
     cache
-        .submit::<TestObject1>(
+        .submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_2,
-            Arc::new(TestEvent1::Set(b"ABCD".to_vec())),
+            Arc::new(TestEventSimple::Set(b"ABCD".to_vec())),
         )
         .unwrap();
     cache
-        .submit::<TestObject1>(
+        .submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_4,
-            Arc::new(TestEvent1::Set(b"EFGH".to_vec())),
+            Arc::new(TestEventSimple::Set(b"EFGH".to_vec())),
         )
         .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
@@ -168,20 +180,24 @@ fn regression_submit_order_1324_leads_to_type_corruption() {
 fn regression_double_recreate_panics() {
     let mut cache = ObjectCache::new(1000);
     cache
-        .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
-        .unwrap();
-    cache
-        .submit::<TestObject1>(
+        .create(
             OBJECT_ID_1,
-            EVENT_ID_2,
-            Arc::new(TestEvent1::Set(b"1234".to_vec())),
+            EVENT_ID_1,
+            Arc::new(TestObjectSimple::stub_1()),
         )
         .unwrap();
     cache
-        .recreate::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(1000))
+        .submit::<TestObjectSimple>(
+            OBJECT_ID_1,
+            EVENT_ID_2,
+            Arc::new(TestEventSimple::Set(b"1234".to_vec())),
+        )
         .unwrap();
     cache
-        .recreate::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(2000))
+        .recreate::<TestObjectSimple>(OBJECT_ID_1, Timestamp::from_ms(1000))
+        .unwrap();
+    cache
+        .recreate::<TestObjectSimple>(OBJECT_ID_1, Timestamp::from_ms(2000))
         .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
 }
@@ -190,18 +206,22 @@ fn regression_double_recreate_panics() {
 fn regression_recerate_too_late_fails_size_check() {
     let mut cache = ObjectCache::new(1000);
     cache
-        .create(OBJECT_ID_1, EVENT_ID_1, Arc::new(TestObject1::stub_1()))
+        .create(
+            OBJECT_ID_1,
+            EVENT_ID_1,
+            Arc::new(TestObjectSimple::stub_1()),
+        )
         .unwrap();
     cache.assert_invariants(|| "regression test".to_string());
     // this will fail due to Timestamp being too big
-    let _ = cache.recreate::<TestObject1>(OBJECT_ID_1, Timestamp::from_ms(u64::MAX));
+    let _ = cache.recreate::<TestObjectSimple>(OBJECT_ID_1, Timestamp::from_ms(u64::MAX));
     cache.assert_invariants(|| "regression test".to_string());
 }
 
 #[test]
 fn regression_remove_to_empty_makes_integer_overflow() {
     let mut cache = ObjectCache::new(0);
-    let created = Arc::new(TestObject1::stub_1()); // keep alive for watermark to not directly erase it
+    let created = Arc::new(TestObjectSimple::stub_1()); // keep alive for watermark to not directly erase it
     cache
         .create(OBJECT_ID_1, EVENT_ID_1, created.clone())
         .unwrap();

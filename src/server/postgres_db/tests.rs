@@ -2,8 +2,8 @@ use super::PostgresDb;
 use crate::{
     db_trait::Db,
     test_utils::{
-        db::ServerConfig, TestEvent1, TestObject1, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
-        OBJECT_ID_1, OBJECT_ID_3,
+        db::ServerConfig, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3,
+        EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_3,
     },
 };
 use std::{fmt::Debug, sync::Arc};
@@ -20,102 +20,112 @@ async fn smoke_test(db: sqlx::PgPool) {
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
-        Arc::new(TestObject1::stub_1()),
+        Arc::new(TestObjectSimple::stub_1()),
         &db,
     )
     .await
     .expect("creating test object 1 failed");
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
     db.create(
         OBJECT_ID_1,
         EVENT_ID_2,
-        Arc::new(TestObject1::stub_2()),
+        Arc::new(TestObjectSimple::stub_2()),
         &db,
     )
     .await
     .expect_err("creating duplicate test object 1 spuriously worked");
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
-        Arc::new(TestObject1::stub_1()),
+        Arc::new(TestObjectSimple::stub_1()),
         &db,
     )
     .await
     .expect("creating exact copy test object 1 failed");
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
-    db.submit::<TestObject1, _>(OBJECT_ID_1, EVENT_ID_3, Arc::new(TestEvent1::Clear), &db)
-        .await
-        .expect("clearing object 1 failed");
-    db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
-    db.submit::<TestObject1, _>(OBJECT_ID_1, EVENT_ID_3, Arc::new(TestEvent1::Clear), &db)
-        .await
-        .expect("submitting duplicate event failed");
-    db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
-    db.submit::<TestObject1, _>(
+    db.assert_invariants_for::<TestObjectSimple>().await;
+    db.submit::<TestObjectSimple, _>(
         OBJECT_ID_1,
         EVENT_ID_3,
-        Arc::new(TestEvent1::Set(b"foo".to_vec())),
+        Arc::new(TestEventSimple::Clear),
+        &db,
+    )
+    .await
+    .expect("clearing object 1 failed");
+    db.assert_invariants_generic().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
+    db.submit::<TestObjectSimple, _>(
+        OBJECT_ID_1,
+        EVENT_ID_3,
+        Arc::new(TestEventSimple::Clear),
+        &db,
+    )
+    .await
+    .expect("submitting duplicate event failed");
+    db.assert_invariants_generic().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
+    db.submit::<TestObjectSimple, _>(
+        OBJECT_ID_1,
+        EVENT_ID_3,
+        Arc::new(TestEventSimple::Set(b"foo".to_vec())),
         &db,
     )
     .await
     .expect_err("submitting duplicate event with different contents worked");
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
     assert_eq!(
         Vec::<u8>::new(),
-        db.get::<TestObject1>(OBJECT_ID_1)
+        db.get::<TestObjectSimple>(OBJECT_ID_1)
             .await
             .expect("getting object 1")
-            .last_snapshot::<TestObject1>()
+            .last_snapshot::<TestObjectSimple>()
             .expect("getting last snapshot")
             .0
     );
-    db.submit::<TestObject1, _>(
+    db.submit::<TestObjectSimple, _>(
         OBJECT_ID_1,
         EVENT_ID_2,
-        Arc::new(TestEvent1::Set(b"bar".to_vec())),
+        Arc::new(TestEventSimple::Set(b"bar".to_vec())),
         &db,
     )
     .await
     .expect("submitting event failed");
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
     assert_eq!(
         Vec::<u8>::new(),
-        db.get::<TestObject1>(OBJECT_ID_1)
+        db.get::<TestObjectSimple>(OBJECT_ID_1)
             .await
             .expect("getting object 1")
-            .last_snapshot::<TestObject1>()
+            .last_snapshot::<TestObjectSimple>()
             .expect("getting last snapshot")
             .0
     );
-    db.submit::<TestObject1, _>(
+    db.submit::<TestObjectSimple, _>(
         OBJECT_ID_1,
         EVENT_ID_4,
-        Arc::new(TestEvent1::Set(b"baz".to_vec())),
+        Arc::new(TestEventSimple::Set(b"baz".to_vec())),
         &db,
     )
     .await
     .expect("submitting event failed");
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
     assert_eq!(
         b"baz".to_vec(),
-        db.get::<TestObject1>(OBJECT_ID_1)
+        db.get::<TestObjectSimple>(OBJECT_ID_1)
             .await
             .expect("getting object 1")
-            .last_snapshot::<TestObject1>()
+            .last_snapshot::<TestObjectSimple>()
             .expect("getting last snapshot")
             .0
     );
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
     db.vacuum(
         Some(EVENT_ID_3.time()),
         Some(OBJECT_ID_3.time()),
@@ -125,7 +135,7 @@ async fn smoke_test(db: sqlx::PgPool) {
     .await
     .unwrap();
     db.assert_invariants_generic().await;
-    db.assert_invariants_for::<TestObject1>().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
 }
 
 fn cmp_db<T: Debug + Eq>(

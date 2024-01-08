@@ -3,7 +3,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{self, db::ServerConfig, TestEvent1, TestObject1},
+    test_utils::{self, db::ServerConfig, TestEventSimple, TestObjectSimple},
     EventId, ObjectId, Timestamp,
 };
 use std::{sync::Arc, time::Duration};
@@ -15,12 +15,12 @@ enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
-        object: Arc<TestObject1>,
+        object: Arc<TestObjectSimple>,
     },
     Submit {
         object: usize,
         event_id: EventId,
-        event: Arc<TestEvent1>,
+        event: Arc<TestEventSimple>,
     },
     Get {
         object: usize,
@@ -76,11 +76,11 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let pg = db
-                .submit::<TestObject1, _>(o, *event_id, event.clone(), db)
+                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
             let mem = s
                 .mem_db
-                .submit::<TestObject1, _>(o, *event_id, event.clone(), &s.mem_db)
+                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
             cmp_db(pg, mem)?;
         }
@@ -93,20 +93,22 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObject1>> = match db.get::<TestObject1>(o).await {
+            let pg: crate::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
+            {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.last_snapshot::<TestObject1>() {
+                Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
                     Ok(o) => Ok(o),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
-            let mem: crate::Result<Arc<TestObject1>> = match s.mem_db.get::<TestObject1>(o).await {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
-                Ok(o) => match o.last_snapshot::<TestObject1>() {
-                    Ok(o) => Ok(o),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
+            let mem: crate::Result<Arc<TestObjectSimple>> =
+                match s.mem_db.get::<TestObjectSimple>(o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
+                    Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
+                        Ok(o) => Ok(o),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                    },
+                };
             cmp_db(pg, mem)?;
         }
         Op::Recreate { object, time } => {
@@ -117,10 +119,10 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db.recreate::<TestObject1, _>(*time, o, db).await;
+            let pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
             let mem = s
                 .mem_db
-                .recreate::<TestObject1, _>(*time, o, &s.mem_db)
+                .recreate::<TestObjectSimple, _>(*time, o, &s.mem_db)
                 .await;
             cmp_db(pg, mem)?;
         }
@@ -134,7 +136,10 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
         Op::Vacuum {
             recreate_at: Some(recreate_at),
         } => {
-            let mem = s.mem_db.recreate_all::<TestObject1>(*recreate_at).await;
+            let mem = s
+                .mem_db
+                .recreate_all::<TestObjectSimple>(*recreate_at)
+                .await;
             let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
             cmp_db(pg, mem)?;
         }
@@ -188,7 +193,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord:
             b.unwrap();
             h.unwrap();
             db.assert_invariants_generic().await;
-            db.assert_invariants_for::<TestObject1>().await;
+            db.assert_invariants_for::<TestObjectSimple>().await;
         });
 }
 
