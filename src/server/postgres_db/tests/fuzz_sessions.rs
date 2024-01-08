@@ -2,21 +2,24 @@ use super::TmpDb;
 use crate::{
     server::PostgresDb,
     test_utils::{cmp, db::ServerConfig, USER_ID_1},
-    NewSession, Session, SessionToken, Timestamp,
+    NewSession, Session, SessionToken, Timestamp, User,
 };
 use anyhow::Context;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use ulid::Ulid;
 
 #[derive(Debug, bolero::generator::TypeGenerator)]
 enum Op {
     Login(NewSession),
     Resume(usize),
     MarkActive(usize, Timestamp),
+    ListSessions(usize),
 }
 
 struct FuzzState {
     tokens: Vec<SessionToken>,
     sessions: HashMap<SessionToken, Session>,
+    users: Vec<User>,
 }
 
 impl FuzzState {
@@ -24,15 +27,39 @@ impl FuzzState {
         FuzzState {
             tokens: Vec::new(),
             sessions: HashMap::new(),
+            users: Vec::new(),
         }
     }
-}
 
-fn token_for(s: &FuzzState, token: usize) -> SessionToken {
-    s.tokens
-        .get(token)
-        .copied()
-        .unwrap_or_else(SessionToken::new)
+    fn token_for(&self, token: usize) -> SessionToken {
+        self.tokens
+            .get(token)
+            .copied()
+            .unwrap_or_else(SessionToken::new)
+    }
+
+    fn add_user(&mut self, user: User) {
+        if !self.users.contains(&user) {
+            self.users.push(user);
+        }
+    }
+
+    fn user_for(&self, user: usize) -> User {
+        self.users
+            .get(user)
+            .copied()
+            .unwrap_or_else(|| User(Ulid::new()))
+    }
+
+    fn sessions_for(&self, user: User) -> HashSet<Session> {
+        let mut res = HashSet::new();
+        for s in self.sessions.values() {
+            if s.user_id == user {
+                res.insert(s.clone());
+            }
+        }
+        res
+    }
 }
 
 async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
@@ -52,13 +79,14 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 Err(e) => Err(e).context("logging session in")?,
             };
             anyhow::ensure!(
-                s.sessions.insert(tok, session).is_none(),
+                s.sessions.insert(tok, session.clone()).is_none(),
                 "db returned a session token conflict"
             );
             s.tokens.push(tok);
+            s.add_user(session.user_id);
         }
         Op::Resume(session) => {
-            let token = token_for(&*s, *session);
+            let token = s.token_for(*session);
             let pg = db.resume_session(token).await;
             match s.sessions.get(&token) {
                 None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
@@ -66,7 +94,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             }
         }
         Op::MarkActive(session, at) => {
-            let token = token_for(&*s, *session);
+            let token = s.token_for(*session);
             let pg = db.mark_session_active(token, *at).await;
             if let Err(e) = at.time_ms_i() {
                 return cmp(at.time_ms_i(), Err(e));
@@ -78,6 +106,15 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                     cmp(pg, Ok(()))?;
                 }
             }
+        }
+        Op::ListSessions(user) => {
+            let user = s.user_for(*user);
+            let pg = db
+                .list_sessions(user)
+                .await?
+                .into_iter()
+                .collect::<HashSet<_>>();
+            anyhow::ensure!(pg == s.sessions_for(user));
         }
     }
     Ok(())

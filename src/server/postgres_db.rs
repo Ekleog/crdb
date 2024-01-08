@@ -120,8 +120,23 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         todo!()
     }
 
-    pub async fn list_sessions(&self, _user: User) -> anyhow::Result<Vec<Session>> {
-        todo!()
+    pub async fn list_sessions(&self, user: User) -> anyhow::Result<Vec<Session>> {
+        let rows = sqlx::query!("SELECT * FROM sessions WHERE user_id = $1", user as User)
+            .fetch_all(&self.db)
+            .await
+            .with_context(|| format!("listing sessions for {user:?}"))?;
+        let sessions = rows
+            .into_iter()
+            .map(|r| Session {
+                user_id: User::from_uuid(r.user_id),
+                session_ref: SessionRef::from_uuid(r.session_ref),
+                session_name: r.name,
+                login_time: Timestamp::from_i64_ms(r.login_time),
+                last_active: Timestamp::from_i64_ms(r.last_active),
+                expiration_time: r.expiration_time.map(Timestamp::from_i64_ms),
+            })
+            .collect();
+        Ok(sessions)
     }
 
     pub async fn disconnect_session_token(&self, _token: SessionToken) -> anyhow::Result<()> {
