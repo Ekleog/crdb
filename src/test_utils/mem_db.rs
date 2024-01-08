@@ -3,7 +3,7 @@ use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     error::ResultExt,
     full_object::{DynSized, FullObject},
-    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
+    BinPtr, CanDoCallbacks, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
 };
 use futures::Stream;
 use std::{
@@ -111,6 +111,18 @@ impl Db for MemDb {
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
+        // Then, check for required binaries
+        let required_binaries = object.required_binaries();
+        let mut missing_binaries = Vec::new();
+        for b in required_binaries {
+            if this.binaries.get(&b).is_none() {
+                missing_binaries.push(b);
+            }
+        }
+        if !missing_binaries.is_empty() {
+            return Err(crate::Error::MissingBinaries(missing_binaries));
+        }
+
         // This is a new insert, do it
         this.objects.insert(
             object_id,
@@ -147,6 +159,7 @@ impl Db for MemDb {
                 })
             }
             Some((_, o)) => {
+                // First, check for duplicates
                 if let Some((o, e)) = this.events.get(&event_id) {
                     let Some(e) = e else {
                         return Err(crate::Error::EventAlreadyExists(event_id));
@@ -156,6 +169,20 @@ impl Db for MemDb {
                     }
                     return Ok(());
                 }
+
+                // Then, check for required binaries
+                let required_binaries = event.required_binaries();
+                let mut missing_binaries = Vec::new();
+                for b in required_binaries {
+                    if this.binaries.get(&b).is_none() {
+                        missing_binaries.push(b);
+                    }
+                }
+                if !missing_binaries.is_empty() {
+                    return Err(crate::Error::MissingBinaries(missing_binaries));
+                }
+
+                // All is good, we can insert
                 o.apply::<T>(event_id, event.clone())?;
                 this.events.insert(event_id, (object_id, Some(event)));
                 Ok(())
