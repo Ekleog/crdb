@@ -129,7 +129,7 @@ pub fn parse_snapshot<T: Object>(
 }
 
 #[derive(Clone, Eq, PartialEq, educe::Educe, serde::Deserialize, serde::Serialize)]
-#[educe(Debug(named_field = false))]
+#[educe(Debug(named_field = false), Ord, PartialOrd)]
 pub struct DbPtr<T: Object> {
     #[educe(Debug(method = std::fmt::Display::fmt))]
     pub id: Ulid,

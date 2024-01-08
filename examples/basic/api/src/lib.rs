@@ -1,4 +1,4 @@
-use crdb::{CanDoCallbacks, TypeId, User};
+use crdb::{CanDoCallbacks, DbPtr, TypeId, User};
 use ulid::Ulid;
 
 #[derive(serde::Deserialize, serde::Serialize)]
