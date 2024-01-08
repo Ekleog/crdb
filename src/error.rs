@@ -6,7 +6,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[non_exhaustive]
 pub enum Error {
     #[error("Missing binary pointers: {0:?}")]
-    MissingBinPtrs(Vec<BinPtr>),
+    MissingBinaries(Vec<BinPtr>),
 
     #[error("{0:?} is outside the range of valid ULIDs")]
     InvalidTimestamp(Timestamp),

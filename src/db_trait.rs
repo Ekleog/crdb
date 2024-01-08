@@ -1,7 +1,7 @@
 use crate::{
-    api::{BinPtr, Query},
+    api::Query,
     full_object::{DynSized, FullObject},
-    CanDoCallbacks, EventId, Object, ObjectId, TypeId, User,
+    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, TypeId, User,
 };
 use futures::Stream;
 use std::{future::Future, sync::Arc};

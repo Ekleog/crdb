@@ -7,12 +7,10 @@ mod ids;
 #[cfg(test)]
 mod test_utils;
 
-pub use api::{
-    BinPtr, CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query, User,
-};
+pub use api::{CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query, User};
 pub use db_trait::Timestamp;
 pub use error::{Error, Result};
-pub use ids::{EventId, ObjectId, TypeId};
+pub use ids::{BinPtr, EventId, ObjectId, TypeId};
 
 #[cfg(feature = "client")]
 mod client;
@@ -82,9 +80,9 @@ pub fn hash_binary(data: &[u8]) -> BinPtr {
     use sha3::Digest;
     let mut hasher = sha3::Sha3_224::new();
     hasher.update(data);
-    BinPtr {
-        id: ulid::Ulid::from_bytes(hasher.finalize()[..16].try_into().unwrap()),
-    }
+    BinPtr(ulid::Ulid::from_bytes(
+        hasher.finalize()[..16].try_into().unwrap(),
+    ))
 }
 
 #[macro_export]

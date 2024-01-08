@@ -4,12 +4,17 @@ use ulid::Ulid;
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
 #[educe(Debug)]
 pub struct ObjectId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
+
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
 #[educe(Debug)]
 pub struct EventId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
+
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
 #[educe(Debug)]
 pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct BinPtr(pub(crate) Ulid);
 
 macro_rules! impl_for_id {
     ($type:ty) => {
@@ -121,3 +126,4 @@ macro_rules! impl_for_id {
 impl_for_id!(ObjectId);
 impl_for_id!(EventId);
 impl_for_id!(TypeId);
+impl_for_id!(BinPtr);

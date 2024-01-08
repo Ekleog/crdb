@@ -1,5 +1,6 @@
 use crate::{
-    cache::CacheConfig, db_trait::Db, error::ResultExt, EventId, ObjectId, Timestamp, TypeId,
+    cache::CacheConfig, db_trait::Db, error::ResultExt, BinPtr, EventId, ObjectId, Timestamp,
+    TypeId,
 };
 use anyhow::Context;
 use std::{any::Any, collections::HashSet, future::Future, marker::PhantomData, sync::Arc};
@@ -286,13 +287,6 @@ impl<T: Object> bolero::TypeGenerator for DbPtr<T> {
         })
     }
 }
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct BinPtr {
-    pub(crate) id: Ulid,
-}
-
-impl_for_id!(BinPtr);
 
 #[allow(dead_code)] // TODO: remove
 pub struct RequestId(Ulid);

@@ -137,7 +137,7 @@ fn cmp_db<T: Debug + Eq>(
         (_, Err(Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
         (Ok(pg), Ok(mem)) => pg == mem,
         (Err(pg_err), Err(mem_err)) => match (pg_err, mem_err) {
-            (MissingBinPtrs(a), MissingBinPtrs(b)) => a == b,
+            (MissingBinaries(a), MissingBinaries(b)) => a == b,
             (InvalidTimestamp(a), InvalidTimestamp(b)) => a == b,
             (ObjectAlreadyExists(a), ObjectAlreadyExists(b)) => a == b,
             (EventAlreadyExists(a), EventAlreadyExists(b)) => a == b,
