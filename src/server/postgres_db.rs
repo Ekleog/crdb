@@ -94,10 +94,22 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })
     }
 
-    pub async fn mark_session_active(&self, _token: SessionToken) -> anyhow::Result<()> {
-        // Note: this should be a noop if the session was already marked as active
-        // in the last ~minute or so, in order to avoid thrashing the database
-        todo!()
+    pub async fn mark_session_active(
+        &self,
+        token: SessionToken,
+        at: Timestamp,
+    ) -> crate::Result<()> {
+        let affected = sqlx::query("UPDATE sessions SET last_active = $1 WHERE session_token = $2")
+            .bind(at.time_ms_i()?)
+            .bind(token)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("marking session {token:?} as active as of {at:?}"))?
+            .rows_affected();
+        if affected != 1 {
+            return Err(crate::Error::InvalidToken(token));
+        }
+        Ok(())
     }
 
     pub async fn rename_session(

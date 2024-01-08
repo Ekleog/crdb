@@ -4,7 +4,7 @@ CREATE TABLE sessions (
     user_id UUID NOT NULL,
     name VARCHAR NOT NULL,
     login_time BIGINT NOT NULL, -- Milliseconds from unix epoch
-    last_active BIGINT NOT NULL, -- Milliseconds from unix epoch. Note that for performance reasons this is precise ~only to the minute
+    last_active BIGINT NOT NULL, -- Milliseconds from unix epoch. Note that for performance reasons this is not necessarily fully precise
     expiration_time BIGINT -- Milliseconds from unix epoch, NULL for non-expiring tokens
 );
 

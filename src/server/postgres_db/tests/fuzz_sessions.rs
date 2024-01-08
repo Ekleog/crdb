@@ -11,6 +11,7 @@ use std::collections::HashMap;
 enum Op {
     Login(NewSession),
     Resume(usize),
+    MarkActive(usize, Timestamp),
 }
 
 struct FuzzState {
@@ -25,6 +26,13 @@ impl FuzzState {
             sessions: HashMap::new(),
         }
     }
+}
+
+fn token_for(s: &FuzzState, token: usize) -> SessionToken {
+    s.tokens
+        .get(token)
+        .copied()
+        .unwrap_or_else(SessionToken::new)
 }
 
 async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
@@ -50,15 +58,25 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             s.tokens.push(tok);
         }
         Op::Resume(session) => {
-            let token = s
-                .tokens
-                .get(*session)
-                .copied()
-                .unwrap_or_else(SessionToken::new);
+            let token = token_for(&*s, *session);
             let pg = db.resume_session(token).await;
             match s.sessions.get(&token) {
                 None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
                 Some(session) => cmp(pg, Ok(session.clone()))?,
+            }
+        }
+        Op::MarkActive(session, at) => {
+            let token = token_for(&*s, *session);
+            let pg = db.mark_session_active(token, *at).await;
+            if let Err(e) = at.time_ms_i() {
+                return cmp(at.time_ms_i(), Err(e));
+            }
+            match s.sessions.get_mut(&token) {
+                None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
+                Some(session) => {
+                    session.last_active = *at;
+                    cmp(pg, Ok(()))?;
+                }
             }
         }
     }
