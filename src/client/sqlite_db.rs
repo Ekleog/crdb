@@ -70,8 +70,9 @@ impl Db for SqliteDb {
         let object_json = sqlx::types::Json(&object);
         let is_heavy = object.is_heavy();
         reord::point().await;
+        // TODO: make it possible to atomically create-and-lock an object
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, FALSE, FALSE)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)

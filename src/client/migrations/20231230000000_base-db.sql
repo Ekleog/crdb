@@ -14,7 +14,13 @@ CREATE TABLE snapshots (
     is_latest BOOLEAN NOT NULL,
     snapshot_version INTEGER NOT NULL,
     snapshot BLOB NOT NULL, -- JSONB
-    is_heavy BOOLEAN NOT NULL
+    is_heavy BOOLEAN NOT NULL,
+    -- Whether we need to keep the object in the database, either because the
+    -- user explicitly required it, or because it has not been successfully
+    -- uploaded yet. Both are meaningfully set only on the is_creation
+    -- snapshot, values on other snapshots are ignored.
+    is_locked BOOLEAN NOT NULL,
+    upload_succeeded BOOLEAN NOT NULL
 );
 
 CREATE TABLE snapshots_binaries (
@@ -26,7 +32,8 @@ CREATE TABLE snapshots_binaries (
 CREATE TABLE events (
     event_id BLOB PRIMARY KEY NOT NULL,
     object_id BLOB NOT NULL,
-    data BLOB NOT NULL -- JSONB
+    data BLOB NOT NULL, -- JSONB
+    upload_succeeded BOOLEAN NOT NULL
 );
 
 CREATE TABLE events_binaries (
