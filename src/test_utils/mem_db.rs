@@ -109,6 +109,7 @@ impl Db for MemDb {
             return Ok(());
         }
         if let Some(_) = this.events.get(&created_at) {
+            crate::check_strings(&serde_json::to_value(&object).unwrap())?;
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
@@ -165,7 +166,9 @@ impl Db for MemDb {
             Some((_, o)) => {
                 // First, check for duplicates
                 if let Some((o, e)) = this.events.get(&event_id) {
+                    crate::check_strings(&serde_json::to_value(&event).unwrap())?;
                     let Some(e) = e else {
+                        // else if creation snapshot
                         return Err(crate::Error::EventAlreadyExists(event_id));
                     };
                     if *o != object_id || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false) {
