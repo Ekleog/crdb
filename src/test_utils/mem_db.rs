@@ -209,11 +209,15 @@ impl Db for MemDb {
         Ok(())
     }
 
-    async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<Vec<u8>>) -> crate::Result<()> {
-        unimplemented!()
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+        if binary_id != crate::hash_binary(&data) {
+            return Err(crate::Error::BinaryHashMismatch(binary_id));
+        }
+        self.0.lock().await.binaries.insert(binary_id, data);
+        Ok(())
     }
 
-    async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        unimplemented!()
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        Ok(self.0.lock().await.binaries.get(&binary_id).cloned())
     }
 }
