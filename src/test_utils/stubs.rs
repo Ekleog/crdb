@@ -2,7 +2,7 @@ use ulid::Ulid;
 
 use crate::{EventId, ObjectId, TypeId};
 
-const fn ulid(s: &str) -> Ulid {
+pub const fn ulid(s: &str) -> Ulid {
     match Ulid::from_string(s) {
         Ok(r) => r,
         Err(_) => panic!("const fn failed"),
