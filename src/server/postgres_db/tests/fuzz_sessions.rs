@@ -2,7 +2,7 @@ use super::TmpDb;
 use crate::{
     server::PostgresDb,
     test_utils::{cmp, db::ServerConfig, USER_ID_1},
-    NewSession, Session, SessionToken, Timestamp, User,
+    NewSession, Session, SessionRef, SessionToken, Timestamp, User,
 };
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};
@@ -15,6 +15,7 @@ enum Op {
     MarkActive(usize, Timestamp),
     Rename(usize, String),
     ListSessions(usize),
+    Disconnect(usize),
 }
 
 struct FuzzState {
@@ -131,6 +132,14 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .collect::<HashSet<_>>();
             anyhow::ensure!(pg == s.sessions_for(user));
         }
+        Op::Disconnect(session) => match s.tokens.get(*session) {
+            None => db.disconnect_session(SessionRef::now()).await?,
+            Some(token) => {
+                db.disconnect_session(s.sessions.get(token).unwrap().session_ref)
+                    .await?;
+                s.sessions.remove(token);
+            }
+        },
     }
     Ok(())
 }

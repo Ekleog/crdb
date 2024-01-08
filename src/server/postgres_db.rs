@@ -145,12 +145,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(sessions)
     }
 
-    pub async fn disconnect_session_token(&self, _token: SessionToken) -> anyhow::Result<()> {
-        todo!()
-    }
-
-    pub async fn disconnect_session_ref(&self, _session: SessionRef) -> anyhow::Result<()> {
-        todo!()
+    pub async fn disconnect_session(&self, session: SessionRef) -> anyhow::Result<()> {
+        sqlx::query("DELETE FROM sessions WHERE session_token = $1")
+            .bind(session)
+            .execute(&self.db)
+            .await
+            .with_context(|| format!("disconnecting session {session:?}"))?;
+        // If nothing to delete it's fine, the session was probably already disconnected
+        Ok(())
     }
 
     /// Cleans up and optimizes up the database
