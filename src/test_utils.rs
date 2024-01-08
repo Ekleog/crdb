@@ -2,7 +2,7 @@
 
 use crate::full_object::DynSized;
 use anyhow::Context;
-use std::any::Any;
+use std::{any::Any, fmt::Debug};
 
 mod mem_db;
 mod object_delegate_perms;
@@ -44,4 +44,62 @@ fn eq<T: 'static + Any + Send + Sync + Eq>(
         == r.ref_to_any()
             .downcast_ref::<T>()
             .context("downcasting rhs")?)
+}
+
+pub(crate) fn cmp<T: Debug + Eq>(
+    pg_res: crate::Result<T>,
+    mem_res: crate::Result<T>,
+) -> anyhow::Result<()> {
+    use crate::Error::*;
+    let is_eq = match (&pg_res, &mem_res) {
+        (_, Err(Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
+        (Ok(pg), Ok(mem)) => pg == mem,
+        (Err(pg_err), Err(mem_err)) => match (pg_err, mem_err) {
+            (MissingBinaries(a), MissingBinaries(b)) => a == b,
+            (InvalidTimestamp(a), InvalidTimestamp(b)) => a == b,
+            (ObjectAlreadyExists(a), ObjectAlreadyExists(b)) => a == b,
+            (EventAlreadyExists(a), EventAlreadyExists(b)) => a == b,
+            (ObjectDoesNotExist(a), ObjectDoesNotExist(b)) => a == b,
+            (TypeDoesNotExist(a), TypeDoesNotExist(b)) => a == b,
+            (BinaryHashMismatch(a), BinaryHashMismatch(b)) => a == b,
+            (NullByteInString, NullByteInString) => true,
+            (InvalidToken(a), InvalidToken(b)) => a == b,
+            (
+                EventTooEarly {
+                    event_id: event_id_1,
+                    object_id: object_id_1,
+                    created_at: created_at_1,
+                },
+                EventTooEarly {
+                    event_id: event_id_2,
+                    object_id: object_id_2,
+                    created_at: created_at_2,
+                },
+            ) => {
+                event_id_1 == event_id_2
+                    && object_id_1 == object_id_2
+                    && created_at_1 == created_at_2
+            }
+            (
+                WrongType {
+                    object_id: object_id_1,
+                    expected_type_id: expected_type_id_1,
+                    real_type_id: real_type_id_1,
+                },
+                WrongType {
+                    object_id: object_id_2,
+                    expected_type_id: expected_type_id_2,
+                    real_type_id: real_type_id_2,
+                },
+            ) => {
+                object_id_1 == object_id_2
+                    && expected_type_id_1 == expected_type_id_2
+                    && real_type_id_1 == real_type_id_2
+            }
+            _ => false,
+        },
+        _ => false,
+    };
+    anyhow::ensure!(is_eq, "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}");
+    Ok(())
 }

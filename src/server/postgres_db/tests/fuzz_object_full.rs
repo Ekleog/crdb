@@ -1,9 +1,9 @@
-use super::{cmp_db, TmpDb};
+use super::TmpDb;
 use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{self, db::ServerConfig, TestEventFull, TestObjectFull, USER_ID_NULL},
+    test_utils::{self, cmp, db::ServerConfig, TestEventFull, TestObjectFull, USER_ID_NULL},
     BinPtr, EventId, Object, ObjectId, Timestamp,
 };
 use anyhow::Context;
@@ -78,7 +78,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .mem_db
                 .create(*id, *created_at, object.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Submit {
             object,
@@ -97,7 +97,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .mem_db
                 .submit::<TestObjectFull, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Get { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -121,7 +121,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Recreate { object, time } => {
             let o = s
@@ -134,13 +134,13 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .mem_db
                 .recreate::<TestObjectFull, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));
             let mem = s.mem_db.create_binary(id, data.clone()).await;
             let pg = db.create_binary(id, data.clone()).await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -154,7 +154,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
         } => {
             let mem = s.mem_db.recreate_all::<TestObjectFull>(*recreate_at).await;
             let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
     }
     Ok(())

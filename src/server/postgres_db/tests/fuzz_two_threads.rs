@@ -1,9 +1,9 @@
-use super::{cmp_db, TmpDb};
+use super::TmpDb;
 use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{self, db::ServerConfig, TestEventSimple, TestObjectSimple},
+    test_utils::{self, cmp, db::ServerConfig, TestEventSimple, TestObjectSimple},
     EventId, ObjectId, Timestamp,
 };
 use std::{sync::Arc, time::Duration};
@@ -61,7 +61,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .create(*id, *created_at, object.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Submit {
             object,
@@ -82,7 +82,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Get { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -109,7 +109,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Recreate { object, time } => {
             let o = s
@@ -124,7 +124,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .recreate::<TestObjectSimple, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -141,7 +141,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .recreate_all::<TestObjectSimple>(*recreate_at)
                 .await;
             let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
     }
     Ok(())

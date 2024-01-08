@@ -1,7 +1,7 @@
-use super::{cmp_db, TmpDb};
+use super::TmpDb;
 use crate::{
     server::PostgresDb,
-    test_utils::{db::ServerConfig, USER_ID_1},
+    test_utils::{cmp, db::ServerConfig, USER_ID_1},
     NewSession, Session, SessionToken, Timestamp,
 };
 use anyhow::Context;
@@ -57,8 +57,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .unwrap_or_else(SessionToken::new);
             let pg = db.resume_session(token).await;
             match s.sessions.get(&token) {
-                None => cmp_db(pg, Err(crate::Error::InvalidToken(token)))?,
-                Some(session) => cmp_db(pg, Ok(session.clone()))?,
+                None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
+                Some(session) => cmp(pg, Ok(session.clone()))?,
             }
         }
     }

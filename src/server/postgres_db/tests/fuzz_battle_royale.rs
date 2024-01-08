@@ -1,10 +1,10 @@
-use super::{cmp_db, TmpDb};
+use super::TmpDb;
 use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{
-        self, db::ServerConfig, TestEventDelegatePerms, TestEventFull, TestEventPerms,
+        self, cmp, db::ServerConfig, TestEventDelegatePerms, TestEventFull, TestEventPerms,
         TestEventSimple, TestObjectDelegatePerms, TestObjectFull, TestObjectPerms,
         TestObjectSimple,
     },
@@ -120,7 +120,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .create(*id, *created_at, object.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::SubmitSimple {
             object,
@@ -141,7 +141,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::GetSimple { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -168,7 +168,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::RecreateSimple { object, time } => {
             let o = s
@@ -183,7 +183,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .recreate::<TestObjectSimple, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::CreatePerms {
             id,
@@ -196,7 +196,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .create(*id, *created_at, object.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::SubmitPerms {
             object,
@@ -217,7 +217,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .submit::<TestObjectPerms, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::GetPerms { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -243,7 +243,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::RecreatePerms { object, time } => {
             let o = s
@@ -258,7 +258,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .recreate::<TestObjectPerms, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::CreateDelegatePerms {
             id,
@@ -271,7 +271,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .create(*id, *created_at, object.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::SubmitDelegatePerms {
             object,
@@ -292,7 +292,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .submit::<TestObjectDelegatePerms, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::GetDelegatePerms { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -319,7 +319,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::RecreateDelegatePerms { object, time } => {
             let o = s
@@ -336,7 +336,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .recreate::<TestObjectDelegatePerms, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::CreateFull {
             id,
@@ -349,7 +349,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .create(*id, *created_at, object.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::SubmitFull {
             object,
@@ -370,7 +370,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .submit::<TestObjectFull, _>(o, *event_id, event.clone(), &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::GetFull { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -396,7 +396,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::RecreateFull { object, time } => {
             let o = s
@@ -411,13 +411,13 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .mem_db
                 .recreate::<TestObjectFull, _>(*time, o, &s.mem_db)
                 .await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));
             let mem = s.mem_db.create_binary(id, data.clone()).await;
             let pg = db.create_binary(id, data.clone()).await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -434,7 +434,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .recreate_all::<TestObjectSimple>(*recreate_at)
                 .await;
             let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp_db(pg, mem)?;
+            cmp(pg, mem)?;
         }
     }
     Ok(())
