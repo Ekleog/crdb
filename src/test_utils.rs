@@ -26,9 +26,10 @@ crate::db! {
         server_config: ServerConfig,
         client_db: ClientDb,
         objects: {
-            test1: super::TestObjectSimple,
-            perms: super::TestObjectPerms,
             delegate_perms: super::TestObjectDelegatePerms,
+            full: super::TestObjectFull,
+            perms: super::TestObjectPerms,
+            simple: super::TestObjectSimple,
         },
     }
 }
