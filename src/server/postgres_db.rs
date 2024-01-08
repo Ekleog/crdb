@@ -1,4 +1,4 @@
-use super::{ServerConfig, Session, SessionRef, SessionToken};
+use super::{ServerConfig, Session, SessionInfo, SessionRef, SessionToken};
 use crate::{
     api::{parse_snapshot, query::Bind},
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, Timestamp},
@@ -59,6 +59,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         todo!()
     }
 
+    pub async fn mark_active(&self, _token: SessionToken) -> anyhow::Result<()> {
+        // Note: this should be a noop if the session was already marked as active
+        // in the last ~minute or so, in order to avoid thrashing the database
+        todo!()
+    }
+
     pub async fn rename_session(
         &self,
         _token: SessionToken,
@@ -67,7 +73,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         todo!()
     }
 
-    pub async fn list_sessions(&self, _user: User) -> anyhow::Result<Vec<(SessionRef, Session)>> {
+    pub async fn list_sessions(&self, _user: User) -> anyhow::Result<Vec<SessionInfo>> {
         todo!()
     }
 

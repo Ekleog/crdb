@@ -3,8 +3,8 @@ CREATE TABLE sessions (
     session_ref UUID UNIQUE NOT NULL, -- An UUID used to refer to the session by other sessions
     user_id UUID NOT NULL,
     name VARCHAR NOT NULL,
-    login_time BIGINT NOT NULL, -- milliseconds from unix epoch
-    last_active BIGINT NOT NULL -- milliseconds from unix epoch
+    login_time BIGINT NOT NULL, -- Milliseconds from unix epoch
+    last_active BIGINT NOT NULL -- Milliseconds from unix epoch. Note that for performance reasons this is precise ~only to the minute
 );
 
 CREATE TABLE binaries (

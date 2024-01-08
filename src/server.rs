@@ -24,6 +24,14 @@ pub struct Session {
     pub session_name: String,
 }
 
+pub struct SessionInfo {
+    pub user_id: User,
+    pub session_ref: SessionRef,
+    pub session_name: String,
+    pub login_time: Timestamp,
+    pub last_active: Timestamp,
+}
+
 pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
     fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
 }
