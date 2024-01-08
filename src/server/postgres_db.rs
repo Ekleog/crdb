@@ -554,7 +554,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                             format!("checking whether {object_id:?} already exists")
                         })?
                         .rows_affected();
-                return if object_exists_affected == 1 {
+                return if object_exists_affected >= 1 {
                     Err(crate::Error::ObjectAlreadyExists(object_id))
                 } else {
                     Err(crate::Error::EventAlreadyExists(created_at))

@@ -328,3 +328,29 @@ fn regression_vacuum_did_not_actually_recreate_objects() {
         ],
     );
 }
+
+#[test]
+fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Create {
+                id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 0, 0, 75, 0])),
+            },
+            Submit {
+                object: 0,
+                event_id: EventId(Ulid::from_string("00000000510002P00000000000").unwrap()),
+                event: Arc::new(TestEvent1::Append(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+            },
+            Create {
+                id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000188000NG0000").unwrap()),
+                object: Arc::new(TestObject1(vec![0, 0, 0, 0, 1, 0, 0, 4])),
+            },
+        ],
+    );
+}
