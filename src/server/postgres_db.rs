@@ -63,9 +63,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(session.session_ref)
             .bind(session.user_id)
             .bind(&session.session_name)
-            .bind(session.login_time.time_ms_i())
-            .bind(session.last_active.time_ms_i())
-            .bind(session.expiration_time.map(|t| t.time_ms_i()))
+            .bind(session.login_time.time_ms_i()?)
+            .bind(session.last_active.time_ms_i()?)
+            .bind(session.expiration_time.map(|t| t.time_ms_i()).transpose()?)
             .execute(&self.db)
             .await
             .wrap_with_context(|| {

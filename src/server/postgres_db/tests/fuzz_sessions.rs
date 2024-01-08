@@ -2,6 +2,7 @@ use super::TmpDb;
 use crate::{
     server::{NewSession, PostgresDb, Session, SessionToken},
     test_utils::{db::ServerConfig, USER_ID_1},
+    Timestamp,
 };
 use anyhow::Context;
 use std::collections::HashMap;
@@ -32,7 +33,12 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 Err(crate::Error::NullByteInString(s))
                     if s == session.session_name && s.contains('\0') =>
                 {
-                    return Ok(())
+                    return Ok(());
+                }
+                Err(crate::Error::InvalidTimestamp(t))
+                    if session.expiration_time == Some(t) && t.time_ms() > i64::MAX as u64 =>
+                {
+                    return Ok(());
                 }
                 Err(e) => Err(e).context("logging session in")?,
             };
@@ -85,6 +91,20 @@ fn regression_postgres_rejected_null_bytes_in_string() {
             user_id: USER_ID_1,
             session_name: String::from("foo\0bar"),
             expiration_time: None,
+        })],
+    )
+}
+
+#[test]
+fn regression_too_big_timestamp_led_to_crash() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Login(NewSession {
+            user_id: USER_ID_1,
+            session_name: String::new(),
+            expiration_time: Some(Timestamp::from_ms(u64::MAX)),
         })],
     )
 }

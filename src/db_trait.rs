@@ -60,8 +60,8 @@ impl Timestamp {
     }
 
     #[cfg(feature = "server")]
-    pub fn time_ms_i(&self) -> i64 {
-        i64::try_from(self.0).unwrap()
+    pub fn time_ms_i(&self) -> crate::Result<i64> {
+        i64::try_from(self.0).map_err(|_| crate::Error::InvalidTimestamp(*self))
     }
 }
 
