@@ -157,6 +157,7 @@ fn cmp_db<T: Debug + Eq>(
             (ObjectDoesNotExist(a), ObjectDoesNotExist(b)) => a == b,
             (TypeDoesNotExist(a), TypeDoesNotExist(b)) => a == b,
             (BinaryHashMismatch(a), BinaryHashMismatch(b)) => a == b,
+            (NullByteInString(a), NullByteInString(b)) => a == b,
             (
                 EventTooEarly {
                     event_id: event_id_1,

@@ -214,6 +214,7 @@ fn regression_postgres_considered_missing_binaries_the_other_way_around() {
             id: ObjectId(Ulid::from_string("7R000000000000000000000026").unwrap()),
             created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
             object: Arc::new(TestObjectFull {
+                name: String::new(),
                 deps: vec![],
                 bins: vec![BinPtr(
                     Ulid::from_string("1TF80000000000000000000000").unwrap(),

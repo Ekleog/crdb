@@ -15,6 +15,9 @@ use std::future::Future;
     serde::Serialize,
 )]
 pub struct TestObjectFull {
+    #[generator(bolero::generator::gen_with::<String>().len(0..8_usize))]
+    pub name: String,
+
     #[generator(bolero::generator::gen_with::<Vec<_>>().len(0..2_usize))]
     pub deps: Vec<DbPtr<TestObjectFull>>,
 
@@ -36,6 +39,7 @@ pub struct TestObjectFull {
     serde::Serialize,
 )]
 pub enum TestEventFull {
+    Rename(String),
     AddDep(DbPtr<TestObjectFull>),
     RmDep(DbPtr<TestObjectFull>),
     AddBin(BinPtr),
@@ -101,6 +105,9 @@ impl Object for TestObjectFull {
 
     fn apply(&mut self, self_id: DbPtr<TestObjectFull>, event: &Self::Event) {
         match event {
+            TestEventFull::Rename(s) => {
+                self.name = s.clone();
+            }
             TestEventFull::AddDep(d) => {
                 // Try to keep the vecs small while fuzzing. Also, make sure to stay a DAG.
                 if self.deps.len() < 4 && *d > self_id {

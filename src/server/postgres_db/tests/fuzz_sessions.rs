@@ -1,7 +1,7 @@
 use super::TmpDb;
 use crate::{
     server::{NewSession, PostgresDb, Session, SessionToken},
-    test_utils::db::ServerConfig,
+    test_utils::{db::ServerConfig, USER_ID_1},
 };
 use anyhow::Context;
 use std::collections::HashMap;
@@ -27,7 +27,15 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
     match op {
         Op::Login(session) => {
             let session = Session::new(session.clone());
-            let (tok, _) = db.login_session(session.clone()).await?;
+            let tok = match db.login_session(session.clone()).await {
+                Ok((tok, _)) => tok,
+                Err(crate::Error::NullByteInString(s))
+                    if s == session.session_name && s.contains('\0') =>
+                {
+                    return Ok(())
+                }
+                Err(e) => Err(e).context("logging session in")?,
+            };
             assert!(
                 s.sessions.insert(tok, session).is_none(),
                 "db returned a session token conflict"
@@ -65,4 +73,18 @@ fn fuzz() {
         .with_iterations(20)
         .with_type()
         .for_each(move |ops| fuzz_impl(&cluster, ops))
+}
+
+#[test]
+fn regression_postgres_rejected_null_bytes_in_string() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Login(NewSession {
+            user_id: USER_ID_1,
+            session_name: String::from("foo\0bar"),
+            expiration_time: None,
+        })],
+    )
 }

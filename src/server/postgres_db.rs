@@ -55,7 +55,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn login_session(
         &self,
         session: Session,
-    ) -> anyhow::Result<(SessionToken, SessionRef)> {
+    ) -> crate::Result<(SessionToken, SessionRef)> {
+        crate::check_string(&session.session_name)?;
         let token = SessionToken(Ulid::from_bytes(rand::thread_rng().gen()));
         sqlx::query("INSERT INTO sessions VALUES ($1, $2, $3, $4, $5, $6, $7)")
             .bind(token)
@@ -67,7 +68,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(session.expiration_time.map(|t| t.time_ms_i()))
             .execute(&self.db)
             .await
-            .with_context(|| format!("logging in new session {token:?} with data {session:?}"))?;
+            .wrap_with_context(|| {
+                format!("logging in new session {token:?} with data {session:?}")
+            })?;
         Ok((token, session.session_ref))
     }
 

@@ -85,6 +85,13 @@ pub fn hash_binary(data: &[u8]) -> BinPtr {
     ))
 }
 
+pub fn check_string(s: &str) -> crate::Result<()> {
+    if s.contains('\0') {
+        return Err(crate::Error::NullByteInString(s.to_owned()));
+    }
+    Ok(())
+}
+
 #[macro_export]
 macro_rules! db {
     (
