@@ -276,10 +276,12 @@ impl FullObjectImpl {
                     self.id
                 )
             })?;
-        self.created_at = new_created_at;
-        self.creation = snapshot;
-        self.changes = self.changes.split_off(&new_created_at);
-        self.changes.pop_first();
+        if new_created_at != self.created_at {
+            self.created_at = new_created_at;
+            self.creation = snapshot;
+            self.changes = self.changes.split_off(&new_created_at);
+            self.changes.pop_first();
+        }
         Ok(())
     }
 
