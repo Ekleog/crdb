@@ -224,3 +224,29 @@ fn regression_postgres_considered_missing_binaries_the_other_way_around() {
         }],
     );
 }
+
+#[test]
+fn regression_postgres_crashed_on_null_byte_in_string() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Create {
+                id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object: Arc::new(TestObjectFull {
+                    name: String::from("foo\0bar"),
+                    deps: vec![],
+                    bins: vec![],
+                    users: vec![],
+                }),
+            },
+            Submit {
+                object: 0,
+                event_id: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                event: Arc::new(TestEventFull::Rename(String::from("bar\0foo"))),
+            },
+        ],
+    );
+}

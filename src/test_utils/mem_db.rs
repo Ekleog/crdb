@@ -111,6 +111,9 @@ impl Db for MemDb {
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
+        // Then, check that the data is correct
+        crate::check_strings(&serde_json::to_value(&object).unwrap())?;
+
         // Then, check for required binaries
         let required_binaries = object.required_binaries();
         let mut missing_binaries = Vec::new();
@@ -169,6 +172,9 @@ impl Db for MemDb {
                     }
                     return Ok(());
                 }
+
+                // Then, check that the data is correct
+                crate::check_strings(&serde_json::to_value(&event).unwrap())?;
 
                 // Then, check for required binaries
                 let required_binaries = event.required_binaries();

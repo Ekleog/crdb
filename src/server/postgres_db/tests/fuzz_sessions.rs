@@ -30,10 +30,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             let session = Session::new(session.clone());
             let tok = match db.login_session(session.clone()).await {
                 Ok((tok, _)) => tok,
-                Err(crate::Error::NullByteInString(s))
-                    if s == session.session_name && s.contains('\0') =>
-                {
-                    return Ok(());
+                Err(crate::Error::NullByteInString) if session.session_name.contains('\0') => {
+                    return Ok(())
                 }
                 Err(crate::Error::InvalidTimestamp(t))
                     if session.expiration_time == Some(t) && t.time_ms() > i64::MAX as u64 =>

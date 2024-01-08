@@ -26,8 +26,8 @@ pub enum Error {
     #[error("{0:?} is not the hash of the provided value")]
     BinaryHashMismatch(BinPtr),
 
-    #[error("Null byte in {0:?}")]
-    NullByteInString(String),
+    #[error("Null byte in provided string")]
+    NullByteInString,
 
     #[error(
         "{event_id:?} is too early to be submitted on {object_id:?} created at {created_at:?}"
@@ -87,6 +87,11 @@ impl<T> ResultExt for sqlx::Result<T> {
 
     fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
         match self {
+            Err(sqlx::Error::Database(err))
+                if err.code().map(|c| c == "22P05").unwrap_or(false) =>
+            {
+                Err(Error::NullByteInString)
+            }
             Err(e) => Err(Error::Other(anyhow::Error::from(e).context(f()))),
             Ok(r) => Ok(r),
         }
