@@ -1,4 +1,4 @@
-use super::{NewSession, ServerConfig, Session, SessionRef, SessionToken};
+use super::{ServerConfig, Session, SessionRef, SessionToken};
 use crate::{
     api::{parse_snapshot, query::Bind},
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, Timestamp},
@@ -54,9 +54,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     pub async fn login_session(
         &self,
-        session: NewSession,
+        session: Session,
     ) -> anyhow::Result<(SessionToken, SessionRef)> {
-        let session = Session::new(session);
         let token = SessionToken(Ulid::from_bytes(rand::thread_rng().gen()));
         sqlx::query("INSERT INTO sessions VALUES ($1, $2, $3, $4, $5, $6, $7)")
             .bind(token)

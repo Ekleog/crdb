@@ -11,6 +11,7 @@ use std::{fmt::Debug, sync::Arc};
 mod fuzz_battle_royale;
 mod fuzz_object_full;
 mod fuzz_remote_perms;
+mod fuzz_sessions;
 mod fuzz_simple;
 mod fuzz_two_threads;
 

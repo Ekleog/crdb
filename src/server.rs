@@ -20,6 +20,7 @@ pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
 #[derive(Clone, Debug)]
+#[cfg_attr(test, derive(bolero::generator::TypeGenerator))]
 pub struct NewSession {
     pub user_id: User,
     pub session_name: String,
@@ -37,7 +38,7 @@ pub struct Session {
 }
 
 impl Session {
-    fn new(s: NewSession) -> Session {
+    pub fn new(s: NewSession) -> Session {
         let now = Timestamp::now();
         Session {
             user_id: s.user_id,
@@ -54,10 +55,10 @@ pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize
     fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SessionToken(Ulid);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SessionRef(Ulid);
 
 ids::impl_for_id!(SessionToken);
