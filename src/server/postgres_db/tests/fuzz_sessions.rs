@@ -1,8 +1,8 @@
 use super::TmpDb;
 use crate::{
-    server::{NewSession, PostgresDb, Session, SessionToken},
+    server::PostgresDb,
     test_utils::{db::ServerConfig, USER_ID_1},
-    Timestamp,
+    NewSession, Session, SessionToken, Timestamp,
 };
 use anyhow::Context;
 use std::collections::HashMap;

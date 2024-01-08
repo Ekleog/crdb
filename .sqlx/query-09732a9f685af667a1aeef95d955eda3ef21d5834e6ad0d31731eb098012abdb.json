@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM sessions WHERE session_token = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "session_token",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_ref",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "login_time",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "last_active",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "expiration_time",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "09732a9f685af667a1aeef95d955eda3ef21d5834e6ad0d31731eb098012abdb"
+}

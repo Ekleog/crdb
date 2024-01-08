@@ -1,15 +1,15 @@
-use super::{ServerConfig, Session, SessionRef, SessionToken};
+use super::ServerConfig;
 use crate::{
     api::{parse_snapshot, query::Bind},
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, Timestamp},
     error::ResultExt,
     full_object::{Change, FullObject},
-    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId, User,
+    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
+    SessionToken, TypeId, User,
 };
 use anyhow::Context;
 use futures::{Stream, StreamExt};
 use lockable::{LockPool, Lockable};
-use rand::Rng;
 use sqlx::Row;
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
@@ -56,7 +56,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         &self,
         session: Session,
     ) -> crate::Result<(SessionToken, SessionRef)> {
-        let token = SessionToken(Ulid::from_bytes(rand::thread_rng().gen()));
+        let token = SessionToken::new();
         sqlx::query("INSERT INTO sessions VALUES ($1, $2, $3, $4, $5, $6, $7)")
             .bind(token)
             .bind(session.session_ref)
@@ -73,8 +73,25 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok((token, session.session_ref))
     }
 
-    pub async fn resume_session(&self, _token: SessionToken) -> anyhow::Result<Session> {
-        todo!()
+    pub async fn resume_session(&self, token: SessionToken) -> crate::Result<Session> {
+        let res = sqlx::query!(
+            "SELECT * FROM sessions WHERE session_token = $1",
+            token as SessionToken
+        )
+        .fetch_optional(&self.db)
+        .await
+        .wrap_with_context(|| format!("resuming session for {token:?}"))?;
+        let Some(res) = res else {
+            return Err(crate::Error::InvalidToken(token));
+        };
+        Ok(Session {
+            user_id: User::from_uuid(res.user_id),
+            session_ref: SessionRef::from_uuid(res.session_ref),
+            session_name: res.name,
+            login_time: Timestamp::from_i64_ms(res.login_time),
+            last_active: Timestamp::from_i64_ms(res.last_active),
+            expiration_time: res.expiration_time.map(Timestamp::from_i64_ms),
+        })
     }
 
     pub async fn mark_session_active(&self, _token: SessionToken) -> anyhow::Result<()> {

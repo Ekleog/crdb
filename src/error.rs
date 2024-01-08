@@ -1,4 +1,4 @@
-use crate::{BinPtr, EventId, ObjectId, Timestamp, TypeId};
+use crate::{BinPtr, EventId, ObjectId, SessionToken, Timestamp, TypeId};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -28,6 +28,9 @@ pub enum Error {
 
     #[error("Null byte in provided string")]
     NullByteInString,
+
+    #[error("Invalid token: {0:?}")]
+    InvalidToken(SessionToken),
 
     #[error(
         "{event_id:?} is too early to be submitted on {object_id:?} created at {created_at:?}"

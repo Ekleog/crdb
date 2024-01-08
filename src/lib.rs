@@ -4,6 +4,7 @@ mod db_trait;
 mod error;
 mod full_object;
 mod ids;
+mod session;
 #[cfg(test)]
 mod test_utils;
 
@@ -11,6 +12,7 @@ pub use api::{CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Qu
 pub use db_trait::Timestamp;
 pub use error::{Error, Result};
 pub use ids::{BinPtr, EventId, ObjectId, TypeId, User};
+pub use session::{NewSession, Session, SessionRef, SessionToken};
 
 #[cfg(feature = "client")]
 mod client;
