@@ -27,12 +27,15 @@ jobs:
       - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
         with:
           crate: wasm-bindgen-cli
-      - run: sudo apt install firefox
-      # - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
-      #   with:
-      #     workspaces: |
-      #       .
-      #       examples/basic
+      - uses: awalsh128/cache-apt-pkgs-action@44c33b32f808cdddd5ac0366d70595ed63661ed8
+        with:
+          packages: firefox
+          version: 1.0
+      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
+        with:
+          workspaces: |
+            .
+            examples/basic
       - uses: ikalnytskyi/action-setup-postgres@510dee7c6d0b2cdf7d94d3f983aefd7f39ecf342
         with:
           username: postgres
