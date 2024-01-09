@@ -1,8 +1,6 @@
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
-    error::ResultExt,
-    full_object::FullObject,
-    BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    db_trait::Db, error::ResultExt, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream,
+    EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -30,22 +28,6 @@ impl SqliteDb {
 
 #[allow(unused_variables)] // TODO: remove
 impl Db for SqliteDb {
-    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        futures::stream::empty()
-    }
-
-    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        futures::stream::empty()
-    }
-
-    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        futures::stream::empty()
-    }
-
-    async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
-        unimplemented!()
-    }
-
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,

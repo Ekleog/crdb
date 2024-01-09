@@ -1,7 +1,6 @@
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
-    full_object::FullObject,
-    BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    db_trait::Db, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream, EventId, Object,
+    ObjectId, Query, Timestamp, User,
 };
 use anyhow::anyhow;
 use indexed_db_futures::{prelude::*, IdbDatabase};
@@ -57,25 +56,6 @@ impl IndexedDb {
 
 #[allow(unused_variables)] // TODO: remove
 impl Db for IndexedDb {
-    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        // todo!()
-        futures::stream::empty()
-    }
-
-    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        // todo!()
-        futures::stream::empty()
-    }
-
-    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        // todo!()
-        futures::stream::empty()
-    }
-
-    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
-        todo!()
-    }
-
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,

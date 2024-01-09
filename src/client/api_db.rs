@@ -23,30 +23,36 @@ impl<A: Authenticator> ApiDb<A> {
     pub async fn disconnect(&self) -> anyhow::Result<()> {
         todo!()
     }
+
+    // TODO: use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
+    pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
+        // todo!()
+        futures::stream::empty()
+    }
+
+    /// This function returns all new events for events on objects that have been subscribed
+    /// on. Objects subscribed on are all the objects that have ever been created
+    /// with `created`, or obtained with `get` or `query`, as well as all objects
+    /// received through `new_objects`, excluding objects explicitly unsubscribed from
+    pub async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
+        // todo!()
+        futures::stream::empty()
+    }
+
+    pub async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
+        // todo!()
+        futures::stream::empty()
+    }
+
+    /// Note that this function unsubscribes ALL the streams that have ever been taken for
+    /// this object; and purges it from the local database.
+    pub async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
+        todo!()
+    }
 }
 
 #[allow(unused_variables)] // TODO: remove
 impl<A: Authenticator> Db for ApiDb<A> {
-    // TODO: use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
-    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        // todo!()
-        futures::stream::empty()
-    }
-
-    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        // todo!()
-        futures::stream::empty()
-    }
-
-    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        // todo!()
-        futures::stream::empty()
-    }
-
-    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
-        todo!()
-    }
-
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,

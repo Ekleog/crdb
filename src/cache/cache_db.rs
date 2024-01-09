@@ -1,12 +1,9 @@
 use super::{BinariesCache, CacheConfig, ObjectCache};
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
-    error::ResultExt,
-    full_object::FullObject,
-    hash_binary, BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp,
-    User,
+    db_trait::Db, error::ResultExt, full_object::FullObject, hash_binary, BinPtr, CanDoCallbacks,
+    CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
-use futures::{pin_mut, StreamExt};
+use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -17,32 +14,31 @@ pub struct CacheDb<D: Db> {
 }
 
 impl<D: Db> CacheDb<D> {
-    fn watch_from<C: CacheConfig, OtherDb: Db>(
+    #[cfg(feature = "client")]
+    pub fn watch_from<C: CacheConfig, A: crate::client::Authenticator>(
         self: &Arc<Self>,
-        db: &Arc<OtherDb>,
-        relay_to_db: bool,
+        api: &Arc<crate::client::ApiDb<A>>,
     ) {
+        use futures::pin_mut;
+
         // Watch new objects
         crate::spawn({
-            let db = db.clone();
+            let api = api.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
             let this = self.clone();
             async move {
-                let new_objects = db.new_objects().await;
+                let new_objects = api.new_objects().await;
                 pin_mut!(new_objects);
                 while let Some(o) = new_objects.next().await {
                     let mut cache = cache.write().await;
                     let object = o.id;
-                    if relay_to_db {
-                        if let Err(error) = C::create_in_db(&*internal_db, o.clone(), &*this).await
-                        {
-                            tracing::error!(
-                                ?error,
-                                ?object,
-                                "failed creating received object in internal db"
-                            );
-                        }
+                    if let Err(error) = C::create_in_db(&*internal_db, o.clone(), &*this).await {
+                        tracing::error!(
+                            ?error,
+                            ?object,
+                            "failed creating received object in internal db"
+                        );
                     }
                     if let Err(error) = C::create(&mut *cache, o).await {
                         tracing::error!(
@@ -57,27 +53,24 @@ impl<D: Db> CacheDb<D> {
 
         // Watch new events
         crate::spawn({
-            let db = db.clone();
+            let api = api.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
             let this = self.clone();
             async move {
-                let new_events = db.new_events().await;
+                let new_events = api.new_events().await;
                 pin_mut!(new_events);
                 while let Some(e) = new_events.next().await {
                     let mut cache = cache.write().await;
                     let object = e.object_id;
                     let event = e.id;
-                    if relay_to_db {
-                        if let Err(error) = C::submit_in_db(&*internal_db, e.clone(), &*this).await
-                        {
-                            tracing::error!(
-                                ?error,
-                                ?object,
-                                ?event,
-                                "failed submitting received object to internal db"
-                            );
-                        }
+                    if let Err(error) = C::submit_in_db(&*internal_db, e.clone(), &*this).await {
+                        tracing::error!(
+                            ?error,
+                            ?object,
+                            ?event,
+                            "failed submitting received object to internal db"
+                        );
                     }
                     // DO NOT re-fetch object when receiving an event not in cache for it.
                     // Without this, users would risk unsubscribing from an object, then receiving
@@ -96,26 +89,22 @@ impl<D: Db> CacheDb<D> {
 
         // Watch new re-creations
         crate::spawn({
-            let db = db.clone();
+            let api = api.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
             let this = self.clone();
             async move {
-                let new_recreations = db.new_recreations().await;
+                let new_recreations = api.new_recreations().await;
                 pin_mut!(new_recreations);
                 while let Some(s) = new_recreations.next().await {
                     let mut cache = cache.write().await;
                     let object = s.object_id;
-                    if relay_to_db {
-                        if let Err(error) =
-                            C::recreate_in_db(&*internal_db, s.clone(), &*this).await
-                        {
-                            tracing::error!(
-                                ?error,
-                                ?object,
-                                "failed recreating as per received event in internal db"
-                            );
-                        }
+                    if let Err(error) = C::recreate_in_db(&*internal_db, s.clone(), &*this).await {
+                        tracing::error!(
+                            ?error,
+                            ?object,
+                            "failed recreating as per received event in internal db"
+                        );
                     }
                     if let Err(error) = C::recreate(&mut *cache, s).await {
                         tracing::error!(
@@ -141,14 +130,7 @@ impl<D: Db> CacheDb<D> {
             cache,
             binaries: Arc::new(RwLock::new(BinariesCache::new())),
         });
-        this.watch_from::<C, _>(&db, false);
         this
-    }
-
-    /// Relays all new objects/events from `db` to the internal database, caching them in the process.
-    #[cfg(feature = "client")] // only used for clients, server doesn't need it
-    pub fn also_watch_from<C: CacheConfig, OtherDb: Db>(self: &Arc<Self>, db: &Arc<OtherDb>) {
-        self.watch_from::<C, _>(db, true)
     }
 
     pub async fn clear_cache(&self) {
@@ -207,24 +189,6 @@ impl<D: Db> CacheDb<D> {
 }
 
 impl<D: Db> Db for CacheDb<D> {
-    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        self.db.new_objects().await
-    }
-
-    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        self.db.new_events().await
-    }
-
-    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        self.db.new_recreations().await
-    }
-
-    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
-        let mut cache = self.cache.write().await;
-        cache.remove(&ptr);
-        self.db.unsubscribe(ptr).await
-    }
-
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         id: ObjectId,

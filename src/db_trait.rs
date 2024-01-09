@@ -71,20 +71,6 @@ impl Timestamp {
 }
 
 pub trait Db: 'static + CrdbSend + CrdbSync {
-    /// These streams get new elements whenever another user submitted a new object or event.
-    /// Note that they are NOT called when you yourself called create or submit.
-    fn new_objects(&self) -> impl CrdbFuture<Output = impl CrdbStream<Item = DynNewObject>>;
-    /// This function returns all new events for events on objects that have been subscribed
-    /// on. Objects subscribed on are all the objects that have ever been created
-    /// with `created`, or obtained with `get` or `query`, as well as all objects
-    /// received through `new_objects`, excluding objects explicitly unsubscribed from
-    fn new_events(&self) -> impl CrdbFuture<Output = impl CrdbStream<Item = DynNewEvent>>;
-    fn new_recreations(&self)
-        -> impl CrdbFuture<Output = impl CrdbStream<Item = DynNewRecreation>>;
-    /// Note that this function unsubscribes ALL the streams that have ever been taken from this
-    /// database; and purges it from the local database.
-    fn unsubscribe(&self, ptr: ObjectId) -> impl CrdbFuture<Output = anyhow::Result<()>>;
-
     fn create<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,

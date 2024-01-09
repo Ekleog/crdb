@@ -1,7 +1,7 @@
 use super::ServerConfig;
 use crate::{
     api::{parse_snapshot, query::Bind},
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, Timestamp},
+    db_trait::{Db, DynNewRecreation, Timestamp},
     error::ResultExt,
     full_object::{Change, FullObject},
     BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
@@ -1343,22 +1343,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 }
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
-    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        futures::stream::empty()
-    }
-
-    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        futures::stream::empty()
-    }
-
-    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        futures::stream::empty()
-    }
-
-    async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
-        unimplemented!("unsubscribing from a postgresql db does not make sense")
-    }
-
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,

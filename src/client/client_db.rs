@@ -26,7 +26,7 @@ impl<A: Authenticator> ClientDb<A> {
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
         let db = CacheDb::new::<C>(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
-        db.also_watch_from::<C, _>(&api);
+        db.watch_from::<C, _>(&api);
         Ok(ClientDb { api, db })
     }
 
@@ -53,25 +53,26 @@ impl<A: Authenticator> ClientDb<A> {
     pub async fn reduce_size_to(&mut self, size: usize) {
         self.db.reduce_size_to(size).await
     }
-}
 
-impl<A: Authenticator> Db for ClientDb<A> {
-    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
+    pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
         self.api.new_objects().await
     }
 
-    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
+    pub async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
         self.api.new_events().await
     }
 
-    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
+    pub async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
         self.api.new_recreations().await
     }
 
-    async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
+    pub async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
         self.api.unsubscribe(ptr).await
+        // TODO: self.db.remove(ptr).await
     }
+}
 
+impl<A: Authenticator> Db for ClientDb<A> {
     async fn create<T: Object, C: crate::CanDoCallbacks>(
         &self,
         id: ObjectId,

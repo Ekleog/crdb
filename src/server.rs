@@ -19,6 +19,9 @@ pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
 pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
+    // TODO: make sure protocol is two-step, with server sending random data to client and
+    // only then client answering with the Authenticator? This'd make it possible to use
+    // a public key to auth
     fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
 }
 
