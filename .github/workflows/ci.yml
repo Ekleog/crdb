@@ -11,7 +11,7 @@ env:
 
 jobs:
   just-test:
-    name: just test
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,3 +36,18 @@ jobs:
           database: crdb
       - run: sqlx migrate run --source src/server/migrations
       - run: just test
+
+  clusterfuzzlite:
+    name: ClusterFuzzLite
+    runs-on: ubuntu-latest
+    steps:
+    - uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+    - uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        fuzz-seconds: 60
+        parallel-fuzzing: true
+        mode: code-change
+        output-sarif: true
