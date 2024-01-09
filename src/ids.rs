@@ -55,12 +55,12 @@ macro_rules! impl_for_id {
                 Timestamp::from_ms(self.0.timestamp_ms())
             }
 
-            #[cfg(feature = "server")]
+            #[cfg(any(feature = "client-native", feature = "server"))]
             pub(crate) fn to_uuid(&self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.0.to_bytes())
             }
 
-            #[cfg(feature = "server")]
+            #[cfg(any(feature = "client-native", feature = "server"))]
             pub(crate) fn from_uuid(id: uuid::Uuid) -> Self {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }

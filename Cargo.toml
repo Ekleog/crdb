@@ -9,7 +9,7 @@ all-features = true
 
 [features]
 client-js = ["client", "getrandom/js", "indexed_db_futures"]
-client-native = ["client", "sqlx/sqlite", "uuid"]
+client-native = ["client", "sqlx/sqlite", "sqlx/uuid", "uuid"]
 
 client = ["paste"]
 server = ["axum", "lockable", "rand", "sqlx/json", "sqlx/postgres", "sqlx/uuid", "uuid"]
