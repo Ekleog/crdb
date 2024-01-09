@@ -13,7 +13,6 @@ mod stubs;
 
 pub use mem_db::MemDb;
 pub use object_delegate_perms::{TestEventDelegatePerms, TestObjectDelegatePerms};
-#[allow(unused_imports)] // TODO: add fuzzer-full
 pub use object_full::{TestEventFull, TestObjectFull};
 pub use object_perms::{TestEventPerms, TestObjectPerms};
 pub use object_simple::{TestEventSimple, TestObjectSimple};
