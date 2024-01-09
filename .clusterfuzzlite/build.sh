@@ -1,5 +1,5 @@
-#!/bin/sh
-set -euixo pipefail
+#!/bin/bash
+set -euxo pipefail
 
 cd crdb
 cargo bolero build-clusterfuzz --all-features
