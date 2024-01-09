@@ -20,11 +20,20 @@ rebuild-offline-queries: make-test-db
     cargo sqlx prepare --database-url "postgres:///crdb-test?host=/run/postgresql" -- --all-features --tests
     dropdb crdb-test
 
-test-crate NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --all-features {{NAME}}
+test-crate NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-crate-client-js NAME) (test-crate-server NAME)
+test-crate-no-pg NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-crate-client-js NAME)
 
-test-crate-no-pg NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --all-features -E 'all() - test(server::postgres_db::)' {{NAME}}
+test-crate-api NAME='':
+    SQLX_OFFLINE="true" cargo nextest run {{NAME}}
+
+test-crate-client-native NAME='':
+    SQLX_OFFLINE="true" cargo nextest run --features client-native {{NAME}}
+
+test-crate-client-js NAME='':
+    cargo build --features client-js --target wasm32-unknown-unknown {{NAME}}
+
+test-crate-server NAME='':
+    SQLX_OFFLINE="true" cargo nextest run --features server {{NAME}}
 
 test-example-basic NAME='': build-example-basic-client (test-example-basic-host NAME)
 
