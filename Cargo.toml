@@ -35,6 +35,8 @@ rand = { version = "0.8.5", optional = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.11", features = ["js"] }
 indexed_db_futures = "0.4.1"
+wasm-bindgen-futures = "0.4.39"
+web-sys = { version = "0.3.66", features = ["Navigator", "StorageManager"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 sqlx = { version = "0.7.3", features = ["runtime-tokio"] }

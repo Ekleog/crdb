@@ -1,14 +1,12 @@
+#![cfg(all(feature = "client", target_arch = "wasm32"))]
+
+use crdb::crdb_internal::LocalDb;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
-async fn pass() {
-    assert_eq!(1, 1);
-}
-
-#[wasm_bindgen_test]
-#[should_panic]
-fn fail() {
-    assert_eq!(1, 2);
+async fn smoke_test() {
+    let _db = LocalDb::connect("smoke-test").await.unwrap();
+    //panic!("is_persistent: {:?}", db.is_persistent());
 }
