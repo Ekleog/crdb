@@ -54,7 +54,7 @@ macro_rules! generate_client {
             }
 
             $(crdb::paste! {
-                pub fn [< new_ $name _objects >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewObject<$object>>> {
+                pub fn [< new_ $name _objects >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + crdb::CrdbStream<Item = $crate::NewObject<$object>>> {
                     async move {
                         self.db
                             .new_objects()
@@ -68,7 +68,7 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< new_ $name _events >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewEvent<$object>>> {
+                pub fn [< new_ $name _events >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + crdb::CrdbStream<Item = $crate::NewEvent<$object>>> {
                     async move {
                         self.db
                             .new_events()
@@ -127,7 +127,7 @@ macro_rules! generate_client {
                     include_heavy: bool,
                     ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
                     q: crdb::Query,
-                ) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
                         Ok(self.db.query::<$object>(
                             self.db.user(),

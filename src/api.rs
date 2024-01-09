@@ -1,6 +1,9 @@
 use crate::{
-    cache::CacheConfig, db_trait::Db, error::ResultExt, BinPtr, CrdbFuture, EventId, ObjectId,
-    Timestamp, TypeId, User,
+    cache::CacheConfig,
+    db_trait::Db,
+    error::ResultExt,
+    future::{CrdbSend, CrdbSync},
+    BinPtr, CrdbFuture, EventId, ObjectId, Timestamp, TypeId, User,
 };
 use anyhow::Context;
 use std::{any::Any, collections::HashSet, marker::PhantomData, sync::Arc};
@@ -13,7 +16,7 @@ pub(crate) mod private {
     pub trait Sealed {}
 }
 
-pub trait CanDoCallbacks: Send + Sync + private::Sealed {
+pub trait CanDoCallbacks: CrdbSend + CrdbSync + private::Sealed {
     fn get<T: Object>(&self, ptr: DbPtr<T>)
         -> impl '_ + CrdbFuture<Output = crate::Result<Arc<T>>>;
 }
