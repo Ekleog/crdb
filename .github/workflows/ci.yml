@@ -24,6 +24,10 @@ jobs:
       - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
         with:
           crate: sqlx-cli
+      - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
+        with:
+          crate: wasm-bindgen-cli
+      - run: sudo apt install firefox-geckodriver
       # - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
       #   with:
       #     workspaces: |
