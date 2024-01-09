@@ -1,8 +1,8 @@
 use super::Authenticator;
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
+    db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use std::sync::Arc;
 
@@ -49,58 +49,56 @@ impl<A: Authenticator> ApiDb<A> {
     pub async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
         todo!()
     }
-}
 
-#[allow(unused_variables)] // TODO: remove
-impl<A: Authenticator> Db for ApiDb<A> {
-    async fn create<T: Object, C: CanDoCallbacks>(
+    pub async fn create<T: Object>(
         &self,
-        id: ObjectId,
-        created_at: EventId,
-        object: Arc<T>,
-        _cb: &C,
+        _id: ObjectId,
+        _created_at: EventId,
+        _object: Arc<T>,
     ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn submit<T: Object, C: CanDoCallbacks>(
+    pub async fn submit<T: Object>(
         &self,
-        object: ObjectId,
-        event_id: EventId,
-        event: Arc<T::Event>,
-        _cb: &C,
+        _object: ObjectId,
+        _event_id: EventId,
+        _event: Arc<T::Event>,
     ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+    pub async fn get<T: Object>(&self, _object_id: ObjectId) -> crate::Result<FullObject> {
         todo!()
     }
 
-    async fn query<T: Object>(
+    pub async fn query<T: Object>(
         &self,
-        user: User,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: Query,
+        _user: User,
+        _ignore_not_modified_on_server_since: Option<Timestamp>,
+        _q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         // todo!()
         Ok(futures::stream::empty())
     }
 
-    async fn recreate<T: Object, C: CanDoCallbacks>(
+    pub async fn recreate<T: Object>(
         &self,
-        time: Timestamp,
-        object: ObjectId,
-        cb: &C,
+        _time: Timestamp,
+        _object: ObjectId,
     ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    pub async fn create_binary(
+        &self,
+        _binary_id: BinPtr,
+        _data: Arc<Vec<u8>>,
+    ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }
