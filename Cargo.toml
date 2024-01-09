@@ -8,11 +8,8 @@ license = "AGPL3"
 all-features = true
 
 [features]
-client-js = ["client", "getrandom/js", "indexed_db_futures"]
-client-native = ["client", "sqlx/sqlite", "sqlx/uuid", "uuid"]
-
-client = ["paste"]
-server = ["axum", "lockable", "rand", "sqlx/json", "sqlx/postgres", "sqlx/uuid", "uuid"]
+client = ["paste", "sqlx/sqlite", "sqlx/uuid"]
+server = ["axum", "lockable", "rand", "sqlx/json", "sqlx/postgres", "sqlx/uuid"]
 
 [dependencies]
 anyhow = "1.0"
@@ -20,7 +17,6 @@ async-stream = "0.3.5"
 deepsize = "0.2.0"
 educe = "0.5.9"
 futures = "0.3.29"
-getrandom = "0.2.11"
 reord = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -32,12 +28,17 @@ ulid = { version = "1.1", features = ["serde"] }
 
 # Optional dependencies
 axum = { version = "0.7.2", optional = true }
-indexed_db_futures = { version = "0.4.1", optional = true }
 lockable = { version = "0.0.7", optional = true }
 paste = { version = "1.0", optional = true }
 rand = { version = "0.8.5", optional = true }
-sqlx = { version = "0.7.3", features = ["runtime-tokio"], optional = true }
-uuid = { version = "1.6", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2.11", features = ["js"] }
+indexed_db_futures = "0.4.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+sqlx = { version = "0.7.3", features = ["runtime-tokio"] }
+uuid = "1.6"
 
 [dev-dependencies]
 bolero = "0.10.0"

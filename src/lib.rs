@@ -66,7 +66,7 @@ pub mod crdb_internal {
     pub use ulid::{self, Ulid};
 }
 
-#[cfg(any(feature = "server", feature = "client-native"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub use sqlx;
 
 // This module needs to actually be public, because the `generate` macros need to be

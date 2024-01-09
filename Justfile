@@ -27,10 +27,10 @@ test-crate-api NAME='':
     SQLX_OFFLINE="true" cargo nextest run {{NAME}}
 
 test-crate-client-native NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --features client-native {{NAME}}
+    SQLX_OFFLINE="true" cargo nextest run --features client {{NAME}}
 
 test-crate-client-js NAME='':
-    cargo build --features client-js --target wasm32-unknown-unknown {{NAME}}
+    cargo build --features client --target wasm32-unknown-unknown {{NAME}}
 
 test-crate-server NAME='':
     SQLX_OFFLINE="true" cargo nextest run --features server {{NAME}}

@@ -84,7 +84,7 @@ impl<T> ResultExt for anyhow::Result<T> {
     }
 }
 
-#[cfg(any(feature = "server", feature = "client-native"))]
+#[cfg(not(target_arch = "wasm32"))]
 impl<T> ResultExt for sqlx::Result<T> {
     type Ok = T;
 

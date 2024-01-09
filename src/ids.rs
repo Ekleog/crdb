@@ -55,12 +55,12 @@ macro_rules! impl_for_id {
                 Timestamp::from_ms(self.0.timestamp_ms())
             }
 
-            #[cfg(any(feature = "client-native", feature = "server"))]
+            #[cfg(not(target_arch = "wasm32"))]
             pub(crate) fn to_uuid(&self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.0.to_bytes())
             }
 
-            #[cfg(any(feature = "client-native", feature = "server"))]
+            #[cfg(not(target_arch = "wasm32"))]
             pub(crate) fn from_uuid(id: uuid::Uuid) -> Self {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
@@ -117,7 +117,7 @@ macro_rules! impl_for_id {
             }
         }
 
-        #[cfg(feature = "client-native")]
+        #[cfg(all(feature = "client", not(target_arch = "wasm32")))]
         impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
             fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode_by_ref(&self.to_uuid(), buf)
@@ -133,7 +133,7 @@ macro_rules! impl_for_id {
             }
         }
 
-        #[cfg(feature = "client-native")]
+        #[cfg(all(feature = "client", not(target_arch = "wasm32")))]
         impl sqlx::Type<sqlx::Sqlite> for $type {
             fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
                 <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::type_info()

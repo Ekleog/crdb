@@ -1,17 +1,17 @@
 mod api_db;
 mod client_db;
 mod config;
-#[cfg(not(feature = "client-native"))]
+#[cfg(target_arch = "wasm32")]
 mod indexed_db;
-#[cfg(feature = "client-native")]
+#[cfg(not(target_arch = "wasm32"))]
 mod sqlite_db;
 
 pub use api_db::ApiDb;
 pub use client_db::ClientDb;
 pub use config::{NewEvent, NewObject, NewRecreation};
-#[cfg(not(feature = "client-native"))]
+#[cfg(target_arch = "wasm32")]
 pub use indexed_db::IndexedDb as LocalDb;
-#[cfg(feature = "client-native")]
+#[cfg(not(target_arch = "wasm32"))]
 pub use sqlite_db::SqliteDb as LocalDb;
 
 pub trait Authenticator:
