@@ -49,9 +49,6 @@ impl crdb::Object for Foo {
         todo!()
     }
 
-    fn is_heavy(&self) -> bool {
-        todo!()
-    }
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
         todo!()
     }

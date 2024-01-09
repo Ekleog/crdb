@@ -67,11 +67,10 @@ impl Db for SqliteDb {
         let type_id = *T::type_ulid();
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
-        let is_heavy = object.is_heavy();
         reord::point().await;
         // TODO: make it possible to atomically create-and-lock an object
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, FALSE, FALSE)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, FALSE, FALSE)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)
@@ -79,7 +78,6 @@ impl Db for SqliteDb {
         .bind(object_id)
         .bind(snapshot_version)
         .bind(object_json)
-        .bind(is_heavy)
         .execute(&mut *t)
         .await
         .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
@@ -162,7 +160,6 @@ impl Db for SqliteDb {
     async fn query<T: Object>(
         &self,
         user: User,
-        include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {

@@ -287,18 +287,16 @@ impl<D: Db> Db for CacheDb<D> {
     async fn query<T: Object>(
         &self,
         user: User,
-        include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        // We cannot use the object cache here, because it is not guaranteed to even
-        // contain all the non-heavy objects, due to being an LRU cache. So, immediately
-        // delegate to the underlying database, which should forward to either PostgreSQL
-        // for the server, or IndexedDB or the API for the client, depending on whether
-        // `include_heavy` is set.
+        // We cannot use the object cache here, because it is not guaranteed to contain
+        // all the queried objects, due to being an LRU cache. So, immediately delegate
+        // to the underlying database, which should forward to either PostgreSQL for the
+        // server, or IndexedDB/SQLite for the client.
         Ok(self
             .db
-            .query::<T>(user, include_heavy, ignore_not_modified_on_server_since, q)
+            .query::<T>(user, ignore_not_modified_on_server_since, q)
             .await?
             .then(|o| async {
                 let o = o?;

@@ -74,7 +74,6 @@ impl<A: Authenticator> Db for ApiDb<A> {
     async fn query<T: Object>(
         &self,
         user: User,
-        include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {

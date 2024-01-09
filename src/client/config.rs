@@ -124,14 +124,12 @@ macro_rules! generate_client {
 
                 pub fn [< query_ $name >](
                     &self,
-                    include_heavy: bool,
                     ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
                     q: crdb::Query,
                 ) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
                         Ok(self.db.query::<$object>(
                             self.db.user(),
-                            include_heavy,
                             ignore_not_modified_on_server_since,
                             q,
                         )

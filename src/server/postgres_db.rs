@@ -515,7 +515,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         reord::point().await;
         let result = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+            "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
         )
         .bind(snapshot_id)
         .bind(T::type_ulid())
@@ -527,7 +527,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(users_who_can_read)
         .bind(users_who_can_read_depends_on)
         .bind(rdeps)
-        .bind(object.is_heavy())
         .bind(object.required_binaries())
         .execute(&mut *transaction)
         .await;
@@ -575,11 +574,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .get_rdeps(&mut *transaction, object_id)
             .await
             .wrap_with_context(|| format!("listing reverse dependencies of {object_id:?}"))?;
-        let is_heavy = object.is_heavy();
         let required_binaries = object.required_binaries();
         reord::point().await;
         let affected =
-            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING")
+            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING")
                 .bind(created_at)
                 .bind(type_id)
                 .bind(object_id)
@@ -588,7 +586,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(&users_who_can_read)
                 .bind(&users_who_can_read_depends_on)
                 .bind(&rdeps)
-                .bind(is_heavy)
                 .bind(&required_binaries)
                 .execute(&mut *transaction)
                 .await
@@ -1275,7 +1272,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             let mut object =
                 parse_snapshot::<T>(snapshots[0].snapshot_version, snapshots[0].snapshot.clone())
                     .unwrap();
-            assert_eq!(snapshots[0].is_heavy, object.is_heavy());
             assert_eq!(
                 snapshots[0].required_binaries,
                 object
@@ -1312,7 +1308,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 assert_eq!(TypeId::from_uuid(s.type_id), *T::type_ulid());
                 let snapshot = parse_snapshot::<T>(s.snapshot_version, s.snapshot.clone()).unwrap();
                 assert!(object == snapshot);
-                assert_eq!(s.is_heavy, snapshot.is_heavy());
                 assert_eq!(
                     s.required_binaries,
                     snapshot
@@ -1424,7 +1419,6 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
     async fn query<T: Object>(
         &self,
         user: User,
-        include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
@@ -1449,8 +1443,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
                 WHERE is_latest
                 AND type_id = $1
                 AND $2 IN users_who_can_read
-                AND ($3 OR NOT is_heavy)
-                AND snapshot_id > $4
+                AND snapshot_id > $3
                 AND ({})
             ",
             q.where_clause(5)
@@ -1458,7 +1451,6 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         let mut query = sqlx::query(&query)
             .bind(T::type_ulid())
             .bind(user)
-            .bind(include_heavy)
             .bind(EventId(Ulid::from_parts(
                 ignore_not_modified_on_server_since
                     .map(|t| t.time_ms())

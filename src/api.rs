@@ -106,7 +106,6 @@ pub trait Object:
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 
-    fn is_heavy(&self) -> bool;
     fn required_binaries(&self) -> Vec<BinPtr>;
 }
 

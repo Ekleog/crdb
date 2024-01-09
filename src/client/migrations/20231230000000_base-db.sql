@@ -14,7 +14,6 @@ CREATE TABLE snapshots (
     is_latest BOOLEAN NOT NULL,
     snapshot_version INTEGER NOT NULL,
     snapshot BLOB NOT NULL, -- JSONB
-    is_heavy BOOLEAN NOT NULL,
     -- Whether we need to keep the object in the database, either because the
     -- user explicitly required it, or because it has not been successfully
     -- uploaded yet. Both are meaningfully set only on the is_creation

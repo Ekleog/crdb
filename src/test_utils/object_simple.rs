@@ -94,10 +94,6 @@ impl Object for TestObjectSimple {
         }
     }
 
-    fn is_heavy(&self) -> bool {
-        self.0.len() > 10
-    }
-
     fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
     }

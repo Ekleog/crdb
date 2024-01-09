@@ -25,7 +25,6 @@ CREATE TABLE snapshots (
     users_who_can_read UUID ARRAY,
     users_who_can_read_depends_on UUID ARRAY, -- List of all the other objects on which `users_who_can_read` depends
     reverse_dependents_to_update UUID ARRAY, -- List of reverse dependents that have not had their permissions updated yet
-    is_heavy BOOLEAN NOT NULL,
     required_binaries UUID ARRAY NOT NULL
 );
 

@@ -216,7 +216,6 @@ impl Db for MemDb {
     async fn query<T: Object>(
         &self,
         _user: User,
-        _include_heavy: bool,
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         _q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {

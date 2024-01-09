@@ -67,10 +67,6 @@ impl Object for TestObjectPerms {
         }
     }
 
-    fn is_heavy(&self) -> bool {
-        false
-    }
-
     fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
     }

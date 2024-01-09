@@ -138,10 +138,6 @@ impl Object for TestObjectFull {
         }
     }
 
-    fn is_heavy(&self) -> bool {
-        false
-    }
-
     fn required_binaries(&self) -> Vec<BinPtr> {
         self.bins.clone()
     }

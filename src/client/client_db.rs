@@ -6,7 +6,7 @@ use crate::{
     full_object::FullObject,
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
-use futures::{future, StreamExt};
+use futures::StreamExt;
 use std::sync::Arc;
 
 pub struct ClientDb<A: Authenticator> {
@@ -110,33 +110,27 @@ impl<A: Authenticator> Db for ClientDb<A> {
     async fn query<T: Object>(
         &self,
         user: User,
-        include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        if !include_heavy {
-            return self
-                .db
-                .query::<T>(user, include_heavy, ignore_not_modified_on_server_since, q)
-                .await
-                .map(future::Either::Left);
-        }
-        Ok(future::Either::Right(
-            self.api
-                .query::<T>(user, include_heavy, ignore_not_modified_on_server_since, q)
-                .await?
-                .then({
-                    let db = self.db.clone();
-                    move |o| {
-                        let db = db.clone();
-                        async move {
-                            let o = o?;
-                            db.create_all::<T, _>(o.clone(), &*db).await?;
-                            Ok(o)
-                        }
+        // TODO: provide a way to query only local or to query remote
+        // TODO: it actually makes no sense for ClientDb to impl Db, as it will never be wrapped
+        // in a cache
+        Ok(self
+            .api
+            .query::<T>(user, ignore_not_modified_on_server_since, q)
+            .await?
+            .then({
+                let db = self.db.clone();
+                move |o| {
+                    let db = db.clone();
+                    async move {
+                        let o = o?;
+                        db.create_all::<T, _>(o.clone(), &*db).await?;
+                        Ok(o)
                     }
-                }),
-        ))
+                }
+            }))
     }
 
     async fn recreate<T: Object, C: crate::CanDoCallbacks>(

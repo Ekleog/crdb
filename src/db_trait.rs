@@ -106,7 +106,6 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
     fn query<T: Object>(
         &self,
         user: User,
-        include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
     ) -> impl CrdbFuture<Output = anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>>>;
