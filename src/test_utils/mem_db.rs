@@ -3,7 +3,8 @@ use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     error::ResultExt,
     full_object::{DynSized, FullObject},
-    BinPtr, CanDoCallbacks, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
+    BinPtr, CanDoCallbacks, CrdbStream, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId,
+    User,
 };
 use futures::Stream;
 use std::{
@@ -71,15 +72,15 @@ fn recreate<T: Object>(
 }
 
 impl Db for MemDb {
-    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
+    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
         futures::stream::empty()
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
+    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
         futures::stream::empty()
     }
 
-    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
+    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
         futures::stream::empty()
     }
 
@@ -218,7 +219,7 @@ impl Db for MemDb {
         _include_heavy: bool,
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         _q: Query,
-    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
+    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         // TODO
         Ok(futures::stream::empty())
     }

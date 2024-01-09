@@ -4,9 +4,9 @@ use crate::{
     cache::CacheDb,
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
-use futures::{future, Stream, StreamExt};
+use futures::{future, StreamExt};
 use std::sync::Arc;
 
 pub struct ClientDb<A: Authenticator> {
@@ -56,15 +56,15 @@ impl<A: Authenticator> ClientDb<A> {
 }
 
 impl<A: Authenticator> Db for ClientDb<A> {
-    async fn new_objects(&self) -> impl Stream<Item = DynNewObject> {
+    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
         self.api.new_objects().await
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
+    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
         self.api.new_events().await
     }
 
-    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
+    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
         self.api.new_recreations().await
     }
 
@@ -113,7 +113,7 @@ impl<A: Authenticator> Db for ClientDb<A> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
+    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         if !include_heavy {
             return self
                 .db

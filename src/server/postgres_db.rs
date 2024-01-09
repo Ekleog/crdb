@@ -4,11 +4,11 @@ use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation, Timestamp},
     error::ResultExt,
     full_object::{Change, FullObject},
-    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
-    SessionToken, TypeId, User,
+    BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
+    SessionRef, SessionToken, TypeId, User,
 };
 use anyhow::Context;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use lockable::{LockPool, Lockable};
 use sqlx::Row;
 use std::{
@@ -1348,15 +1348,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 }
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
-    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
+    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
         futures::stream::empty()
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
+    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
         futures::stream::empty()
     }
 
-    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
+    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
         futures::stream::empty()
     }
 
@@ -1427,7 +1427,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
+    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         reord::point().await;
         let mut transaction = self
             .db

@@ -1,6 +1,7 @@
 use anyhow::Context;
 
-#[tokio::main]
+// Make sure that the code works fine with multi-threading enabled
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
     let db_url = "test";
     let db = crdb::sqlx::postgres::PgPoolOptions::new()

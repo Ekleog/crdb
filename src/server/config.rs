@@ -1,6 +1,5 @@
 use super::postgres_db::{ComboLock, PostgresDb};
-use crate::{api::ApiConfig, CanDoCallbacks, ObjectId, Timestamp, TypeId, User};
-use std::future::Future;
+use crate::{api::ApiConfig, CanDoCallbacks, CrdbFuture, ObjectId, Timestamp, TypeId, User};
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
@@ -15,7 +14,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         snapshot_version: i32,
         snapshot: serde_json::Value,
         cb: &'a C,
-    ) -> impl 'a + Send + Future<Output = crate::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
 
     fn recreate<'a, C: CanDoCallbacks>(
         call_on: &'a PostgresDb<Self>,
@@ -23,7 +22,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         object_id: ObjectId,
         time: Timestamp,
         cb: &'a C,
-    ) -> impl 'a + Send + Future<Output = crate::Result<bool>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<bool>>;
 }
 
 #[doc(hidden)]

@@ -30,7 +30,7 @@ macro_rules! generate_client {
 
         impl $client_db {
             pub fn connect(base_url: crdb::Arc<String>, auth: crdb::Arc<$authenticator>, local_db: String, cache_watermark: usize)
-                -> impl Send + crdb::Future<Output = crdb::anyhow::Result<$client_db>>
+                -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<$client_db>>
             {
                 async move {
                     Ok($client_db {
@@ -40,21 +40,21 @@ macro_rules! generate_client {
                 }
             }
 
-            pub fn disconnect(&self) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+            pub fn disconnect(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {
                 self.db.disconnect()
             }
 
-            pub fn create_binary(&self, data: crdb::Arc<Vec<u8>>) -> impl '_ + Send + crdb::Future<Output = crdb::Result<()>> {
+            pub fn create_binary(&self, data: crdb::Arc<Vec<u8>>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
                 let binary_id = crdb::hash_binary(&*data);
                 self.db.create_binary(binary_id, data)
             }
 
-            pub fn get_binary(&self, binary_id: crdb::BinPtr) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
+            pub fn get_binary(&self, binary_id: crdb::BinPtr) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
                 self.db.get_binary(binary_id)
             }
 
             $(crdb::paste! {
-                pub fn [< new_ $name _objects >](&self) -> impl '_ + Send + crdb::Future<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewObject<$object>>> {
+                pub fn [< new_ $name _objects >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewObject<$object>>> {
                     async move {
                         self.db
                             .new_objects()
@@ -68,7 +68,7 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< new_ $name _events >](&self) -> impl '_ + Send + crdb::Future<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewEvent<$object>>> {
+                pub fn [< new_ $name _events >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewEvent<$object>>> {
                     async move {
                         self.db
                             .new_events()
@@ -83,7 +83,7 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< new_ $name _recreations >](&self) -> impl '_ + Send + crdb::Future<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewRecreation<$object>>> {
+                pub fn [< new_ $name _recreations >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewRecreation<$object>>> {
                     async move {
                         self.db
                             .new_recreations()
@@ -96,11 +96,11 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< unsubscribe_from_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<()>> {
+                pub fn [< unsubscribe_from_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {
                     self.db.unsubscribe(object.to_object_id())
                 }
 
-                pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
+                pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();
                         let id = id.expect("Failed to generate ulid for object creation");
@@ -109,13 +109,13 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: crdb::Arc<<$object as crdb::Object>::Event>) -> impl '_ + Send + crdb::Future<Output = Result<(), crdb::Error>> {
+                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: crdb::Arc<<$object as crdb::Object>::Event>) -> impl '_ + crdb::CrdbFuture<Output = Result<(), crdb::Error>> {
                     let id = self.ulid.lock().unwrap().generate();
                     let id = id.expect("Failed to generate ulid for event submission");
                     self.db.submit::<$object, _>(object.to_object_id(), crdb::EventId(id), event, &self.db)
                 }
 
-                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + Send + crdb::Future<Output = crdb::Result<crdb::Arc<$object>>> {
+                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {
                     async move {
                         self.db.get::<$object>(object.to_object_id()).await?.last_snapshot()
                             .wrap_with_context(|| format!("getting last snapshot of {object:?}"))
@@ -127,7 +127,7 @@ macro_rules! generate_client {
                     include_heavy: bool,
                     ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
                     q: crdb::Query,
-                ) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<impl '_ + Send + crdb::Stream<Item = crdb::Result<crdb::Arc<$object>>>>> {
+                ) -> impl '_ + Send + crdb::Future<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
                         Ok(self.db.query::<$object>(
                             self.db.user(),

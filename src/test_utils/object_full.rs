@@ -1,7 +1,8 @@
 use super::ulid;
-use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User};
+use crate::{
+    BinPtr, CanDoCallbacks, CrdbFuture, CrdbFutureExt, DbPtr, Object, ObjectId, TypeId, User,
+};
 use anyhow::Context;
-use futures::FutureExt;
 use std::future::Future;
 
 #[derive(
@@ -89,14 +90,14 @@ impl Object for TestObjectFull {
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + Send + Future<Output = anyhow::Result<Vec<User>>> {
+    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<Vec<User>>> {
         async move {
             let mut res = self.users.clone();
             for remote in &self.deps {
                 match db.get(*remote).await {
                     Err(crate::Error::ObjectDoesNotExist(o)) if o == remote.to_object_id() => (),
                     Err(e) => return Err(e).context(format!("fetching {remote:?}")),
-                    Ok(r) => res.extend(r.users_who_can_read(db).boxed().await?),
+                    Ok(r) => res.extend(r.users_who_can_read(db).boxed_crdb().await?),
                 }
             }
             Ok(res)

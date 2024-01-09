@@ -1,9 +1,9 @@
 use crate::{
-    cache::CacheConfig, db_trait::Db, error::ResultExt, BinPtr, EventId, ObjectId, Timestamp,
-    TypeId, User,
+    cache::CacheConfig, db_trait::Db, error::ResultExt, BinPtr, CrdbFuture, EventId, ObjectId,
+    Timestamp, TypeId, User,
 };
 use anyhow::Context;
-use std::{any::Any, collections::HashSet, future::Future, marker::PhantomData, sync::Arc};
+use std::{any::Any, collections::HashSet, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
 pub(crate) mod query;
@@ -14,10 +14,8 @@ pub(crate) mod private {
 }
 
 pub trait CanDoCallbacks: Send + Sync + private::Sealed {
-    fn get<T: Object>(
-        &self,
-        ptr: DbPtr<T>,
-    ) -> impl '_ + Send + Future<Output = crate::Result<Arc<T>>>;
+    fn get<T: Object>(&self, ptr: DbPtr<T>)
+        -> impl '_ + CrdbFuture<Output = crate::Result<Arc<T>>>;
 }
 
 impl<D: Db> private::Sealed for D {}
@@ -71,7 +69,7 @@ pub trait Object:
         user: User,
         self_id: ObjectId,
         db: &'a C,
-    ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
+    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<bool>>;
     /// Note that permissions are always checked with the latest version of the object on the server.
     /// So, due to this, CRDB objects are not strictly speaking a CRDT. However, it is required to do
     /// so for security, because otherwise a user who lost permissions would still be allowed to
@@ -83,7 +81,7 @@ pub trait Object:
         self_id: ObjectId,
         event: &'a Self::Event,
         db: &'a C,
-    ) -> impl 'a + Send + Future<Output = anyhow::Result<bool>>;
+    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<bool>>;
     /// Note that `db.get` calls will be cached. So:
     /// - Use `db.get` as little as possible, to avoid useless cache thrashing
     /// - Make sure to always read objects in a given order. You should consider all your objects as
@@ -101,7 +99,7 @@ pub trait Object:
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + Send + Future<Output = anyhow::Result<Vec<User>>>;
+    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<Vec<User>>>;
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 

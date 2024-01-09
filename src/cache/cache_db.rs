@@ -3,9 +3,10 @@ use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     error::ResultExt,
     full_object::FullObject,
-    hash_binary, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, User,
+    hash_binary, BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp,
+    User,
 };
-use futures::{pin_mut, Stream, StreamExt};
+use futures::{pin_mut, StreamExt};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -22,7 +23,7 @@ impl<D: Db> CacheDb<D> {
         relay_to_db: bool,
     ) {
         // Watch new objects
-        tokio::task::spawn({
+        crate::spawn({
             let db = db.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
@@ -55,7 +56,7 @@ impl<D: Db> CacheDb<D> {
         });
 
         // Watch new events
-        tokio::task::spawn({
+        crate::spawn({
             let db = db.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
@@ -94,7 +95,7 @@ impl<D: Db> CacheDb<D> {
         });
 
         // Watch new re-creations
-        tokio::task::spawn({
+        crate::spawn({
             let db = db.clone();
             let internal_db = self.db.clone();
             let cache = self.cache.clone();
@@ -206,15 +207,15 @@ impl<D: Db> CacheDb<D> {
 }
 
 impl<D: Db> Db for CacheDb<D> {
-    async fn new_objects(&self) -> impl Stream<Item = DynNewObject> {
+    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
         self.db.new_objects().await
     }
 
-    async fn new_events(&self) -> impl Stream<Item = DynNewEvent> {
+    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
         self.db.new_events().await
     }
 
-    async fn new_recreations(&self) -> impl Stream<Item = DynNewRecreation> {
+    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
         self.db.new_recreations().await
     }
 
@@ -289,7 +290,7 @@ impl<D: Db> Db for CacheDb<D> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
+    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         // We cannot use the object cache here, because it is not guaranteed to even
         // contain all the non-heavy objects, due to being an LRU cache. So, immediately
         // delegate to the underlying database, which should forward to either PostgreSQL

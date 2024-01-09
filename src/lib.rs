@@ -3,6 +3,7 @@ mod cache;
 mod db_trait;
 mod error;
 mod full_object;
+mod future;
 mod ids;
 mod session;
 #[cfg(test)]
@@ -11,6 +12,7 @@ mod test_utils;
 pub use api::{CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query};
 pub use db_trait::Timestamp;
 pub use error::{Error, Result};
+pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
 pub use ids::{BinPtr, EventId, ObjectId, TypeId, User};
 pub use session::{NewSession, Session, SessionRef, SessionToken};
 
@@ -42,7 +44,7 @@ mod server {
 #[doc(hidden)]
 pub mod crdb_internal {
     #[cfg(feature = "client")]
-    pub use crate::client::ClientDb;
+    pub use crate::client::{ClientDb, LocalDb};
     #[cfg(feature = "server")]
     pub use crate::server::{ComboLock, PostgresDb, ServerConfig};
     pub use crate::{
@@ -50,8 +52,8 @@ pub mod crdb_internal {
         cache::{CacheConfig, ObjectCache},
         db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
         error::ResultExt,
-        hash_binary, private, BinPtr, DbPtr, Error, EventId, Object, ObjectId, Query, Result,
-        Timestamp, TypeId, User,
+        hash_binary, private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object,
+        ObjectId, Query, Result, Timestamp, TypeId, User,
     };
     pub use anyhow;
     pub use futures::{self, future, stream, Stream};

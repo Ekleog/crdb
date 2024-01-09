@@ -2,9 +2,8 @@ use super::Authenticator;
 use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
-use futures::Stream;
 use std::sync::Arc;
 
 pub struct ApiDb<A: Authenticator> {
@@ -29,17 +28,17 @@ impl<A: Authenticator> ApiDb<A> {
 #[allow(unused_variables)] // TODO: remove
 impl<A: Authenticator> Db for ApiDb<A> {
     // TODO: use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
-    async fn new_objects(&self) -> impl Send + Stream<Item = DynNewObject> {
+    async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_events(&self) -> impl Send + Stream<Item = DynNewEvent> {
+    async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
         // todo!()
         futures::stream::empty()
     }
 
-    async fn new_recreations(&self) -> impl Send + Stream<Item = DynNewRecreation> {
+    async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
         // todo!()
         futures::stream::empty()
     }
@@ -78,7 +77,7 @@ impl<A: Authenticator> Db for ApiDb<A> {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> anyhow::Result<impl Stream<Item = crate::Result<FullObject>>> {
+    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         // todo!()
         Ok(futures::stream::empty())
     }

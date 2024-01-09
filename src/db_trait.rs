@@ -1,10 +1,9 @@
 use crate::{
     api::Query,
     full_object::{DynSized, FullObject},
-    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, TypeId, User,
+    BinPtr, CanDoCallbacks, CrdbFuture, CrdbStream, EventId, Object, ObjectId, TypeId, User,
 };
-use futures::Stream;
-use std::{future::Future, sync::Arc, time::SystemTime};
+use std::{sync::Arc, time::SystemTime};
 use ulid::Ulid;
 
 #[derive(Clone)]
@@ -73,18 +72,17 @@ impl Timestamp {
 pub trait Db: 'static + Send + Sync {
     /// These streams get new elements whenever another user submitted a new object or event.
     /// Note that they are NOT called when you yourself called create or submit.
-    fn new_objects(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewObject>>;
+    fn new_objects(&self) -> impl CrdbFuture<Output = impl Send + CrdbStream<Item = DynNewObject>>;
     /// This function returns all new events for events on objects that have been subscribed
     /// on. Objects subscribed on are all the objects that have ever been created
     /// with `created`, or obtained with `get` or `query`, as well as all objects
     /// received through `new_objects`, excluding objects explicitly unsubscribed from
-    fn new_events(&self) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewEvent>>;
-    fn new_recreations(
-        &self,
-    ) -> impl Send + Future<Output = impl Send + Stream<Item = DynNewRecreation>>;
+    fn new_events(&self) -> impl CrdbFuture<Output = impl Send + CrdbStream<Item = DynNewEvent>>;
+    fn new_recreations(&self)
+        -> impl CrdbFuture<Output = impl CrdbStream<Item = DynNewRecreation>>;
     /// Note that this function unsubscribes ALL the streams that have ever been taken from this
     /// database; and purges it from the local database.
-    fn unsubscribe(&self, ptr: ObjectId) -> impl Send + Future<Output = anyhow::Result<()>>;
+    fn unsubscribe(&self, ptr: ObjectId) -> impl CrdbFuture<Output = anyhow::Result<()>>;
 
     fn create<T: Object, C: CanDoCallbacks>(
         &self,
@@ -92,19 +90,16 @@ pub trait Db: 'static + Send + Sync {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> impl Send + Future<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<()>>;
     fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> impl Send + Future<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<()>>;
 
-    fn get<T: Object>(
-        &self,
-        ptr: ObjectId,
-    ) -> impl Send + Future<Output = crate::Result<FullObject>>;
+    fn get<T: Object>(&self, ptr: ObjectId) -> impl CrdbFuture<Output = crate::Result<FullObject>>;
     /// Note: this function can also be used to populate the cache, as the cache will include
     /// any item returned by this function.
     fn query<T: Object>(
@@ -113,22 +108,22 @@ pub trait Db: 'static + Send + Sync {
         include_heavy: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: Query,
-    ) -> impl Send + Future<Output = anyhow::Result<impl Stream<Item = crate::Result<FullObject>>>>;
+    ) -> impl CrdbFuture<Output = anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>>>;
 
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         time: Timestamp,
         object: ObjectId,
         cb: &C,
-    ) -> impl Send + Future<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<()>>;
 
     fn create_binary(
         &self,
         binary_id: BinPtr,
         data: Arc<Vec<u8>>,
-    ) -> impl Send + Future<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<()>>;
     fn get_binary(
         &self,
         binary_id: BinPtr,
-    ) -> impl Send + Future<Output = anyhow::Result<Option<Arc<Vec<u8>>>>>;
+    ) -> impl CrdbFuture<Output = anyhow::Result<Option<Arc<Vec<u8>>>>>;
 }
