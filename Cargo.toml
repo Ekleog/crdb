@@ -40,7 +40,7 @@ sqlx = { version = "0.7.3", features = ["runtime-tokio"], optional = true }
 uuid = { version = "1.6", optional = true }
 
 [dev-dependencies]
-bolero = "0.10.0"
+bolero = { version = "0.10.0", features = ["rng"] }
 reord = { version = "0.1.4", features = ["test"] }
 tempfile = "3.9"
 tokio = { version = "1.35", features = ["full"] }
