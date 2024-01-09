@@ -9,7 +9,7 @@ test NAME='': (test-crate NAME) (test-example-basic NAME)
 doc:
     cargo doc --all-features --examples
 
-test-no-pg NAME='': (test-crate-no-pg NAME) (test-example-basic NAME)
+test-standalone NAME='': (test-crate-standalone NAME) (test-example-basic NAME)
 
 make-test-db:
     dropdb crdb-test || true
@@ -21,7 +21,7 @@ rebuild-offline-queries: make-test-db
     dropdb crdb-test
 
 test-crate NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-crate-client-js NAME) (test-crate-server NAME)
-test-crate-no-pg NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-crate-client-js NAME)
+test-crate-standalone NAME='': (test-crate-api NAME) (test-crate-client-native NAME)
 
 test-crate-api NAME='':
     SQLX_OFFLINE="true" cargo nextest run {{NAME}}
@@ -30,7 +30,7 @@ test-crate-client-native NAME='':
     SQLX_OFFLINE="true" cargo nextest run --features client {{NAME}}
 
 test-crate-client-js NAME='':
-    cargo build --features client --target wasm32-unknown-unknown {{NAME}}
+    cargo test --features client --target wasm32-unknown-unknown {{NAME}}
 
 test-crate-server NAME='':
     SQLX_OFFLINE="true" cargo nextest run --features server {{NAME}}
