@@ -27,11 +27,7 @@ jobs:
       - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
         with:
           crate: wasm-bindgen-cli
-      - uses: awalsh128/cache-apt-pkgs-action@44c33b32f808cdddd5ac0366d70595ed63661ed8
-        with:
-          packages: firefox
-          execute_install_scripts: true
-          version: 1.0
+      - run: sudo apt-get install firefox
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
         with:
           workspaces: |
