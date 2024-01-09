@@ -39,4 +39,4 @@ jobs:
           password: postgres
           database: crdb
       - run: sqlx migrate run --source src/server/migrations
-      - run: just test
+      - run: BOLERO_RANDOM_ITERATIONS=200 just test
