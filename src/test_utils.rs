@@ -1,4 +1,4 @@
-#![allow(dead_code)] // test utils can be or not eb used but get copy-pasted anyway
+#![allow(dead_code, unused_imports)] // test utils can be or not be used but get copy-pasted anyway
 
 use crate::full_object::DynSized;
 use anyhow::Context;

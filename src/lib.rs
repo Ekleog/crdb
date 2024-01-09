@@ -128,7 +128,9 @@ macro_rules! db {
             },
         }
     ) => {
+        #[allow(unused_imports)]
         $v mod $module {
+
             use $crate::crdb_internal as crdb;
             use crdb::Db as CrdbDb;
             use crdb::ResultExt as CrdbResultExt;

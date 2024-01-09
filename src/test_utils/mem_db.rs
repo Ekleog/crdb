@@ -98,7 +98,7 @@ impl Db for MemDb {
 
         // First, check for duplicates
         if let Some((ty, o)) = this.objects.get(&object_id) {
-            crate::check_strings(&serde_json::to_value(&object).unwrap())?;
+            crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
             let c = o.creation_info();
             if ty != T::type_ulid()
                 || created_at != c.created_at
@@ -109,12 +109,12 @@ impl Db for MemDb {
             return Ok(());
         }
         if let Some(_) = this.events.get(&created_at) {
-            crate::check_strings(&serde_json::to_value(&object).unwrap())?;
+            crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
         // Then, check that the data is correct
-        crate::check_strings(&serde_json::to_value(&object).unwrap())?;
+        crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
 
         // Then, check for required binaries
         let required_binaries = object.required_binaries();
@@ -166,7 +166,7 @@ impl Db for MemDb {
             Some((_, o)) => {
                 // First, check for duplicates
                 if let Some((o, e)) = this.events.get(&event_id) {
-                    crate::check_strings(&serde_json::to_value(&event).unwrap())?;
+                    crate::check_strings(&serde_json::to_value(&*event).unwrap())?;
                     let Some(e) = e else {
                         // else if creation snapshot
                         return Err(crate::Error::EventAlreadyExists(event_id));
@@ -178,7 +178,7 @@ impl Db for MemDb {
                 }
 
                 // Then, check that the data is correct
-                crate::check_strings(&serde_json::to_value(&event).unwrap())?;
+                crate::check_strings(&serde_json::to_value(&*event).unwrap())?;
 
                 // Then, check for required binaries
                 let required_binaries = event.required_binaries();
