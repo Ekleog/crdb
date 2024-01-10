@@ -480,3 +480,22 @@ fn regression_strings_are_in_keys_too() {
         }],
     );
 }
+
+#[test]
+fn regression_cast_error() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Op::Create {
+                id: ObjectId(Ulid::from_string("000000000000000000000002G0").unwrap()),
+                created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 4, 6, 75, 182, 0])),
+            },
+            Op::Query {
+                user: User(Ulid::from_string("00000000000000000000000001").unwrap()),
+                q: Query::Le(vec![], BigDecimal::from_str("0").unwrap()),
+            },
+        ],
+    );
+}
