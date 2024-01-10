@@ -4,14 +4,13 @@ use crate::{
     error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{
-        self, cmp, cmp_just_errs, db::ServerConfig, TestEventSimple, TestObjectSimple, EVENT_ID_1,
-        EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
+        self, cmp, cmp_query_results, db::ServerConfig, TestEventSimple, TestObjectSimple,
+        EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
     },
     EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
 use bigdecimal::BigDecimal;
-use futures::StreamExt;
 use std::{str::FromStr, sync::Arc};
 use ulid::Ulid;
 
@@ -129,22 +128,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .query::<TestObjectSimple>(*user, None, &q)
                 .await
                 .wrap_context("querying mem");
-            cmp_just_errs(&pg, &mem)?;
-            if !pg.is_ok() {
-                return Ok(());
-            }
-            let pg = pg.unwrap().collect::<Vec<_>>().await;
-            let mem = mem.unwrap().collect::<Vec<_>>().await;
-            pg.into_iter()
-                .zip(mem.into_iter())
-                .map(|(pg, mem)| {
-                    cmp(
-                        pg.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
-                        mem.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
-                    )
-                })
-                .collect::<anyhow::Result<()>>()
-                .wrap_with_context(|| format!("checking all equalities"))?;
+            cmp_query_results::<TestObjectSimple>(pg, mem).await?;
         }
         Op::Recreate { object, time } => {
             let o = s

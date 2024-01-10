@@ -1,8 +1,12 @@
 #![allow(dead_code, unused_imports)] // test utils can be or not be used but get copy-pasted anyway
 
-use crate::full_object::DynSized;
+use crate::{
+    full_object::{DynSized, FullObject},
+    CrdbStream, Object,
+};
 use anyhow::Context;
-use std::{any::Any, fmt::Debug};
+use futures::StreamExt;
+use std::{any::Any, fmt::Debug, sync::Arc};
 
 mod mem_db;
 mod object_delegate_perms;
@@ -115,5 +119,47 @@ pub(crate) fn cmp<T: Debug + Eq>(
         _ => false,
     };
     anyhow::ensure!(is_eq, "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}\n==========");
+    Ok(())
+}
+
+pub(crate) async fn cmp_query_results<T: Debug + Ord + Object>(
+    pg: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
+    mem: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
+) -> anyhow::Result<()> {
+    cmp_just_errs(&pg, &mem)?;
+    if !pg.is_ok() {
+        return Ok(());
+    }
+    let pg = pg
+        .unwrap()
+        .collect::<Vec<crate::Result<FullObject>>>()
+        .await
+        .into_iter()
+        .collect::<crate::Result<Vec<FullObject>>>();
+    let mem = mem
+        .unwrap()
+        .collect::<Vec<crate::Result<FullObject>>>()
+        .await
+        .into_iter()
+        .collect::<crate::Result<Vec<FullObject>>>();
+    cmp_just_errs(&pg, &mem)?;
+    if !pg.is_ok() {
+        return Ok(());
+    }
+    let mut pg = pg
+        .unwrap()
+        .into_iter()
+        .map(|o| o.last_snapshot::<T>())
+        .collect::<anyhow::Result<Vec<Arc<T>>>>()
+        .context("getting last snapshot of objects from postgres")?;
+    let mut mem = mem
+        .unwrap()
+        .into_iter()
+        .map(|o| o.last_snapshot::<T>())
+        .collect::<anyhow::Result<Vec<Arc<T>>>>()
+        .context("getting last snapshot of objects from mem")?;
+    pg.sort_unstable();
+    mem.sort_unstable();
+    cmp(Ok(pg), Ok(mem))?;
     Ok(())
 }
