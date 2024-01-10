@@ -1447,7 +1447,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
                 FROM snapshots
                 WHERE is_latest
                 AND type_id = $1
-                AND $2 IN users_who_can_read
+                AND $2 = ANY (users_who_can_read)
                 AND last_modified > $3
                 AND ({})
             ",

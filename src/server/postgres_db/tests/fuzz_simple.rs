@@ -377,3 +377,15 @@ fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict()
         ],
     );
 }
+
+#[test]
+fn regression_any_query_crashed_postgres() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::All(vec![]),
+        }],
+    );
+}
