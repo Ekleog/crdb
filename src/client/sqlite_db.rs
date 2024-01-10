@@ -158,6 +158,10 @@ impl Db for SqliteDb {
         todo!()
     }
 
+    async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {
+        todo!()
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
         todo!()
     }

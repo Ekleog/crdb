@@ -284,6 +284,11 @@ impl<D: Db> Db for CacheDb<D> {
         self.cache.write().await.recreate::<T>(object, time)
     }
 
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
+        self.cache.write().await.remove(&object_id);
+        self.db.remove(object_id).await
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
         debug_assert!(
             binary_id == hash_binary(&*data),

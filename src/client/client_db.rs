@@ -67,8 +67,8 @@ impl<A: Authenticator> ClientDb<A> {
     }
 
     pub async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
+        self.db.remove(ptr).await?;
         self.api.unsubscribe(ptr).await
-        // TODO: self.db.remove(ptr).await
     }
 
     pub async fn create<T: Object>(

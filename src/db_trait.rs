@@ -102,6 +102,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         object: ObjectId,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    fn remove(&self, object: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
 
     fn create_binary(
         &self,

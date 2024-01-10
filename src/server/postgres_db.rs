@@ -1485,6 +1485,10 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
+        panic!("Tried removing {object_id:?} from server, but server is supposed to always keep all the history!")
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
