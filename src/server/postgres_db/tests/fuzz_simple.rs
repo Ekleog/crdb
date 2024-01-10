@@ -436,3 +436,18 @@ fn regression_too_big_decimal_failed_postgres() {
         }],
     );
 }
+
+#[test]
+fn regression_postgresql_syntax_for_equality() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::Eq(
+                vec![JsonPathItem::Key(String::new())],
+                serde_json::Value::Null,
+            ),
+        }],
+    );
+}
