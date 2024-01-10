@@ -7,7 +7,8 @@ pub enum JsonPathItem {
     Key(String),
 
     /// Negative values count from the end
-    Id(isize),
+    // PostgreSQL throws an error if trying to use -> with a value beyond i32 range
+    Id(i32),
 }
 
 #[derive(Debug)]
@@ -190,7 +191,7 @@ impl Query {
                 None => None,
                 Some(v) => v
                     .len()
-                    .checked_add_signed(*k)
+                    .checked_add_signed(isize::try_from(*k).unwrap())
                     .and_then(|i| v.get(i))
                     .and_then(|v| Self::deref(v, &path[1..])),
             },
