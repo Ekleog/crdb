@@ -6,7 +6,7 @@ use crate::{
     BinPtr, CanDoCallbacks, CrdbStream, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId,
     User,
 };
-use futures::Stream;
+use futures::{stream, Stream, StreamExt};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -199,12 +199,38 @@ impl Db for MemDb {
 
     async fn query<T: Object>(
         &self,
-        _user: User,
-        _ignore_not_modified_on_server_since: Option<Timestamp>,
-        _q: Query,
+        user: User,
+        ignore_not_modified_on_server_since: Option<Timestamp>,
+        q: Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        // TODO
-        Ok(futures::stream::empty())
+        assert!(
+            ignore_not_modified_on_server_since.is_none(),
+            "Time-based tests are currently not implemented"
+        );
+        let q = &q;
+        let res = stream::iter(self.0.lock().await.objects.values())
+            .filter_map(|(t, full_object)| async move {
+                if t != T::type_ulid() {
+                    return None;
+                }
+                let o = full_object
+                    .last_snapshot::<T>()
+                    .expect("type error inside MemDb");
+                if !o
+                    .users_who_can_read(self)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|u| *u == user)
+                    || !q.matches(&*o).unwrap()
+                {
+                    return None;
+                }
+                Some(Ok(full_object.clone()))
+            })
+            .collect::<Vec<crate::Result<FullObject>>>()
+            .await;
+        Ok(stream::iter(res.into_iter()))
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
