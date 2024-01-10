@@ -25,8 +25,6 @@ pub enum Query {
 
     // JSON tests
     Eq(Vec<JsonPathItem>, serde_json::Value),
-    /// If the provided path does not exist, then this test will succeed
-    Ne(Vec<JsonPathItem>, serde_json::Value),
 
     // Integers
     Le(Vec<JsonPathItem>, BigDecimal),
@@ -44,7 +42,7 @@ pub enum Query {
 #[cfg(test)]
 impl<'a> arbitrary::Arbitrary<'a> for Query {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Query> {
-        Ok(match u.arbitrary::<u8>()? % 11 {
+        Ok(match u.arbitrary::<u8>()? % 10 {
             0 => Query::All(
                 u.arbitrary_iter()?
                     .collect::<arbitrary::Result<Vec<Query>>>()?,
@@ -58,31 +56,27 @@ impl<'a> arbitrary::Arbitrary<'a> for Query {
                 u.arbitrary()?,
                 u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
             ),
-            4 => Query::Ne(
+            4 => Query::Le(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
+            5 => Query::Lt(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
+            6 => Query::Ge(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
+            7 => Query::Gt(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
+            8 => Query::Contains(
                 u.arbitrary()?,
                 u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
             ),
-            5 => Query::Le(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
-            6 => Query::Lt(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
-            7 => Query::Ge(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
-            8 => Query::Gt(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
-            9 => Query::Contains(
-                u.arbitrary()?,
-                u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
-            ),
-            10 => Query::ContainsStr(u.arbitrary()?, u.arbitrary()?),
+            9 => Query::ContainsStr(u.arbitrary()?, u.arbitrary()?),
             _ => unimplemented!(),
         })
     }
@@ -100,7 +94,6 @@ impl Query {
             Query::Any(q) => q.iter().any(|q| q.matches_impl(v)),
             Query::Not(q) => !q.matches_impl(v),
             Query::Eq(p, to) => Self::deref(v, p) == Some(to),
-            Query::Ne(p, to) => Self::deref(v, p) != Some(to),
             Query::Le(p, to) => Self::deref_num(v, p).map(|n| n <= *to).unwrap_or(false),
             Query::Lt(p, to) => Self::deref_num(v, p).map(|n| n < *to).unwrap_or(false),
             Query::Ge(p, to) => Self::deref_num(v, p).map(|n| n >= *to).unwrap_or(false),
@@ -219,12 +212,6 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             res.push_str(&format!(" == ${}", bind_idx));
             *bind_idx += 1;
         }
-        Query::Ne(path, _) => {
-            res.push_str("snapshot");
-            add_path_to_clause(&mut *res, path);
-            res.push_str(&format!(" != ${}", bind_idx));
-            *bind_idx += 1;
-        }
         Query::Le(path, _) => {
             res.push_str("snapshot");
             add_path_to_clause(&mut *res, path);
@@ -302,9 +289,6 @@ fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) {
             add_to_binds(&mut *res, q);
         }
         Query::Eq(_, v) => {
-            res.push(Bind::Json(v));
-        }
-        Query::Ne(_, v) => {
             res.push(Bind::Json(v));
         }
         Query::Le(_, v) => res.push(Bind::Decimal(v.clone())),
