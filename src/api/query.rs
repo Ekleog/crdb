@@ -88,38 +88,62 @@ impl Query {
         Ok(match self {
             Query::All(v) => {
                 for v in v {
-                    v.check()?
+                    v.check()?;
                 }
             }
             Query::Any(v) => {
                 for v in v {
-                    v.check()?
+                    v.check()?;
                 }
             }
             Query::Not(v) => v.check()?,
             Query::Le(p, n) => {
                 Self::check_path(p)?;
-                Self::check_number(n)?
+                Self::check_number(n)?;
             }
             Query::Lt(p, n) => {
                 Self::check_path(p)?;
-                Self::check_number(n)?
+                Self::check_number(n)?;
             }
             Query::Ge(p, n) => {
                 Self::check_path(p)?;
-                Self::check_number(n)?
+                Self::check_number(n)?;
             }
-            Query::Eq(p, _) => Self::check_path(p)?,
+            Query::Eq(p, v) => {
+                Self::check_path(p)?;
+                Self::check_value(v)?;
+            }
             Query::Gt(p, n) => {
                 Self::check_path(p)?;
-                Self::check_number(n)?
+                Self::check_number(n)?;
             }
             Query::Contains(p, _) => Self::check_path(p)?,
             Query::ContainsStr(p, s) => {
                 Self::check_path(p)?;
-                crate::check_string(s)?
+                crate::check_string(s)?;
             }
         })
+    }
+
+    fn check_value(v: &serde_json::Value) -> crate::Result<()> {
+        match v {
+            serde_json::Value::Null => (),
+            serde_json::Value::Bool(_) => (),
+            serde_json::Value::Number(_) => (),
+            serde_json::Value::String(s) => crate::check_string(s)?,
+            serde_json::Value::Array(v) => {
+                for v in v.iter() {
+                    Self::check_value(v)?;
+                }
+            }
+            serde_json::Value::Object(m) => {
+                for (k, v) in m.iter() {
+                    crate::check_string(k)?;
+                    Self::check_value(v)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn check_path(p: &[JsonPathItem]) -> crate::Result<()> {
