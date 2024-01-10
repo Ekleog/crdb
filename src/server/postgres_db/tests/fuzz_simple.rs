@@ -7,7 +7,7 @@ use crate::{
         self, cmp, db::ServerConfig, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2,
         EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
     },
-    EventId, ObjectId, Query, Timestamp, User,
+    EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
 use bigdecimal::BigDecimal;
@@ -399,6 +399,21 @@ fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
         &vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Lt(vec![], BigDecimal::from_str("0").unwrap()),
+        }],
+    );
+}
+
+#[test]
+fn regression_keyed_comparison_was_still_wrong_syntax() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::Ge(
+                vec![JsonPathItem::Key(String::new())],
+                BigDecimal::from_str("0").unwrap(),
+            ),
         }],
     );
 }

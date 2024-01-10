@@ -213,27 +213,27 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             *bind_idx += 1;
         }
         Query::Le(path, _) => {
-            res.push_str("snapshot");
+            res.push_str("(snapshot");
             add_path_to_clause(&mut *res, path);
-            res.push_str(&format!("::numeric <= ${}", bind_idx));
+            res.push_str(&format!(")::numeric <= ${}", bind_idx));
             *bind_idx += 1;
         }
         Query::Lt(path, _) => {
-            res.push_str("snapshot");
+            res.push_str("(snapshot");
             add_path_to_clause(&mut *res, path);
-            res.push_str(&format!("::numeric < ${}", bind_idx));
+            res.push_str(&format!(")::numeric < ${}", bind_idx));
             *bind_idx += 1;
         }
         Query::Ge(path, _) => {
-            res.push_str("snapshot");
+            res.push_str("(snapshot");
             add_path_to_clause(&mut *res, path);
-            res.push_str(&format!("::numeric >= ${}", bind_idx));
+            res.push_str(&format!(")::numeric >= ${}", bind_idx));
             *bind_idx += 1;
         }
         Query::Gt(path, _) => {
-            res.push_str("snapshot");
+            res.push_str("(snapshot");
             add_path_to_clause(&mut *res, path);
-            res.push_str(&format!("::numeric > ${}", bind_idx));
+            res.push_str(&format!(")::numeric > ${}", bind_idx));
             *bind_idx += 1;
         }
         Query::Contains(path, _) => {
