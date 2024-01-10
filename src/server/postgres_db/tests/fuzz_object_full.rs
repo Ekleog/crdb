@@ -3,11 +3,12 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{self, cmp, db::ServerConfig, TestEventFull, TestObjectFull, USER_ID_NULL},
+    test_utils::{
+        self, cmp, cmp_query_results, db::ServerConfig, TestEventFull, TestObjectFull, USER_ID_NULL,
+    },
     BinPtr, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
-use futures::StreamExt;
 use std::sync::Arc;
 use ulid::Ulid;
 
@@ -122,28 +123,16 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             cmp(pg, mem)?;
         }
         Op::Query { user, q } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
             let pg = db
                 .query::<TestObjectFull>(*user, None, &q)
-                .await?
-                .collect::<Vec<_>>()
-                .await;
+                .await
+                .wrap_context("querying postgres");
             let mem = s
                 .mem_db
                 .query::<TestObjectFull>(*user, None, &q)
                 .await
-                .unwrap()
-                .collect::<Vec<_>>()
-                .await;
-            pg.into_iter()
-                .zip(mem.into_iter())
-                .map(|(pg, mem)| {
-                    cmp(
-                        pg.map(|o| o.last_snapshot::<TestObjectFull>().unwrap()),
-                        mem.map(|o| o.last_snapshot::<TestObjectFull>().unwrap()),
-                    )
-                })
-                .collect::<anyhow::Result<()>>()?;
+                .wrap_context("querying mem");
+            cmp_query_results::<TestObjectFull>(pg, mem).await?;
         }
         Op::Recreate { object, time } => {
             let o = s

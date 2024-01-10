@@ -118,7 +118,6 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             cmp(pg, mem)?;
         }
         Op::Query { user, q } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
             let pg = db
                 .query::<TestObjectSimple>(*user, None, &q)
                 .await
