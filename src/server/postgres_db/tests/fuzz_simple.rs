@@ -10,7 +10,7 @@ use crate::{
     EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
-use bigdecimal::BigDecimal;
+use rust_decimal::Decimal;
 use std::{str::FromStr, sync::Arc};
 use ulid::Ulid;
 
@@ -385,7 +385,7 @@ fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
         &cluster,
         &vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
-            q: Query::Lt(vec![], BigDecimal::from_str("0").unwrap()),
+            q: Query::Lt(vec![], Decimal::from_str("0").unwrap()),
         }],
     );
 }
@@ -399,7 +399,7 @@ fn regression_keyed_comparison_was_still_wrong_syntax() {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Ge(
                 vec![JsonPathItem::Key(String::new())],
-                BigDecimal::from_str("0").unwrap(),
+                Decimal::from_str("0").unwrap(),
             ),
         }],
     );
@@ -414,7 +414,7 @@ fn regression_too_big_decimal_failed_postgres() {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Ge(
                 vec![JsonPathItem::Key(String::new())],
-                BigDecimal::from_str(&format!("0.{:030000}", 0)).unwrap(),
+                Decimal::from_str(&format!("0.{:030000}1", 0)).unwrap(),
             ),
         }],
     );
@@ -444,7 +444,7 @@ fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Le(
                 vec![],
-                BigDecimal::from_str(&format!("0.{:0228}", 0)).unwrap(),
+                Decimal::from_str(&format!("0.{:0228}1", 0)).unwrap(),
             ),
         }],
     );
@@ -459,7 +459,7 @@ fn regression_way_too_big_decimal_caused_problems() {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Le(
                 vec![],
-                BigDecimal::from_str(&format!("0.{:057859}", 0)).unwrap(),
+                Decimal::from_str(&format!("0.{:057859}1", 0)).unwrap(),
             ),
         }],
     );
@@ -474,7 +474,7 @@ fn regression_strings_are_in_keys_too() {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Le(
                 vec![JsonPathItem::Key(String::from("\0"))],
-                BigDecimal::from_str("0").unwrap(),
+                Decimal::from_str("0").unwrap(),
             ),
         }],
     );
@@ -493,7 +493,7 @@ fn regression_cast_error() {
             },
             Op::Query {
                 user: User(Ulid::from_string("00000000000000000000000001").unwrap()),
-                q: Query::Le(vec![], BigDecimal::from_str("0").unwrap()),
+                q: Query::Le(vec![], Decimal::from_str("0").unwrap()),
             },
         ],
     );

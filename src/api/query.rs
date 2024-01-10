@@ -1,4 +1,4 @@
-use bigdecimal::BigDecimal;
+use rust_decimal::Decimal;
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
@@ -28,10 +28,10 @@ pub enum Query {
     Eq(Vec<JsonPathItem>, serde_json::Value),
 
     // Integers
-    Le(Vec<JsonPathItem>, BigDecimal),
-    Lt(Vec<JsonPathItem>, BigDecimal),
-    Ge(Vec<JsonPathItem>, BigDecimal),
-    Gt(Vec<JsonPathItem>, BigDecimal),
+    Le(Vec<JsonPathItem>, Decimal),
+    Lt(Vec<JsonPathItem>, Decimal),
+    Ge(Vec<JsonPathItem>, Decimal),
+    Gt(Vec<JsonPathItem>, Decimal),
 
     // Arrays and object containment
     Contains(Vec<JsonPathItem>, serde_json::Value),
@@ -57,22 +57,10 @@ impl<'a> arbitrary::Arbitrary<'a> for Query {
                 u.arbitrary()?,
                 u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
             ),
-            4 => Query::Le(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
-            5 => Query::Lt(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
-            6 => Query::Ge(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
-            7 => Query::Gt(
-                u.arbitrary()?,
-                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
-            ),
+            4 => Query::Le(u.arbitrary()?, u.arbitrary()?),
+            5 => Query::Lt(u.arbitrary()?, u.arbitrary()?),
+            6 => Query::Ge(u.arbitrary()?, u.arbitrary()?),
+            7 => Query::Gt(u.arbitrary()?, u.arbitrary()?),
             8 => Query::Contains(
                 u.arbitrary()?,
                 u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
@@ -97,26 +85,14 @@ impl Query {
                 }
             }
             Query::Not(v) => v.check()?,
-            Query::Le(p, n) => {
-                Self::check_path(p)?;
-                Self::check_number(n)?;
-            }
-            Query::Lt(p, n) => {
-                Self::check_path(p)?;
-                Self::check_number(n)?;
-            }
-            Query::Ge(p, n) => {
-                Self::check_path(p)?;
-                Self::check_number(n)?;
-            }
             Query::Eq(p, v) => {
                 Self::check_path(p)?;
                 Self::check_value(v)?;
             }
-            Query::Gt(p, n) => {
-                Self::check_path(p)?;
-                Self::check_number(n)?;
-            }
+            Query::Le(p, _) => Self::check_path(p)?,
+            Query::Lt(p, _) => Self::check_path(p)?,
+            Query::Ge(p, _) => Self::check_path(p)?,
+            Query::Gt(p, _) => Self::check_path(p)?,
             Query::Contains(p, v) => {
                 Self::check_path(p)?;
                 Self::check_value(v)?;
@@ -156,14 +132,6 @@ impl Query {
                 JsonPathItem::Key(k) => crate::check_string(k),
             })
             .collect()
-    }
-
-    fn check_number(n: &BigDecimal) -> crate::Result<()> {
-        let (_, exp) = n.as_bigint_and_exponent();
-        if exp > 16383 || n.digits().checked_add_signed(-exp).unwrap_or(0) > 131072 {
-            return Err(crate::Error::InvalidNumber);
-        }
-        Ok(())
     }
 
     pub fn matches<T: serde::Serialize>(&self, v: T) -> serde_json::Result<bool> {
@@ -223,7 +191,7 @@ impl Query {
         }
     }
 
-    fn deref_num(v: &serde_json::Value, path: &[JsonPathItem]) -> Option<BigDecimal> {
+    fn deref_num(v: &serde_json::Value, path: &[JsonPathItem]) -> Option<Decimal> {
         serde_json::from_value(Self::deref(v, path)?.clone()).ok()
     }
 
@@ -365,7 +333,7 @@ fn add_path_to_binds<'a>(res: &mut Vec<Bind<'a>>, path: &'a [JsonPathItem]) {
 pub(crate) enum Bind<'a> {
     Json(&'a serde_json::Value),
     Str(&'a str),
-    Decimal(BigDecimal),
+    Decimal(Decimal),
     I32(i32),
 }
 

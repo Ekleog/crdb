@@ -1427,7 +1427,6 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        q.check()?; // TODO: why do we need this?
         reord::point().await;
         let mut transaction = self
             .db
