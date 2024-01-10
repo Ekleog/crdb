@@ -108,7 +108,7 @@ impl Query {
 
     fn check_number(n: &BigDecimal) -> crate::Result<()> {
         let (_, exp) = n.as_bigint_and_exponent();
-        if exp > 16383 || n.digits().checked_add_signed(-exp).unwrap() > 131072 {
+        if exp > 16383 || n.digits().checked_add_signed(-exp).unwrap_or(0) > 131072 {
             return Err(crate::Error::InvalidNumber);
         }
         Ok(())

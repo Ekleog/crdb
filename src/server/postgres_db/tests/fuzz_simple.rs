@@ -451,3 +451,18 @@ fn regression_postgresql_syntax_for_equality() {
         }],
     );
 }
+
+#[test]
+fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::Le(
+                vec![],
+                BigDecimal::from_str(&format!("0.{:0228}", 0)).unwrap(),
+            ),
+        }],
+    );
+}
