@@ -10,7 +10,7 @@ use std::{any::Any, collections::HashSet, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
 pub(crate) mod query;
-pub use query::{JsonNumber, JsonPathItem, Query};
+pub use query::{JsonPathItem, Query};
 
 pub(crate) mod private {
     pub trait Sealed {}

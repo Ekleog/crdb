@@ -9,7 +9,7 @@ mod session;
 #[cfg(test)]
 mod test_utils;
 
-pub use api::{CanDoCallbacks, DbPtr, Event, JsonNumber, JsonPathItem, Object, Query};
+pub use api::{CanDoCallbacks, DbPtr, Event, JsonPathItem, Object, Query};
 pub use db_trait::Timestamp;
 pub use error::{Error, Result};
 pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};

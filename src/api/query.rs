@@ -1,27 +1,13 @@
+use bigdecimal::BigDecimal;
+
 #[derive(Debug)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[non_exhaustive]
 pub enum JsonPathItem {
     Key(String),
+
+    /// Negative values count from the end
     Id(isize),
-}
-
-#[derive(Debug)]
-#[cfg_attr(test, derive(arbitrary::Arbitrary))]
-#[non_exhaustive]
-pub enum JsonNumber {
-    F64(f64),
-    I64(i64),
-}
-
-impl JsonNumber {
-    #[cfg(feature = "server")]
-    fn to_bind(&self) -> Bind {
-        match self {
-            JsonNumber::F64(v) => Bind::F64(*v),
-            JsonNumber::I64(v) => Bind::I64(*v),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -39,13 +25,14 @@ pub enum Query {
 
     // JSON tests
     Eq(Vec<JsonPathItem>, serde_json::Value),
+    /// If the provided path does not exist, then this test will succeed
     Ne(Vec<JsonPathItem>, serde_json::Value),
 
     // Integers
-    Le(Vec<JsonPathItem>, JsonNumber),
-    Lt(Vec<JsonPathItem>, JsonNumber),
-    Ge(Vec<JsonPathItem>, JsonNumber),
-    Gt(Vec<JsonPathItem>, JsonNumber),
+    Le(Vec<JsonPathItem>, BigDecimal),
+    Lt(Vec<JsonPathItem>, BigDecimal),
+    Ge(Vec<JsonPathItem>, BigDecimal),
+    Gt(Vec<JsonPathItem>, BigDecimal),
 
     // Arrays and object containment
     Contains(Vec<JsonPathItem>, serde_json::Value),
@@ -75,10 +62,22 @@ impl<'a> arbitrary::Arbitrary<'a> for Query {
                 u.arbitrary()?,
                 u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
             ),
-            5 => Query::Le(u.arbitrary()?, u.arbitrary()?),
-            6 => Query::Lt(u.arbitrary()?, u.arbitrary()?),
-            7 => Query::Ge(u.arbitrary()?, u.arbitrary()?),
-            8 => Query::Gt(u.arbitrary()?, u.arbitrary()?),
+            5 => Query::Le(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
+            6 => Query::Lt(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
+            7 => Query::Ge(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
+            8 => Query::Gt(
+                u.arbitrary()?,
+                BigDecimal::new(u.arbitrary()?, u.arbitrary()?),
+            ),
             9 => Query::Contains(
                 u.arbitrary()?,
                 u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
@@ -90,6 +89,90 @@ impl<'a> arbitrary::Arbitrary<'a> for Query {
 }
 
 impl Query {
+    pub fn matches<T: serde::Serialize>(&self, v: T) -> serde_json::Result<bool> {
+        let json = serde_json::to_value(v)?;
+        Ok(self.matches_impl(&json))
+    }
+
+    fn matches_impl(&self, v: &serde_json::Value) -> bool {
+        match self {
+            Query::All(q) => q.iter().all(|q| q.matches_impl(v)),
+            Query::Any(q) => q.iter().any(|q| q.matches_impl(v)),
+            Query::Not(q) => !q.matches_impl(v),
+            Query::Eq(p, to) => Self::deref(v, p) == Some(to),
+            Query::Ne(p, to) => Self::deref(v, p) != Some(to),
+            Query::Le(p, to) => Self::deref_num(v, p).map(|n| n <= *to).unwrap_or(false),
+            Query::Lt(p, to) => Self::deref_num(v, p).map(|n| n < *to).unwrap_or(false),
+            Query::Ge(p, to) => Self::deref_num(v, p).map(|n| n >= *to).unwrap_or(false),
+            Query::Gt(p, to) => Self::deref_num(v, p).map(|n| n > *to).unwrap_or(false),
+            Query::Contains(p, pat) => {
+                let Some(v) = Self::deref(v, p) else {
+                    return false;
+                };
+                Self::contains(v, pat)
+            }
+            Query::ContainsStr(p, pat) => Self::deref(v, p)
+                .and_then(|s| s.as_str())
+                .map(|s| s.contains(pat))
+                .unwrap_or(false),
+        }
+    }
+
+    fn contains(v: &serde_json::Value, pat: &serde_json::Value) -> bool {
+        use serde_json::Value::*;
+        match (v, pat) {
+            (Null, Null) => true,
+            (Bool(l), Bool(r)) => l == r,
+            (Number(l), Number(r)) => l == r,
+            (String(l), String(r)) => l == r,
+            (Object(v), Object(pat)) => {
+                for (key, pat) in pat.iter() {
+                    if !v.get(key).map(|v| Self::contains(v, pat)).unwrap_or(false) {
+                        return false;
+                    }
+                }
+                true
+            }
+            (Array(v), Array(pat)) => {
+                for pat in pat.iter() {
+                    if !v.iter().any(|v| Self::contains(v, pat)) {
+                        return false;
+                    }
+                }
+                true
+            }
+            (Array(_), Object(_)) => false, // primitive containment doesn't work on objects
+            (Array(v), pat) => v.iter().any(|v| v == pat), // but does work on primitives
+            _ => false,
+        }
+    }
+
+    fn deref_num(v: &serde_json::Value, path: &[JsonPathItem]) -> Option<BigDecimal> {
+        serde_json::from_value(Self::deref(v, path)?.clone()).ok()
+    }
+
+    fn deref<'a>(v: &'a serde_json::Value, path: &[JsonPathItem]) -> Option<&'a serde_json::Value> {
+        match path.get(0) {
+            None => None,
+            Some(JsonPathItem::Key(k)) => match v.as_object() {
+                None => None,
+                Some(v) => v.get(k).and_then(|v| Self::deref(v, &path[1..])),
+            },
+            Some(JsonPathItem::Id(k)) if *k >= 0 => match v.as_array() {
+                None => None,
+                Some(v) => v.get(*k as usize).and_then(|v| Self::deref(v, &path[1..])),
+            },
+            Some(JsonPathItem::Id(k)) /* if *k < 0 */ => match v.as_array() {
+                None => None,
+                Some(v) => v
+                    .len()
+                    .checked_add_signed(*k)
+                    .and_then(|i| v.get(i))
+                    .and_then(|v| Self::deref(v, &path[1..])),
+            },
+        }
+    }
+
     #[cfg(feature = "server")]
     pub(crate) fn where_clause(&self, first_idx: usize) -> String {
         let mut res = String::new();
@@ -199,8 +282,7 @@ fn add_path_to_clause(res: &mut String, path: &[JsonPathItem]) {
 pub(crate) enum Bind<'a> {
     Json(&'a serde_json::Value),
     Str(&'a str),
-    I64(i64),
-    F64(f64),
+    Decimal(BigDecimal),
 }
 
 #[cfg(feature = "server")]
@@ -225,10 +307,10 @@ fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) {
         Query::Ne(_, v) => {
             res.push(Bind::Json(v));
         }
-        Query::Le(_, v) => res.push(v.to_bind()),
-        Query::Lt(_, v) => res.push(v.to_bind()),
-        Query::Ge(_, v) => res.push(v.to_bind()),
-        Query::Gt(_, v) => res.push(v.to_bind()),
+        Query::Le(_, v) => res.push(Bind::Decimal(v.clone())),
+        Query::Lt(_, v) => res.push(Bind::Decimal(v.clone())),
+        Query::Ge(_, v) => res.push(Bind::Decimal(v.clone())),
+        Query::Gt(_, v) => res.push(Bind::Decimal(v.clone())),
         Query::Contains(_, v) => {
             res.push(Bind::Json(v));
         }

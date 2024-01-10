@@ -1465,8 +1465,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             match b {
                 Bind::Json(v) => query = query.bind(v),
                 Bind::Str(v) => query = query.bind(v),
-                Bind::F64(v) => query = query.bind(v),
-                Bind::I64(v) => query = query.bind(v),
+                Bind::Decimal(v) => query = query.bind(v),
             }
         }
         reord::point().await;
