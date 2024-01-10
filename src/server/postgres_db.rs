@@ -18,7 +18,6 @@ use std::{
     time::SystemTime,
 };
 use tokio::sync::Mutex;
-use ulid::Ulid;
 
 #[cfg(test)]
 mod tests;
@@ -410,12 +409,16 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let affected = sqlx::query(
             "
                 UPDATE snapshots
-                SET users_who_can_read = $1, users_who_can_read_depends_on = $2
-                WHERE object_id = $3 AND is_latest
+                SET users_who_can_read = $1,
+                    users_who_can_read_depends_on = $2,
+                    last_modified = $3
+                WHERE object_id = $4
+                AND is_latest
             ",
         )
         .bind(users_who_can_read)
         .bind(&users_who_can_read_depends_on)
+        .bind(Timestamp::now().time_ms_i()?)
         .bind(object_id)
         .execute(&mut *transaction)
         .await
@@ -515,7 +518,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         reord::point().await;
         let result = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+            "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
         .bind(snapshot_id)
         .bind(T::type_ulid())
@@ -528,6 +531,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(users_who_can_read_depends_on)
         .bind(rdeps)
         .bind(object.required_binaries())
+        .bind(Timestamp::now().time_ms_i()?)
         .execute(&mut *transaction)
         .await;
 
@@ -577,7 +581,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let required_binaries = object.required_binaries();
         reord::point().await;
         let affected =
-            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING")
+            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING")
                 .bind(created_at)
                 .bind(type_id)
                 .bind(object_id)
@@ -587,6 +591,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(&users_who_can_read_depends_on)
                 .bind(&rdeps)
                 .bind(&required_binaries)
+                .bind(Timestamp::now().time_ms_i()?)
                 .execute(&mut *transaction)
                 .await
                 .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
@@ -1086,6 +1091,22 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 format!("deleting all events for {object_id:?} before {cutoff_time:?}")
             })?;
 
+        // Mark the corresponding latest event as updated
+        reord::point().await;
+        let affected = sqlx::query(
+            "UPDATE snapshots SET last_modified = $1 WHERE is_latest AND object_id = $2",
+        )
+        .bind(Timestamp::now().time_ms_i()?)
+        .bind(object_id)
+        .execute(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("failed marking last snapshot of {object_id:?} as modified"))?
+        .rows_affected();
+        assert!(
+            affected == 1,
+            "Object {object_id:?} did not have a latest snapshot, something went very wrong"
+        );
+
         // Finally, commit the transaction
         transaction.commit().await.wrap_with_context(|| {
             format!("committing transaction that recreated {object_id:?} at {cutoff_time:?}")
@@ -1427,20 +1448,19 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
                 WHERE is_latest
                 AND type_id = $1
                 AND $2 IN users_who_can_read
-                AND snapshot_id > $3
+                AND last_modified > $3
                 AND ({})
             ",
-            q.where_clause(5)
+            q.where_clause(4)
         );
+        let min_last_modified = ignore_not_modified_on_server_since
+            .map(|t| t.time_ms_i())
+            .transpose()?
+            .unwrap_or(0);
         let mut query = sqlx::query(&query)
             .bind(T::type_ulid())
             .bind(user)
-            .bind(EventId(Ulid::from_parts(
-                ignore_not_modified_on_server_since
-                    .map(|t| t.time_ms())
-                    .unwrap_or(0),
-                (1 << Ulid::RAND_BITS) - 1,
-            )));
+            .bind(min_last_modified);
         for b in q.binds() {
             match b {
                 Bind::Json(v) => query = query.bind(v),
