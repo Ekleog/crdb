@@ -498,3 +498,18 @@ fn regression_cast_error() {
         ],
     );
 }
+
+#[test]
+fn regression_sql_injection_in_path_key() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("030C1G60R30C1G60R30C1G60R3").unwrap()),
+            q: Query::Eq(
+                vec![JsonPathItem::Key(String::from("'a"))],
+                serde_json::Value::Null,
+            ),
+        }],
+    );
+}

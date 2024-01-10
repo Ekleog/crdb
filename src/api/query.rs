@@ -264,6 +264,7 @@ impl Query {
 
 #[cfg(feature = "server")]
 fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
+    let mut initial_bind_idx = *bind_idx;
     match query {
         Query::All(v) => {
             res.push_str("TRUE");
@@ -288,51 +289,51 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
         }
         Query::Eq(path, _) => {
             res.push_str("snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(" = ${}", bind_idx));
             *bind_idx += 1;
         }
         Query::Le(path, _) => {
             res.push_str("CASE WHEN jsonb_typeof(snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(") = 'number' THEN (snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric <= ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Lt(path, _) => {
             res.push_str("CASE WHEN jsonb_typeof(snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(") = 'number' THEN (snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric < ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Ge(path, _) => {
             res.push_str("CASE WHEN jsonb_typeof(snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(") = 'number' THEN (snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric >= ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Gt(path, _) => {
             res.push_str("CASE WHEN jsonb_typeof(snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(") = 'number' THEN (snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric > ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Contains(path, _) => {
             res.push_str("snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(" @> ${}", bind_idx));
             *bind_idx += 1;
         }
         Query::ContainsStr(path, _) => {
             res.push_str("to_tsvector(snapshot");
-            add_path_to_clause(&mut *res, path);
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(") @@ phraseto_tsquery(${})", bind_idx));
             *bind_idx += 1;
         }
@@ -340,15 +341,19 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
 }
 
 #[cfg(feature = "server")]
-fn add_path_to_clause(res: &mut String, path: &[JsonPathItem]) {
+fn add_path_to_clause(res: &mut String, bind_idx: &mut usize, path: &[JsonPathItem]) {
+    for _ in path {
+        res.push_str(&format!("->${bind_idx}"));
+        *bind_idx += 1;
+    }
+}
+
+#[cfg(feature = "server")]
+fn add_path_to_binds<'a>(res: &mut Vec<Bind<'a>>, path: &'a [JsonPathItem]) {
     for p in path {
         match p {
-            JsonPathItem::Id(i) => {
-                res.push_str(&format!("->{i}"));
-            }
-            JsonPathItem::Key(k) => {
-                res.push_str(&format!("->'{k}'"));
-            }
+            JsonPathItem::Key(k) => res.push(Bind::Str(k)),
+            JsonPathItem::Id(i) => res.push(Bind::I32(*i)),
         }
     }
 }
@@ -358,6 +363,7 @@ pub(crate) enum Bind<'a> {
     Json(&'a serde_json::Value),
     Str(&'a str),
     Decimal(BigDecimal),
+    I32(i32),
 }
 
 #[cfg(feature = "server")]
@@ -376,17 +382,32 @@ fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) {
         Query::Not(q) => {
             add_to_binds(&mut *res, q);
         }
-        Query::Eq(_, v) => {
+        Query::Eq(p, v) => {
+            add_path_to_binds(&mut *res, p);
             res.push(Bind::Json(v));
         }
-        Query::Le(_, v) => res.push(Bind::Decimal(v.clone())),
-        Query::Lt(_, v) => res.push(Bind::Decimal(v.clone())),
-        Query::Ge(_, v) => res.push(Bind::Decimal(v.clone())),
-        Query::Gt(_, v) => res.push(Bind::Decimal(v.clone())),
-        Query::Contains(_, v) => {
+        Query::Le(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(v.clone()));
+        }
+        Query::Lt(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(v.clone()));
+        }
+        Query::Ge(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(v.clone()));
+        }
+        Query::Gt(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(v.clone()));
+        }
+        Query::Contains(p, v) => {
+            add_path_to_binds(&mut *res, p);
             res.push(Bind::Json(v));
         }
-        Query::ContainsStr(_, v) => {
+        Query::ContainsStr(p, v) => {
+            add_path_to_binds(&mut *res, p);
             res.push(Bind::Str(v));
         }
     }
