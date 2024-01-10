@@ -466,3 +466,18 @@ fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
         }],
     );
 }
+
+#[test]
+fn regression_way_too_big_decimal_caused_problems() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::Le(
+                vec![],
+                BigDecimal::from_str(&format!("0.{:057859}", 0)).unwrap(),
+            ),
+        }],
+    );
+}
