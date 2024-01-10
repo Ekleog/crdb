@@ -102,7 +102,7 @@ impl Query {
             Query::Ge(_, n) => Self::check_number(n)?,
             Query::Gt(_, n) => Self::check_number(n)?,
             Query::Contains(_, _) => (),
-            Query::ContainsStr(_, _) => (),
+            Query::ContainsStr(_, s) => crate::check_string(s)?,
         })
     }
 
