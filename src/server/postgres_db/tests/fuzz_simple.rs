@@ -4,8 +4,8 @@ use crate::{
     error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{
-        self, cmp, db::ServerConfig, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2,
-        EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
+        self, cmp, cmp_just_errs, db::ServerConfig, TestEventSimple, TestObjectSimple, EVENT_ID_1,
+        EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
     },
     EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
 };
@@ -122,16 +122,19 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             // TODO: use get_snapshot_at instead of last_snapshot
             let pg = db
                 .query::<TestObjectSimple>(*user, None, &q)
-                .await?
-                .collect::<Vec<_>>()
-                .await;
+                .await
+                .wrap_context("querying postgres");
             let mem = s
                 .mem_db
                 .query::<TestObjectSimple>(*user, None, &q)
                 .await
-                .unwrap()
-                .collect::<Vec<_>>()
-                .await;
+                .wrap_context("querying mem");
+            cmp_just_errs(&pg, &mem)?;
+            if !pg.is_ok() {
+                return Ok(());
+            }
+            let pg = pg.unwrap().collect::<Vec<_>>().await;
+            let mem = mem.unwrap().collect::<Vec<_>>().await;
             pg.into_iter()
                 .zip(mem.into_iter())
                 .map(|(pg, mem)| {
@@ -140,7 +143,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                         mem.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
                     )
                 })
-                .collect::<anyhow::Result<()>>()?;
+                .collect::<anyhow::Result<()>>()
+                .wrap_with_context(|| format!("checking all equalities"))?;
         }
         Op::Recreate { object, time } => {
             let o = s
@@ -413,6 +417,21 @@ fn regression_keyed_comparison_was_still_wrong_syntax() {
             q: Query::Ge(
                 vec![JsonPathItem::Key(String::new())],
                 BigDecimal::from_str("0").unwrap(),
+            ),
+        }],
+    );
+}
+
+#[test]
+fn regression_too_big_decimal_failed_postgres() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::Ge(
+                vec![JsonPathItem::Key(String::new())],
+                BigDecimal::from_str(&format!("0.{:030000}", 0)).unwrap(),
             ),
         }],
     );

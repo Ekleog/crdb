@@ -207,6 +207,7 @@ impl Db for MemDb {
             ignore_not_modified_on_server_since.is_none(),
             "Time-based tests are currently not implemented"
         );
+        q.check()?;
         let q = &q;
         let res = stream::iter(self.0.lock().await.objects.values())
             .filter_map(|(t, full_object)| async move {

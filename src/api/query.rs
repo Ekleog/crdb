@@ -83,6 +83,37 @@ impl<'a> arbitrary::Arbitrary<'a> for Query {
 }
 
 impl Query {
+    pub fn check(&self) -> crate::Result<()> {
+        Ok(match self {
+            Query::All(v) => {
+                for v in v {
+                    v.check()?
+                }
+            }
+            Query::Any(v) => {
+                for v in v {
+                    v.check()?
+                }
+            }
+            Query::Not(v) => v.check()?,
+            Query::Eq(_, _) => (),
+            Query::Le(_, n) => Self::check_number(n)?,
+            Query::Lt(_, n) => Self::check_number(n)?,
+            Query::Ge(_, n) => Self::check_number(n)?,
+            Query::Gt(_, n) => Self::check_number(n)?,
+            Query::Contains(_, _) => (),
+            Query::ContainsStr(_, _) => (),
+        })
+    }
+
+    fn check_number(n: &BigDecimal) -> crate::Result<()> {
+        let (_, exp) = n.as_bigint_and_exponent();
+        if exp > 16383 || n.digits().checked_add_signed(-exp).unwrap() > 131072 {
+            return Err(crate::Error::InvalidNumber);
+        }
+        Ok(())
+    }
+
     pub fn matches<T: serde::Serialize>(&self, v: T) -> serde_json::Result<bool> {
         let json = serde_json::to_value(v)?;
         Ok(self.matches_impl(&json))

@@ -32,6 +32,9 @@ pub enum Error {
     #[error("Invalid token: {0:?}")]
     InvalidToken(SessionToken),
 
+    #[error("Invalid number provided")]
+    InvalidNumber,
+
     #[error(
         "{event_id:?} is too early to be submitted on {object_id:?} created at {created_at:?}"
     )]
@@ -90,14 +93,13 @@ impl<T> ResultExt for sqlx::Result<T> {
 
     fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
         match self {
-            Err(sqlx::Error::Database(err))
-                if err
-                    .code()
-                    .map(|c| c == "22P05" || c == "22021")
-                    .unwrap_or(false) =>
-            {
-                Err(Error::NullByteInString)
-            }
+            Err(sqlx::Error::Database(err)) => match err.code().as_ref().map(|c| &**c) {
+                Some("22P05" | "22021") => Err(Error::NullByteInString),
+                Some("22P03") => Err(Error::InvalidNumber),
+                _ => Err(Error::Other(
+                    anyhow::Error::from(sqlx::Error::Database(err)).context(f()),
+                )),
+            },
             Err(e) => Err(Error::Other(anyhow::Error::from(e).context(f()))),
             Ok(r) => Ok(r),
         }

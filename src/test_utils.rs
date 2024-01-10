@@ -56,6 +56,7 @@ pub(crate) fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
         (TypeDoesNotExist(a), TypeDoesNotExist(b)) => a == b,
         (BinaryHashMismatch(a), BinaryHashMismatch(b)) => a == b,
         (NullByteInString, NullByteInString) => true,
+        (InvalidNumber, InvalidNumber) => true,
         (InvalidToken(a), InvalidToken(b)) => a == b,
         (
             EventTooEarly {
