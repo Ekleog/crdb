@@ -1,5 +1,7 @@
 use super::{ulid, TestObjectPerms};
-use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User};
+use crate::{
+    test_utils::USER_ID_NULL, BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User,
+};
 
 #[derive(
     Clone,
@@ -63,7 +65,7 @@ impl Object for TestObjectDelegatePerms {
             Err(crate::Error::Other(e)) => panic!("got unexpected error {e:?}"),
             _ => return Ok(Vec::new()), // protocol not respected
         };
-        Ok(vec![remote.0])
+        Ok(vec![USER_ID_NULL, remote.0])
     }
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {

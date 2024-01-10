@@ -1,5 +1,7 @@
 use super::ulid;
-use crate::{BinPtr, CanDoCallbacks, DbPtr, Event, Object, ObjectId, TypeId, User};
+use crate::{
+    test_utils::USER_ID_NULL, BinPtr, CanDoCallbacks, DbPtr, Event, Object, ObjectId, TypeId, User,
+};
 
 #[derive(
     Clone,
@@ -83,7 +85,7 @@ impl Object for TestObjectSimple {
         &'a self,
         _db: &'a C,
     ) -> anyhow::Result<Vec<User>> {
-        Ok(Vec::new())
+        Ok(vec![USER_ID_NULL])
     }
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {

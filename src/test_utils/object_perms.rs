@@ -1,5 +1,7 @@
 use super::ulid;
-use crate::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User};
+use crate::{
+    test_utils::USER_ID_NULL, BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User,
+};
 
 #[derive(
     Clone,
@@ -58,7 +60,7 @@ impl Object for TestObjectPerms {
         &'a self,
         _db: &'a C,
     ) -> anyhow::Result<Vec<User>> {
-        Ok(vec![self.0])
+        Ok(vec![USER_ID_NULL, self.0])
     }
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
