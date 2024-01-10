@@ -10,8 +10,9 @@ use crate::{
     EventId, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
+use bigdecimal::BigDecimal;
 use futures::StreamExt;
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 use ulid::Ulid;
 
 #[derive(Debug, bolero::generator::TypeGenerator)]
@@ -386,6 +387,18 @@ fn regression_any_query_crashed_postgres() {
         &vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::All(vec![]),
+        }],
+    );
+}
+
+#[test]
+fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::Lt(vec![], BigDecimal::from_str("0").unwrap()),
         }],
     );
 }
