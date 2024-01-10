@@ -117,7 +117,10 @@ impl Query {
                 Self::check_path(p)?;
                 Self::check_number(n)?;
             }
-            Query::Contains(p, _) => Self::check_path(p)?,
+            Query::Contains(p, v) => {
+                Self::check_path(p)?;
+                Self::check_value(v)?;
+            }
             Query::ContainsStr(p, s) => {
                 Self::check_path(p)?;
                 crate::check_string(s)?;
