@@ -7,9 +7,10 @@ use crate::{
         self, cmp, db::ServerConfig, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2,
         EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
     },
-    EventId, ObjectId, Timestamp,
+    EventId, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
+use futures::StreamExt;
 use std::sync::Arc;
 use ulid::Ulid;
 
@@ -28,23 +29,16 @@ enum Op {
     Get {
         object: usize,
     },
-    /* TODO: `user` should be a usize, and TestObject should have some auth info
     Query {
         user: User,
-        include_heavy: bool,
-        ignore_not_modified_on_server_since: Timestamp,
+        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
-    */
     Recreate {
         object: usize,
         time: Timestamp,
     },
-    /* TODO: TestObject should have some binary info
-    CreateBinary {
-        data: Vec<u8>,
-    },
-    */
+    // TODO: add Remove, for when we'll be fuzzing non-postgresdb db's
     Vacuum {
         recreate_at: Option<Timestamp>,
     },
@@ -122,6 +116,30 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                     },
                 };
             cmp(pg, mem)?;
+        }
+        Op::Query { user, q } => {
+            // TODO: use get_snapshot_at instead of last_snapshot
+            let pg = db
+                .query::<TestObjectSimple>(*user, None, &q)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let mem = s
+                .mem_db
+                .query::<TestObjectSimple>(*user, None, &q)
+                .await
+                .unwrap()
+                .collect::<Vec<_>>()
+                .await;
+            pg.into_iter()
+                .zip(mem.into_iter())
+                .map(|(pg, mem)| {
+                    cmp(
+                        pg.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
+                        mem.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
+                    )
+                })
+                .collect::<anyhow::Result<()>>()?;
         }
         Op::Recreate { object, time } => {
             let o = s
