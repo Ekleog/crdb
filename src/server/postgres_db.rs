@@ -1426,20 +1426,20 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         user: User,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
-    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         reord::point().await;
         let mut transaction = self
             .db
             .begin()
             .await
-            .context("acquiring postgresql transaction")?;
+            .wrap_context("acquiring postgresql transaction")?;
 
         // Atomically perform all the reads here
         reord::point().await;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *transaction)
             .await
-            .context("setting transaction as repeatable read")?;
+            .wrap_context("setting transaction as repeatable read")?;
 
         let query = format!(
             "
@@ -1472,7 +1472,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         let ids = query
             .fetch_all(&mut *transaction)
             .await
-            .with_context(|| format!("listing objects matching query {q:?}"))?;
+            .wrap_with_context(|| format!("listing objects matching query {q:?}"))?;
 
         Ok(async_stream::stream! {
             for id in ids {

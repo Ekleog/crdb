@@ -77,7 +77,7 @@ impl<A: Authenticator> ApiDb<A> {
         _user: User,
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         _q: &Query,
-    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         // todo!()
         Ok(futures::stream::empty())
     }

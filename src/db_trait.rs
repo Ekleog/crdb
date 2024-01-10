@@ -94,7 +94,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         user: User,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
-    ) -> impl CrdbFuture<Output = anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>>>;
+    ) -> impl CrdbFuture<Output = crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>>;
 
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,

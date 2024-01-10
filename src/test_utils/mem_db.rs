@@ -202,7 +202,7 @@ impl Db for MemDb {
         user: User,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
-    ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         assert!(
             ignore_not_modified_on_server_since.is_none(),
             "Time-based tests are currently not implemented"

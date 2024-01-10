@@ -110,7 +110,7 @@ impl<A: Authenticator> ClientDb<A> {
         &'a self,
         user: User,
         q: &'a Query,
-    ) -> anyhow::Result<impl 'a + CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<FullObject>>> {
         self.db.query::<T>(user, None, q).await
     }
 
@@ -119,7 +119,7 @@ impl<A: Authenticator> ClientDb<A> {
         user: User,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
-    ) -> anyhow::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
         Ok(self
             .api
             .query::<T>(user, ignore_not_modified_on_server_since, q)
