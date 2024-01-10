@@ -97,14 +97,38 @@ impl Query {
                 }
             }
             Query::Not(v) => v.check()?,
-            Query::Eq(_, _) => (),
-            Query::Le(_, n) => Self::check_number(n)?,
-            Query::Lt(_, n) => Self::check_number(n)?,
-            Query::Ge(_, n) => Self::check_number(n)?,
-            Query::Gt(_, n) => Self::check_number(n)?,
-            Query::Contains(_, _) => (),
-            Query::ContainsStr(_, s) => crate::check_string(s)?,
+            Query::Le(p, n) => {
+                Self::check_path(p)?;
+                Self::check_number(n)?
+            }
+            Query::Lt(p, n) => {
+                Self::check_path(p)?;
+                Self::check_number(n)?
+            }
+            Query::Ge(p, n) => {
+                Self::check_path(p)?;
+                Self::check_number(n)?
+            }
+            Query::Eq(p, _) => Self::check_path(p)?,
+            Query::Gt(p, n) => {
+                Self::check_path(p)?;
+                Self::check_number(n)?
+            }
+            Query::Contains(p, _) => Self::check_path(p)?,
+            Query::ContainsStr(p, s) => {
+                Self::check_path(p)?;
+                crate::check_string(s)?
+            }
         })
+    }
+
+    fn check_path(p: &[JsonPathItem]) -> crate::Result<()> {
+        p.iter()
+            .map(|i| match i {
+                JsonPathItem::Id(_) => Ok(()),
+                JsonPathItem::Key(k) => crate::check_string(k),
+            })
+            .collect()
     }
 
     fn check_number(n: &BigDecimal) -> crate::Result<()> {

@@ -481,3 +481,18 @@ fn regression_way_too_big_decimal_caused_problems() {
         }],
     );
 }
+
+#[test]
+fn regression_strings_are_in_keys_too() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Query {
+            user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
+            q: Query::Le(
+                vec![JsonPathItem::Key(String::from("\0"))],
+                BigDecimal::from_str("0").unwrap(),
+            ),
+        }],
+    );
+}
