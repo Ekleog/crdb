@@ -252,7 +252,7 @@ impl<D: Db> Db for CacheDb<D> {
         &self,
         user: User,
         ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: Query,
+        q: &Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         // We cannot use the object cache here, because it is not guaranteed to contain
         // all the queried objects, due to being an LRU cache. So, immediately delegate

@@ -201,7 +201,7 @@ impl Db for MemDb {
         &self,
         user: User,
         ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: Query,
+        q: &Query,
     ) -> anyhow::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         assert!(
             ignore_not_modified_on_server_since.is_none(),

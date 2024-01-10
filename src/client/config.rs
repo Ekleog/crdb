@@ -122,7 +122,7 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< query_ $name _local >](&self, q: crdb::Query) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
+                pub fn [< query_ $name _local >]<'a>(&'a self, q: &'a crdb::Query) -> impl 'a + crdb::CrdbFuture<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
                         Ok(self.db.query_local::<$object>(self.db.user(), q)
                             .await?
@@ -133,11 +133,11 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< query_ $name _remote >](
-                    &self,
+                pub fn [< query_ $name _remote >]<'a>(
+                    &'a self,
                     ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
-                    q: crdb::Query,
-                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
+                    q: &'a crdb::Query,
+                ) -> impl 'a + crdb::CrdbFuture<Output = crdb::anyhow::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
                         Ok(self.db.query_remote::<$object>(
                             self.db.user(),

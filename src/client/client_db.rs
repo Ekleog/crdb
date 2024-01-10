@@ -106,11 +106,11 @@ impl<A: Authenticator> ClientDb<A> {
         Ok(res)
     }
 
-    pub async fn query_local<T: Object>(
-        &self,
+    pub async fn query_local<'a, T: Object>(
+        &'a self,
         user: User,
-        q: Query,
-    ) -> anyhow::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
+        q: &'a Query,
+    ) -> anyhow::Result<impl 'a + CrdbStream<Item = crate::Result<FullObject>>> {
         self.db.query::<T>(user, None, q).await
     }
 
@@ -118,7 +118,7 @@ impl<A: Authenticator> ClientDb<A> {
         &self,
         user: User,
         ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: Query,
+        q: &Query,
     ) -> anyhow::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
         Ok(self
             .api
