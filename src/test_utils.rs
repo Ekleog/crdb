@@ -45,60 +45,74 @@ fn eq<T: 'static + Any + Send + Sync + Eq>(
             .context("downcasting rhs")?)
 }
 
+pub(crate) fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
+    use crate::Error::*;
+    match (pg, mem) {
+        (MissingBinaries(a), MissingBinaries(b)) => a == b,
+        (InvalidTimestamp(a), InvalidTimestamp(b)) => a == b,
+        (ObjectAlreadyExists(a), ObjectAlreadyExists(b)) => a == b,
+        (EventAlreadyExists(a), EventAlreadyExists(b)) => a == b,
+        (ObjectDoesNotExist(a), ObjectDoesNotExist(b)) => a == b,
+        (TypeDoesNotExist(a), TypeDoesNotExist(b)) => a == b,
+        (BinaryHashMismatch(a), BinaryHashMismatch(b)) => a == b,
+        (NullByteInString, NullByteInString) => true,
+        (InvalidToken(a), InvalidToken(b)) => a == b,
+        (
+            EventTooEarly {
+                event_id: event_id_1,
+                object_id: object_id_1,
+                created_at: created_at_1,
+            },
+            EventTooEarly {
+                event_id: event_id_2,
+                object_id: object_id_2,
+                created_at: created_at_2,
+            },
+        ) => event_id_1 == event_id_2 && object_id_1 == object_id_2 && created_at_1 == created_at_2,
+        (
+            WrongType {
+                object_id: object_id_1,
+                expected_type_id: expected_type_id_1,
+                real_type_id: real_type_id_1,
+            },
+            WrongType {
+                object_id: object_id_2,
+                expected_type_id: expected_type_id_2,
+                real_type_id: real_type_id_2,
+            },
+        ) => {
+            object_id_1 == object_id_2
+                && expected_type_id_1 == expected_type_id_2
+                && real_type_id_1 == real_type_id_2
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn cmp_just_errs<T, U>(
+    pg_res: &crate::Result<T>,
+    mem_res: &crate::Result<U>,
+) -> anyhow::Result<()> {
+    match (&pg_res, &mem_res) {
+        (Ok(_), Ok(_)) => (),
+        (Err(pg_err), Err(mem_err)) =>
+            anyhow::ensure!(cmp_err(pg_err, mem_err), "postgres err != mem err:\n==========\nPostgres:\n{pg_err:?}\n==========\nMem:\n{mem_err:?}\n=========="),
+        (Ok(_), Err(mem_err)) => anyhow::bail!("pg is ok but mem had an error:\n==========\nMem:\n{mem_err:?}\n=========="),
+        (Err(pg_err), Ok(_)) => anyhow::bail!("mem is ok but pg had an error:\n==========\nPostgres:\n{pg_err:?}\n=========="),
+    }
+    Ok(())
+}
+
 pub(crate) fn cmp<T: Debug + Eq>(
     pg_res: crate::Result<T>,
     mem_res: crate::Result<T>,
 ) -> anyhow::Result<()> {
-    use crate::Error::*;
     let is_eq = match (&pg_res, &mem_res) {
-        (_, Err(Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
+        (_, Err(crate::Error::Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
         (Ok(pg), Ok(mem)) => pg == mem,
-        (Err(pg_err), Err(mem_err)) => match (pg_err, mem_err) {
-            (MissingBinaries(a), MissingBinaries(b)) => a == b,
-            (InvalidTimestamp(a), InvalidTimestamp(b)) => a == b,
-            (ObjectAlreadyExists(a), ObjectAlreadyExists(b)) => a == b,
-            (EventAlreadyExists(a), EventAlreadyExists(b)) => a == b,
-            (ObjectDoesNotExist(a), ObjectDoesNotExist(b)) => a == b,
-            (TypeDoesNotExist(a), TypeDoesNotExist(b)) => a == b,
-            (BinaryHashMismatch(a), BinaryHashMismatch(b)) => a == b,
-            (NullByteInString, NullByteInString) => true,
-            (InvalidToken(a), InvalidToken(b)) => a == b,
-            (
-                EventTooEarly {
-                    event_id: event_id_1,
-                    object_id: object_id_1,
-                    created_at: created_at_1,
-                },
-                EventTooEarly {
-                    event_id: event_id_2,
-                    object_id: object_id_2,
-                    created_at: created_at_2,
-                },
-            ) => {
-                event_id_1 == event_id_2
-                    && object_id_1 == object_id_2
-                    && created_at_1 == created_at_2
-            }
-            (
-                WrongType {
-                    object_id: object_id_1,
-                    expected_type_id: expected_type_id_1,
-                    real_type_id: real_type_id_1,
-                },
-                WrongType {
-                    object_id: object_id_2,
-                    expected_type_id: expected_type_id_2,
-                    real_type_id: real_type_id_2,
-                },
-            ) => {
-                object_id_1 == object_id_2
-                    && expected_type_id_1 == expected_type_id_2
-                    && real_type_id_1 == real_type_id_2
-            }
-            _ => false,
-        },
+        (Err(pg_err), Err(mem_err)) => cmp_err(pg_err, mem_err),
         _ => false,
     };
-    anyhow::ensure!(is_eq, "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}");
+    anyhow::ensure!(is_eq, "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}\n==========");
     Ok(())
 }
