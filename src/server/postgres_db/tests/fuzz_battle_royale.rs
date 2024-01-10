@@ -8,8 +8,9 @@ use crate::{
         TestEventSimple, TestObjectDelegatePerms, TestObjectFull, TestObjectPerms,
         TestObjectSimple,
     },
-    BinPtr, EventId, ObjectId, Timestamp,
+    BinPtr, EventId, ObjectId, Query, Timestamp, User,
 };
+use futures::StreamExt;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use ulid::Ulid;
@@ -29,6 +30,11 @@ enum Op {
     GetSimple {
         object: usize,
     },
+    QuerySimple {
+        user: User,
+        #[generator(bolero::gen_arbitrary())]
+        q: Query,
+    },
     RecreateSimple {
         object: usize,
         time: Timestamp,
@@ -45,6 +51,11 @@ enum Op {
     },
     GetPerms {
         object: usize,
+    },
+    QueryPerms {
+        user: User,
+        #[generator(bolero::gen_arbitrary())]
+        q: Query,
     },
     RecreatePerms {
         object: usize,
@@ -63,6 +74,11 @@ enum Op {
     GetDelegatePerms {
         object: usize,
     },
+    QueryDelegatePerms {
+        user: User,
+        #[generator(bolero::gen_arbitrary())]
+        q: Query,
+    },
     RecreateDelegatePerms {
         object: usize,
         time: Timestamp,
@@ -79,6 +95,11 @@ enum Op {
     },
     GetFull {
         object: usize,
+    },
+    QueryFull {
+        user: User,
+        #[generator(bolero::gen_arbitrary())]
+        q: Query,
     },
     RecreateFull {
         object: usize,
@@ -170,6 +191,30 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 };
             cmp(pg, mem)?;
         }
+        Op::QuerySimple { user, q } => {
+            // TODO: use get_snapshot_at instead of last_snapshot
+            let pg = db
+                .query::<TestObjectSimple>(*user, None, &q)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let mem = s
+                .mem_db
+                .query::<TestObjectSimple>(*user, None, &q)
+                .await
+                .unwrap()
+                .collect::<Vec<_>>()
+                .await;
+            pg.into_iter()
+                .zip(mem.into_iter())
+                .map(|(pg, mem)| {
+                    cmp(
+                        pg.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
+                        mem.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
+                    )
+                })
+                .collect::<anyhow::Result<()>>()?;
+        }
         Op::RecreateSimple { object, time } => {
             let o = s
                 .objects
@@ -244,6 +289,30 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     },
                 };
             cmp(pg, mem)?;
+        }
+        Op::QueryPerms { user, q } => {
+            // TODO: use get_snapshot_at instead of last_snapshot
+            let pg = db
+                .query::<TestObjectPerms>(*user, None, &q)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let mem = s
+                .mem_db
+                .query::<TestObjectPerms>(*user, None, &q)
+                .await
+                .unwrap()
+                .collect::<Vec<_>>()
+                .await;
+            pg.into_iter()
+                .zip(mem.into_iter())
+                .map(|(pg, mem)| {
+                    cmp(
+                        pg.map(|o| o.last_snapshot::<TestObjectPerms>().unwrap()),
+                        mem.map(|o| o.last_snapshot::<TestObjectPerms>().unwrap()),
+                    )
+                })
+                .collect::<anyhow::Result<()>>()?;
         }
         Op::RecreatePerms { object, time } => {
             let o = s
@@ -321,6 +390,30 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 };
             cmp(pg, mem)?;
         }
+        Op::QueryDelegatePerms { user, q } => {
+            // TODO: use get_snapshot_at instead of last_snapshot
+            let pg = db
+                .query::<TestObjectDelegatePerms>(*user, None, &q)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let mem = s
+                .mem_db
+                .query::<TestObjectDelegatePerms>(*user, None, &q)
+                .await
+                .unwrap()
+                .collect::<Vec<_>>()
+                .await;
+            pg.into_iter()
+                .zip(mem.into_iter())
+                .map(|(pg, mem)| {
+                    cmp(
+                        pg.map(|o| o.last_snapshot::<TestObjectDelegatePerms>().unwrap()),
+                        mem.map(|o| o.last_snapshot::<TestObjectDelegatePerms>().unwrap()),
+                    )
+                })
+                .collect::<anyhow::Result<()>>()?;
+        }
         Op::RecreateDelegatePerms { object, time } => {
             let o = s
                 .objects
@@ -397,6 +490,30 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     },
                 };
             cmp(pg, mem)?;
+        }
+        Op::QueryFull { user, q } => {
+            // TODO: use get_snapshot_at instead of last_snapshot
+            let pg = db
+                .query::<TestObjectFull>(*user, None, &q)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let mem = s
+                .mem_db
+                .query::<TestObjectFull>(*user, None, &q)
+                .await
+                .unwrap()
+                .collect::<Vec<_>>()
+                .await;
+            pg.into_iter()
+                .zip(mem.into_iter())
+                .map(|(pg, mem)| {
+                    cmp(
+                        pg.map(|o| o.last_snapshot::<TestObjectFull>().unwrap()),
+                        mem.map(|o| o.last_snapshot::<TestObjectFull>().unwrap()),
+                    )
+                })
+                .collect::<anyhow::Result<()>>()?;
         }
         Op::RecreateFull { object, time } => {
             let o = s

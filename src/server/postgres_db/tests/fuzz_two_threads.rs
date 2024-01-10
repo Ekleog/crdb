@@ -4,8 +4,9 @@ use crate::{
     error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{self, cmp, db::ServerConfig, TestEventSimple, TestObjectSimple},
-    EventId, ObjectId, Timestamp,
+    EventId, ObjectId, Query, Timestamp, User,
 };
+use futures::StreamExt;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use ulid::Ulid;
@@ -24,6 +25,11 @@ enum Op {
     },
     Get {
         object: usize,
+    },
+    Query {
+        user: User,
+        #[generator(bolero::gen_arbitrary())]
+        q: Query,
     },
     Recreate {
         object: usize,
@@ -110,6 +116,30 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     },
                 };
             cmp(pg, mem)?;
+        }
+        Op::Query { user, q } => {
+            // TODO: use get_snapshot_at instead of last_snapshot
+            let pg = db
+                .query::<TestObjectSimple>(*user, None, &q)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let mem = s
+                .mem_db
+                .query::<TestObjectSimple>(*user, None, &q)
+                .await
+                .unwrap()
+                .collect::<Vec<_>>()
+                .await;
+            pg.into_iter()
+                .zip(mem.into_iter())
+                .map(|(pg, mem)| {
+                    cmp(
+                        pg.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
+                        mem.map(|o| o.last_snapshot::<TestObjectSimple>().unwrap()),
+                    )
+                })
+                .collect::<anyhow::Result<()>>()?;
         }
         Op::Recreate { object, time } => {
             let o = s
