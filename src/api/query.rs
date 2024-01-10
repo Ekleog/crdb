@@ -1,4 +1,5 @@
 #[derive(Debug)]
+#[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[non_exhaustive]
 pub enum JsonPathItem {
     Key(String),
@@ -6,6 +7,7 @@ pub enum JsonPathItem {
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[non_exhaustive]
 pub enum JsonNumber {
     F64(f64),
@@ -45,11 +47,46 @@ pub enum Query {
     Ge(Vec<JsonPathItem>, JsonNumber),
     Gt(Vec<JsonPathItem>, JsonNumber),
 
-    // Arrays and object subscripting
+    // Arrays and object containment
     Contains(Vec<JsonPathItem>, serde_json::Value),
 
     // Full text search
     ContainsStr(Vec<JsonPathItem>, String),
+}
+
+#[cfg(test)]
+impl<'a> arbitrary::Arbitrary<'a> for Query {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Query> {
+        Ok(match u.arbitrary::<u8>()? % 11 {
+            0 => Query::All(
+                u.arbitrary_iter()?
+                    .collect::<arbitrary::Result<Vec<Query>>>()?,
+            ),
+            1 => Query::Any(
+                u.arbitrary_iter()?
+                    .collect::<arbitrary::Result<Vec<Query>>>()?,
+            ),
+            2 => Query::Not(u.arbitrary()?),
+            3 => Query::Eq(
+                u.arbitrary()?,
+                u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
+            ),
+            4 => Query::Ne(
+                u.arbitrary()?,
+                u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
+            ),
+            5 => Query::Le(u.arbitrary()?, u.arbitrary()?),
+            6 => Query::Lt(u.arbitrary()?, u.arbitrary()?),
+            7 => Query::Ge(u.arbitrary()?, u.arbitrary()?),
+            8 => Query::Gt(u.arbitrary()?, u.arbitrary()?),
+            9 => Query::Contains(
+                u.arbitrary()?,
+                u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
+            ),
+            10 => Query::ContainsStr(u.arbitrary()?, u.arbitrary()?),
+            _ => unimplemented!(),
+        })
+    }
 }
 
 impl Query {
