@@ -53,6 +53,7 @@ num-bigint = { version = "0.4.4", features = ["arbitrary"] }
 reord = { version = "0.1.4", features = ["test"] }
 rust_decimal = { version = "1.33", features = ["rust-fuzz"] }
 tempfile = "3.9"
+tracing-subscriber = "0.3.18"
 wasm-bindgen-test = "0.3.39"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

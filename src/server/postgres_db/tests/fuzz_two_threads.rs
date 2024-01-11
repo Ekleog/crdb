@@ -3,9 +3,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{
-        self, cmp, cmp_query_results, db::ServerConfig, TestEventSimple, TestObjectSimple,
-    },
+    test_utils::{self, db::ServerConfig, *},
     EventId, ObjectId, Query, Timestamp, User,
 };
 use std::{sync::Arc, time::Duration};
@@ -56,6 +54,7 @@ impl FuzzState {
 }
 
 async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
+    tracing::info!(?op, "applying op");
     match op {
         Op::Create {
             id,
