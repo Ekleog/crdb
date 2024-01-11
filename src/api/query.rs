@@ -213,7 +213,11 @@ impl Query {
     }
 
     fn deref_num(v: &serde_json::Value, path: &[JsonPathItem]) -> Option<Decimal> {
-        serde_json::from_value(Self::deref(v, path)?.clone()).ok()
+        use serde_json::Value;
+        match Self::deref(v, path)? {
+            Value::Number(n) => serde_json::from_value(Value::Number(n.clone())).ok(),
+            _ => None,
+        }
     }
 
     fn deref<'a>(v: &'a serde_json::Value, path: &[JsonPathItem]) -> Option<&'a serde_json::Value> {
