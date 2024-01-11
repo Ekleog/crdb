@@ -197,7 +197,7 @@ impl Query {
 
     fn deref<'a>(v: &'a serde_json::Value, path: &[JsonPathItem]) -> Option<&'a serde_json::Value> {
         match path.get(0) {
-            None => None,
+            None => Some(v),
             Some(JsonPathItem::Key(k)) => match v.as_object() {
                 None => None,
                 Some(v) => v.get(k).and_then(|v| Self::deref(v, &path[1..])),
