@@ -2,6 +2,7 @@ mod api;
 mod cache;
 mod db_trait;
 mod error;
+pub mod fts;
 mod full_object;
 mod future;
 mod ids;
