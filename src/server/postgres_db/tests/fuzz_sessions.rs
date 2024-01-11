@@ -134,11 +134,13 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
         }
         Op::Disconnect(session) => match s.tokens.get(*session) {
             None => db.disconnect_session(SessionRef::now()).await?,
-            Some(token) => {
-                db.disconnect_session(s.sessions.get(token).unwrap().session_ref)
-                    .await?;
-                s.sessions.remove(token);
-            }
+            Some(token) => match s.sessions.get(token) {
+                None => db.disconnect_session(SessionRef::now()).await?,
+                Some(session) => {
+                    db.disconnect_session(session.session_ref).await?;
+                    s.sessions.remove(token);
+                }
+            },
         },
     }
     Ok(())
