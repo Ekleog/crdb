@@ -340,6 +340,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         connection: E,
         object_id: ObjectId,
     ) -> anyhow::Result<Vec<ObjectId>> {
+        reord::point().await;
         let rdeps = sqlx::query!(
             "
                 SELECT object_id
@@ -380,6 +381,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .context("starting postgresql transaction")?;
 
         // Retrieve the snapshot
+        reord::point().await;
         let res = sqlx::query!(
             "
                 SELECT type_id, snapshot_version, snapshot FROM snapshots
@@ -406,6 +408,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .with_context(|| format!("updating users_who_can_read cache of {object_id:?}"))?;
 
         // Save it
+        reord::point().await;
         let affected = sqlx::query(
             "
                 UPDATE snapshots
@@ -436,12 +439,16 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .iter()
             .any(|o| *o == requested_by)
         {
-            Some(self.object_locks.async_lock(requested_by).await)
+            Some((
+                reord::Lock::take_named(format!("{requested_by:?}")),
+                self.object_locks.async_lock(requested_by).await,
+            ))
         } else {
             None
         };
 
         // Remove the request to update
+        reord::point().await;
         let affected = sqlx::query(
             "
                 UPDATE snapshots
@@ -623,6 +630,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .rows_affected();
             if affected != 1 {
                 // There is a conflict. Is it an object conflict or an event conflict?
+                reord::point().await;
                 let object_exists_affected =
                     sqlx::query("SELECT 1 FROM snapshots WHERE object_id = $1")
                         .bind(object_id)
@@ -687,7 +695,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // Acquire the locks required to submit the event
         let _lock = reord::Lock::take_named(format!("{event_id:?}")).await;
         let _lock = self.event_locks.async_lock(event_id).await;
-        let _lock = reord::Lock::take_named(format!("{object_id:?}-rdeps")).await;
+        let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         let _lock = self.object_locks.async_lock(object_id).await;
         reord::point().await;
         let rdeps = self
@@ -1457,6 +1465,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             .map(|t| t.time_ms_i())
             .transpose()?
             .unwrap_or(0);
+        reord::point().await;
         let mut query = sqlx::query(&query)
             .persistent(false) // TODO: remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
             .bind(T::type_ulid())
@@ -1514,6 +1523,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
+        reord::point().await;
         sqlx::query("INSERT INTO binaries VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(binary_id)
             .bind(&*data)
@@ -1524,6 +1534,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
     }
 
     async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        reord::point().await;
         Ok(sqlx::query!(
             "SELECT data FROM binaries WHERE binary_id = $1",
             binary_id as BinPtr
