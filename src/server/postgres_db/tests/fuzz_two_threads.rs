@@ -3,7 +3,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{self, db::ServerConfig, *},
+    test_utils::{db::ServerConfig, *},
     EventId, ObjectId, Query, Timestamp, User,
 };
 use std::{sync::Arc, time::Duration};
@@ -41,14 +41,12 @@ enum Op {
 
 struct FuzzState {
     objects: Mutex<Vec<ObjectId>>,
-    mem_db: test_utils::MemDb,
 }
 
 impl FuzzState {
     fn new() -> FuzzState {
         FuzzState {
             objects: Mutex::new(Vec::new()),
-            mem_db: test_utils::MemDb::new(),
         }
     }
 }
@@ -62,12 +60,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
-            let mem = s
-                .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.create(*id, *created_at, object.clone(), db).await;
         }
         Op::Submit {
             object,
@@ -81,14 +74,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db
+            let _pg = db
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
-            let mem = s
-                .mem_db
-                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
         }
         Op::Get { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -99,35 +87,20 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
-            {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
-                    Ok(o) => Ok(o),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
-            let mem: crate::Result<Arc<TestObjectSimple>> =
-                match s.mem_db.get::<TestObjectSimple>(o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
+            let _pg: crate::Result<Arc<TestObjectSimple>> =
+                match db.get::<TestObjectSimple>(o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                     Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
                         Ok(o) => Ok(o),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp(pg, mem)?;
         }
         Op::Query { user, q } => {
-            let pg = db
+            let _pg = db
                 .query::<TestObjectSimple>(*user, None, &q)
                 .await
                 .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectSimple>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp_query_results::<TestObjectSimple>(pg, mem).await?;
         }
         Op::Recreate { object, time } => {
             let o = s
@@ -137,12 +110,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectSimple, _>(*time, o, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -154,12 +122,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
         Op::Vacuum {
             recreate_at: Some(recreate_at),
         } => {
-            let mem = s
-                .mem_db
-                .recreate_all::<TestObjectSimple>(*recreate_at)
-                .await;
-            let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp(pg, mem)?;
+            let _pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
         }
     }
     Ok(())
@@ -238,3 +201,10 @@ fn fuzz_checking_locks() {
             fuzz_impl(&cluster, ops, config)
         })
 }
+
+// TODO: These fuzzers do not check anything, just non-crash/deadlock. We should have fuzzers that:
+// - make sure that one thread does not submit to an object without creating it before
+// - make sure that if two threads create an object it's with the same initial value
+// - make sure that if two threads submit an event it's with the same value
+// - somehow synchronize for recreations? to avoid event submissions being rejected dependent on interleaving
+// - assert only once all operations are complete, that MemDb and PostgresDb have the same last_snapshot
