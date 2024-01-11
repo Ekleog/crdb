@@ -7,11 +7,14 @@ pkgs.stdenv.mkDerivation {
     (with pkgs; [
       cargo-bolero
       cargo-nextest
+      chromedriver
+      geckodriver
       just
       niv
       samply
       sqlx-cli
       trunk
+      wasm-bindgen-cli
 
       (fenix.combine (with fenix; [
         minimal.cargo
