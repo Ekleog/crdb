@@ -201,3 +201,21 @@ fn regression_too_big_timestamp_led_to_crash() {
         })],
     )
 }
+
+#[test]
+fn regression_disconnect_was_ignored() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Login(NewSession {
+                user_id: USER_ID_1,
+                session_name: String::new(),
+                expiration_time: Some(Timestamp::from_ms(0)),
+            }),
+            Disconnect(0),
+            MarkActive(0, Timestamp::from_ms(0)),
+        ],
+    )
+}

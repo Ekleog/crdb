@@ -145,7 +145,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     }
 
     pub async fn disconnect_session(&self, session: SessionRef) -> anyhow::Result<()> {
-        sqlx::query("DELETE FROM sessions WHERE session_token = $1")
+        sqlx::query("DELETE FROM sessions WHERE session_ref = $1")
             .bind(session)
             .execute(&self.db)
             .await
