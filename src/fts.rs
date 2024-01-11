@@ -22,16 +22,13 @@ pub fn normalize(input: &str) -> String {
         let mut buf = String::new();
         // For each word
         while let Some(next_brk) = segments.next() {
-            eprintln!("got word {:?}", &input[last_brk..next_brk]);
             if segments.is_word_like() {
-                eprintln!(" -> keeping it");
                 // Fold case
                 buf.clear();
                 CASEMAPPER
                     .fold(&input[last_brk..next_brk])
                     .write_to(&mut buf)
                     .unwrap();
-                eprintln!(" -> casemapped {buf:?}");
                 // And remove diacritics
                 res.extend(
                     RECOMPOSER.normalize_iter(
