@@ -43,32 +43,53 @@ pub enum Query {
 #[cfg(test)]
 impl<'a> arbitrary::Arbitrary<'a> for Query {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Query> {
-        Ok(match u.arbitrary::<u8>()? % 10 {
-            0 => Query::All(
-                u.arbitrary_iter()?
-                    .collect::<arbitrary::Result<Vec<Query>>>()?,
-            ),
-            1 => Query::Any(
-                u.arbitrary_iter()?
-                    .collect::<arbitrary::Result<Vec<Query>>>()?,
-            ),
-            2 => Query::Not(u.arbitrary()?),
-            3 => Query::Eq(
-                u.arbitrary()?,
-                u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
-            ),
-            4 => Query::Le(u.arbitrary()?, u.arbitrary()?),
-            5 => Query::Lt(u.arbitrary()?, u.arbitrary()?),
-            6 => Query::Ge(u.arbitrary()?, u.arbitrary()?),
-            7 => Query::Gt(u.arbitrary()?, u.arbitrary()?),
-            8 => Query::Contains(
-                u.arbitrary()?,
-                u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
-            ),
-            9 => Query::ContainsStr(u.arbitrary()?, u.arbitrary()?),
-            _ => unimplemented!(),
-        })
+        arbitrary_impl(u, 0)
     }
+}
+
+#[cfg(test)]
+fn arbitrary_impl<'a>(
+    u: &mut arbitrary::Unstructured<'a>,
+    depth: usize,
+) -> arbitrary::Result<Query> {
+    if u.is_empty() || depth > 50 {
+        // avoid stack overflow in arbitrary
+        return Ok(Query::Eq(Vec::new(), serde_json::Value::Null));
+    }
+    let res = match u.arbitrary::<u8>()? % 10 {
+        0 => Query::All({
+            let mut v = Vec::new();
+            u.arbitrary_loop(None, Some(50), |u| {
+                v.push(arbitrary_impl(u, depth + 1)?);
+                Ok(std::ops::ControlFlow::Continue(()))
+            })?;
+            v
+        }),
+        1 => Query::Any({
+            let mut v = Vec::new();
+            u.arbitrary_loop(None, Some(50), |u| {
+                v.push(arbitrary_impl(u, depth + 1)?);
+                Ok(std::ops::ControlFlow::Continue(()))
+            })?;
+            v
+        }),
+        2 => Query::Not(Box::new(arbitrary_impl(u, depth + 1)?)),
+        3 => Query::Eq(
+            u.arbitrary()?,
+            u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
+        ),
+        4 => Query::Le(u.arbitrary()?, u.arbitrary()?),
+        5 => Query::Lt(u.arbitrary()?, u.arbitrary()?),
+        6 => Query::Ge(u.arbitrary()?, u.arbitrary()?),
+        7 => Query::Gt(u.arbitrary()?, u.arbitrary()?),
+        8 => Query::Contains(
+            u.arbitrary()?,
+            u.arbitrary::<arbitrary_json::ArbitraryValue>()?.into(),
+        ),
+        9 => Query::ContainsStr(u.arbitrary()?, u.arbitrary()?),
+        _ => unimplemented!(),
+    };
+    Ok(res)
 }
 
 impl Query {
