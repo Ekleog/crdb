@@ -60,6 +60,7 @@ mod tests {
                 "some 色 々 な 言語 facon de faire un test",
             ),
             ("ば", "は"), // japanese diacritics too
+            ("coupe-papier", "coupe papier"),
         ];
         for (before, after) in tests {
             assert_eq!(
