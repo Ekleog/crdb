@@ -96,3 +96,9 @@ fuzz-pg-sessions ARGS='':
         server::postgres_db::tests::fuzz_sessions::fuzz \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_sessions__fuzz/corpus.nounit \
         {{ARGS}}
+
+fuzz-fts-normalizer ARGS='':
+    cargo bolero test --all-features \
+        fts::tests::fuzz_normalizer \
+        --corpus-dir src/__fuzz__/fts__tests__fuzz_normalizer/corpus.nounit \
+        {{ARGS}}

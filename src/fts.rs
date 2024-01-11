@@ -72,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn fuzz() {
+    fn fuzz_normalizer() {
         bolero::check!().with_type().for_each(|s: &String| {
             super::normalize(s);
         });
