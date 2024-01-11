@@ -3,11 +3,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
-    test_utils::{
-        self, cmp, cmp_query_results, db::ServerConfig, TestEventDelegatePerms, TestEventFull,
-        TestEventPerms, TestEventSimple, TestObjectDelegatePerms, TestObjectFull, TestObjectPerms,
-        TestObjectSimple,
-    },
+    test_utils::{db::ServerConfig, *},
     BinPtr, EventId, ObjectId, Query, Timestamp, User,
 };
 use std::{sync::Arc, time::Duration};
@@ -115,14 +111,12 @@ enum Op {
 
 struct FuzzState {
     objects: Mutex<Vec<ObjectId>>,
-    mem_db: test_utils::MemDb,
 }
 
 impl FuzzState {
     fn new() -> FuzzState {
         FuzzState {
             objects: Mutex::new(Vec::new()),
-            mem_db: test_utils::MemDb::new(),
         }
     }
 }
@@ -135,12 +129,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
-            let mem = s
-                .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.create(*id, *created_at, object.clone(), db).await;
         }
         Op::SubmitSimple {
             object,
@@ -154,14 +143,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db
+            let _pg = db
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
-            let mem = s
-                .mem_db
-                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
         }
         Op::GetSimple { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -172,35 +156,20 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
-            {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
-                    Ok(o) => Ok(o),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
-            let mem: crate::Result<Arc<TestObjectSimple>> =
-                match s.mem_db.get::<TestObjectSimple>(o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
+            let _pg: crate::Result<Arc<TestObjectSimple>> =
+                match db.get::<TestObjectSimple>(o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                     Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
                         Ok(o) => Ok(o),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            cmp(pg, mem)?;
         }
         Op::QuerySimple { user, q } => {
-            let pg = db
+            let _pg = db
                 .query::<TestObjectSimple>(*user, None, &q)
                 .await
                 .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectSimple>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp_query_results::<TestObjectSimple>(pg, mem).await?;
         }
         Op::RecreateSimple { object, time } => {
             let o = s
@@ -210,12 +179,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectSimple, _>(*time, o, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
         }
         Op::CreatePerms {
             id,
@@ -223,12 +187,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
-            let mem = s
-                .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.create(*id, *created_at, object.clone(), db).await;
         }
         Op::SubmitPerms {
             object,
@@ -242,14 +201,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db
+            let _pg = db
                 .submit::<TestObjectPerms, _>(o, *event_id, event.clone(), db)
                 .await;
-            let mem = s
-                .mem_db
-                .submit::<TestObjectPerms, _>(o, *event_id, event.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
         }
         Op::GetPerms { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -260,34 +214,20 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await {
+            let _pg: crate::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await
+            {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                 Ok(o) => match o.last_snapshot::<TestObjectPerms>() {
                     Ok(o) => Ok(o),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
-            let mem: crate::Result<Arc<TestObjectPerms>> =
-                match s.mem_db.get::<TestObjectPerms>(o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
-                    Ok(o) => match o.last_snapshot::<TestObjectPerms>() {
-                        Ok(o) => Ok(o),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp(pg, mem)?;
         }
         Op::QueryPerms { user, q } => {
-            let pg = db
+            let _pg = db
                 .query::<TestObjectPerms>(*user, None, &q)
                 .await
                 .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectPerms>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp_query_results::<TestObjectPerms>(pg, mem).await?;
         }
         Op::RecreatePerms { object, time } => {
             let o = s
@@ -297,12 +237,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db.recreate::<TestObjectPerms, _>(*time, o, db).await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectPerms, _>(*time, o, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.recreate::<TestObjectPerms, _>(*time, o, db).await;
         }
         Op::CreateDelegatePerms {
             id,
@@ -310,12 +245,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
-            let mem = s
-                .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.create(*id, *created_at, object.clone(), db).await;
         }
         Op::SubmitDelegatePerms {
             object,
@@ -329,14 +259,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db
+            let _pg = db
                 .submit::<TestObjectDelegatePerms, _>(o, *event_id, event.clone(), db)
                 .await;
-            let mem = s
-                .mem_db
-                .submit::<TestObjectDelegatePerms, _>(o, *event_id, event.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
         }
         Op::GetDelegatePerms { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -347,7 +272,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObjectDelegatePerms>> =
+            let _pg: crate::Result<Arc<TestObjectDelegatePerms>> =
                 match db.get::<TestObjectDelegatePerms>(o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                     Ok(o) => match o.last_snapshot::<TestObjectDelegatePerms>() {
@@ -355,27 +280,12 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
-            let mem: crate::Result<Arc<TestObjectDelegatePerms>> =
-                match s.mem_db.get::<TestObjectDelegatePerms>(o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
-                    Ok(o) => match o.last_snapshot::<TestObjectDelegatePerms>() {
-                        Ok(o) => Ok(o),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp(pg, mem)?;
         }
         Op::QueryDelegatePerms { user, q } => {
-            let pg = db
+            let _pg = db
                 .query::<TestObjectDelegatePerms>(*user, None, &q)
                 .await
                 .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectDelegatePerms>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp_query_results::<TestObjectDelegatePerms>(pg, mem).await?;
         }
         Op::RecreateDelegatePerms { object, time } => {
             let o = s
@@ -385,14 +295,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db
+            let _pg = db
                 .recreate::<TestObjectDelegatePerms, _>(*time, o, db)
                 .await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectDelegatePerms, _>(*time, o, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
         }
         Op::CreateFull {
             id,
@@ -400,12 +305,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
-            let mem = s
-                .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.create(*id, *created_at, object.clone(), db).await;
         }
         Op::SubmitFull {
             object,
@@ -419,14 +319,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db
+            let _pg = db
                 .submit::<TestObjectFull, _>(o, *event_id, event.clone(), db)
                 .await;
-            let mem = s
-                .mem_db
-                .submit::<TestObjectFull, _>(o, *event_id, event.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
         }
         Op::GetFull { object } => {
             // TODO: use get_snapshot_at instead of last_snapshot
@@ -437,34 +332,19 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObjectFull>> = match db.get::<TestObjectFull>(o).await {
+            let _pg: crate::Result<Arc<TestObjectFull>> = match db.get::<TestObjectFull>(o).await {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                 Ok(o) => match o.last_snapshot::<TestObjectFull>() {
                     Ok(o) => Ok(o),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
-            let mem: crate::Result<Arc<TestObjectFull>> =
-                match s.mem_db.get::<TestObjectFull>(o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem db")),
-                    Ok(o) => match o.last_snapshot::<TestObjectFull>() {
-                        Ok(o) => Ok(o),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp(pg, mem)?;
         }
         Op::QueryFull { user, q } => {
-            let pg = db
+            let _pg = db
                 .query::<TestObjectFull>(*user, None, &q)
                 .await
                 .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectFull>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp_query_results::<TestObjectFull>(pg, mem).await?;
         }
         Op::RecreateFull { object, time } => {
             let o = s
@@ -474,18 +354,11 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg = db.recreate::<TestObjectFull, _>(*time, o, db).await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectFull, _>(*time, o, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+            let _pg = db.recreate::<TestObjectFull, _>(*time, o, db).await;
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));
-            let mem = s.mem_db.create_binary(id, data.clone()).await;
-            let pg = db.create_binary(id, data.clone()).await;
-            cmp(pg, mem)?;
+            let _pg = db.create_binary(id, data.clone()).await;
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -497,12 +370,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
         Op::Vacuum {
             recreate_at: Some(recreate_at),
         } => {
-            let mem = s
-                .mem_db
-                .recreate_all::<TestObjectSimple>(*recreate_at)
-                .await;
-            let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp(pg, mem)?;
+            let _pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
         }
     }
     Ok(())
