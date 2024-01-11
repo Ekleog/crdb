@@ -5,7 +5,7 @@ use crate::{
     server::postgres_db::PostgresDb,
     test_utils::{
         self, cmp, cmp_query_results, db::ServerConfig, TestEventSimple, TestObjectSimple,
-        EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2,
+        EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2, USER_ID_NULL,
     },
     EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
 };
@@ -511,5 +511,49 @@ fn regression_sql_injection_in_path_key() {
                 serde_json::Value::Null,
             ),
         }],
+    );
+}
+
+#[test]
+fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
+    // See https://github.com/launchbadge/sqlx/issues/2981
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Op::Recreate {
+                object: 0,
+                time: Timestamp::from_ms(1),
+            },
+            Op::Query {
+                user: USER_ID_NULL,
+                q: Query::Eq(
+                    vec![
+                        JsonPathItem::Key(String::from("a")),
+                        JsonPathItem::Key(String::from("a")),
+                    ],
+                    serde_json::Value::Null,
+                ),
+            },
+            Op::Query {
+                user: USER_ID_NULL,
+                q: Query::Eq(vec![], serde_json::Value::Null),
+            },
+            Op::Query {
+                user: USER_ID_NULL,
+                q: Query::Eq(vec![], serde_json::Value::Null),
+            },
+            Op::Query {
+                user: USER_ID_NULL,
+                q: Query::Eq(vec![], serde_json::Value::Null),
+            },
+            Op::Query {
+                user: USER_ID_NULL,
+                q: Query::Eq(
+                    vec![JsonPathItem::Id(1), JsonPathItem::Key(String::from("a"))],
+                    serde_json::Value::Null,
+                ),
+            },
+        ],
     );
 }

@@ -1458,6 +1458,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             .transpose()?
             .unwrap_or(0);
         let mut query = sqlx::query(&query)
+            .persistent(false) // TODO: remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
             .bind(T::type_ulid())
             .bind(user)
             .bind(min_last_modified);
