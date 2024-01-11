@@ -209,9 +209,10 @@ impl Db for MemDb {
         );
         q.check()?;
         let q = &q;
-        let res = stream::iter(self.0.lock().await.objects.values())
-            .filter_map(|(t, full_object)| async move {
-                if t != T::type_ulid() {
+        let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
+        let res = stream::iter(objects.into_iter())
+            .filter_map(|(_, (t, full_object))| async move {
+                if t != *T::type_ulid() {
                     return None;
                 }
                 let o = full_object
@@ -227,7 +228,7 @@ impl Db for MemDb {
                 {
                     return None;
                 }
-                Some(Ok(full_object.clone()))
+                Some(Ok(full_object))
             })
             .collect::<Vec<crate::Result<FullObject>>>()
             .await;
