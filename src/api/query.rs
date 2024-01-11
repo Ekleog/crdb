@@ -303,6 +303,21 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             *bind_idx += 1;
         }
         Query::ContainsStr(path, _) => {
+            // TODO: This is most likely the best way to do things, but it'll probably blow up the
+            // fuzzer when it notices the ContainsStr path. Instead, we should have a custom but clean
+            // definition of what tokens are exactly, and implement it both in MemDb and in PostgresDb.
+            // It'll also help avoid issues with search being different between client and server.
+            // Then, we'll probably at least want:
+            // - NFC normalized
+            // - case-insensitiveness as per some locale
+            // - breaking tokens at word boundaries (though this might be hard for eg. japanese, without
+            //   spaces?)
+            // - maybe diacritics removal?
+            // Overall, it might be easier to do all the work rust-side, to store all the data twice,
+            // and to have a very simple postgresql tokenizer that just recognizes ascii whitespace as a
+            // word boundary; and then to still use to_tsvector/to_tsquery. Maybe icu4x can help there?
+            // But the word boundary tokenization might still be hard, considering icu4x does not seem
+            // to have this implemented yet.
             res.push_str("to_tsvector(snapshot");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(") @@ phraseto_tsquery(${})", bind_idx));
