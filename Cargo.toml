@@ -13,7 +13,8 @@ server = ["axum", "lockable", "rand", "sqlx/rust_decimal", "sqlx/json", "sqlx/po
 _tests = [ # internal feature, for use by wasm tests in particular and thus all tests from there on
     "arbitrary",
     "arbitrary-json",
-    "bolero"
+    "bolero",
+    "tracing-wasm",
 ]
 
 [dependencies]
@@ -48,6 +49,7 @@ rand = { version = "0.8.5", optional = true }
 arbitrary = { version = "1.3", features = ["derive"], optional = true }
 arbitrary-json = { version = "=0.1.1", optional = true } # very small crate, can we actually trust updates?
 bolero = { version = "0.10.0", features = ["arbitrary"], optional = true }
+tracing-wasm = { version = "0.2.1", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.11", features = ["js"] }

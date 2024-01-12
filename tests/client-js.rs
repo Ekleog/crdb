@@ -8,7 +8,9 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 #[test]
 async fn smoke_test() {
+    tracing_wasm::set_as_global_default();
     let db = LocalDb::connect("smoke-test").await.unwrap();
+    tracing::info!("initialized db");
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
