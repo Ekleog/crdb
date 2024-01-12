@@ -1,8 +1,10 @@
 use super::ulid;
 use crate::{
-    BinPtr, CanDoCallbacks, CrdbFuture, CrdbFutureExt, DbPtr, Object, ObjectId, TypeId, User,
+    fts::SearchableString, BinPtr, CanDoCallbacks, CrdbFuture, CrdbFutureExt, DbPtr, Object,
+    ObjectId, TypeId, User,
 };
 use anyhow::Context;
+use bolero::ValueGenerator;
 use std::future::Future;
 
 #[derive(
@@ -18,8 +20,8 @@ use std::future::Future;
     serde::Serialize,
 )]
 pub struct TestObjectFull {
-    #[generator(bolero::generator::gen_with::<String>().len(0..8_usize))]
-    pub name: String,
+    #[generator(bolero::generator::gen_with::<String>().len(0..8_usize).map_gen(SearchableString::from))]
+    pub name: SearchableString,
 
     #[generator(bolero::generator::gen_with::<Vec<_>>().len(0..2_usize))]
     pub deps: Vec<DbPtr<TestObjectFull>>,
@@ -109,7 +111,7 @@ impl Object for TestObjectFull {
     fn apply(&mut self, self_id: DbPtr<TestObjectFull>, event: &Self::Event) {
         match event {
             TestEventFull::Rename(s) => {
-                self.name = s.clone();
+                self.name = SearchableString::from(s.clone());
             }
             TestEventFull::AddDep(d) => {
                 // Try to keep the vecs small while fuzzing. Also, make sure to stay a DAG.

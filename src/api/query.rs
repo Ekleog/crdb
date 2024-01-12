@@ -251,10 +251,10 @@ impl Query {
     }
 
     #[cfg(feature = "server")]
-    pub(crate) fn binds(&self) -> Vec<Bind<'_>> {
+    pub(crate) fn binds(&self) -> crate::Result<Vec<Bind<'_>>> {
         let mut res = Vec::new();
-        add_to_binds(&mut res, self);
-        res
+        add_to_binds(&mut res, self)?;
+        Ok(res)
     }
 }
 
@@ -328,24 +328,15 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             *bind_idx += 1;
         }
         Query::ContainsStr(path, _) => {
-            // TODO: This is most likely the best way to do things, but it'll probably blow up the
-            // fuzzer when it notices the ContainsStr path. Instead, we should have a custom but clean
-            // definition of what tokens are exactly, and implement it both in MemDb and in PostgresDb.
-            // It'll also help avoid issues with search being different between client and server.
-            // Then, we'll probably at least want:
-            // - NFC normalized
-            // - case-insensitiveness as per some locale
-            // - breaking tokens at word boundaries (though this might be hard for eg. japanese, without
-            //   spaces?)
-            // - maybe diacritics removal?
-            // Overall, it might be easier to do all the work rust-side, to store all the data twice,
-            // and to have a very simple postgresql tokenizer that just recognizes ascii whitespace as a
-            // word boundary; and then to still use to_tsvector/to_tsquery. Maybe icu4x can help there?
-            // But the word boundary tokenization might still be hard, considering icu4x does not seem
-            // to have this implemented yet.
+            // TODO: Check normalizer_version and recompute at startup if not the right version
+            // This will probably require adding a list of all the json paths to SearchableString's
+            // in Object
             res.push_str("to_tsvector(snapshot");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(&format!(") @@ phraseto_tsquery(${})", bind_idx));
+            res.push_str(&format!(
+                "->'_crdb-normalized') @@ phraseto_tsquery(${})",
+                bind_idx
+            ));
             *bind_idx += 1;
         }
     }
@@ -373,25 +364,26 @@ fn add_path_to_binds<'a>(res: &mut Vec<Bind<'a>>, path: &'a [JsonPathItem]) {
 pub(crate) enum Bind<'a> {
     Json(&'a serde_json::Value),
     Str(&'a str),
+    String(String),
     Decimal(Decimal),
     I32(i32),
 }
 
 #[cfg(feature = "server")]
-fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) {
+fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) -> crate::Result<()> {
     match query {
         Query::All(v) => {
             for q in v {
-                add_to_binds(&mut *res, q);
+                add_to_binds(&mut *res, q)?;
             }
         }
         Query::Any(v) => {
             for q in v {
-                add_to_binds(&mut *res, q);
+                add_to_binds(&mut *res, q)?;
             }
         }
         Query::Not(q) => {
-            add_to_binds(&mut *res, q);
+            add_to_binds(&mut *res, q)?;
         }
         Query::Eq(p, v) => {
             add_path_to_binds(&mut *res, p);
@@ -419,7 +411,9 @@ fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) {
         }
         Query::ContainsStr(p, v) => {
             add_path_to_binds(&mut *res, p);
-            res.push(Bind::Str(v));
+            crate::check_string(&v)?;
+            res.push(Bind::String(crate::fts::normalize(v)));
         }
     }
+    Ok(())
 }

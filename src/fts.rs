@@ -4,6 +4,7 @@ use icu::{
     properties::sets::diacritic,
     segmenter::WordSegmenter,
 };
+use std::fmt::Debug;
 use writeable::Writeable;
 
 thread_local! {
@@ -14,7 +15,11 @@ const CASEMAPPER: CaseMapper = CaseMapper::new();
 const DECOMPOSER: DecomposingNormalizer = DecomposingNormalizer::new_nfd();
 const RECOMPOSER: ComposingNormalizer = ComposingNormalizer::new_nfc();
 
-pub fn normalize(input: &str) -> String {
+pub(crate) fn normalizer_version() -> usize {
+    0
+}
+
+pub(crate) fn normalize(input: &str) -> String {
     SEGMENTER.with(|segmenter| {
         let mut res = String::with_capacity(input.len());
         let mut last_brk = 0;
@@ -44,6 +49,49 @@ pub fn normalize(input: &str) -> String {
         res.pop(); // remove the last space if there was at least one word
         res
     })
+}
+
+#[derive(Clone, deepsize::DeepSizeOf, educe::Educe, serde::Deserialize, serde::Serialize)]
+#[educe(Deref, Eq, Ord, PartialEq, PartialOrd)]
+pub struct SearchableString {
+    #[serde(rename = "_crdb-str")]
+    #[educe(Deref)]
+    value: String,
+
+    #[serde(rename = "_crdb-normalized")]
+    #[educe(Eq(ignore), Ord(ignore))]
+    normalized: String,
+
+    #[serde(rename = "_crdb-normalizer-version")]
+    #[educe(Eq(ignore), Ord(ignore))]
+    normalizer_version: usize,
+}
+
+impl SearchableString {
+    pub fn new() -> SearchableString {
+        SearchableString {
+            value: String::new(),
+            normalized: String::new(),
+            normalizer_version: normalizer_version(),
+        }
+    }
+}
+
+impl<T: Into<String>> From<T> for SearchableString {
+    fn from(value: T) -> SearchableString {
+        let value: String = value.into();
+        SearchableString {
+            normalizer_version: normalizer_version(),
+            normalized: normalize(&value),
+            value,
+        }
+    }
+}
+
+impl Debug for SearchableString {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(fmt)
+    }
 }
 
 #[cfg(test)]

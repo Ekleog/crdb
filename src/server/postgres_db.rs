@@ -1471,10 +1471,11 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             .bind(T::type_ulid())
             .bind(user)
             .bind(min_last_modified);
-        for b in q.binds() {
+        for b in q.binds()? {
             match b {
                 Bind::Json(v) => query = query.bind(v),
                 Bind::Str(v) => query = query.bind(v),
+                Bind::String(v) => query = query.bind(v),
                 Bind::Decimal(v) => query = query.bind(v),
                 Bind::I32(v) => query = query.bind(v),
             }

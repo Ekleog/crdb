@@ -2,6 +2,7 @@ use super::TmpDb;
 use crate::{
     db_trait::Db,
     error::ResultExt,
+    fts::SearchableString,
     server::postgres_db::PostgresDb,
     test_utils::{
         self, cmp, cmp_query_results, db::ServerConfig, TestEventFull, TestObjectFull, USER_ID_NULL,
@@ -225,7 +226,7 @@ fn regression_postgres_considered_missing_binaries_the_other_way_around() {
             id: ObjectId(Ulid::from_string("7R000000000000000000000026").unwrap()),
             created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
             object: Arc::new(TestObjectFull {
-                name: String::new(),
+                name: SearchableString::new(),
                 deps: vec![],
                 bins: vec![BinPtr(
                     Ulid::from_string("1TF80000000000000000000000").unwrap(),
@@ -247,7 +248,7 @@ fn regression_postgres_crashed_on_null_byte_in_string() {
                 id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectFull {
-                    name: String::from("foo\0bar"),
+                    name: SearchableString::from("foo\0bar"),
                     deps: vec![],
                     bins: vec![],
                     users: vec![],
