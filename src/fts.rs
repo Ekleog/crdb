@@ -4,6 +4,7 @@ use icu::{
     properties::sets::diacritic,
     segmenter::WordSegmenter,
 };
+use rust_stemmers::{Algorithm, Stemmer};
 use std::fmt::Debug;
 use writeable::Writeable;
 
@@ -25,6 +26,7 @@ pub(crate) fn normalize(input: &str) -> String {
         let mut last_brk = 0;
         let mut segments = segmenter.segment_str(input);
         let mut buf = String::new();
+        let mut buf2 = String::new();
         // For each word
         while let Some(next_brk) = segments.next() {
             if segments.is_word_like() {
@@ -35,12 +37,20 @@ pub(crate) fn normalize(input: &str) -> String {
                     .write_to(&mut buf)
                     .unwrap();
                 // And remove diacritics
-                res.extend(
+                buf2.clear();
+                buf2.extend(
                     RECOMPOSER.normalize_iter(
                         DECOMPOSER
                             .normalize_iter(buf.chars())
                             .filter(|c| !diacritic().contains(*c)),
                     ),
+                );
+                // Finally, stem for french and english for now
+                // TODO: think how to make this more international? applying two stemmers is bad(tm)
+                // We should probably be using eg. cld3 to detect the language, and then stem accordingly
+                res.push_str(
+                    &*Stemmer::create(Algorithm::English)
+                        .stem(&*Stemmer::create(Algorithm::French).stem(&buf2)),
                 );
                 res.push(' ');
             }
@@ -99,13 +109,13 @@ mod tests {
     #[test]
     fn basic_examples() {
         let tests = [
-            ("Je   suis bien embêté !", "je suis bien embete"),
+            ("Je   suis bien embêté !", "je sui bien embet"),
             (
                 "Some 色々な言語の façon de faire un test :)",
-                "some 色 々 な 言語 facon de faire un test",
+                "som 色 々 な 言語 facon de fair un test",
             ),
             ("ば", "は"), // japanese diacritics too
-            ("coupe-papier", "coupe papier"),
+            ("coupe-papier", "coup papi"),
         ];
         for (before, after) in tests {
             assert_eq!(

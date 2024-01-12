@@ -20,6 +20,7 @@ futures = "0.3.29"
 icu = "1.4"
 reord = "0.2.0"
 rust_decimal = { version = "1.33", features = ["serde-arbitrary-precision"] }
+rust-stemmers = "1.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 sha3 = "0.10.8"
