@@ -504,7 +504,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         rdeps: Option<&[ObjectId]>,
         object: &T,
         cb: &'a C,
-    ) -> crate::Result<Vec<ComboLock<'a>>> {
+    ) -> crate::Result<(reord::Lock, Vec<ComboLock<'a>>)> {
         let (users_who_can_read, users_who_can_read_depends_on, locks) = if is_latest {
             let (a, b, c) = self
                 .get_users_who_can_read::<T, _>(&object_id, object, cb)
@@ -523,7 +523,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "Latest snapshots must always list their reverse dependencies"
         );
 
-        reord::point().await;
+        let indices_lock = reord_lock_for_snapshot_indices().await;
         let result = sqlx::query(
             "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
@@ -543,7 +543,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .await;
 
         match result {
-            Ok(_) => Ok(locks),
+            Ok(_) => Ok((indices_lock, locks)),
             Err(sqlx::Error::Database(err)) if err.constraint() == Some("snapshots_pkey") => {
                 Err(crate::Error::EventAlreadyExists(snapshot_id))
             }
@@ -586,7 +586,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_with_context(|| format!("listing reverse dependencies of {object_id:?}"))?;
         let required_binaries = object.required_binaries();
-        let _lock = reord::Lock::take_named(String::from("UniqueIdx(snapshots)")).await;
+        let _lock = reord_lock_for_snapshot_indices().await;
         let affected = // PostgreSQL needs a lock on the unique index from here until transaction completion, hence the above reord::Lock
             sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING")
                 .bind(created_at)
@@ -832,7 +832,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object.apply(DbPtr::from(object_id), &event);
 
         // Save the new snapshot (the new event was already saved above)
-        let mut _locks = self
+        let mut _dep_locks = self
             .write_snapshot(
                 &mut transaction,
                 event_id,
@@ -852,6 +852,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         // If needed, re-compute the last snapshot
         if !last_snapshot.is_latest {
+            // Free the locks taken above, as we don't actually need them
+            std::mem::drop(_dep_locks);
+
             // List all the events since the inserted event
             reord::point().await;
             let mut events_since_inserted = sqlx::query!(
@@ -889,7 +892,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 last_event_id
                     .expect("Entered the 'recomputing last snapshot' stage without any new events"),
             );
-            _locks = self
+            _dep_locks = self
                 .write_snapshot(
                     &mut transaction,
                     snapshot_id,
@@ -1731,4 +1734,12 @@ async fn apply_events_between<T: Object>(
         object.apply(DbPtr::from(object_id), &e);
     }
     Ok(())
+}
+
+#[inline]
+async fn reord_lock_for_snapshot_indices() -> reord::Lock {
+    // Always take one full lock that is not checked by the _checking_locks variant
+    // PostgreSQL exact locking algorithm seems to be mostly unspecified, so let's just assume
+    // it always locks everything.
+    reord::Lock::take_addressed(0).await
 }
