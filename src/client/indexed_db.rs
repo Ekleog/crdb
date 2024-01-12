@@ -1,15 +1,18 @@
+// TODO: switch to eg. `idb` once https://github.com/devashishdxt/idb/issues/7 is fixed
+
 use crate::{
     db_trait::Db, error::ResultExt, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream,
     EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::anyhow;
-use indexed_db_futures::{prelude::*, IdbDatabase};
+use idb_sys::{ObjectStoreParams, Request};
 use std::sync::Arc;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
 pub struct IndexedDb {
     is_persistent: bool,
-    db: IdbDatabase,
+    db: idb_sys::Database,
 }
 
 impl IndexedDb {
@@ -20,27 +23,45 @@ impl IndexedDb {
                 .navigator()
                 .storage()
                 .persist()
-                .map_err(|_| {
-                    anyhow!(
-                        "failed to request persistence, did the user disable storage altogether?"
-                    )
-                })?,
+                .wrap_context(
+                    "failed to request persistence, did the user disable storage altogether?",
+                )?,
         )
         .await
-        .map_err(|_| anyhow!("failed to resolve request for persistence"))?
+        .wrap_context("failed to resolve request for persistence")?
         .as_bool()
         .ok_or_else(|| anyhow!("requesting for persistence did not return a boolean"))?;
 
-        let mut db_req = IdbDatabase::open_u32(url, 1).expect("1 is greater than 0");
-        db_req.set_on_upgrade_needed(Some(|evt: &IdbVersionChangeEvent| {
-            let db = evt.db();
-            db.create_object_store("snapshots")?;
-            db.create_object_store("events")?;
-            db.create_object_store("binaries")?;
-            Ok(())
-        }));
-        let db = db_req.await.wrap_context("failed creating the database")?;
+        let factory = idb_sys::Factory::new().wrap_context("getting IndexedDb factory")?;
+        const VERSION: u32 = 1;
+        let mut db_req = factory
+            .open(url, Some(VERSION))
+            .wrap_with_context(|| format!("opening IndexedDb {url:?} at version {VERSION}"))?;
+        db_req.on_upgrade_needed(|evt: idb_sys::VersionChangeEvent| {
+            // TODO: clean up when https://github.com/devashishdxt/idb/issues/15 is fixed
+            let target = evt.target().expect("getting target of on_upgrade_needed");
+            let web_sys_db_req = target.dyn_into::<web_sys::IdbOpenDbRequest>().unwrap();
+            let db_req = idb_sys::DatabaseRequest::from(web_sys_db_req);
+            let db = db_req.database().unwrap();
+            db.create_object_store("snapshots", ObjectStoreParams::new())
+                .expect("creating 'snapshots' object store");
+            db.create_object_store("events", ObjectStoreParams::new())
+                .expect("creating 'events' object store");
+            db.create_object_store("binaries", ObjectStoreParams::new())
+                .expect("creating 'binaries' object store");
+        });
+        let (db_tx, db_rx) = tokio::sync::oneshot::channel();
+        db_req.on_success(|evt| {
+            // TODO: clean up when https://github.com/devashishdxt/idb/issues/15 is fixed
+            let target = evt.target().expect("getting target of on_success");
+            let web_sys_db_req = target.dyn_into::<web_sys::IdbOpenDbRequest>().unwrap();
+            let db_req = idb_sys::DatabaseRequest::from(web_sys_db_req);
+            let db = db_req.database().unwrap();
+            db_tx.send(db).expect("sending database");
+        });
+        db_req.on_error(|_| panic!("failed to open IndexedDb database"));
 
+        let db = db_rx.await.expect("retrieving database");
         Ok(IndexedDb { is_persistent, db })
     }
 
@@ -58,6 +79,8 @@ impl Db for IndexedDb {
         object: Arc<T>,
         cb: &C,
     ) -> crate::Result<()> {
+        todo!()
+        /*
         let transaction = self
             .db
             .transaction_on_multi_with_mode(
@@ -121,6 +144,7 @@ impl Db for IndexedDb {
                 })
             }
         }
+        */
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(
@@ -169,8 +193,9 @@ impl Db for IndexedDb {
     }
 }
 
+/*
 async fn check_required_binaries(
-    transaction: &IdbTransaction<'_>,
+    transaction: &IdbTransaction,
     binaries: Vec<BinPtr>,
 ) -> crate::Result<()> {
     let binaries_store = transaction
@@ -193,3 +218,4 @@ async fn check_required_binaries(
     }
     Ok(())
 }
+*/

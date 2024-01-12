@@ -9,8 +9,10 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[test]
 async fn smoke_test() {
     tracing_wasm::set_as_global_default();
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     let db = LocalDb::connect("smoke-test").await.unwrap();
     tracing::info!("initialized db");
+    /*
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
@@ -20,7 +22,6 @@ async fn smoke_test() {
     .await
     .expect("creating test object 1 failed");
     tracing::info!("created {OBJECT_ID_1:?}");
-    /*
     db.create(
         OBJECT_ID_1,
         EVENT_ID_2,

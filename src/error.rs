@@ -107,6 +107,18 @@ impl<T> ResultExt for sqlx::Result<T> {
 }
 
 #[cfg(target_arch = "wasm32")]
+impl<T> ResultExt for std::result::Result<T, idb_sys::Error> {
+    type Ok = T;
+
+    fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
+        match self {
+            Err(e) => Err(Error::Other(anyhow::anyhow!("{}", e).context(f()))),
+            Ok(r) => Ok(r),
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     type Ok = T;
 
@@ -115,6 +127,27 @@ impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
             Err(e) => Err(Error::Other(
                 anyhow::anyhow!("{}: {}", e.name(), e.message()).context(f()),
             )),
+            Ok(r) => Ok(r),
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> ResultExt for std::result::Result<T, wasm_bindgen::JsValue> {
+    type Ok = T;
+
+    fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
+        use wasm_bindgen::JsCast;
+        match self {
+            Err(err) => {
+                if err.has_type::<web_sys::DomException>() {
+                    return Err(err.dyn_into::<web_sys::DomException>().unwrap())
+                        .wrap_with_context(f);
+                }
+                Err(crate::Error::Other(
+                    anyhow::anyhow!("error with unknown type: {err:?}").context(f()),
+                ))
+            }
             Ok(r) => Ok(r),
         }
     }

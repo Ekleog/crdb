@@ -15,6 +15,7 @@ pkgs.stdenv.mkDerivation {
       sqlx-cli
       trunk
       wasm-bindgen-cli
+      wasm-pack
 
       (fenix.combine (with fenix; [
         minimal.cargo
