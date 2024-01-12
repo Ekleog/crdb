@@ -60,7 +60,10 @@ impl Db for IndexedDb {
     ) -> crate::Result<()> {
         let transaction = self
             .db
-            .transaction_on_multi_with_mode(&["snapshots", "events"], IdbTransactionMode::Readwrite)
+            .transaction_on_multi_with_mode(
+                &["snapshots", "events", "binaries"],
+                IdbTransactionMode::Readwrite,
+            )
             .wrap_context("obtaining transaction into IndexedDb database")?;
         let snapshots = transaction
             .object_store("snapshots")
@@ -107,7 +110,17 @@ impl Db for IndexedDb {
             })?;
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
-        Ok(())
+        match check_required_binaries(&transaction, object.required_binaries()).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                transaction.abort().wrap_with_context(|| {
+                    format!("failed aborting transaction creating {object_id:?}")
+                })?;
+                Err(e).wrap_with_context(|| {
+                    format!("checking that {object_id:?} has all required binaries")
+                })
+            }
+        }
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(
@@ -154,4 +167,29 @@ impl Db for IndexedDb {
     async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
+}
+
+async fn check_required_binaries(
+    transaction: &IdbTransaction<'_>,
+    binaries: Vec<BinPtr>,
+) -> crate::Result<()> {
+    let binaries_store = transaction
+        .object_store("binaries")
+        .wrap_context("opening 'binaries' object store")?;
+    let mut missing_binaries = Vec::new();
+    for b in binaries {
+        if binaries_store
+            .get_key(&b.to_js_string())
+            .wrap_with_context(|| format!("requesting whether {b:?} is present"))?
+            .await
+            .wrap_with_context(|| format!("checking whether {b:?} is present"))?
+            .is_none()
+        {
+            missing_binaries.push(b);
+        }
+    }
+    if !missing_binaries.is_empty() {
+        return Err(crate::Error::MissingBinaries(missing_binaries));
+    }
+    Ok(())
 }
