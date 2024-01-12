@@ -126,7 +126,6 @@ pub(crate) async fn cmp_query_results<T: Debug + Ord + Object>(
     pg: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
     mem: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
 ) -> anyhow::Result<()> {
-    // TODO: use get_snapshot_at instead of last_snapshot
     cmp_just_errs(&pg, &mem)?;
     if !pg.is_ok() {
         return Ok(());
