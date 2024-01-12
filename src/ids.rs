@@ -65,6 +65,11 @@ macro_rules! impl_for_id {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
 
+            #[cfg(target_arch = "wasm32")]
+            pub(crate) fn to_js_string(&self) -> js_sys::JsString {
+                js_sys::JsString::from(format!("{}", self.0))
+            }
+
             pub(crate) fn last_id_at(time: Timestamp) -> crate::Result<Self> {
                 if time.time_ms() >= (1 << Ulid::TIME_BITS) {
                     return Err(crate::Error::InvalidTimestamp(time));

@@ -53,7 +53,7 @@ impl IndexedDb {
 impl Db for IndexedDb {
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
