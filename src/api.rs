@@ -168,7 +168,7 @@ impl<T: Object> DbPtr<T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "_tests")]
 impl<T: Object> bolero::TypeGenerator for DbPtr<T> {
     fn generate<D: bolero::Driver>(driver: &mut D) -> Option<DbPtr<T>> {
         <[u8; 16]>::generate(driver).map(|b| Self {

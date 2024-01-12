@@ -7,8 +7,11 @@ mod full_object;
 mod future;
 mod ids;
 mod session;
-#[cfg(test)]
-mod test_utils;
+#[cfg(feature = "_tests")]
+pub mod test_utils;
+
+#[cfg(all(test, not(feature = "_tests")))]
+const _: () = panic!("running tests without the `_tests` feature enabled");
 
 pub use api::{CanDoCallbacks, DbPtr, Event, JsonPathItem, Object, Query};
 pub use db_trait::Timestamp;
@@ -48,6 +51,8 @@ pub mod crdb_internal {
     pub use crate::client::{ClientDb, LocalDb};
     #[cfg(feature = "server")]
     pub use crate::server::{ComboLock, PostgresDb, ServerConfig};
+    #[cfg(feature = "_tests")]
+    pub use crate::test_utils;
     pub use crate::{
         api::{parse_snapshot, ApiConfig, CanDoCallbacks},
         cache::{CacheConfig, ObjectCache},

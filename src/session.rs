@@ -19,7 +19,7 @@ impl SessionToken {
 }
 
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(bolero::generator::TypeGenerator))]
+#[cfg_attr(feature = "_tests", derive(bolero::generator::TypeGenerator))]
 pub struct NewSession {
     pub user_id: User,
     pub session_name: String,

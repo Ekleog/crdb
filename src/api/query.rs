@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use crate::fts;
 
 #[derive(Debug)]
-#[cfg_attr(test, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
 #[non_exhaustive]
 pub enum JsonPathItem {
     Key(String),

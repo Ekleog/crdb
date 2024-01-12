@@ -24,16 +24,16 @@ test-crate NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-
 test-crate-standalone NAME='': (test-crate-api NAME) (test-crate-client-native NAME)
 
 test-crate-api NAME='':
-    SQLX_OFFLINE="true" cargo nextest run {{NAME}}
+    SQLX_OFFLINE="true" cargo nextest run --features _tests {{NAME}}
 
 test-crate-client-native NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --features client {{NAME}}
+    SQLX_OFFLINE="true" cargo nextest run --features client,_tests {{NAME}}
 
 test-crate-client-js NAME='':
-    cargo test --features client --target wasm32-unknown-unknown {{NAME}}
+    cargo test --features client,_tests --target wasm32-unknown-unknown {{NAME}}
 
 test-crate-server NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --features server {{NAME}}
+    SQLX_OFFLINE="true" cargo nextest run --features server,_tests {{NAME}}
 
 test-example-basic NAME='': build-example-basic-client (test-example-basic-host NAME)
 
