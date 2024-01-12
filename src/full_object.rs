@@ -174,9 +174,14 @@ impl FullObject {
 
     pub fn get_snapshot_at<T: Object>(
         &self,
-        at: Bound<EventId>,
+        mut at: Bound<EventId>,
     ) -> anyhow::Result<(EventId, Arc<T>)> {
-        self.data.write().unwrap().get_snapshot_at::<T>(at)
+        let mut this = self.data.write().unwrap();
+        // Avoid the panic in get_snapshot_at
+        if !(Bound::Unbounded, at).contains(&this.created_at) {
+            at = Bound::Included(this.created_at);
+        }
+        this.get_snapshot_at::<T>(at)
     }
 
     pub fn last_snapshot<T: Object>(&self) -> anyhow::Result<Arc<T>> {
