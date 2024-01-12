@@ -14,6 +14,7 @@ pub const OBJECT_ID_2: ObjectId = ObjectId(ulid("10000000000000000000000020"));
 pub const OBJECT_ID_3: ObjectId = ObjectId(ulid("10000000000000000000000030"));
 pub const OBJECT_ID_4: ObjectId = ObjectId(ulid("10000000000000000000000040"));
 pub const OBJECT_ID_5: ObjectId = ObjectId(ulid("10000000000000000000000050"));
+pub const OBJECT_ID_6: ObjectId = ObjectId(ulid("10000000000000000000000060"));
 
 pub const EVENT_ID_NULL: EventId = EventId(ulid("00000000000000000000000000"));
 pub const EVENT_ID_1: EventId = EventId(ulid("20000000000000000000000010"));

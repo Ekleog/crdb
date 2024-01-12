@@ -586,8 +586,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_with_context(|| format!("listing reverse dependencies of {object_id:?}"))?;
         let required_binaries = object.required_binaries();
-        reord::point().await;
-        let affected =
+        let _lock = reord::Lock::take_named(String::from("UniqueIdx(snapshots)")).await;
+        let affected = // PostgreSQL needs a lock on the unique index from here until transaction completion, hence the above reord::Lock
             sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING")
                 .bind(created_at)
                 .bind(type_id)
@@ -603,6 +603,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .await
                 .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
                 .rows_affected();
+        reord::point().await;
         if affected != 1 {
             // Check for equality with pre-existing
             reord::point().await;
