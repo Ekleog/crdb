@@ -8,6 +8,7 @@ test NAME='': (test-crate NAME) (test-example-basic NAME)
 
 doc:
     cargo doc --all-features --examples
+    cargo doc --features client --examples --target wasm32-unknown-unknown
 
 test-standalone NAME='': (test-crate-standalone NAME) (test-example-basic NAME)
 

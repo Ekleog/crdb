@@ -7,7 +7,6 @@ use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
 wasm_bindgen_test_configure!(run_in_browser);
 
 #[test]
-#[should_panic] // TODO: remove
 async fn smoke_test() {
     let db = LocalDb::connect("smoke-test").await.unwrap();
     db.create(

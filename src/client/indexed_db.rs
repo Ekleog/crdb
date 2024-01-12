@@ -1,6 +1,6 @@
 use crate::{
-    db_trait::Db, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream, EventId, Object,
-    ObjectId, Query, Timestamp, User,
+    db_trait::Db, error::ResultExt, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream,
+    EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::anyhow;
 use indexed_db_futures::{prelude::*, IdbDatabase};
@@ -9,7 +9,7 @@ use wasm_bindgen_futures::JsFuture;
 
 pub struct IndexedDb {
     is_persistent: bool,
-    _db: IdbDatabase,
+    db: IdbDatabase,
 }
 
 impl IndexedDb {
@@ -39,14 +39,9 @@ impl IndexedDb {
             db.create_object_store("binaries")?;
             Ok(())
         }));
-        let db = db_req
-            .await
-            .map_err(|_| anyhow!("failed creating the database"))?;
+        let db = db_req.await.wrap_context("failed creating the database")?;
 
-        Ok(IndexedDb {
-            is_persistent,
-            _db: db,
-        })
+        Ok(IndexedDb { is_persistent, db })
     }
 
     pub fn is_persistent(&self) -> bool {
@@ -63,7 +58,12 @@ impl Db for IndexedDb {
         object: Arc<T>,
         cb: &C,
     ) -> crate::Result<()> {
-        todo!()
+        let transaction = self
+            .db
+            .transaction_on_multi_with_mode(&["snapshots", "events"], IdbTransactionMode::Readwrite)
+            .wrap_context("obtaining transaction into IndexedDb database")?;
+        // TODO
+        Ok(())
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(

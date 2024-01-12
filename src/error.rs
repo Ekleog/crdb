@@ -1,4 +1,5 @@
 use crate::{BinPtr, EventId, ObjectId, SessionToken, Timestamp, TypeId};
+use anyhow::anyhow;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -101,6 +102,20 @@ impl<T> ResultExt for sqlx::Result<T> {
                 )),
             },
             Err(e) => Err(Error::Other(anyhow::Error::from(e).context(f()))),
+            Ok(r) => Ok(r),
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
+    type Ok = T;
+
+    fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
+        match self {
+            Err(e) => Err(Error::Other(
+                anyhow!("{}: {}", e.name(), e.message()).context(f()),
+            )),
             Ok(r) => Ok(r),
         }
     }
