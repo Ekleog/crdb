@@ -1,5 +1,7 @@
 use rust_decimal::Decimal;
 
+use crate::fts;
+
 #[derive(Debug)]
 #[cfg_attr(test, derive(arbitrary::Arbitrary))]
 #[non_exhaustive]
@@ -177,8 +179,10 @@ impl Query {
                 Self::contains(v, pat)
             }
             Query::ContainsStr(p, pat) => Self::deref(v, p)
+                .and_then(|v| v.as_object())
+                .and_then(|v| v.get("_crdb-normalized"))
                 .and_then(|s| s.as_str())
-                .map(|s| s.contains(pat))
+                .map(|s| fts::matches(s, &fts::normalize(pat)))
                 .unwrap_or(false),
         }
     }
@@ -331,10 +335,10 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             // TODO: Check normalizer_version and recompute at startup if not the right version
             // This will probably require adding a list of all the json paths to SearchableString's
             // in Object
-            res.push_str("to_tsvector(snapshot");
+            res.push_str("COALESCE(to_tsvector(snapshot");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(
-                "->'_crdb-normalized') @@ phraseto_tsquery(${})",
+                "->'_crdb-normalized') @@ phraseto_tsquery(${}), FALSE)",
                 bind_idx
             ));
             *bind_idx += 1;

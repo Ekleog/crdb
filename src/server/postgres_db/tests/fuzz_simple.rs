@@ -557,3 +557,22 @@ fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
         ],
     );
 }
+
+#[test]
+fn regression_postgres_null_led_to_not_being_wrong() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Op::Create {
+                id: ObjectId(Ulid::from_string("000002C1800G08000000000000").unwrap()),
+                created_at: EventId(Ulid::from_string("0000000000200000000002G000").unwrap()),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 0, 255, 255, 255, 0, 0])),
+            },
+            Op::Query {
+                user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
+                q: Query::Not(Box::new(Query::ContainsStr(vec![], String::new()))),
+            },
+        ],
+    );
+}

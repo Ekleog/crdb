@@ -5,7 +5,7 @@ use icu::{
     segmenter::WordSegmenter,
 };
 use rust_stemmers::{Algorithm, Stemmer};
-use std::fmt::Debug;
+use std::{collections::HashSet, fmt::Debug};
 use writeable::Writeable;
 
 thread_local! {
@@ -59,6 +59,13 @@ pub(crate) fn normalize(input: &str) -> String {
         res.pop(); // remove the last space if there was at least one word
         res
     })
+}
+
+/// Assumes that both `value` and `pat` have already been `normalize`d. Checks wheth
+/// `value` matches `pat`.
+pub(crate) fn matches(value: &str, pat: &str) -> bool {
+    let words = value.split(' ').collect::<HashSet<&str>>();
+    pat.split(' ').all(|p| words.contains(p))
 }
 
 #[derive(Clone, deepsize::DeepSizeOf, educe::Educe, serde::Deserialize, serde::Serialize)]
