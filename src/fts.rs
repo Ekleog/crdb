@@ -1,9 +1,7 @@
-use icu::{
-    casemap::CaseMapper,
-    normalizer::{ComposingNormalizer, DecomposingNormalizer},
-    properties::sets::diacritic,
-    segmenter::WordSegmenter,
-};
+use icu_casemap::CaseMapper;
+use icu_normalizer::{ComposingNormalizer, DecomposingNormalizer};
+use icu_properties::sets::diacritic;
+use icu_segmenter::WordSegmenter;
 use rust_stemmers::{Algorithm, Stemmer};
 use std::{collections::HashSet, fmt::Debug};
 use writeable::Writeable;
