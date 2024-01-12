@@ -6,7 +6,7 @@ use crate::{
     test_utils::{db::ServerConfig, *},
     BinPtr, EventId, ObjectId, Query, Timestamp, User,
 };
-use std::{sync::Arc, time::Duration};
+use std::{ops::Bound, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
@@ -24,6 +24,7 @@ enum Op {
     },
     GetSimple {
         object: usize,
+        at: EventId,
     },
     QuerySimple {
         user: User,
@@ -46,6 +47,7 @@ enum Op {
     },
     GetPerms {
         object: usize,
+        at: EventId,
     },
     QueryPerms {
         user: User,
@@ -68,6 +70,7 @@ enum Op {
     },
     GetDelegatePerms {
         object: usize,
+        at: EventId,
     },
     QueryDelegatePerms {
         user: User,
@@ -90,6 +93,7 @@ enum Op {
     },
     GetFull {
         object: usize,
+        at: EventId,
     },
     QueryFull {
         user: User,
@@ -99,6 +103,9 @@ enum Op {
     RecreateFull {
         object: usize,
         time: Timestamp,
+    },
+    Remove {
+        object: usize,
     },
     CreateBinary {
         data: Arc<Vec<u8>>,
@@ -147,8 +154,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
         }
-        Op::GetSimple { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::GetSimple { object, at } => {
             let o = s
                 .objects
                 .lock()
@@ -159,8 +165,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             let _pg: crate::Result<Arc<TestObjectSimple>> =
                 match db.get::<TestObjectSimple>(o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
-                        Ok(o) => Ok(o),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
@@ -205,8 +211,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .submit::<TestObjectPerms, _>(o, *event_id, event.clone(), db)
                 .await;
         }
-        Op::GetPerms { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::GetPerms { object, at } => {
             let o = s
                 .objects
                 .lock()
@@ -217,8 +222,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             let _pg: crate::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await
             {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.last_snapshot::<TestObjectPerms>() {
-                    Ok(o) => Ok(o),
+                Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
+                    Ok(o) => Ok(o.1),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
@@ -263,8 +268,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .submit::<TestObjectDelegatePerms, _>(o, *event_id, event.clone(), db)
                 .await;
         }
-        Op::GetDelegatePerms { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::GetDelegatePerms { object, at } => {
             let o = s
                 .objects
                 .lock()
@@ -272,14 +276,16 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg: crate::Result<Arc<TestObjectDelegatePerms>> =
-                match db.get::<TestObjectDelegatePerms>(o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.last_snapshot::<TestObjectDelegatePerms>() {
-                        Ok(o) => Ok(o),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
+            let _pg: crate::Result<Arc<TestObjectDelegatePerms>> = match db
+                .get::<TestObjectDelegatePerms>(o)
+                .await
+            {
+                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                Ok(o) => match o.get_snapshot_at::<TestObjectDelegatePerms>(Bound::Included(*at)) {
+                    Ok(o) => Ok(o.1),
+                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                },
+            };
         }
         Op::QueryDelegatePerms { user, q } => {
             let _pg = db
@@ -323,8 +329,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .submit::<TestObjectFull, _>(o, *event_id, event.clone(), db)
                 .await;
         }
-        Op::GetFull { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::GetFull { object, at } => {
             let o = s
                 .objects
                 .lock()
@@ -334,8 +339,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg: crate::Result<Arc<TestObjectFull>> = match db.get::<TestObjectFull>(o).await {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.last_snapshot::<TestObjectFull>() {
-                    Ok(o) => Ok(o),
+                Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
+                    Ok(o) => Ok(o.1),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
@@ -355,6 +360,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db.recreate::<TestObjectFull, _>(*time, o, db).await;
+        }
+        Op::Remove { object } => {
+            let _object = object; // TODO: implement for non-postgres databases
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));

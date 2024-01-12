@@ -21,6 +21,7 @@ pub const EVENT_ID_2: EventId = EventId(ulid("20000000000000000000000020"));
 pub const EVENT_ID_3: EventId = EventId(ulid("20000000000000000000000030"));
 pub const EVENT_ID_4: EventId = EventId(ulid("20000000000000000000000040"));
 pub const EVENT_ID_5: EventId = EventId(ulid("20000000000000000000000050"));
+pub const EVENT_ID_MAX: EventId = EventId(Ulid::from_parts(u64::MAX, u128::MAX));
 
 pub const TYPE_ID_NULL: TypeId = TypeId(ulid("00000000000000000000000000"));
 pub const TYPE_ID_1: TypeId = TypeId(ulid("30000000000000000000000010"));

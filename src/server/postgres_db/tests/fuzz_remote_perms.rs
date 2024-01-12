@@ -6,7 +6,7 @@ use crate::{
     test_utils::{self, db::ServerConfig, *},
     DbPtr, EventId, ObjectId, Query, Timestamp, User,
 };
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 use ulid::Ulid;
 
 #[derive(Debug, bolero::generator::TypeGenerator)]
@@ -33,9 +33,11 @@ enum Op {
     },
     GetPerm {
         object: usize,
+        at: EventId,
     },
     GetDelegator {
         object: usize,
+        at: EventId,
     },
     QueryPerms {
         user: User,
@@ -55,11 +57,9 @@ enum Op {
         object: usize,
         time: Timestamp,
     },
-    /* TODO: TestObject should have some binary info
-    CreateBinary {
-        data: Vec<u8>,
+    Remove {
+        object: usize,
     },
-    */
     Vacuum {
         recreate_at: Option<Timestamp>,
     },
@@ -145,52 +145,52 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .await;
             cmp(pg, mem)?;
         }
-        Op::GetPerm { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::GetPerm { object, at } => {
             let o = s
                 .objects
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let pg: crate::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await {
-                Err(e) => Err(e).wrap_context("getting {o:?} in database"),
-                Ok(o) => match o.last_snapshot::<TestObjectPerms>() {
-                    Ok(o) => Ok(o),
+                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
+                    Ok(o) => Ok(o.1),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
             let mem: crate::Result<Arc<TestObjectPerms>> =
                 match s.mem_db.get::<TestObjectPerms>(o).await {
-                    Err(e) => Err(e).wrap_context("getting {o:?} in mem db"),
-                    Ok(o) => match o.last_snapshot::<TestObjectPerms>() {
-                        Ok(o) => Ok(o),
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
             cmp(pg, mem)?;
         }
-        Op::GetDelegator { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::GetDelegator { object, at } => {
             let o = s
                 .objects
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObjectDelegatePerms>> =
-                match db.get::<TestObjectDelegatePerms>(o).await {
-                    Err(e) => Err(e).wrap_context("getting {o:?} in database"),
-
-                    Ok(o) => match o.last_snapshot::<TestObjectDelegatePerms>() {
-                        Ok(o) => Ok(o),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
+            let pg: crate::Result<Arc<TestObjectDelegatePerms>> = match db
+                .get::<TestObjectDelegatePerms>(o)
+                .await
+            {
+                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                Ok(o) => match o.get_snapshot_at::<TestObjectDelegatePerms>(Bound::Included(*at)) {
+                    Ok(o) => Ok(o.1),
+                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                },
+            };
             let mem: crate::Result<Arc<TestObjectDelegatePerms>> =
                 match s.mem_db.get::<TestObjectDelegatePerms>(o).await {
-                    Err(e) => Err(e).wrap_context("getting {o:?} in mem db"),
-
-                    Ok(o) => match o.last_snapshot::<TestObjectDelegatePerms>() {
-                        Ok(o) => Ok(o),
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
+                    Ok(o) => match o
+                        .get_snapshot_at::<TestObjectDelegatePerms>(Bound::Included(*at))
+                    {
+                        Ok(o) => Ok(o.1),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
@@ -247,6 +247,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .recreate::<TestObjectDelegatePerms, _>(*time, o, &s.mem_db)
                 .await;
             cmp(pg, mem)?;
+        }
+        Op::Remove { object } => {
+            let _object = object; // TODO: implement for non-postgres databases
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -321,7 +324,10 @@ fn regression_get_with_wrong_type_did_not_fail() {
                     Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
                 ))),
             },
-            GetDelegator { object: 0 },
+            GetDelegator {
+                object: 0,
+                at: EVENT_ID_MAX,
+            },
         ],
     );
 }

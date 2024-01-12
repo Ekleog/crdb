@@ -172,6 +172,13 @@ impl FullObject {
         self.data.write().unwrap().recreate_at::<T>(at)
     }
 
+    pub fn get_snapshot_at<T: Object>(
+        &self,
+        at: Bound<EventId>,
+    ) -> anyhow::Result<(EventId, Arc<T>)> {
+        self.data.write().unwrap().get_snapshot_at::<T>(at)
+    }
+
     pub fn last_snapshot<T: Object>(&self) -> anyhow::Result<Arc<T>> {
         {
             let this = self.data.read().unwrap();

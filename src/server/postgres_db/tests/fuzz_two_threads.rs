@@ -6,7 +6,7 @@ use crate::{
     test_utils::{db::ServerConfig, *},
     EventId, ObjectId, Query, Timestamp, User,
 };
-use std::{sync::Arc, time::Duration};
+use std::{ops::Bound, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
@@ -24,6 +24,7 @@ enum Op {
     },
     Get {
         object: usize,
+        at: EventId,
     },
     Query {
         user: User,
@@ -33,6 +34,9 @@ enum Op {
     Recreate {
         object: usize,
         time: Timestamp,
+    },
+    Remove {
+        object: usize,
     },
     Vacuum {
         recreate_at: Option<Timestamp>,
@@ -78,8 +82,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
         }
-        Op::Get { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::Get { object, at } => {
             let o = s
                 .objects
                 .lock()
@@ -90,8 +93,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             let _pg: crate::Result<Arc<TestObjectSimple>> =
                 match db.get::<TestObjectSimple>(o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.last_snapshot::<TestObjectSimple>() {
-                        Ok(o) => Ok(o),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
@@ -111,6 +114,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
+        }
+        Op::Remove { object } => {
+            let _object = object; // TODO: implement for non-postgres databases
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
@@ -208,3 +214,4 @@ fn fuzz_checking_locks() {
 // - make sure that if two threads submit an event it's with the same value
 // - somehow synchronize for recreations? to avoid event submissions being rejected dependent on interleaving
 // - assert only once all operations are complete, that MemDb and PostgresDb have the same last_snapshot
+// Also, same for the battle-royale fuzzer.

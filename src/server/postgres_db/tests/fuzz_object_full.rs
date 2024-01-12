@@ -10,7 +10,7 @@ use crate::{
     BinPtr, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 use ulid::Ulid;
 
 #[derive(Debug, bolero::generator::TypeGenerator)]
@@ -27,6 +27,7 @@ enum Op {
     },
     Get {
         object: usize,
+        at: EventId,
     },
     Query {
         user: User,
@@ -36,6 +37,9 @@ enum Op {
     Recreate {
         object: usize,
         time: Timestamp,
+    },
+    Remove {
+        object: usize,
     },
     CreateBinary {
         data: Arc<Vec<u8>>,
@@ -99,8 +103,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .await;
             cmp(pg, mem)?;
         }
-        Op::Get { object } => {
-            // TODO: use get_snapshot_at instead of last_snapshot
+        Op::Get { object, at } => {
             let o = s
                 .objects
                 .get(*object)
@@ -108,16 +111,16 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let pg: crate::Result<Arc<TestObjectFull>> = match db.get::<TestObjectFull>(o).await {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.last_snapshot::<TestObjectFull>() {
-                    Ok(o) => Ok(o),
+                Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
+                    Ok(o) => Ok(o.1),
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
             let mem: crate::Result<Arc<TestObjectFull>> =
                 match s.mem_db.get::<TestObjectFull>(o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
-                    Ok(o) => match o.last_snapshot::<TestObjectFull>() {
-                        Ok(o) => Ok(o),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
                 };
@@ -147,6 +150,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .recreate::<TestObjectFull, _>(*time, o, &s.mem_db)
                 .await;
             cmp(pg, mem)?;
+        }
+        Op::Remove { object } => {
+            let _object = object; // TODO: implement for non-postgres databases
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));
