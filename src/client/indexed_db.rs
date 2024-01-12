@@ -62,7 +62,51 @@ impl Db for IndexedDb {
             .db
             .transaction_on_multi_with_mode(&["snapshots", "events"], IdbTransactionMode::Readwrite)
             .wrap_context("obtaining transaction into IndexedDb database")?;
-        // TODO
+        let snapshots = transaction
+            .object_store("snapshots")
+            .wrap_context("obtaining 'snapshots' object store from transaction")?;
+        let add_attempt = snapshots.add_key_val_owned(
+            object_id.to_js_string(),
+            &serde_wasm_bindgen::to_value(&*object).wrap_context("serializing object to json")?,
+        );
+        match add_attempt {
+            Ok(res) => res
+                .await
+                .wrap_with_context(|| format!("completing database addition of {object_id:?}"))?,
+            Err(add_attempt_error) => {
+                let already_existing = snapshots
+                    .get(&object_id.to_js_string())
+                    .wrap_with_context(|| format!("requesting {object_id:?}"))?
+                    .await
+                    .wrap_with_context(|| format!("fetching {object_id:?}"))?;
+                let Some(already_existing) = already_existing else {
+                    return Err(add_attempt_error)
+                        .wrap_with_context(|| format!("adding {object_id:?} to database"));
+                };
+                let Ok(already_existing) = serde_wasm_bindgen::from_value::<T>(already_existing)
+                else {
+                    return Err(crate::Error::ObjectAlreadyExists(object_id));
+                };
+                if already_existing != *object {
+                    return Err(crate::Error::ObjectAlreadyExists(object_id));
+                }
+                return Ok(());
+            }
+        }
+        let event_already_exists = transaction
+            .object_store("events")
+            .wrap_context("obtaining 'events' object store from transaction")?
+            .get(&created_at.to_js_string())
+            .wrap_with_context(|| format!("requesting {created_at:?}"))?
+            .await
+            .wrap_with_context(|| format!("fetching {created_at:?}"))?
+            .is_some();
+        if event_already_exists {
+            transaction.abort().wrap_with_context(|| {
+                format!("failed aborting transaction creating {object_id:?}")
+            })?;
+            return Err(crate::Error::EventAlreadyExists(created_at));
+        }
         Ok(())
     }
 
