@@ -19,4 +19,25 @@ async fn smoke_test() {
     )
     .await
     .expect("creating test object 1 failed");
+    tracing::info!("created {OBJECT_ID_1:?}");
+    /*
+    db.create(
+        OBJECT_ID_1,
+        EVENT_ID_2,
+        Arc::new(TestObjectSimple::stub_2()),
+        &db,
+    )
+    .await
+    .expect_err("creating duplicate test object 1 spuriously worked");
+    tracing::info!("successfully failed creating duplicate-but-changed {OBJECT_ID_1:?}");
+    db.create(
+        OBJECT_ID_1,
+        EVENT_ID_1,
+        Arc::new(TestObjectSimple::stub_1()),
+        &db,
+    )
+    .await
+    .expect("creating exact copy test object 1 failed");
+    tracing::info!("successfully created duplicate {OBJECT_ID_1:?}");
+    */
 }
