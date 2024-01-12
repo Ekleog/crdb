@@ -3,7 +3,7 @@ use icu_normalizer::{ComposingNormalizer, DecomposingNormalizer};
 use icu_properties::sets::diacritic;
 use icu_segmenter::WordSegmenter;
 use rust_stemmers::{Algorithm, Stemmer};
-use std::{collections::HashSet, fmt::Debug};
+use std::fmt::Debug;
 use writeable::Writeable;
 
 thread_local! {
@@ -60,10 +60,10 @@ pub(crate) fn normalize(input: &str) -> String {
 }
 
 /// Assumes that both `value` and `pat` have already been `normalize`d. Checks wheth
-/// `value` matches `pat`.
+/// `value` contains pattern `pat`.
+#[inline]
 pub(crate) fn matches(value: &str, pat: &str) -> bool {
-    let words = value.split(' ').collect::<HashSet<&str>>();
-    pat.split(' ').all(|p| words.contains(p))
+    value.contains(pat)
 }
 
 #[derive(Clone, deepsize::DeepSizeOf, educe::Educe, serde::Deserialize, serde::Serialize)]
