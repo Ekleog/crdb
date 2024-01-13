@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::mpsc;
-use wasm_bindgen::{closure::Closure, JsCast};
+use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     IdbDatabase, IdbObjectStoreParameters, IdbOpenDbRequest, IdbRequest, IdbTransaction,
@@ -213,10 +213,15 @@ impl Db for IndexedDb {
                 )
             })?;
 
+            let key = js_sys::Array::new();
+            key.push(&JsValue::TRUE);
+            key.push(&object_id.to_js_string());
             let get_req = transaction
                 .object_store("snapshots_meta")
                 .wrap_context("getting 'snapshots_meta' object store")?
-                .get(&object_id.to_js_string())
+                .index("creation_object")
+                .wrap_context("getting 'creation_object' index")?
+                .get(&key)
                 .wrap_with_context(|| format!("requesting snapshot metadata for {object_id:?}"))?;
             let transaction = IdbTransaction::from(transaction);
 
@@ -232,16 +237,12 @@ impl Db for IndexedDb {
                     other_err!("Failed retrieving on_error event target")
                 })?;
                 let get_req = target.dyn_into::<IdbRequest>()
-                    .map_err(|_| other_err!("rebuilding a StoreRequest from the target"))?;
+                    .map_err(|_| other_err!("rebuilding an IdbRequest from the target"))?;
                 let transaction = get_req.transaction().ok_or_else(|| {
-                    other_err!(
-                        "Failed recovering the transaction from a StoreRequest"
-                    )
+                    other_err!("Failed recovering the transaction from an IdbRequest")
                 })?;
                 let result = get_req.result().wrap_with_context(|| {
-                    format!(
-                        "getting the result of the request for snapshot metadata of {object_id:?}"
-                    )
+                    format!("getting the result of the request for snapshot metadata of {object_id:?}")
                 })?;
 
                 let mut preexisting = serde_wasm_bindgen::from_value::<SnapshotMeta>(result)
@@ -261,8 +262,8 @@ impl Db for IndexedDb {
                 let get_req = transaction
                     .object_store("snapshots")
                     .wrap_context("retrieving 'snapshots' object store")?
-                    .get(&object_id.to_js_string())
-                    .wrap_with_context(|| format!("requesting {object_id:?}"))?;
+                    .get(&created_at.to_js_string())
+                    .wrap_with_context(|| format!("requesting snapshot data for {created_at:?}"))?;
 
                 get_req.set_onerror(result_cb(&tx3, &transaction, &closure_stash3, move |_| {
                     tracing::info!("get_req errors");
