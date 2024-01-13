@@ -16,6 +16,8 @@ use wasm_bindgen::{closure::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{IdbDatabase, IdbOpenDbRequest, IdbRequest, IdbTransaction, IdbTransactionMode};
 
+// TODO: remove all tracing::info!() before stabilizing
+
 #[derive(PartialEq, serde::Deserialize, serde::Serialize)]
 struct SnapshotMeta {
     type_id: TypeId,
@@ -71,7 +73,7 @@ impl IndexedDb {
             .as_ref(),
         );
 
-        let (db_tx, mut db_rx) = mpsc::channel(1);
+        let (db_tx, mut db_rx) = mpsc::unbounded_channel();
         db_req.set_onsuccess(
             result_notrans_cb(&db_tx, &closure_stash, |evt: web_sys::Event| {
                 let target = evt
@@ -154,7 +156,7 @@ impl Db for IndexedDb {
             )
             .wrap_with_context(|| format!("submitting request to add {object_id:?}"))?;
 
-        let (tx, mut rx) = mpsc::channel(1);
+        let (tx, mut rx) = mpsc::unbounded_channel();
         let tx2 = tx.clone();
         let tx3 = tx.clone();
         let tx4 = tx.clone();
@@ -188,11 +190,13 @@ impl Db for IndexedDb {
             let transaction = IdbTransaction::from(transaction);
 
             get_req.set_onerror(result_cb(&tx2, &transaction, &closure_stash2, move |_| {
+                tracing::info!("get_req errors");
                 Err(other_err!(
                     "Failed to retrieve pre-existing snapshot metadata for {object_id:?}"
                 ))
             }).as_ref());
             get_req.set_onsuccess(collect_errors_cb(&tx2, &transaction, &closure_stash2, move |evt: web_sys::Event| {
+                tracing::info!("get_req successes");
                 let target = evt.target().ok_or_else(|| {
                     other_err!("Failed retrieving on_error event target")
                 })?;
@@ -227,12 +231,13 @@ impl Db for IndexedDb {
                     .wrap_context("retrieving 'snapshots' object store")?
                     .get(&object_id.to_js_string())
                     .wrap_with_context(|| format!("requesting {object_id:?}"))?;
-                let transaction = IdbTransaction::from(transaction);
 
                 get_req.set_onerror(result_cb(&tx3, &transaction, &closure_stash3, move |_| {
+                    tracing::info!("get_req errors");
                     Err(other_err!("Failed to retrieve pre-existing snapshot data for {object_id:?}"))
                 }).as_ref());
                 get_req.set_onsuccess(result_cb(&tx3, &transaction, &closure_stash3, move |evt: web_sys::Event| {
+                    tracing::info!("get_req successes");
                     let target = evt.target().ok_or_else(|| other_err!("Failed retrieving on_error event target"))?;
                     let get_req = target.dyn_into::<IdbRequest>()
                         .map_err(|_| other_err!("rebuilding an IdbRequest from the target"))?;
@@ -373,18 +378,19 @@ fn stash_closure(
 }
 
 fn result_notrans_cb<Ret: 'static>(
-    tx: &mpsc::Sender<Ret>,
+    tx: &mpsc::UnboundedSender<Ret>,
     closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
     cb: impl 'static + FnOnce(web_sys::Event) -> Ret,
 ) -> Option<Function> {
     let tx = tx.clone();
     stash_closure(closure_stash, move |arg| {
-        tx.try_send(cb(arg)).unwrap();
+        arg.prevent_default();
+        tx.send(cb(arg)).unwrap();
     })
 }
 
 fn result_cb<Ret: 'static, Err: 'static>(
-    tx: &mpsc::Sender<Result<Ret, Err>>,
+    tx: &mpsc::UnboundedSender<Result<Ret, Err>>,
     transaction: &IdbTransaction,
     closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
     cb: impl 'static + FnOnce(web_sys::Event) -> Result<Ret, Err>,
@@ -392,18 +398,23 @@ fn result_cb<Ret: 'static, Err: 'static>(
     let tx = tx.clone();
     let transaction = transaction.clone();
     stash_closure(closure_stash, move |arg| {
-        tx.try_send(cb(arg).map_err(|err| {
+        arg.prevent_default();
+        let res = cb(arg);
+        tracing::info!("result_cb got result");
+        tx.send(res.map_err(|err| {
+            tracing::info!("result_cb even got error");
             transaction
                 .abort()
                 .expect("Failed aborting the transaction upon error");
             err
         }))
         .unwrap();
+        tracing::info!("result_cb finished sending");
     })
 }
 
 fn collect_errors_cb<T: 'static, Ret: 'static>(
-    tx: &mpsc::Sender<Result<T, Ret>>,
+    tx: &mpsc::UnboundedSender<Result<T, Ret>>,
     transaction: &IdbTransaction,
     closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
     cb: impl 'static + FnOnce(web_sys::Event) -> Result<(), Ret>,
@@ -411,17 +422,18 @@ fn collect_errors_cb<T: 'static, Ret: 'static>(
     let tx = tx.clone();
     let transaction = transaction.clone();
     stash_closure(closure_stash, move |arg| {
+        arg.prevent_default();
         if let Err(ret) = cb(arg) {
             transaction
                 .abort()
                 .expect("Failed aborting the transaction upon error");
-            tx.blocking_send(Err(ret)).unwrap();
+            tx.send(Err(ret)).unwrap();
         }
     })
 }
 
 fn check_required_binaries(
-    tx: &mpsc::Sender<crate::Result<()>>,
+    tx: &mpsc::UnboundedSender<crate::Result<()>>,
     transaction: IdbTransaction,
     closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
     binaries: Vec<BinPtr>,
@@ -429,7 +441,7 @@ fn check_required_binaries(
     tracing::info!("check_required_binaries");
     if binaries.is_empty() {
         // The below code will send a result over tx only if there's at least one binary to check
-        tx.try_send(Ok(())).unwrap();
+        tx.send(Ok(())).unwrap();
     }
 
     let binaries_store = transaction
@@ -481,7 +493,7 @@ fn check_required_binaries(
                         } else {
                             Err(crate::Error::MissingBinaries(missing_binaries.clone()))
                         };
-                        tx2.try_send(res).unwrap();
+                        tx2.send(res).unwrap();
                     } else {
                         remaining_queries3.set(remains - 1);
                     }
