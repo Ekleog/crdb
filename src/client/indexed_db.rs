@@ -72,13 +72,32 @@ impl IndexedDb {
                 db.create_object_store("snapshots").unwrap();
                 db.create_object_store("events").unwrap();
                 db.create_object_store("binaries").unwrap();
-                db.create_object_store_with_optional_parameters(
-                    "snapshots_meta",
-                    IdbObjectStoreParameters::new().key_path(Some(
-                        &serde_wasm_bindgen::to_value(&["snapshot_id"]).unwrap(),
-                    )),
-                )
-                .unwrap();
+                let snapshots_meta = db
+                    .create_object_store_with_optional_parameters(
+                        "snapshots_meta",
+                        IdbObjectStoreParameters::new().key_path(Some(
+                            &serde_wasm_bindgen::to_value(&["snapshot_id"]).unwrap(),
+                        )),
+                    )
+                    .unwrap();
+                snapshots_meta
+                    .create_index_with_str_sequence(
+                        "latest_object",
+                        &serde_wasm_bindgen::to_value(&["is_latest", "object_id"]).unwrap(),
+                    )
+                    .unwrap();
+                snapshots_meta
+                    .create_index_with_str_sequence(
+                        "creation_object",
+                        &serde_wasm_bindgen::to_value(&["is_creation", "object_id"]).unwrap(),
+                    )
+                    .unwrap();
+                snapshots_meta
+                    .create_index_with_str_sequence(
+                        "object_snapshot",
+                        &serde_wasm_bindgen::to_value(&["object_id", "snapshot_id"]).unwrap(),
+                    )
+                    .unwrap();
             })
             .as_ref(),
         );
