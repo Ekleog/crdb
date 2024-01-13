@@ -14,12 +14,16 @@ use std::{
 use tokio::sync::mpsc;
 use wasm_bindgen::{closure::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{IdbDatabase, IdbOpenDbRequest, IdbRequest, IdbTransaction, IdbTransactionMode};
+use web_sys::{
+    IdbDatabase, IdbObjectStoreParameters, IdbOpenDbRequest, IdbRequest, IdbTransaction,
+    IdbTransactionMode,
+};
 
 // TODO: remove all tracing::info!() before stabilizing
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 struct SnapshotMeta {
+    snapshot_id: EventId,
     type_id: TypeId,
     object_id: ObjectId,
     is_creation: bool,
@@ -66,9 +70,15 @@ impl IndexedDb {
                 let result = db_req.result().unwrap();
                 let db = result.dyn_into::<IdbDatabase>().unwrap();
                 db.create_object_store("snapshots").unwrap();
-                db.create_object_store("snapshots_meta").unwrap();
                 db.create_object_store("events").unwrap();
                 db.create_object_store("binaries").unwrap();
+                db.create_object_store_with_optional_parameters(
+                    "snapshots_meta",
+                    IdbObjectStoreParameters::new().key_path(Some(
+                        &serde_wasm_bindgen::to_value(&["snapshot_id"]).unwrap(),
+                    )),
+                )
+                .unwrap();
             })
             .as_ref(),
         );
@@ -133,6 +143,7 @@ impl Db for IndexedDb {
             .wrap_context("starting transaction")?;
 
         let snapshot_meta = SnapshotMeta {
+            snapshot_id: created_at,
             type_id: *T::type_ulid(),
             object_id,
             is_creation: true,
@@ -148,11 +159,10 @@ impl Db for IndexedDb {
         let add_req = transaction
             .object_store("snapshots_meta")
             .wrap_context("getting 'snapshots_meta' object store")?
-            .add_with_key(
+            .add(
                 &serde_wasm_bindgen::to_value(&snapshot_meta).wrap_with_context(|| {
                     format!("serializing snapshot metadata for {object_id:?} to json")
                 })?,
-                &created_at.to_js_string(),
             )
             .wrap_with_context(|| format!("submitting request to add {object_id:?}"))?;
 
