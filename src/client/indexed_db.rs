@@ -2,66 +2,101 @@
 
 use crate::{
     db_trait::Db, error::ResultExt, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream,
-    EventId, Object, ObjectId, Query, Timestamp, User,
+    EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
 };
 use anyhow::anyhow;
-use idb_sys::{ObjectStoreParams, Request};
-use std::sync::Arc;
-use wasm_bindgen::JsCast;
+use js_sys::Function;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+};
+use tokio::sync::mpsc;
+use wasm_bindgen::{closure::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
+use web_sys::{IdbDatabase, IdbOpenDbRequest, IdbRequest, IdbTransaction, IdbTransactionMode};
+
+#[derive(PartialEq, serde::Deserialize, serde::Serialize)]
+struct SnapshotMeta {
+    type_id: TypeId,
+    object_id: ObjectId,
+    is_creation: bool,
+    is_latest: bool,
+    snapshot_version: i32,
+    is_locked: bool,
+    upload_succeeded: bool,
+}
 
 pub struct IndexedDb {
     is_persistent: bool,
-    db: idb_sys::Database,
+    db: IdbDatabase,
+}
+
+macro_rules! other_err {
+    ($($t:tt)*) => { crate::Error::Other(anyhow!($($t)*)) }
 }
 
 impl IndexedDb {
     pub async fn connect(url: &str) -> anyhow::Result<IndexedDb> {
-        let is_persistent = JsFuture::from(
-            web_sys::window()
-                .ok_or_else(|| anyhow!("not running in a browser"))?
-                .navigator()
-                .storage()
-                .persist()
-                .wrap_context(
-                    "failed to request persistence, did the user disable storage altogether?",
-                )?,
-        )
+        let closure_stash = Rc::new(RefCell::new(Vec::new()));
+        let window = web_sys::window().ok_or_else(|| anyhow!("not running in a browser"))?;
+        let is_persistent = JsFuture::from(window.navigator().storage().persist().wrap_context(
+            "failed to request persistence, did the user disable storage altogether?",
+        )?)
         .await
         .wrap_context("failed to resolve request for persistence")?
         .as_bool()
         .ok_or_else(|| anyhow!("requesting for persistence did not return a boolean"))?;
 
-        let factory = idb_sys::Factory::new().wrap_context("getting IndexedDb factory")?;
+        let factory = window
+            .indexed_db()
+            .wrap_context("getting IndexedDb factory")?
+            .ok_or_else(|| anyhow!("IndexedDb seems to be disabled"))?;
         const VERSION: u32 = 1;
-        let mut db_req = factory
-            .open(url, Some(VERSION))
+        let db_req = factory
+            .open_with_u32(url, VERSION)
             .wrap_with_context(|| format!("opening IndexedDb {url:?} at version {VERSION}"))?;
-        db_req.on_upgrade_needed(|evt: idb_sys::VersionChangeEvent| {
-            // TODO: clean up when https://github.com/devashishdxt/idb/issues/15 is fixed
-            let target = evt.target().expect("getting target of on_upgrade_needed");
-            let web_sys_db_req = target.dyn_into::<web_sys::IdbOpenDbRequest>().unwrap();
-            let db_req = idb_sys::DatabaseRequest::from(web_sys_db_req);
-            let db = db_req.database().unwrap();
-            db.create_object_store("snapshots", ObjectStoreParams::new())
-                .expect("creating 'snapshots' object store");
-            db.create_object_store("events", ObjectStoreParams::new())
-                .expect("creating 'events' object store");
-            db.create_object_store("binaries", ObjectStoreParams::new())
-                .expect("creating 'binaries' object store");
-        });
-        let (db_tx, db_rx) = tokio::sync::oneshot::channel();
-        db_req.on_success(|evt| {
-            // TODO: clean up when https://github.com/devashishdxt/idb/issues/15 is fixed
-            let target = evt.target().expect("getting target of on_success");
-            let web_sys_db_req = target.dyn_into::<web_sys::IdbOpenDbRequest>().unwrap();
-            let db_req = idb_sys::DatabaseRequest::from(web_sys_db_req);
-            let db = db_req.database().unwrap();
-            db_tx.send(db).expect("sending database");
-        });
-        db_req.on_error(|_| panic!("failed to open IndexedDb database"));
 
-        let db = db_rx.await.expect("retrieving database");
+        db_req.set_onupgradeneeded(
+            stash_closure(&closure_stash, |evt: web_sys::Event| {
+                let target = evt.target().unwrap();
+                let db_req = target.dyn_into::<IdbOpenDbRequest>().unwrap();
+                let result = db_req.result().unwrap();
+                let db = result.dyn_into::<IdbDatabase>().unwrap();
+                db.create_object_store("snapshots").unwrap();
+                db.create_object_store("snapshots_meta").unwrap();
+                db.create_object_store("events").unwrap();
+                db.create_object_store("binaries").unwrap();
+            })
+            .as_ref(),
+        );
+
+        let (db_tx, mut db_rx) = mpsc::channel(1);
+        db_req.set_onsuccess(
+            result_notrans_cb(&db_tx, &closure_stash, |evt: web_sys::Event| {
+                let target = evt
+                    .target()
+                    .ok_or_else(|| anyhow!("Failed retrieving on_success target"))?;
+                let db_req = target.dyn_into::<IdbOpenDbRequest>().map_err(|_| {
+                    anyhow!("Failed interpreting on_success target as IdbOpenDbRequest")
+                })?;
+                let db = db_req
+                    .result()
+                    .wrap_context("getting database")?
+                    .dyn_into::<IdbDatabase>()
+                    .map_err(|_| anyhow!("Failed casting IndexedDb result into IdbDatabase"))?;
+                Ok(db)
+            })
+            .as_ref(),
+        );
+        db_req.set_onerror(
+            result_notrans_cb(&db_tx, &closure_stash, |_| {
+                Err(anyhow!("failed to open IndexedDb database"))
+            })
+            .as_ref(),
+        );
+
+        let db = db_rx.recv().await.unwrap()?;
         Ok(IndexedDb { is_persistent, db })
     }
 
@@ -79,72 +114,206 @@ impl Db for IndexedDb {
         object: Arc<T>,
         cb: &C,
     ) -> crate::Result<()> {
-        todo!()
-        /*
+        tracing::info!("create");
+        let closure_stash = Rc::new(RefCell::new(Vec::new()));
         let transaction = self
             .db
-            .transaction_on_multi_with_mode(
-                &["snapshots", "events", "binaries"],
+            .transaction_with_str_sequence_and_mode(
+                &serde_wasm_bindgen::to_value(&[
+                    "snapshots",
+                    "snapshots_meta",
+                    "events",
+                    "binaries",
+                ])
+                .unwrap(),
                 IdbTransactionMode::Readwrite,
             )
-            .wrap_context("obtaining transaction into IndexedDb database")?;
-        let snapshots = transaction
-            .object_store("snapshots")
-            .wrap_context("obtaining 'snapshots' object store from transaction")?;
-        let add_attempt = snapshots.add_key_val_owned(
-            object_id.to_js_string(),
-            &serde_wasm_bindgen::to_value(&*object).wrap_context("serializing object to json")?,
-        );
-        match add_attempt {
-            Ok(res) => res
-                .await
-                .wrap_with_context(|| format!("completing database addition of {object_id:?}"))?,
-            Err(add_attempt_error) => {
-                let already_existing = snapshots
-                    .get(&object_id.to_js_string())
-                    .wrap_with_context(|| format!("requesting {object_id:?}"))?
-                    .await
-                    .wrap_with_context(|| format!("fetching {object_id:?}"))?;
-                let Some(already_existing) = already_existing else {
-                    return Err(add_attempt_error)
-                        .wrap_with_context(|| format!("adding {object_id:?} to database"));
-                };
-                let Ok(already_existing) = serde_wasm_bindgen::from_value::<T>(already_existing)
-                else {
-                    return Err(crate::Error::ObjectAlreadyExists(object_id));
-                };
-                if already_existing != *object {
+            .wrap_context("starting transaction")?;
+
+        let snapshot_meta = SnapshotMeta {
+            type_id: *T::type_ulid(),
+            object_id,
+            is_creation: true,
+            is_latest: true,
+            snapshot_version: T::snapshot_version(),
+            is_locked: false, // TODO: allow for atomic create-and-lock
+            upload_succeeded: false,
+        };
+        let snapshot = serde_wasm_bindgen::to_value(&*object)
+            .wrap_with_context(|| format!("serializing {object_id:?}"))?;
+
+        // First, try inserting the object
+        let add_req = transaction
+            .object_store("snapshots_meta")
+            .wrap_context("getting 'snapshots_meta' object store")?
+            .add_with_key(
+                &serde_wasm_bindgen::to_value(&snapshot_meta).wrap_with_context(|| {
+                    format!("serializing snapshot metadata for {object_id:?} to json")
+                })?,
+                &object_id.to_js_string(),
+            )
+            .wrap_with_context(|| format!("submitting request to add {object_id:?}"))?;
+
+        let (tx, mut rx) = mpsc::channel(1);
+        let tx2 = tx.clone();
+        let tx3 = tx.clone();
+        let tx4 = tx.clone();
+        let tx5 = tx.clone();
+        let object2 = object.clone();
+        let closure_stash2 = closure_stash.clone();
+        let closure_stash3 = closure_stash.clone();
+        let closure_stash4 = closure_stash.clone();
+        let closure_stash5 = closure_stash.clone();
+        tracing::info!("before add_req");
+        add_req.set_onerror(collect_errors_cb(&tx, &transaction, &closure_stash, move |evt: web_sys::Event| {
+            tracing::info!("add_req errors");
+            // It failed. Check that the already-existing value was the same
+
+            let target = evt.target().ok_or_else(|| {
+                other_err!("Failed retrieving on_error event target")
+            })?;
+            let add_req = target.dyn_into::<IdbRequest>()
+                .map_err(|_| other_err!("Failed rebuilding an IdbRequest from the target"))?;
+            let transaction = add_req.transaction().ok_or_else(|| {
+                other_err!(
+                    "Failed recovering the transaction from the IdbRequest"
+                )
+            })?;
+
+            let get_req = transaction
+                .object_store("snapshots_meta")
+                .wrap_context("getting 'snapshots_meta' object store")?
+                .get(&object_id.to_js_string())
+                .wrap_with_context(|| format!("requesting snapshot metadata for {object_id:?}"))?;
+            let transaction = IdbTransaction::from(transaction);
+
+            get_req.set_onerror(result_cb(&tx2, &transaction, &closure_stash2, move |_| {
+                Err(other_err!(
+                    "Failed to retrieve pre-existing snapshot metadata for {object_id:?}"
+                ))
+            }).as_ref());
+            get_req.set_onsuccess(collect_errors_cb(&tx2, &transaction, &closure_stash2, move |evt: web_sys::Event| {
+                let target = evt.target().ok_or_else(|| {
+                    other_err!("Failed retrieving on_error event target")
+                })?;
+                let get_req = target.dyn_into::<IdbRequest>()
+                    .map_err(|_| other_err!("rebuilding a StoreRequest from the target"))?;
+                let transaction = get_req.transaction().ok_or_else(|| {
+                    other_err!(
+                        "Failed recovering the transaction from a StoreRequest"
+                    )
+                })?;
+                let result = get_req.result().wrap_with_context(|| {
+                    format!(
+                        "getting the result of the request for snapshot metadata of {object_id:?}"
+                    )
+                })?;
+
+                let mut preexisting = serde_wasm_bindgen::from_value::<SnapshotMeta>(result)
+                    .wrap_with_context(|| {
+                        format!("deserializing pre-existing snapshot metadata for {object_id:?}")
+                    })?;
+                // Ignore a few fields in comparison below
+                preexisting.is_latest = true;
+                preexisting.is_locked = false;
+                preexisting.upload_succeeded = false;
+                if preexisting != snapshot_meta {
                     return Err(crate::Error::ObjectAlreadyExists(object_id));
                 }
-                return Ok(());
-            }
-        }
-        let event_already_exists = transaction
-            .object_store("events")
-            .wrap_context("obtaining 'events' object store from transaction")?
-            .get(&created_at.to_js_string())
-            .wrap_with_context(|| format!("requesting {created_at:?}"))?
-            .await
-            .wrap_with_context(|| format!("fetching {created_at:?}"))?
-            .is_some();
-        if event_already_exists {
-            transaction.abort().wrap_with_context(|| {
-                format!("failed aborting transaction creating {object_id:?}")
-            })?;
-            return Err(crate::Error::EventAlreadyExists(created_at));
-        }
-        match check_required_binaries(&transaction, object.required_binaries()).await {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                transaction.abort().wrap_with_context(|| {
-                    format!("failed aborting transaction creating {object_id:?}")
+
+                // Metadata is the same, still need to check snapshot contents
+                let get_req = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving 'snapshots' object store")?
+                    .get(&object_id.to_js_string())
+                    .wrap_with_context(|| format!("requesting {object_id:?}"))?;
+                let transaction = IdbTransaction::from(transaction);
+
+                get_req.set_onerror(result_cb(&tx3, &transaction, &closure_stash3, move |_| {
+                    Err(other_err!("Failed to retrieve pre-existing snapshot data for {object_id:?}"))
+                }).as_ref());
+                get_req.set_onsuccess(result_cb(&tx3, &transaction, &closure_stash3, move |evt: web_sys::Event| {
+                    let target = evt.target().ok_or_else(|| other_err!("Failed retrieving on_error event target"))?;
+                    let get_req = target.dyn_into::<IdbRequest>()
+                        .map_err(|_| other_err!("rebuilding an IdbRequest from the target"))?;
+                    let result = get_req.result().wrap_with_context(|| {
+                        format!("getting the result of the request for snapshot metadata of {object_id:?}")
+                    })?;
+
+                    let preexisting = serde_wasm_bindgen::from_value::<T>(result)
+                    .wrap_with_context(|| format!("deserializing pre-existing snapshot for {object_id:?}"))?;
+                    if preexisting != *object {
+                        Err(crate::Error::ObjectAlreadyExists(object_id))
+                    } else {
+                        Ok(())
+                    }
+                }).as_ref());
+
+                Ok(())
+            }).as_ref());
+
+            Ok(())
+        }).as_ref());
+
+        add_req.set_onsuccess(collect_errors_cb(
+            &tx,
+            &transaction,
+            &closure_stash,
+            move |evt: web_sys::Event| {
+                tracing::info!("add_req successes");
+                // It succeeded. We still need to check for no event conflict and no missing binaries
+
+                let target = evt.target().ok_or_else(|| {
+                    other_err!("Failed retrieving on_error event target")
                 })?;
-                Err(e).wrap_with_context(|| {
-                    format!("checking that {object_id:?} has all required binaries")
-                })
-            }
-        }
-        */
+                let add_req = target.dyn_into::<IdbRequest>()
+                    .map_err(|_| other_err!("rebuilding an IdbRequestRequest from the target"))?;
+                let transaction = add_req.transaction().ok_or_else(|| {
+                    other_err!("Failed recovering the transaction from an IdbRequest")
+                })?;
+
+                let get_req = transaction
+                    .object_store("events")
+                    .wrap_context("getting 'events' object store")?
+                    .get_key(&created_at.to_js_string())
+                    .wrap_with_context(|| {
+                        format!("requesting events for presumably inexistent {created_at:?}")
+                    })?;
+                let transaction = IdbTransaction::from(transaction);
+
+                tracing::info!("before get_req");
+                get_req.set_onerror(result_cb(&tx4, &transaction, &closure_stash4, move |_| {
+                    tracing::info!("get_req errors");
+                    Err(other_err!(
+                        "Failed to validate absence of pre-existing event {created_at:?}"
+                    ))
+                }).as_ref());
+                get_req.set_onsuccess(collect_errors_cb(&tx4, &transaction, &closure_stash4, move |evt: web_sys::Event| {
+                    tracing::info!("get_req successes");
+                    let target = evt.target().ok_or_else(|| {
+                        other_err!("Failed retrieving on_error event target")
+                    })?;
+                    let get_req = target.dyn_into::<IdbRequest>()
+                        .map_err(|_| other_err!("rebuilding an IdbRequest from the target"))?;
+                    let transaction = add_req.transaction().ok_or_else(|| {
+                        other_err!("Failed recovering the transaction from the IdbRequest")
+                    })?;
+                    let result = get_req.result().wrap_with_context(|| {
+                        format!("getting the result of the request for pre-existing events at {created_at:?}")
+                    })?;
+
+                    if !result.is_undefined() {
+                        return Err(crate::Error::EventAlreadyExists(created_at));
+                    }
+
+                    check_required_binaries(&tx5, transaction, &closure_stash5, object2.required_binaries())
+                }).as_ref());
+
+                Ok(())
+            },
+        ).as_ref());
+
+        rx.recv().await.unwrap()
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(
@@ -193,29 +362,135 @@ impl Db for IndexedDb {
     }
 }
 
-/*
-async fn check_required_binaries(
+fn stash_closure(
+    closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
+    cb: impl 'static + FnOnce(web_sys::Event),
+) -> Option<Function> {
+    let res = Closure::once(cb);
+    let fun = res.as_ref().dyn_ref::<Function>().unwrap().clone();
+    closure_stash.borrow_mut().push(res);
+    Some(fun)
+}
+
+fn result_notrans_cb<Ret: 'static>(
+    tx: &mpsc::Sender<Ret>,
+    closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
+    cb: impl 'static + FnOnce(web_sys::Event) -> Ret,
+) -> Option<Function> {
+    let tx = tx.clone();
+    stash_closure(closure_stash, move |arg| {
+        tx.try_send(cb(arg)).unwrap();
+    })
+}
+
+fn result_cb<Ret: 'static, Err: 'static>(
+    tx: &mpsc::Sender<Result<Ret, Err>>,
     transaction: &IdbTransaction,
+    closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
+    cb: impl 'static + FnOnce(web_sys::Event) -> Result<Ret, Err>,
+) -> Option<Function> {
+    let tx = tx.clone();
+    let transaction = transaction.clone();
+    stash_closure(closure_stash, move |arg| {
+        tx.try_send(cb(arg).map_err(|err| {
+            transaction
+                .abort()
+                .expect("Failed aborting the transaction upon error");
+            err
+        }))
+        .unwrap();
+    })
+}
+
+fn collect_errors_cb<T: 'static, Ret: 'static>(
+    tx: &mpsc::Sender<Result<T, Ret>>,
+    transaction: &IdbTransaction,
+    closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
+    cb: impl 'static + FnOnce(web_sys::Event) -> Result<(), Ret>,
+) -> Option<Function> {
+    let tx = tx.clone();
+    let transaction = transaction.clone();
+    stash_closure(closure_stash, move |arg| {
+        if let Err(ret) = cb(arg) {
+            transaction
+                .abort()
+                .expect("Failed aborting the transaction upon error");
+            tx.blocking_send(Err(ret)).unwrap();
+        }
+    })
+}
+
+fn check_required_binaries(
+    tx: &mpsc::Sender<crate::Result<()>>,
+    transaction: IdbTransaction,
+    closure_stash: &Rc<RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>>>,
     binaries: Vec<BinPtr>,
 ) -> crate::Result<()> {
+    tracing::info!("check_required_binaries");
+    if binaries.is_empty() {
+        // The below code will send a result over tx only if there's at least one binary to check
+        tx.try_send(Ok(())).unwrap();
+    }
+
     let binaries_store = transaction
         .object_store("binaries")
         .wrap_context("opening 'binaries' object store")?;
-    let mut missing_binaries = Vec::new();
+    let missing_binaries = Rc::new(RefCell::new(Vec::new()));
+    let remaining_queries = Rc::new(Cell::new(binaries.len()));
     for b in binaries {
-        if binaries_store
+        let get_req = binaries_store
             .get_key(&b.to_js_string())
-            .wrap_with_context(|| format!("requesting whether {b:?} is present"))?
-            .await
-            .wrap_with_context(|| format!("checking whether {b:?} is present"))?
-            .is_none()
-        {
-            missing_binaries.push(b);
-        }
-    }
-    if !missing_binaries.is_empty() {
-        return Err(crate::Error::MissingBinaries(missing_binaries));
+            .wrap_with_context(|| format!("requesting whether {b:?} is present"))?;
+
+        let remaining_queries2 = remaining_queries.clone();
+        let remaining_queries3 = remaining_queries.clone();
+        let tx2 = tx.clone();
+        let missing_binaries2 = missing_binaries.clone();
+        get_req.set_onerror(
+            result_cb(&tx, &transaction, &closure_stash, move |_| {
+                remaining_queries2.set(0);
+                Err(other_err!("Failed checking whether {b:?} is present"))
+            })
+            .as_ref(),
+        );
+        get_req.set_onsuccess(
+            collect_errors_cb(
+                &tx,
+                &transaction,
+                &closure_stash,
+                move |evt: web_sys::Event| {
+                    let target = evt
+                        .target()
+                        .ok_or_else(|| other_err!("Failed retrieving on_success event target"))?;
+                    let get_req = target
+                        .dyn_into::<IdbRequest>()
+                        .map_err(|_| other_err!("rebuilding a StoreRequest from the target"))?;
+                    let result = get_req.result().wrap_with_context(|| {
+                        format!("getting the result of the request for binary {b:?}")
+                    })?;
+
+                    if result.is_undefined() {
+                        missing_binaries2.borrow_mut().push(b);
+                    }
+
+                    let remains = remaining_queries3.get();
+                    if remains == 0 {
+                        let missing_binaries = missing_binaries2.borrow();
+                        let res = if missing_binaries.is_empty() {
+                            Ok(())
+                        } else {
+                            Err(crate::Error::MissingBinaries(missing_binaries.clone()))
+                        };
+                        tx2.try_send(res).unwrap();
+                    } else {
+                        remaining_queries3.set(remains - 1);
+                    }
+
+                    Ok(())
+                },
+            )
+            .as_ref(),
+        );
     }
     Ok(())
 }
-*/

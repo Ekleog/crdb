@@ -1,15 +1,48 @@
 use crate::Timestamp;
 use ulid::Ulid;
 
-#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
+#[derive(
+    Clone,
+    Copy,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    educe::Educe,
+    serde::Deserialize,
+    serde::Serialize,
+)]
 #[educe(Debug)]
 pub struct ObjectId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
-#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
+#[derive(
+    Clone,
+    Copy,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    educe::Educe,
+    serde::Deserialize,
+    serde::Serialize,
+)]
 #[educe(Debug)]
 pub struct EventId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
-#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, educe::Educe)]
+#[derive(
+    Clone,
+    Copy,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    educe::Educe,
+    serde::Deserialize,
+    serde::Serialize,
+)]
 #[educe(Debug)]
 pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 

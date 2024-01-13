@@ -107,18 +107,6 @@ impl<T> ResultExt for sqlx::Result<T> {
 }
 
 #[cfg(target_arch = "wasm32")]
-impl<T> ResultExt for std::result::Result<T, idb_sys::Error> {
-    type Ok = T;
-
-    fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
-        match self {
-            Err(e) => Err(Error::Other(anyhow::anyhow!("{}", e).context(f()))),
-            Ok(r) => Ok(r),
-        }
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
 impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     type Ok = T;
 
