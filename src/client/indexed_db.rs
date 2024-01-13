@@ -18,7 +18,7 @@ use web_sys::{IdbDatabase, IdbOpenDbRequest, IdbRequest, IdbTransaction, IdbTran
 
 // TODO: remove all tracing::info!() before stabilizing
 
-#[derive(PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 struct SnapshotMeta {
     type_id: TypeId,
     object_id: ObjectId,
@@ -152,7 +152,7 @@ impl Db for IndexedDb {
                 &serde_wasm_bindgen::to_value(&snapshot_meta).wrap_with_context(|| {
                     format!("serializing snapshot metadata for {object_id:?} to json")
                 })?,
-                &object_id.to_js_string(),
+                &created_at.to_js_string(),
             )
             .wrap_with_context(|| format!("submitting request to add {object_id:?}"))?;
 
@@ -161,11 +161,13 @@ impl Db for IndexedDb {
         let tx3 = tx.clone();
         let tx4 = tx.clone();
         let tx5 = tx.clone();
+        let tx6 = tx.clone();
         let object2 = object.clone();
         let closure_stash2 = closure_stash.clone();
         let closure_stash3 = closure_stash.clone();
         let closure_stash4 = closure_stash.clone();
         let closure_stash5 = closure_stash.clone();
+        let closure_stash6 = closure_stash.clone();
         tracing::info!("before add_req");
         add_req.set_onerror(collect_errors_cb(&tx, &transaction, &closure_stash, move |evt: web_sys::Event| {
             tracing::info!("add_req errors");
@@ -221,6 +223,7 @@ impl Db for IndexedDb {
                 preexisting.is_latest = true;
                 preexisting.is_locked = false;
                 preexisting.upload_succeeded = false;
+                tracing::info!("comparing preexisting {preexisting:?} with under-insertion {snapshot_meta:?}");
                 if preexisting != snapshot_meta {
                     return Err(crate::Error::ObjectAlreadyExists(object_id));
                 }
@@ -245,8 +248,9 @@ impl Db for IndexedDb {
                         format!("getting the result of the request for snapshot metadata of {object_id:?}")
                     })?;
 
+                    tracing::info!("pre-existing snapshot is {result:?}");
                     let preexisting = serde_wasm_bindgen::from_value::<T>(result)
-                    .wrap_with_context(|| format!("deserializing pre-existing snapshot for {object_id:?}"))?;
+                        .wrap_with_context(|| format!("deserializing pre-existing snapshot for {object_id:?}"))?;
                     if preexisting != *object {
                         Err(crate::Error::ObjectAlreadyExists(object_id))
                     } else {
@@ -266,7 +270,7 @@ impl Db for IndexedDb {
             &closure_stash,
             move |evt: web_sys::Event| {
                 tracing::info!("add_req successes");
-                // It succeeded. We still need to check for no event conflict and no missing binaries
+                // Metadata addition succeeded. Now, time to add the data itself.
 
                 let target = evt.target().ok_or_else(|| {
                     other_err!("Failed retrieving on_error event target")
@@ -277,48 +281,81 @@ impl Db for IndexedDb {
                     other_err!("Failed recovering the transaction from an IdbRequest")
                 })?;
 
-                let get_req = transaction
-                    .object_store("events")
-                    .wrap_context("getting 'events' object store")?
-                    .get_key(&created_at.to_js_string())
-                    .wrap_with_context(|| {
-                        format!("requesting events for presumably inexistent {created_at:?}")
-                    })?;
-                let transaction = IdbTransaction::from(transaction);
+                let add_req = transaction
+                    .object_store("snapshots")
+                    .wrap_context("getting 'snapshots' object store")?
+                    .add_with_key(
+                        &serde_wasm_bindgen::to_value(&*object2).wrap_with_context(|| format!("serializing {object_id:?}"))?,
+                        &created_at.to_js_string(),
+                    )
+                    .wrap_with_context(|| format!("requesting for {object_id:?} snapshot addition"))?;
 
-                tracing::info!("before get_req");
-                get_req.set_onerror(result_cb(&tx4, &transaction, &closure_stash4, move |_| {
-                    tracing::info!("get_req errors");
-                    Err(other_err!(
-                        "Failed to validate absence of pre-existing event {created_at:?}"
-                    ))
-                }).as_ref());
-                get_req.set_onsuccess(collect_errors_cb(&tx4, &transaction, &closure_stash4, move |evt: web_sys::Event| {
-                    tracing::info!("get_req successes");
+                add_req.set_onerror(result_cb(
+                    &tx4,
+                    &transaction,
+                    &closure_stash4,
+                    |_| Err(other_err!("Failed inserting the snapshot, despite snapshot metadata insertion succeeding"))
+                ).as_ref());
+                add_req.set_onsuccess(collect_errors_cb(&tx4, &transaction, &closure_stash4, move |evt: web_sys::Event| {
+                    // It succeeded. We still need to check for no event conflict and no missing binaries
+
                     let target = evt.target().ok_or_else(|| {
                         other_err!("Failed retrieving on_error event target")
                     })?;
-                    let get_req = target.dyn_into::<IdbRequest>()
-                        .map_err(|_| other_err!("rebuilding an IdbRequest from the target"))?;
+                    let add_req = target.dyn_into::<IdbRequest>()
+                        .map_err(|_| other_err!("rebuilding an IdbRequestRequest from the target"))?;
                     let transaction = add_req.transaction().ok_or_else(|| {
-                        other_err!("Failed recovering the transaction from the IdbRequest")
-                    })?;
-                    let result = get_req.result().wrap_with_context(|| {
-                        format!("getting the result of the request for pre-existing events at {created_at:?}")
+                        other_err!("Failed recovering the transaction from an IdbRequest")
                     })?;
 
-                    if !result.is_undefined() {
-                        return Err(crate::Error::EventAlreadyExists(created_at));
-                    }
+                    let get_req = transaction
+                        .object_store("events")
+                        .wrap_context("getting 'events' object store")?
+                        .get_key(&created_at.to_js_string())
+                        .wrap_with_context(|| {
+                            format!("requesting events for presumably inexistent {created_at:?}")
+                        })?;
+                    let transaction = IdbTransaction::from(transaction);
 
-                    check_required_binaries(&tx5, transaction, &closure_stash5, object2.required_binaries())
+                    tracing::info!("before get_req");
+                    get_req.set_onerror(result_cb(&tx5, &transaction, &closure_stash5, move |_| {
+                        tracing::info!("get_req errors");
+                        Err(other_err!(
+                            "Failed to validate absence of pre-existing event {created_at:?}"
+                        ))
+                    }).as_ref());
+                    get_req.set_onsuccess(collect_errors_cb(&tx5, &transaction, &closure_stash5, move |evt: web_sys::Event| {
+                        tracing::info!("get_req successes");
+                        let target = evt.target().ok_or_else(|| {
+                            other_err!("Failed retrieving on_error event target")
+                        })?;
+                        let get_req = target.dyn_into::<IdbRequest>()
+                            .map_err(|_| other_err!("rebuilding an IdbRequest from the target"))?;
+                        let transaction = add_req.transaction().ok_or_else(|| {
+                            other_err!("Failed recovering the transaction from the IdbRequest")
+                        })?;
+                        let result = get_req.result().wrap_with_context(|| {
+                            format!("getting the result of the request for pre-existing events at {created_at:?}")
+                        })?;
+
+                        if !result.is_undefined() {
+                            return Err(crate::Error::EventAlreadyExists(created_at));
+                        }
+
+                        check_required_binaries(&tx6, transaction, &closure_stash6, object2.required_binaries())
+                    }).as_ref());
+
+                    Ok(())
                 }).as_ref());
 
                 Ok(())
             },
         ).as_ref());
 
-        rx.recv().await.unwrap()
+        tracing::info!("waiting for add_req resp");
+        let res = rx.recv().await.unwrap();
+        tracing::info!("got add_req resp: {res:?}");
+        res
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(
@@ -399,17 +436,13 @@ fn result_cb<Ret: 'static, Err: 'static>(
     let transaction = transaction.clone();
     stash_closure(closure_stash, move |arg| {
         arg.prevent_default();
-        let res = cb(arg);
-        tracing::info!("result_cb got result");
-        tx.send(res.map_err(|err| {
-            tracing::info!("result_cb even got error");
+        tx.send(cb(arg).map_err(|err| {
             transaction
                 .abort()
                 .expect("Failed aborting the transaction upon error");
             err
         }))
         .unwrap();
-        tracing::info!("result_cb finished sending");
     })
 }
 

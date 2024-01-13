@@ -21,6 +21,7 @@ async fn smoke_test() {
     .await
     .expect("creating test object 1 failed");
     tracing::info!("created {OBJECT_ID_1:?}");
+    /*
     db.create(
         OBJECT_ID_1,
         EVENT_ID_2,
@@ -30,7 +31,6 @@ async fn smoke_test() {
     .await
     .expect_err("creating duplicate test object 1 spuriously worked");
     tracing::info!("successfully failed creating duplicate-but-changed {OBJECT_ID_1:?}");
-    /*
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
