@@ -153,6 +153,19 @@ impl<T> ResultExt for std::result::Result<T, serde_wasm_bindgen::Error> {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl<T> ResultExt for std::result::Result<T, indexed_db::Error<crate::Error>> {
+    type Ok = T;
+
+    fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
+        match self {
+            Err(indexed_db::Error::User(e)) => Err(e).wrap_with_context(f),
+            Err(e) => Err(Error::Other(anyhow::Error::from(e).context(f()))),
+            Ok(r) => Ok(r),
+        }
+    }
+}
+
 impl<T> ResultExt for serde_json::Result<T> {
     type Ok = T;
 
