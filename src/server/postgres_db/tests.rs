@@ -6,7 +6,7 @@ use crate::{
         EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_3,
     },
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 mod fuzz_battle_royale;
 mod fuzz_object_full;
@@ -14,6 +14,9 @@ mod fuzz_remote_perms;
 mod fuzz_sessions;
 mod fuzz_simple;
 mod fuzz_two_threads;
+
+const CHECK_NAMED_LOCKS_FOR: Duration = Duration::from_millis(500);
+const MAYBE_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {

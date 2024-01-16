@@ -1,4 +1,4 @@
-use super::TmpDb;
+use super::{TmpDb, CHECK_NAMED_LOCKS_FOR, MAYBE_LOCK_TIMEOUT};
 use crate::{
     db_trait::Db,
     error::ResultExt,
@@ -6,7 +6,7 @@ use crate::{
     test_utils::{db::ServerConfig, *},
     EventId, ObjectId, Query, Timestamp, User,
 };
-use std::{ops::Bound, sync::Arc, time::Duration};
+use std::{ops::Bound, sync::Arc};
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
@@ -190,7 +190,11 @@ fn fuzz_no_lock_check() {
         .with_iterations(20)
         .with_shrink_time(std::time::Duration::from_millis(0))
         .with_type()
-        .for_each(move |(seed, ops)| fuzz_impl(&cluster, ops, reord::Config::from_seed(*seed)))
+        .for_each(move |(seed, ops)| {
+            let mut config = reord::Config::from_seed(*seed);
+            config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
+            fuzz_impl(&cluster, ops, config)
+        })
 }
 
 #[test]
@@ -201,8 +205,8 @@ fn fuzz_checking_locks() {
         .with_type()
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);
-            // DO NOT check addressed locks, postgres locks with weird semantics are stashed there
-            config.check_named_locks_work_for = Some(Duration::from_millis(200));
+            config.check_named_locks_work_for = Some(CHECK_NAMED_LOCKS_FOR);
+            config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
             fuzz_impl(&cluster, ops, config)
         })
 }
