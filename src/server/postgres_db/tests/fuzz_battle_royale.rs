@@ -451,7 +451,7 @@ fn fuzz_no_lock_check() {
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);
             config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
-            fuzz_impl(&cluster, ops, reord::Config::from_seed(*seed))
+            fuzz_impl(&cluster, ops, config)
         })
 }
 
