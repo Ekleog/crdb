@@ -13,8 +13,8 @@ struct SnapshotMeta {
     snapshot_id: EventId,
     type_id: TypeId,
     object_id: ObjectId,
-    is_creation: bool,
-    is_latest: bool,
+    is_creation: Option<usize>, // IndexedDB cannot index booleans, but never indexes missing properties
+    is_latest: Option<usize>,   // So, use None for "false" and Some(1) for "true"
     snapshot_version: i32,
     is_locked: bool,
     upload_succeeded: bool,
@@ -51,9 +51,11 @@ impl IndexedDb {
                     .create()?;
                 snapshots_meta
                     .build_index("latest_object", &["is_latest", "object_id"])
+                    .unique()
                     .create()?;
                 snapshots_meta
                     .build_index("creation_object", &["is_creation", "object_id"])
+                    .unique()
                     .create()?;
                 snapshots_meta
                     .build_index("object_snapshot", &["object_id", "snapshot_id"])
@@ -84,8 +86,8 @@ impl Db for IndexedDb {
             snapshot_id: created_at,
             type_id: *T::type_ulid(),
             object_id,
-            is_creation: true,
-            is_latest: true,
+            is_creation: Some(1),
+            is_latest: Some(1),
             snapshot_version: T::snapshot_version(),
             is_locked: false, // TODO: allow for atomic create-and-lock
             upload_succeeded: false,
@@ -115,58 +117,58 @@ impl Db for IndexedDb {
                     .object_store("binaries")
                     .wrap_context("retrieving 'binaries' object store")?;
 
-                // First, try inserting the object
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving 'creation_object' index")?;
+
+                // First, check for absence of object id conflict
+                if let Some(old_meta_js) = creation_object
+                    .get(&[&JsValue::from(1), &object_id.to_js_string()])
+                    .await
+                    .wrap_context("checking whether {object_id:?} already existed")?
+                {
+                    // Snapshot metadata for this object already exists. Check that the already-existing value was the same
+                    let mut old_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(old_meta_js)
+                        .wrap_with_context(|| {
+                            format!("deserializing preexisting snapshot metadata for {object_id:?}")
+                        })?;
+                    // Ignore a few fields in comparison below
+                    old_meta.is_latest = Some(1);
+                    old_meta.is_locked = false;
+                    old_meta.upload_succeeded = false;
+                    if old_meta != new_snapshot_meta {
+                        return Err(crate::Error::ObjectAlreadyExists(object_id).into());
+                    }
+
+                    // Metadata is the same, still need to check snapshot contents
+                    let old_data_js = snapshots
+                        .get(&new_snapshot_id_js)
+                        .await
+                        .wrap_with_context(|| {
+                            format!("retrieving snapshot data for {created_at:?}")
+                        })?
+                        .ok_or_else(|| {
+                            crate::Error::Other(anyhow!(
+                                "Snapshot metadata existed without data for {created_at:?}"
+                            ))
+                        })?;
+                    let old_data = serde_wasm_bindgen::from_value::<T>(old_data_js)
+                        .wrap_with_context(|| {
+                            format!("deserializing preexisting snapshot for {created_at:?}")
+                        })?;
+                    if old_data != *object {
+                        return Err(crate::Error::ObjectAlreadyExists(object_id).into());
+                    }
+
+                    // The old snapshot and data were the same, we're good to go
+                    return Ok(());
+                }
+
+                // The object didn't exist yet, try inserting it
                 match snapshots_meta.add(&new_snapshot_meta_js).await {
                     Err(indexed_db::Error::AlreadyExists) => {
-                        // Snapshot metadata already exists. Check that the already-existing value was the same
-                        let Some(old_meta_js) = snapshots_meta
-                            .index("creation_object")
-                            .wrap_context("retrieving 'creation_object' index")?
-                            .get(&[&JsValue::TRUE, &object_id_js])
-                            .await
-                            .wrap_with_context(|| {
-                                format!("getting {object_id:?}'s creation snapshot")
-                            })?
-                        else {
-                            // Object did not exist yet, it means it was an event conflict
-                            return Err(crate::Error::EventAlreadyExists(created_at).into());
-                        };
-                        let mut old_meta =
-                            serde_wasm_bindgen::from_value::<SnapshotMeta>(old_meta_js)
-                                .wrap_with_context(|| {
-                                    format!(
-                                    "deserializing preexisting snapshot metadata for {object_id:?}"
-                                )
-                                })?;
-                        // Ignore a few fields in comparison below
-                        old_meta.is_latest = true;
-                        old_meta.is_locked = false;
-                        old_meta.upload_succeeded = false;
-                        if old_meta != new_snapshot_meta {
-                            return Err(crate::Error::ObjectAlreadyExists(object_id).into());
-                        }
-
-                        // Metadata is the same, still need to check snapshot contents
-                        let old_data_js = snapshots
-                            .get(&new_snapshot_id_js)
-                            .await
-                            .wrap_with_context(|| {
-                                format!("retrieving snapshot data for {created_at:?}")
-                            })?
-                            .ok_or_else(|| {
-                                crate::Error::Other(anyhow!(
-                                    "Snapshot metadata existed without data for {created_at:?}"
-                                ))
-                            })?;
-                        let old_data = serde_wasm_bindgen::from_value::<T>(old_data_js)
-                            .wrap_with_context(|| {
-                                format!("deserializing preexisting snapshot for {created_at:?}")
-                            })?;
-                        if old_data != *object {
-                            Err(crate::Error::ObjectAlreadyExists(object_id).into())
-                        } else {
-                            Ok(())
-                        }
+                        // `created_at` already exists, but we already checked that `object_id` did not. This is a collision.
+                        Err(crate::Error::EventAlreadyExists(created_at).into())
                     }
                     Err(e) => Err(e),
                     Ok(_) => {
