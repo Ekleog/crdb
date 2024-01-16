@@ -73,14 +73,13 @@ impl IndexedDb {
     }
 }
 
-#[allow(unused_variables)] // TODO: remove
 impl Db for IndexedDb {
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        cb: &C,
+        _cb: &C,
     ) -> crate::Result<()> {
         let new_snapshot_meta = SnapshotMeta {
             snapshot_id: created_at,
@@ -123,7 +122,7 @@ impl Db for IndexedDb {
 
                 // First, check for absence of object id conflict
                 if let Some(old_meta_js) = creation_object
-                    .get(&[&JsValue::from(1), &object_id.to_js_string()])
+                    .get(&[&JsValue::from(1), &object_id_js])
                     .await
                     .wrap_context("checking whether {object_id:?} already existed")?
                 {
@@ -206,23 +205,23 @@ impl Db for IndexedDb {
 
     async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
-        object: ObjectId,
-        event_id: EventId,
-        event: Arc<T::Event>,
-        cb: &C,
+        _object: ObjectId,
+        _event_id: EventId,
+        _event: Arc<T::Event>,
+        _cb: &C,
     ) -> crate::Result<()> {
         todo!()
     }
 
-    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(&self, _object_id: ObjectId) -> crate::Result<FullObject> {
         todo!()
     }
 
     async fn query<T: Object>(
         &self,
-        user: User,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: &Query,
+        _user: User,
+        _ignore_not_modified_on_server_since: Option<Timestamp>,
+        _q: &Query,
     ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
         // todo!()
         Ok(futures::stream::empty())
@@ -230,9 +229,9 @@ impl Db for IndexedDb {
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
-        time: Timestamp,
-        object: ObjectId,
-        cb: &C,
+        _time: Timestamp,
+        _object: ObjectId,
+        _cb: &C,
     ) -> crate::Result<()> {
         todo!()
     }
@@ -241,11 +240,11 @@ impl Db for IndexedDb {
         todo!()
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<Vec<u8>>) -> crate::Result<()> {
         todo!()
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         todo!()
     }
 }
