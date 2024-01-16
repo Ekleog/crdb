@@ -203,7 +203,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 let object_id = ObjectId::from_uuid(row.object_id);
                 let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
                 let _lock = self.object_locks.async_lock(object_id).await;
-                reord::point().await;
+                reord::maybe_lock().await;
                 sqlx::query(
                     "DELETE FROM snapshots WHERE object_id = $1 AND NOT (is_creation OR is_latest)",
                 )
@@ -211,7 +211,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .execute(&self.db)
                 .await
                 .wrap_with_context(|| format!("deleting useless snapshots from {object_id:?}"))?;
-                reord::point().await;
+                reord::maybe_lock().await;
                 sqlx::query(
                     "
                         UPDATE snapshots
@@ -226,6 +226,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .execute(&self.db)
                 .await
                 .wrap_with_context(|| format!("resetting creation snapshot of {object_id:?}"))?;
+                reord::point().await;
                 if let Some(time) = no_new_changes_before {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
@@ -247,7 +248,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
 
         // Get rid of no-longer-referenced binaries
-        reord::point().await;
+        reord::maybe_lock().await;
         sqlx::query(
             "
                 DELETE FROM binaries
@@ -261,13 +262,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .execute(&self.db)
         .await
         .wrap_context("deleting no-longer-referenced binaries")?;
+        reord::point().await;
 
         // Finally, take care of the database itself
-        reord::point().await;
+        reord::maybe_lock().await;
         sqlx::query("VACUUM ANALYZE")
             .execute(&self.db)
             .await
             .wrap_context("vacuuming database")?;
+        reord::point().await;
 
         Ok(())
     }
@@ -408,7 +411,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .with_context(|| format!("updating users_who_can_read cache of {object_id:?}"))?;
 
         // Save it
-        reord::point().await;
+        reord::maybe_lock().await;
         let affected = sqlx::query(
             "
                 UPDATE snapshots
@@ -429,6 +432,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             format!("updating users_who_can_read in latest snapshot for {object_id:?}")
         })?
         .rows_affected();
+        reord::point().await;
         anyhow::ensure!(
             affected == 1,
             "Failed to update latest snapshot of users_who_can_read"
@@ -448,7 +452,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         };
 
         // Remove the request to update
-        reord::point().await;
+        reord::maybe_lock().await;
         let affected = sqlx::query(
             "
                 UPDATE snapshots
@@ -466,15 +470,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             )
         })?
         .rows_affected();
+        reord::point().await;
         anyhow::ensure!(
             affected == 1,
             "Failed to mark reverse dependent {object_id:?} of {requested_by:?} as updated"
         );
 
         // Commit the transaction
+        reord::point().await;
         transaction.commit().await.with_context(|| {
             format!("committing transaction that updated users_who_can_read of {object_id:?}")
         })?;
+        reord::point().await;
         Ok(())
     }
 
@@ -504,7 +511,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         rdeps: Option<&[ObjectId]>,
         object: &T,
         cb: &'a C,
-    ) -> crate::Result<(reord::Lock, Vec<ComboLock<'a>>)> {
+    ) -> crate::Result<Vec<ComboLock<'a>>> {
         let (users_who_can_read, users_who_can_read_depends_on, locks) = if is_latest {
             let (a, b, c) = self
                 .get_users_who_can_read::<T, _>(&object_id, object, cb)
@@ -523,7 +530,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "Latest snapshots must always list their reverse dependencies"
         );
 
-        let indices_lock = reord_lock_for_snapshot_indices().await;
+        reord::maybe_lock().await;
         let result = sqlx::query(
             "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
@@ -541,9 +548,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(Timestamp::now().time_ms_i()?)
         .execute(&mut *transaction)
         .await;
+        reord::point().await;
 
         match result {
-            Ok(_) => Ok((indices_lock, locks)),
+            Ok(_) => Ok(locks),
             Err(sqlx::Error::Database(err)) if err.constraint() == Some("snapshots_pkey") => {
                 Err(crate::Error::EventAlreadyExists(snapshot_id))
             }
@@ -586,7 +594,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_with_context(|| format!("listing reverse dependencies of {object_id:?}"))?;
         let required_binaries = object.required_binaries();
-        let _lock = reord_lock_for_snapshot_indices().await;
+        reord::maybe_lock().await;
         let affected = // PostgreSQL needs a lock on the unique index from here until transaction completion, hence the above reord::Lock
             sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING")
                 .bind(created_at)
@@ -675,6 +683,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .commit()
             .await
             .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
+        reord::point().await;
 
         Ok(())
     }
@@ -738,7 +747,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // Insert the event itself
         let event_json = sqlx::types::Json(&event);
         let required_binaries = event.required_binaries();
-        reord::point().await;
+        reord::maybe_lock().await;
         let affected =
             sqlx::query("INSERT INTO events VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
                 .bind(event_id)
@@ -749,6 +758,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .await
                 .wrap_with_context(|| format!("inserting event {event_id:?} in database"))?
                 .rows_affected();
+        reord::point().await;
         if affected != 1 {
             // Check for equality with pre-existing
             reord::point().await;
@@ -777,7 +787,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
 
         // Clear all snapshots after the event
-        reord::point().await;
+        reord::maybe_lock().await;
         sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id > $2")
             .bind(object_id)
             .bind(event_id)
@@ -786,9 +796,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| {
                 format!("clearing all snapshots for object {object_id:?} after event {event_id:?}")
             })?;
+        reord::point().await;
 
         // Find the last snapshot for the object
-        reord::point().await;
         let last_snapshot = sqlx::query!(
             "
                 SELECT snapshot_id, is_latest, snapshot_version, snapshot
@@ -808,7 +818,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         // Remove the "latest snapshot" flag for the object
         // Note that this can be a no-op if the latest snapshot was already deleted above
-        reord::point().await;
+        reord::maybe_lock().await;
         sqlx::query("UPDATE snapshots SET is_latest = FALSE WHERE object_id = $1 AND is_latest")
             .bind(object_id)
             .execute(&mut *transaction)
@@ -816,6 +826,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| {
                 format!("removing latest-snapshot flag for object {object_id:?}")
             })?;
+        reord::point().await;
 
         // Apply all events between the last snapshot (excluded) and the current event (excluded)
         if !last_snapshot.is_latest {
@@ -916,9 +927,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 format!("checking that all binaries for object {object_id:?} are already present")
             })?;
 
+        reord::point().await;
         transaction.commit().await.wrap_with_context(|| {
             format!("committing transaction adding event {event_id:?} to object {object_id:?}")
         })?;
+        reord::point().await;
 
         Ok(())
     }
@@ -1023,7 +1036,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })?;
 
         // Delete all the snapshots before cutoff
-        reord::point().await;
+        reord::maybe_lock().await;
         sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id < $2")
             .bind(object_id)
             .bind(cutoff_time)
@@ -1032,6 +1045,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| {
                 format!("deleting all snapshots for {object_id:?} before {cutoff_time:?}")
             })?;
+        reord::point().await;
 
         if EventId::from_uuid(snapshot.snapshot_id) != cutoff_time {
             // Insert a new snapshot dated at `cutoff_time`
@@ -1080,7 +1094,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| format!("writing snapshot {cutoff_time:?} for {object_id:?}"))?;
         } else {
             // Just update the `cutoff_time` snapshot to record it's the creation snapshot
-            reord::point().await;
+            reord::maybe_lock().await;
             sqlx::query("UPDATE snapshots SET is_creation = TRUE WHERE snapshot_id = $1")
                 .bind(cutoff_time)
                 .execute(&mut *transaction)
@@ -1090,10 +1104,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                         "marking snapshot {cutoff_time:?} as the creation one for {object_id:?}"
                     )
                 })?;
+            reord::point().await;
         }
 
         // We now have all the new information. We can delete the events.
-        reord::point().await;
+        reord::maybe_lock().await;
         sqlx::query("DELETE FROM events WHERE object_id = $1 AND event_id <= $2")
             .bind(object_id)
             .bind(cutoff_time)
@@ -1102,9 +1117,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| {
                 format!("deleting all events for {object_id:?} before {cutoff_time:?}")
             })?;
+        reord::point().await;
 
         // Mark the corresponding latest event as updated
-        reord::point().await;
+        reord::maybe_lock().await;
         let affected = sqlx::query(
             "UPDATE snapshots SET last_modified = $1 WHERE is_latest AND object_id = $2",
         )
@@ -1114,15 +1130,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .await
         .wrap_with_context(|| format!("failed marking last snapshot of {object_id:?} as modified"))?
         .rows_affected();
+        reord::point().await;
         assert!(
             affected == 1,
             "Object {object_id:?} did not have a latest snapshot, something went very wrong"
         );
 
         // Finally, commit the transaction
+        reord::maybe_lock().await;
         transaction.commit().await.wrap_with_context(|| {
             format!("committing transaction that recreated {object_id:?} at {cutoff_time:?}")
         })?;
+        reord::point().await;
 
         Ok(true)
     }
@@ -1528,13 +1547,14 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
-        reord::point().await;
+        reord::maybe_lock().await;
         sqlx::query("INSERT INTO binaries VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(binary_id)
             .bind(&*data)
             .execute(&self.db)
             .await
             .wrap_with_context(|| format!("inserting binary {binary_id:?} into database"))?;
+        reord::point().await;
         Ok(())
     }
 
@@ -1556,13 +1576,14 @@ async fn check_required_binaries(
     mut binaries: Vec<BinPtr>,
 ) -> crate::Result<()> {
     // FOR KEY SHARE: prevent DELETE of the binaries while `t` is running
-    reord::point().await;
+    reord::maybe_lock().await;
     let present_ids =
         sqlx::query("SELECT binary_id FROM binaries WHERE binary_id = ANY ($1) FOR KEY SHARE")
             .bind(&binaries)
             .fetch_all(&mut **t)
             .await
             .wrap_context("listing binaries already present in database")?;
+    reord::point().await;
     binaries.retain(|b| {
         present_ids
             .iter()
@@ -1734,12 +1755,4 @@ async fn apply_events_between<T: Object>(
         object.apply(DbPtr::from(object_id), &e);
     }
     Ok(())
-}
-
-#[inline]
-async fn reord_lock_for_snapshot_indices() -> reord::Lock {
-    // Always take one full lock that is not checked by the _checking_locks variant
-    // PostgreSQL exact locking algorithm seems to be mostly unspecified, so let's just assume
-    // it always locks everything.
-    reord::Lock::take_addressed(0).await
 }

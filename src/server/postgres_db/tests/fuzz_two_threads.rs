@@ -56,7 +56,6 @@ impl FuzzState {
 }
 
 async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
-    tracing::info!(?op, "applying op");
     match op {
         Op::Create {
             id,
