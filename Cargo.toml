@@ -27,7 +27,7 @@ icu_casemap = "1.4"
 icu_normalizer = "1.4"
 icu_properties = "1.4"
 icu_segmenter = "1.4"
-reord = "0.2.1"
+reord = "0.2.2"
 rust_decimal = { version = "1.33", features = ["serde-arbitrary-precision"] }
 rust-stemmers = "1.2"
 serde = { version = "1.0", features = ["derive"] }
@@ -67,7 +67,7 @@ uuid = "1.6"
 
 [dev-dependencies]
 num-bigint = { version = "0.4.4", features = ["arbitrary"] }
-reord = { version = "0.2.1", features = ["test"] }
+reord = { version = "0.2.2", features = ["test"] }
 rust_decimal = { version = "1.33", features = ["rust-fuzz"] }
 tempfile = "3.9"
 tracing-subscriber = "0.3.18"
