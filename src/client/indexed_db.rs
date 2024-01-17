@@ -16,8 +16,17 @@ struct SnapshotMeta {
     is_creation: Option<usize>, // IndexedDB cannot index booleans, but never indexes missing properties
     is_latest: Option<usize>,   // So, use None for "false" and Some(1) for "true"
     snapshot_version: i32,
-    is_locked: bool,
-    upload_succeeded: bool,
+    is_locked: Option<usize>, // Only set on creation snapshot, Some(1) if locked and Some(0) if not
+    upload_not_over: Option<usize>, // Only set on creation snapshot, Some(1) if not uploaded yet and Some(0) if uploaded
+    required_binaries: Vec<BinPtr>,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+struct EventMeta {
+    event_id: EventId,
+    object_id: ObjectId,
+    upload_not_over: usize, // 1 if not uploaded already and 0 if not
+    required_binaries: Vec<BinPtr>,
 }
 
 pub struct IndexedDb {
@@ -42,6 +51,7 @@ impl IndexedDb {
         let db = factory
             .open(url, VERSION, |evt| async move {
                 let db = evt.database();
+
                 db.build_object_store("snapshots").create()?;
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
@@ -49,6 +59,11 @@ impl IndexedDb {
                     .build_object_store("snapshots_meta")
                     .key_path(&["snapshot_id"])
                     .create()?;
+                let events_meta = db
+                    .build_object_store("events_meta")
+                    .key_path(&["event_id"])
+                    .create()?;
+
                 snapshots_meta
                     .build_index("latest_object", &["is_latest", "object_id"])
                     .unique()
@@ -58,8 +73,22 @@ impl IndexedDb {
                     .unique()
                     .create()?;
                 snapshots_meta
+                    .build_index("locked_object", &["is_locked", "object_id"])
+                    .unique()
+                    .create()?;
+                snapshots_meta
+                    .build_index("not_uploaded_object", &["upload_not_over", "object_id"])
+                    .unique()
+                    .create()?;
+                snapshots_meta
                     .build_index("object_snapshot", &["object_id", "snapshot_id"])
                     .create()?;
+
+                events_meta
+                    .build_index("not_uploaded_event", &["upload_not_over", "event_id"])
+                    .unique()
+                    .create()?;
+
                 Ok(())
             })
             .await
@@ -88,8 +117,9 @@ impl Db for IndexedDb {
             is_creation: Some(1),
             is_latest: Some(1),
             snapshot_version: T::snapshot_version(),
-            is_locked: false, // TODO: allow for atomic create-and-lock
-            upload_succeeded: false,
+            is_locked: Some(0), // TODO: allow for atomic create-and-lock
+            upload_not_over: Some(1),
+            required_binaries: object.required_binaries(),
         };
         let object_id_js = object_id.to_js_string();
         let new_snapshot_id_js = created_at.to_js_string();
@@ -133,8 +163,8 @@ impl Db for IndexedDb {
                         })?;
                     // Ignore a few fields in comparison below
                     old_meta.is_latest = Some(1);
-                    old_meta.is_locked = false;
-                    old_meta.upload_succeeded = false;
+                    old_meta.is_locked = Some(0);
+                    old_meta.upload_not_over = Some(1);
                     if old_meta != new_snapshot_meta {
                         return Err(crate::Error::ObjectAlreadyExists(object_id).into());
                     }
@@ -205,12 +235,74 @@ impl Db for IndexedDb {
 
     async fn submit<T: Object, C: CanDoCallbacks>(
         &self,
-        _object: ObjectId,
-        _event_id: EventId,
-        _event: Arc<T::Event>,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
         _cb: &C,
     ) -> crate::Result<()> {
-        todo!()
+        let object_id_js = object_id.to_js_string();
+
+        self.db
+            .transaction(&["snapshots", "snapshots_meta", "events", "binaries"])
+            .rw()
+            .run(move |transaction| async move {
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving 'snapshots' object store")?;
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving 'snapshots_meta' object store")?;
+                let events = transaction
+                    .object_store("events")
+                    .wrap_context("retrieving 'events' object store")?;
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving 'binaries' object store")?;
+
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving 'creation_object' index")?;
+
+                // Check the object does exist, is of the right type and is not too new
+                let Some(creation_snapshot_js) = creation_object
+                    .get(&[&JsValue::from(1), &object_id_js])
+                    .await
+                    .wrap_with_context(|| format!("checking that {object_id:?} already exists"))?
+                else {
+                    return Err(crate::Error::ObjectDoesNotExist(object_id).into());
+                };
+                let creation_snapshot =
+                    serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_snapshot_js)
+                        .wrap_with_context(|| {
+                            format!("deserializing creation snapshot metadata for {object_id:?}")
+                        })?;
+                if creation_snapshot.type_id != *T::type_ulid() {
+                    return Err(crate::Error::WrongType {
+                        object_id,
+                        expected_type_id: *T::type_ulid(),
+                        real_type_id: creation_snapshot.type_id,
+                    }
+                    .into());
+                }
+                if creation_snapshot.snapshot_id >= event_id {
+                    return Err(crate::Error::EventTooEarly {
+                        event_id,
+                        object_id,
+                        created_at: creation_snapshot.snapshot_id,
+                    }
+                    .into());
+                }
+
+                // Insert the event itself
+                let event_js = serde_wasm_bindgen::to_value(&*event)
+                    .wrap_with_context(|| format!("serializing {event_id:?}"))?;
+
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| {
+                format!("running submission creation for {event_id:?} on {object_id:?}")
+            })
     }
 
     async fn get<T: Object>(&self, _object_id: ObjectId) -> crate::Result<FullObject> {

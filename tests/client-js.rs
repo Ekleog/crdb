@@ -39,4 +39,12 @@ async fn smoke_test() {
     .await
     .expect("creating exact copy test object 1 failed");
     tracing::info!("successfully created duplicate {OBJECT_ID_1:?}");
+    db.submit::<TestObjectSimple, _>(
+        OBJECT_ID_1,
+        EVENT_ID_3,
+        Arc::new(TestEventSimple::Clear),
+        &db,
+    )
+    .await
+    .expect("clearing object 1 failed");
 }
