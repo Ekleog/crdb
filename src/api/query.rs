@@ -288,45 +288,43 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             res.push_str(")");
         }
         Query::Eq(path, _) => {
-            res.push_str("snapshot");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(" = ${}", bind_idx));
             *bind_idx += 1;
         }
         Query::Le(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(snapshot");
+            res.push_str("CASE WHEN jsonb_typeof(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (snapshot");
+            res.push_str(") = 'number' THEN (");
             add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric <= ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Lt(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(snapshot");
+            res.push_str("CASE WHEN jsonb_typeof(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (snapshot");
+            res.push_str(") = 'number' THEN (");
             add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric < ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Ge(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(snapshot");
+            res.push_str("CASE WHEN jsonb_typeof(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (snapshot");
+            res.push_str(") = 'number' THEN (");
             add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric >= ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Gt(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(snapshot");
+            res.push_str("CASE WHEN jsonb_typeof(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (snapshot");
+            res.push_str(") = 'number' THEN (");
             add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
             res.push_str(&format!(")::numeric > ${} ELSE FALSE END", bind_idx));
             *bind_idx += 1;
         }
         Query::Contains(path, _) => {
-            res.push_str("snapshot");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(" @> ${}", bind_idx));
             *bind_idx += 1;
@@ -335,7 +333,7 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             // TODO: Check normalizer_version and recompute at startup if not the right version
             // This will probably require adding a list of all the json paths to SearchableString's
             // in Object
-            res.push_str("COALESCE(to_tsvector(snapshot");
+            res.push_str("COALESCE(to_tsvector(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(
                 "->'_crdb-normalized') @@ phraseto_tsquery(${}), FALSE)",
@@ -348,9 +346,26 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
 
 #[cfg(feature = "server")]
 fn add_path_to_clause(res: &mut String, bind_idx: &mut usize, path: &[JsonPathItem]) {
+    if let Some(JsonPathItem::Id(i)) = path.last() {
+        if *i == -1 || *i == 0 {
+            // PostgreSQL currently treats numerics as arrays of size 1
+            // TODO: add link to the bug report I submitted to pgsql-bugs on 2024-01-17
+            res.push_str("CASE WHEN jsonb_typeof(snapshot");
+            for (i, _) in path[..path.len() - 1].iter().enumerate() {
+                res.push_str(&format!("->${}", *bind_idx + i));
+            }
+            res.push_str(") = 'array' THEN ")
+        }
+    }
+    res.push_str("snapshot");
     for _ in path {
         res.push_str(&format!("->${bind_idx}"));
         *bind_idx += 1;
+    }
+    if let Some(JsonPathItem::Id(i)) = path.last() {
+        if *i == -1 || *i == 0 {
+            res.push_str(" ELSE NULL END");
+        }
     }
 }
 

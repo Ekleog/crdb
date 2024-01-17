@@ -581,3 +581,30 @@ fn regression_postgres_null_led_to_not_being_wrong() {
         ],
     );
 }
+
+#[test]
+fn regression_postgres_handled_numbers_as_one_element_arrays() {
+    // TODO: add link to the bug report I submitted to pgsql-bugs on 2024-01-17
+    tracing_subscriber::FmtSubscriber::builder()
+        .with_max_level(tracing::Level::TRACE)
+        .init();
+
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Op::Create {
+                id: ObjectId(Ulid::from_string("0000001YR00020000002G002G0").unwrap()),
+                created_at: EventId(Ulid::from_string("0003XA00000G22PB005R1G6000").unwrap()),
+                object: Arc::new(TestObjectSimple(vec![0, 0, 3, 3, 3, 3, 3, 3])),
+            },
+            Op::Query {
+                user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
+                q: Query::Lt(
+                    vec![JsonPathItem::Id(-1), JsonPathItem::Id(-1)],
+                    Decimal::from(158),
+                ),
+            },
+        ],
+    );
+}
