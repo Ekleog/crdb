@@ -288,8 +288,9 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             res.push_str(")");
         }
         Query::Eq(path, _) => {
+            res.push_str("COALESCE(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(&format!(" = ${}", bind_idx));
+            res.push_str(&format!(" = ${}, FALSE)", bind_idx));
             *bind_idx += 1;
         }
         Query::Le(path, _) => {
@@ -325,8 +326,9 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             *bind_idx += 1;
         }
         Query::Contains(path, _) => {
+            res.push_str("COALESCE(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(&format!(" @> ${}", bind_idx));
+            res.push_str(&format!(" @> ${}, FALSE)", bind_idx));
             *bind_idx += 1;
         }
         Query::ContainsStr(path, _) => {

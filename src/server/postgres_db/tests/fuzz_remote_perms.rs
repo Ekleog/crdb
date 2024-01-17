@@ -397,3 +397,27 @@ fn regression_submit_wrong_type_ignores_failure() {
         ],
     );
 }
+
+#[test]
+fn regression_postgres_not_null_was_null() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Op::CreatePerm {
+                id: ObjectId(Ulid::from_string("00040G2081040G2081040G2081").unwrap()),
+                created_at: EventId(Ulid::from_string("01040G20810400C1G60R30C1G6").unwrap()),
+                object: Arc::new(TestObjectPerms(User(
+                    Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap(),
+                ))),
+            },
+            Op::QueryPerms {
+                user: User(Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap()),
+                q: Query::Not(Box::new(Query::Eq(
+                    vec![crate::JsonPathItem::Key("".to_string())],
+                    serde_json::Value::Null,
+                ))),
+            },
+        ],
+    );
+}
