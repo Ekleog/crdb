@@ -167,7 +167,9 @@ impl Query {
             Query::All(q) => q.iter().all(|q| q.matches_impl(v)),
             Query::Any(q) => q.iter().any(|q| q.matches_impl(v)),
             Query::Not(q) => !q.matches_impl(v),
-            Query::Eq(p, to) => Self::deref(v, p) == Some(to),
+            Query::Eq(p, to) => Self::deref(v, p)
+                .map(|v| Self::compare_with_nums(v, to))
+                .unwrap_or(false),
             Query::Le(p, to) => Self::deref_num(v, p).map(|n| n <= *to).unwrap_or(false),
             Query::Lt(p, to) => Self::deref_num(v, p).map(|n| n < *to).unwrap_or(false),
             Query::Ge(p, to) => Self::deref_num(v, p).map(|n| n >= *to).unwrap_or(false),
@@ -187,12 +189,39 @@ impl Query {
         }
     }
 
+    fn compare_with_nums(l: &serde_json::Value, r: &serde_json::Value) -> bool {
+        use serde_json::Value::*;
+        match (l, r) {
+            (Null, Null) => true,
+            (Bool(l), Bool(r)) => l == r,
+            (l @ Number(_), r @ Number(_)) => {
+                let normalized_l = serde_json::from_value::<Decimal>(l.clone());
+                normalized_l.is_ok()
+                    && normalized_l.ok() == serde_json::from_value::<Decimal>(r.clone()).ok()
+            }
+            (String(l), String(r)) => l == r,
+            (Array(l), Array(r)) => {
+                l.len() == r.len()
+                    && l.iter()
+                        .zip(r.iter())
+                        .all(|(l, r)| Self::compare_with_nums(l, r))
+            }
+            (Object(l), Object(r)) => {
+                l.len() == r.len()
+                    && l.iter()
+                        .zip(r.iter())
+                        .all(|((lk, lv), (rk, rv))| lk == rk && Self::compare_with_nums(lv, rv))
+            }
+            _ => false,
+        }
+    }
+
     fn contains(v: &serde_json::Value, pat: &serde_json::Value) -> bool {
         use serde_json::Value::*;
         match (v, pat) {
             (Null, Null) => true,
             (Bool(l), Bool(r)) => l == r,
-            (Number(l), Number(r)) => l == r,
+            (l @ Number(_), r @ Number(_)) => Self::compare_with_nums(l, r),
             (String(l), String(r)) => l == r,
             (Object(v), Object(pat)) => {
                 for (key, pat) in pat.iter() {
@@ -211,7 +240,7 @@ impl Query {
                 true
             }
             (Array(_), Object(_)) => false, // primitive containment doesn't work on objects
-            (Array(v), pat) => v.iter().any(|v| v == pat), // but does work on primitives
+            (Array(v), pat) => v.iter().any(|v| Self::compare_with_nums(v, pat)), // but does work on primitives
             _ => false,
         }
     }
