@@ -167,19 +167,14 @@ impl Query {
             Query::All(q) => q.iter().all(|q| q.matches_impl(v)),
             Query::Any(q) => q.iter().any(|q| q.matches_impl(v)),
             Query::Not(q) => !q.matches_impl(v),
-            Query::Eq(p, to) => Self::deref(v, p) == Some(to),
+            Query::Eq(p, to) => Self::deref(v, p) == to,
             Query::Le(p, to) => Self::deref_num(v, p).map(|n| n <= *to).unwrap_or(false),
             Query::Lt(p, to) => Self::deref_num(v, p).map(|n| n < *to).unwrap_or(false),
             Query::Ge(p, to) => Self::deref_num(v, p).map(|n| n >= *to).unwrap_or(false),
             Query::Gt(p, to) => Self::deref_num(v, p).map(|n| n > *to).unwrap_or(false),
-            Query::Contains(p, pat) => {
-                let Some(v) = Self::deref(v, p) else {
-                    return false;
-                };
-                Self::contains(v, pat)
-            }
+            Query::Contains(p, pat) => Self::contains(Self::deref(v, p), pat),
             Query::ContainsStr(p, pat) => Self::deref(v, p)
-                .and_then(|v| v.as_object())
+                .as_object()
                 .and_then(|v| v.get("_crdb-normalized"))
                 .and_then(|s| s.as_str())
                 .map(|s| fts::matches(s, &fts::normalize(pat)))
@@ -218,22 +213,22 @@ impl Query {
 
     fn deref_num(v: &serde_json::Value, path: &[JsonPathItem]) -> Option<Decimal> {
         use serde_json::Value;
-        match Self::deref(v, path)? {
+        match Self::deref(v, path) {
             Value::Number(n) => serde_json::from_value(Value::Number(n.clone())).ok(),
             _ => None,
         }
     }
 
-    fn deref<'a>(v: &'a serde_json::Value, path: &[JsonPathItem]) -> Option<&'a serde_json::Value> {
+    fn deref<'a>(v: &'a serde_json::Value, path: &[JsonPathItem]) -> &'a serde_json::Value {
         match path.get(0) {
             None => Some(v),
             Some(JsonPathItem::Key(k)) => match v.as_object() {
                 None => None,
-                Some(v) => v.get(k).and_then(|v| Self::deref(v, &path[1..])),
+                Some(v) => v.get(k).map(|v| Self::deref(v, &path[1..])),
             },
             Some(JsonPathItem::Id(k)) if *k >= 0 => match v.as_array() {
                 None => None,
-                Some(v) => v.get(*k as usize).and_then(|v| Self::deref(v, &path[1..])),
+                Some(v) => v.get(*k as usize).map(|v| Self::deref(v, &path[1..])),
             },
             Some(JsonPathItem::Id(k)) /* if *k < 0 */ => match v.as_array() {
                 None => None,
@@ -241,9 +236,10 @@ impl Query {
                     .len()
                     .checked_add_signed(isize::try_from(*k).unwrap())
                     .and_then(|i| v.get(i))
-                    .and_then(|v| Self::deref(v, &path[1..])),
+                    .map(|v| Self::deref(v, &path[1..])),
             },
         }
+        .unwrap_or(&serde_json::Value::Null)
     }
 
     #[cfg(feature = "server")]
