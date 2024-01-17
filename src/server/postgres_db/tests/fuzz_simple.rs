@@ -584,7 +584,7 @@ fn regression_postgres_null_led_to_not_being_wrong() {
 
 #[test]
 fn regression_postgres_handled_numbers_as_one_element_arrays() {
-    // TODO: add link to the bug report I submitted to pgsql-bugs on 2024-01-17
+    // See also https://www.postgresql.org/message-id/87h6jbbxma.fsf%40coegni.ekleog.org
     tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(tracing::Level::TRACE)
         .init();

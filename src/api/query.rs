@@ -345,7 +345,7 @@ fn add_path_to_clause(res: &mut String, bind_idx: &mut usize, path: &[JsonPathIt
     if let Some(JsonPathItem::Id(i)) = path.last() {
         if *i == -1 || *i == 0 {
             // PostgreSQL currently treats numerics as arrays of size 1
-            // TODO: add link to the bug report I submitted to pgsql-bugs on 2024-01-17
+            // See also https://www.postgresql.org/message-id/87h6jbbxma.fsf%40coegni.ekleog.org
             res.push_str("CASE WHEN jsonb_typeof(snapshot");
             for (i, _) in path[..path.len() - 1].iter().enumerate() {
                 res.push_str(&format!("->${}", *bind_idx + i));
