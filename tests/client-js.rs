@@ -59,4 +59,47 @@ async fn smoke_test() {
     )
     .await
     .expect_err("submitting duplicate event with different contents worked");
+    assert_eq!(
+        Vec::<u8>::new(),
+        db.get::<TestObjectSimple>(OBJECT_ID_1)
+            .await
+            .expect("getting object 1")
+            .last_snapshot::<TestObjectSimple>()
+            .expect("getting last snapshot")
+            .0
+    );
+    db.submit::<TestObjectSimple, _>(
+        OBJECT_ID_1,
+        EVENT_ID_2,
+        Arc::new(TestEventSimple::Set(b"bar".to_vec())),
+        &db,
+    )
+    .await
+    .expect("submitting event failed");
+    assert_eq!(
+        Vec::<u8>::new(),
+        db.get::<TestObjectSimple>(OBJECT_ID_1)
+            .await
+            .expect("getting object 1")
+            .last_snapshot::<TestObjectSimple>()
+            .expect("getting last snapshot")
+            .0
+    );
+    db.submit::<TestObjectSimple, _>(
+        OBJECT_ID_1,
+        EVENT_ID_4,
+        Arc::new(TestEventSimple::Set(b"baz".to_vec())),
+        &db,
+    )
+    .await
+    .expect("submitting event failed");
+    assert_eq!(
+        b"baz".to_vec(),
+        db.get::<TestObjectSimple>(OBJECT_ID_1)
+            .await
+            .expect("getting object 1")
+            .last_snapshot::<TestObjectSimple>()
+            .expect("getting last snapshot")
+            .0
+    );
 }
