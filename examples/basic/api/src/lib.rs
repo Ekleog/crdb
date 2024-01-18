@@ -27,7 +27,7 @@ impl crdb::Object for Foo {
         self_id: ObjectId,
         db: &'a C,
     ) -> anyhow::Result<bool> {
-        todo!()
+        unimplemented!()
     }
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
@@ -36,21 +36,21 @@ impl crdb::Object for Foo {
         event: &'a Self::Event,
         db: &'a C,
     ) -> anyhow::Result<bool> {
-        todo!()
+        unimplemented!()
     }
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
     ) -> anyhow::Result<Vec<User>> {
-        todo!()
+        unimplemented!()
     }
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event) {
-        todo!()
+        unimplemented!()
     }
 
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
-        todo!()
+        unimplemented!()
     }
 }
 

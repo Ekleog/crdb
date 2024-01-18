@@ -21,8 +21,8 @@ impl<A: Authenticator> ClientDb<A> {
         local_db: &str,
         cache_watermark: usize,
     ) -> anyhow::Result<ClientDb<A>> {
-        // TODO: add an API TO "locked" objects and binaries that cannot be vacuumed out of the
-        // local db, because they have not been acknowledged by the server yet
+        // TODO: add an API to mark objects as "locked" so that they (and their binaries)
+        // cannot be vacuumed out of the local db
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
         let db = CacheDb::new::<C>(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
