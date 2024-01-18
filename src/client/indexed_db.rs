@@ -1,11 +1,11 @@
 use crate::{
     db_trait::Db, error::ResultExt, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream,
-    EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
+    DbPtr, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
 use js_sys::Array;
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
@@ -92,6 +92,9 @@ impl IndexedDb {
                 events_meta
                     .build_compound_index("not_uploaded_event", &["upload_not_over", "event_id"])
                     .unique()
+                    .create()?;
+                events_meta
+                    .build_compound_index("object_event", &["object_id", "event_id"])
                     .create()?;
                 events_meta
                     .build_index("required_binaries", "required_binaries")
@@ -249,10 +252,23 @@ impl Db for IndexedDb {
         event: Arc<T::Event>,
         _cb: &C,
     ) -> crate::Result<()> {
+        let new_event_meta = EventMeta {
+            event_id,
+            object_id,
+            upload_not_over: 1,
+            required_binaries: event.required_binaries(),
+        };
         let object_id_js = object_id.to_js_string();
+        let new_event_id_js = event_id.to_js_string();
+        let zero_event_id_js = EventId::from_u128(0).to_js_string();
+        let max_event_id_js = EventId::from_u128(u128::MAX).to_js_string();
+        let new_event_meta_js = serde_wasm_bindgen::to_value(&new_event_meta)
+            .wrap_with_context(|| format!("serializing {event_id:?}"))?;
+        let new_event_js = serde_wasm_bindgen::to_value(&*event)
+            .wrap_with_context(|| format!("serializing {event_id:?}"))?;
 
         self.db
-            .transaction(&["snapshots", "snapshots_meta", "events", "binaries"])
+            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta", "binaries"])
             .rw()
             .run(move |transaction| async move {
                 let snapshots = transaction
@@ -264,6 +280,9 @@ impl Db for IndexedDb {
                 let events = transaction
                     .object_store("events")
                     .wrap_context("retrieving 'events' object store")?;
+                let events_meta = transaction
+                    .object_store("events_meta")
+                    .wrap_context("retrieving 'events_meta' object store")?;
                 let binaries = transaction
                     .object_store("binaries")
                     .wrap_context("retrieving 'binaries' object store")?;
@@ -271,6 +290,12 @@ impl Db for IndexedDb {
                 let creation_object = snapshots_meta
                     .index("creation_object")
                     .wrap_context("retrieving 'creation_object' index")?;
+                let object_snapshot = snapshots_meta
+                    .index("object_snapshot")
+                    .wrap_context("retrieving 'object_snapshot' index")?;
+                let object_event = events_meta
+                    .index("object_event")
+                    .wrap_context("retrieving 'object_event' index")?;
 
                 // Check the object does exist, is of the right type and is not too new
                 let Some(creation_snapshot_js) = creation_object
@@ -302,9 +327,159 @@ impl Db for IndexedDb {
                     .into());
                 }
 
+                // Insert the event metadata, checking for collisions
+                match events_meta.add(&new_event_meta_js).await {
+                    Err(indexed_db::Error::AlreadyExists) => {
+                        // Got a collision. Check whether the event already exist in the database.
+                        let old_meta_js = events_meta.get(&new_event_id_js)
+                            .await
+                            .wrap_with_context(|| format!("retrieving pre-existing event metadata for {event_id:?}"))?
+                            .ok_or_else(|| {
+                                crate::Error::Other(anyhow!("inserting {event_id:?} failed but the preexisting duplicate seems not to exist"))
+                            })?;
+                        let mut old_meta = serde_wasm_bindgen::from_value::<EventMeta>(old_meta_js)
+                            .wrap_with_context(|| {
+                                format!("deserializing preexisting event metadata for {event_id:?}")
+                            })?;
+                        // Ignore a few fields in comparison below
+                        old_meta.upload_not_over = 1;
+                        if old_meta != new_event_meta {
+                            return Err(crate::Error::EventAlreadyExists(event_id).into());
+                        }
+
+                        // Metadata is the same, still need to check event contents
+                        let old_data_js = events
+                            .get(&new_event_id_js)
+                            .await
+                            .wrap_with_context(|| {
+                                format!("retrieving event data for {event_id:?}")
+                            })?
+                            .ok_or_else(|| {
+                                crate::Error::Other(anyhow!(
+                                    "Event metadata existed without data for {event_id:?}"
+                                ))
+                            })?;
+                        let old_data = serde_wasm_bindgen::from_value::<T::Event>(old_data_js)
+                            .wrap_with_context(|| {
+                                format!("deserializing preexisting event data for {event_id:?}")
+                            })?;
+                        if old_data != *event {
+                            return Err(crate::Error::EventAlreadyExists(event_id).into());
+                        }
+
+                        // The old snapshot and data were the same, we're good to go
+                        return Ok(());
+                    }
+                    Err(e) => return Err(e),
+                    Ok(_) => (),
+                }
+
                 // Insert the event itself
-                let event_js = serde_wasm_bindgen::to_value(&*event)
-                    .wrap_with_context(|| format!("serializing {event_id:?}"))?;
+                events.add_kv(&new_event_id_js, &new_event_js).await.wrap_with_context(|| format!("saving {event_id:?} in database"))?;
+
+                // Clear all snapshots after the event
+                let mut to_clear = object_snapshot
+                    .cursor()
+                    .range(&**Array::from_iter([&object_id_js, &new_event_id_js])..=&**Array::from_iter([&object_id_js, &max_event_id_js]))
+                    .wrap_with_context(|| format!("limiting the snapshots to delete to only those of {object_id:?} after {event_id:?}"))?
+                    .open()
+                    .await
+                    .wrap_with_context(|| format!("opening cursor of snapshots to delete for {object_id:?} after {event_id:?}"))?;
+                while let Some(snapshot_meta_js) = to_clear.value() {
+                    let snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
+                        .wrap_with_context(|| format!("deserializing to-clear snapshot of {object_id:?}, after {event_id:?}"))?;
+                    let snapshot_id = snapshot_meta.snapshot_id;
+                    snapshots.delete(&snapshot_id.to_js_string()).await.wrap_with_context(|| format!("deleting snapshot {snapshot_id:?}"))?;
+                    to_clear.delete().await.wrap_with_context(|| format!("deleting snapshot metadata {snapshot_id:?}"))?;
+                    to_clear.advance(1).await.wrap_context("getting next snapshot to delete")?;
+                }
+
+                // Find the last snapshot for the object
+                let last_snapshot_meta_js = object_snapshot
+                    .cursor()
+                    .range(&**Array::from_iter([&object_id_js, &zero_event_id_js])..=&**Array::from_iter([&object_id_js, &max_event_id_js]))
+                    .wrap_with_context(|| format!("limiting the last snapshot to recover to those of {object_id:?}"))?
+                    .direction(indexed_db::CursorDirection::Prev)
+                    .open()
+                    .await
+                    .wrap_with_context(|| format!("opening cursor for the last snapshot of {object_id:?}"))?
+                    .value()
+                    .ok_or_else(|| crate::Error::Other(anyhow!("cannot find a latest snapshot for {object_id:?}")))?;
+                let mut last_snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(last_snapshot_meta_js)
+                    .wrap_with_context(|| format!("deserializing the last known snapshot for {object_id:?}"))?;
+                let last_snapshot_id = last_snapshot_meta.snapshot_id;
+                let last_snapshot_id_js = last_snapshot_id.to_js_string();
+                let last_snapshot_js = snapshots.get(&last_snapshot_id_js)
+                    .await
+                    .wrap_with_context(|| format!("retrieving last available snapshot {last_snapshot_id:?}"))?
+                    .ok_or_else(|| crate::Error::Other(anyhow!("cannot retrieve snapshot data for {last_snapshot_id:?}")))?;
+                let mut last_snapshot = serde_wasm_bindgen::from_value::<T>(last_snapshot_js)
+                    .wrap_with_context(|| format!("deserializing snapshot data {last_snapshot_id:?}"))?;
+                let mut last_applied_event_id = last_snapshot_id;
+
+                // Mark it as non-latest
+                if last_snapshot_meta.is_latest.is_some() {
+                    last_snapshot_meta.is_latest = None;
+                    let last_snapshot_meta_js = serde_wasm_bindgen::to_value(&last_snapshot_meta)
+                        .wrap_with_context(|| format!("reserializing {last_snapshot_id:?}"))?;
+                    snapshots_meta.put(&last_snapshot_meta_js)
+                        .await
+                        .wrap_with_context(|| format!("marking {last_snapshot_id:?} as not the latest any longer"))?;
+                }
+
+                // Apply all the events since the last snapshot (excluded)
+                let mut to_apply = object_event.cursor()
+                    .range((
+                        Bound::Excluded(&**Array::from_iter([&object_id_js, &last_snapshot_id_js])),
+                        Bound::Included(&**Array::from_iter([&object_id_js, &max_event_id_js])),
+                    ))
+                    .wrap_with_context(|| format!("limiting the events to apply to those on {object_id:?} since {last_snapshot_id:?}"))?
+                    .open()
+                    .await
+                    .wrap_with_context(|| format!("opening cursor for the events to apply on {object_id:?} since {last_snapshot_id:?}"))?;
+                while let Some(apply_event_meta_js) = to_apply.value() {
+                    let apply_event_meta = serde_wasm_bindgen::from_value::<EventMeta>(apply_event_meta_js)
+                        .wrap_with_context(|| format!("deserializing event to apply on {object_id:?}"))?;
+                    let apply_event_id = apply_event_meta.event_id;
+                    let apply_event_id_js = apply_event_id.to_js_string();
+                    let apply_event_js = events.get(&apply_event_id_js).await
+                        .wrap_with_context(|| format!("recovering event data for {apply_event_id:?}"))?
+                        .ok_or_else(|| crate::Error::Other(anyhow!("no event data for event with metadata {apply_event_id:?}")))?;
+                    let apply_event = serde_wasm_bindgen::from_value::<T::Event>(apply_event_js)
+                        .wrap_with_context(|| format!("deserializing event data for {apply_event_id:?}"))?;
+                    last_snapshot.apply(DbPtr::from(object_id), &apply_event);
+                    last_applied_event_id = apply_event_id;
+                    to_apply.advance(1).await.wrap_context("getting next event to apply")?;
+                }
+
+                // Save the new last snapshot
+                let new_last_snapshot_meta = SnapshotMeta {
+                    snapshot_id: last_applied_event_id,
+                    type_id: *T::type_ulid(),
+                    object_id,
+                    is_creation: None,
+                    is_latest: Some(1),
+                    snapshot_version: T::snapshot_version(),
+                    is_locked: None,
+                    upload_not_over: None,
+                    required_binaries: last_snapshot.required_binaries(),
+                };
+                let last_applied_event_id_js = serde_wasm_bindgen::to_value(&last_applied_event_id)
+                    .wrap_with_context(|| format!("serializing {last_applied_event_id:?}"))?;
+                let new_last_snapshot_meta_js = serde_wasm_bindgen::to_value(&new_last_snapshot_meta)
+                    .wrap_with_context(|| format!("serializing the snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))?;
+                let new_last_snapshot_js = serde_wasm_bindgen::to_value(&last_snapshot)
+                    .wrap_with_context(|| format!("serializing the snapshot for {object_id:?} at {last_applied_event_id:?}"))?;
+                snapshots_meta.add(&new_last_snapshot_meta_js)
+                    .await
+                    .wrap_with_context(|| format!("saving new last snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))?;
+                snapshots.add_kv(&last_applied_event_id_js, &new_last_snapshot_js)
+                    .await
+                    .wrap_with_context(|| format!("saving new last snapshot data for {object_id:?} at {last_applied_event_id:?}"))?;
+
+                // And finally, check that all required binaries are present
+                check_required_binaries(binaries, event.required_binaries()).await
+                    .wrap_with_context(|| format!("checking that all the binaries required by {event_id:?} are already present"))?;
 
                 Ok(())
             })
