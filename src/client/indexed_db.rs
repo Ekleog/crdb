@@ -4,6 +4,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
+use js_sys::Array;
 use std::sync::Arc;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
@@ -57,36 +58,44 @@ impl IndexedDb {
                 db.build_object_store("binaries").create()?;
                 let snapshots_meta = db
                     .build_object_store("snapshots_meta")
-                    .key_path(&["snapshot_id"])
+                    .key_path("snapshot_id")
                     .create()?;
                 let events_meta = db
                     .build_object_store("events_meta")
-                    .key_path(&["event_id"])
+                    .key_path("event_id")
                     .create()?;
 
                 snapshots_meta
-                    .build_index("latest_object", &["is_latest", "object_id"])
+                    .build_compound_index("latest_object", &["is_latest", "object_id"])
                     .unique()
                     .create()?;
                 snapshots_meta
-                    .build_index("creation_object", &["is_creation", "object_id"])
+                    .build_compound_index("creation_object", &["is_creation", "object_id"])
                     .unique()
                     .create()?;
                 snapshots_meta
-                    .build_index("locked_object", &["is_locked", "object_id"])
+                    .build_compound_index("locked_object", &["is_locked", "object_id"])
                     .unique()
                     .create()?;
                 snapshots_meta
-                    .build_index("not_uploaded_object", &["upload_not_over", "object_id"])
+                    .build_compound_index("not_uploaded_object", &["upload_not_over", "object_id"])
                     .unique()
                     .create()?;
                 snapshots_meta
-                    .build_index("object_snapshot", &["object_id", "snapshot_id"])
+                    .build_compound_index("object_snapshot", &["object_id", "snapshot_id"])
+                    .create()?;
+                snapshots_meta
+                    .build_index("required_binaries", "required_binaries")
+                    .multi_entry()
                     .create()?;
 
                 events_meta
-                    .build_index("not_uploaded_event", &["upload_not_over", "event_id"])
+                    .build_compound_index("not_uploaded_event", &["upload_not_over", "event_id"])
                     .unique()
+                    .create()?;
+                events_meta
+                    .build_index("required_binaries", "required_binaries")
+                    .multi_entry()
                     .create()?;
 
                 Ok(())
@@ -152,7 +161,7 @@ impl Db for IndexedDb {
 
                 // First, check for absence of object id conflict
                 if let Some(old_meta_js) = creation_object
-                    .get(&[&JsValue::from(1), &object_id_js])
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
                     .await
                     .wrap_context("checking whether {object_id:?} already existed")?
                 {
@@ -265,7 +274,7 @@ impl Db for IndexedDb {
 
                 // Check the object does exist, is of the right type and is not too new
                 let Some(creation_snapshot_js) = creation_object
-                    .get(&[&JsValue::from(1), &object_id_js])
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
                     .await
                     .wrap_with_context(|| format!("checking that {object_id:?} already exists"))?
                 else {
