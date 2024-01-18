@@ -1668,16 +1668,14 @@ async fn get_impl<T: Object>(
             )
         })?,
     );
-    let first_event = events
-        .partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= creation_snapshot.snapshot_id);
-    let after_last_event =
-        events.partition_point(|e| e.get::<uuid::Uuid, _>(EVENT_ID) <= latest_snapshot.snapshot_id);
+    if !events.is_empty() {
+        debug_assert!(events[0].get::<uuid::Uuid, _>(EVENT_ID) > creation_snapshot.snapshot_id);
+        debug_assert!(
+            events[events.len() - 1].get::<uuid::Uuid, _>(EVENT_ID) == latest_snapshot.snapshot_id
+        );
+    }
     let mut changes = BTreeMap::new();
-    for e in events
-        .into_iter()
-        .skip(first_event)
-        .take(after_last_event - first_event)
-    {
+    for e in events.into_iter() {
         let event_id = EventId::from_uuid(e.get(EVENT_ID));
         changes.insert(
             event_id,
