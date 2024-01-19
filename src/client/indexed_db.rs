@@ -220,6 +220,21 @@ impl IndexedDb {
                     event_cursor.advance(1).await.unwrap();
                 }
 
+                // All non-creation snapshots match an event
+                let mut snapshot_cursor = snapshots_meta.cursor().open().await.unwrap();
+                while let Some(s) = snapshot_cursor.value() {
+                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap();
+                    if s.is_creation.is_none()
+                        && !events_meta
+                            .contains(&s.snapshot_id.to_js_string())
+                            .await
+                            .unwrap()
+                    {
+                        panic!("snapshot {:?} has no corresponding event", s.snapshot_id);
+                    }
+                    snapshot_cursor.advance(1).await.unwrap();
+                }
+
                 Ok(())
             })
             .await
