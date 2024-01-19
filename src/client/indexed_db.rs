@@ -1,4 +1,5 @@
 use crate::{
+    api::parse_snapshot_js,
     db_trait::Db,
     error::ResultExt,
     full_object::{Change, FullObject},
@@ -196,10 +197,10 @@ impl Db for IndexedDb {
                                 "Snapshot metadata existed without data for {created_at:?}"
                             ))
                         })?;
-                    let old_data = serde_wasm_bindgen::from_value::<T>(old_data_js)
+                    let old_data = parse_snapshot_js::<T>(old_meta.snapshot_version, old_data_js)
                         .wrap_with_context(|| {
-                            format!("deserializing preexisting snapshot for {created_at:?}")
-                        })?;
+                        format!("deserializing preexisting snapshot for {created_at:?}")
+                    })?;
                     if old_data != *object {
                         return Err(crate::Error::ObjectAlreadyExists(object_id).into());
                     }
@@ -413,7 +414,7 @@ impl Db for IndexedDb {
                     .await
                     .wrap_with_context(|| format!("retrieving last available snapshot {last_snapshot_id:?}"))?
                     .ok_or_else(|| crate::Error::Other(anyhow!("cannot retrieve snapshot data for {last_snapshot_id:?}")))?;
-                let mut last_snapshot = serde_wasm_bindgen::from_value::<T>(last_snapshot_js)
+                let mut last_snapshot = parse_snapshot_js::<T>(last_snapshot_meta.snapshot_version, last_snapshot_js)
                     .wrap_with_context(|| format!("deserializing snapshot data {last_snapshot_id:?}"))?;
 
                 // Mark it as non-latest
@@ -529,9 +530,13 @@ impl Db for IndexedDb {
                         ))
                     })?;
                 let creation_snapshot = Arc::new(
-                    serde_wasm_bindgen::from_value::<T>(creation_snapshot_js).wrap_with_context(
-                        || format!("deserializing snapshot data for {creation_snapshot_id:?}"),
-                    )?,
+                    parse_snapshot_js::<T>(
+                        creation_snapshot_meta.snapshot_version,
+                        creation_snapshot_js,
+                    )
+                    .wrap_with_context(|| {
+                        format!("deserializing snapshot data for {creation_snapshot_id:?}")
+                    })?,
                 );
 
                 // Figure out the latest snapshot
@@ -565,9 +570,13 @@ impl Db for IndexedDb {
                         ))
                     })?;
                 let latest_snapshot = Arc::new(
-                    serde_wasm_bindgen::from_value::<T>(latest_snapshot_js).wrap_with_context(
-                        || format!("deserializing snapshot data for {latest_snapshot_id:?}"),
-                    )?,
+                    parse_snapshot_js::<T>(
+                        latest_snapshot_meta.snapshot_version,
+                        latest_snapshot_js,
+                    )
+                    .wrap_with_context(|| {
+                        format!("deserializing snapshot data for {latest_snapshot_id:?}")
+                    })?,
                 );
 
                 // List the events in-between

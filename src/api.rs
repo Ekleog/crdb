@@ -130,6 +130,32 @@ pub fn parse_snapshot<T: Object>(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn parse_snapshot_js<T: Object>(
+    snapshot_version: i32,
+    snapshot_data: wasm_bindgen::JsValue,
+) -> crate::Result<T> {
+    if snapshot_version == T::snapshot_version() {
+        Ok(
+            serde_wasm_bindgen::from_value(snapshot_data).wrap_with_context(|| {
+                format!(
+                    "parsing current snapshot version {snapshot_version} for object type {:?}",
+                    T::type_ulid()
+                )
+            })?,
+        )
+    } else {
+        let as_serde_json = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_data)
+            .wrap_with_context(|| format!("parsing data from IndexedDB as JSON"))?;
+        T::from_old_snapshot(snapshot_version, as_serde_json).wrap_with_context(|| {
+            format!(
+                "parsing old snapshot version {snapshot_version} for object type {:?}",
+                T::type_ulid()
+            )
+        })
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, educe::Educe, serde::Deserialize, serde::Serialize)]
 #[educe(Debug(named_field = false), Ord, PartialOrd)]
 pub struct DbPtr<T: Object> {
