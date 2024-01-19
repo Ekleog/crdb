@@ -19,6 +19,7 @@ async fn smoke_test() {
     )
     .await
     .expect("creating test object 1 failed");
+    db.assert_invariants_generic().await;
     db.create(
         OBJECT_ID_1,
         EVENT_ID_2,
@@ -27,6 +28,7 @@ async fn smoke_test() {
     )
     .await
     .expect_err("creating duplicate test object 1 spuriously worked");
+    db.assert_invariants_generic().await;
     db.create(
         OBJECT_ID_1,
         EVENT_ID_1,
@@ -35,6 +37,7 @@ async fn smoke_test() {
     )
     .await
     .expect("creating exact copy test object 1 failed");
+    db.assert_invariants_generic().await;
     db.submit::<TestObjectSimple, _>(
         OBJECT_ID_1,
         EVENT_ID_3,
@@ -43,6 +46,7 @@ async fn smoke_test() {
     )
     .await
     .expect("clearing object 1 failed");
+    db.assert_invariants_generic().await;
     db.submit::<TestObjectSimple, _>(
         OBJECT_ID_1,
         EVENT_ID_3,
@@ -51,6 +55,7 @@ async fn smoke_test() {
     )
     .await
     .expect("submitting duplicate event failed");
+    db.assert_invariants_generic().await;
     db.submit::<TestObjectSimple, _>(
         OBJECT_ID_1,
         EVENT_ID_3,
@@ -59,6 +64,7 @@ async fn smoke_test() {
     )
     .await
     .expect_err("submitting duplicate event with different contents worked");
+    db.assert_invariants_generic().await;
     assert_eq!(
         Vec::<u8>::new(),
         db.get::<TestObjectSimple>(OBJECT_ID_1)
@@ -76,6 +82,7 @@ async fn smoke_test() {
     )
     .await
     .expect("submitting event failed");
+    db.assert_invariants_generic().await;
     assert_eq!(
         Vec::<u8>::new(),
         db.get::<TestObjectSimple>(OBJECT_ID_1)
@@ -93,6 +100,7 @@ async fn smoke_test() {
     )
     .await
     .expect("submitting event failed");
+    db.assert_invariants_generic().await;
     assert_eq!(
         b"baz".to_vec(),
         db.get::<TestObjectSimple>(OBJECT_ID_1)

@@ -9,7 +9,11 @@ use crate::{
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
 use js_sys::Array;
-use std::{collections::BTreeMap, ops::Bound, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    ops::Bound,
+    sync::Arc,
+};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
@@ -115,6 +119,91 @@ impl IndexedDb {
 
     pub fn is_persistent(&self) -> bool {
         self.is_persistent
+    }
+
+    #[allow(dead_code)] // TODO: use in vacuum
+    async fn list_required_binaries(
+        &self,
+        transaction: &indexed_db::Transaction<crate::Error>,
+    ) -> crate::Result<HashSet<BinPtr>> {
+        let snapshots_meta = transaction
+            .object_store("snapshots_meta")
+            .wrap_context("opening 'snapshots_meta' object store")?;
+        let events_meta = transaction
+            .object_store("events_meta")
+            .wrap_context("opening 'events_meta' object store")?;
+
+        // All binaries are present
+        let mut required_binaries = HashSet::new();
+        let mut s = snapshots_meta
+            .cursor()
+            .open()
+            .await
+            .wrap_context("opening cursor on 'snapshots_meta'")?;
+        while let Some(m) = s.value() {
+            required_binaries.extend(
+                serde_wasm_bindgen::from_value::<SnapshotMeta>(m)
+                    .wrap_context("parsing snapshot metadata")?
+                    .required_binaries,
+            );
+            s.advance(1)
+                .await
+                .wrap_context("moving to next snapshot metadata cursor item")?;
+        }
+        let mut e = events_meta
+            .cursor()
+            .open()
+            .await
+            .wrap_context("opening cursor on 'events_meta'")?;
+        while let Some(m) = e.value() {
+            required_binaries.extend(
+                serde_wasm_bindgen::from_value::<EventMeta>(m)
+                    .wrap_context("parsing event metadata")?
+                    .required_binaries,
+            );
+            e.advance(1)
+                .await
+                .wrap_context("moving to next event metadata cursor item")?;
+        }
+
+        Ok(required_binaries)
+    }
+
+    #[cfg(feature = "_tests")]
+    pub async fn assert_invariants_generic(&self) {
+        self.db
+            .transaction(&[
+                "snapshots",
+                "snapshots_meta",
+                "events",
+                "events_meta",
+                "binaries",
+            ])
+            .run(move |transaction| async move {
+                /*
+                let snapshots = transaction.object_store("snapshots").unwrap();
+                let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
+                let events = transaction.object_store("events").unwrap();
+                let events_meta = transaction.object_store("events_meta").unwrap();
+                */
+                let binaries = transaction.object_store("binaries").unwrap();
+
+                // All binaries are present
+                let required_binaries = self.list_required_binaries(&transaction).await.unwrap();
+                for b in required_binaries {
+                    if !binaries
+                        .contains(&serde_wasm_bindgen::to_value(&b).unwrap())
+                        .await
+                        .unwrap()
+                    {
+                        panic!("missing required binary {b:?}");
+                    }
+                }
+
+                Ok(())
+            })
+            .await
+            .unwrap();
     }
 }
 
