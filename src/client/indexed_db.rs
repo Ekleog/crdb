@@ -180,13 +180,13 @@ impl IndexedDb {
                 "binaries",
             ])
             .run(move |transaction| async move {
-                /*
-                let snapshots = transaction.object_store("snapshots").unwrap();
+                // let snapshots = transaction.object_store("snapshots").unwrap();
                 let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
-                let events = transaction.object_store("events").unwrap();
+                // let events = transaction.object_store("events").unwrap();
                 let events_meta = transaction.object_store("events_meta").unwrap();
-                */
                 let binaries = transaction.object_store("binaries").unwrap();
+
+                let creation_object = snapshots_meta.index("creation_object").unwrap();
 
                 // All binaries are present
                 let required_binaries = self.list_required_binaries(&transaction).await.unwrap();
@@ -198,6 +198,26 @@ impl IndexedDb {
                     {
                         panic!("missing required binary {b:?}");
                     }
+                }
+
+                // No event references an object without a creation snapshot
+                let mut event_cursor = events_meta.cursor().open().await.unwrap();
+                while let Some(e) = event_cursor.value() {
+                    let e = serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap();
+                    if !creation_object
+                        .contains(&Array::from_iter([
+                            &JsValue::from(1),
+                            &e.object_id.to_js_string(),
+                        ]))
+                        .await
+                        .unwrap()
+                    {
+                        panic!(
+                            "event {:?} references object {:?} that has no creation snapshot",
+                            e.event_id, e.object_id
+                        );
+                    }
+                    event_cursor.advance(1).await.unwrap();
                 }
 
                 Ok(())

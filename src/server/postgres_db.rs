@@ -1171,7 +1171,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .rows_affected()
         );
 
-        // No events references an object without a creation snapshot
+        // No event references an object without a creation snapshot
         assert_eq!(
             0,
             sqlx::query(
