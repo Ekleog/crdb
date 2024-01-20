@@ -1474,8 +1474,40 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("removing {object_id:?}"))
     }
 
-    async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<Vec<u8>>) -> crate::Result<()> {
-        todo!()
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+        if crate::hash_binary(&data) != binary_id {
+            return Err(crate::Error::BinaryHashMismatch(binary_id));
+        }
+        let data_start = &data[0] as *const u8 as usize;
+        let data_len = data.len();
+        let data = wasm_bindgen::memory()
+            .dyn_into::<js_sys::WebAssembly::Memory>()
+            .wrap_context("wasm_bindgen::memory did not return a WebAssembly::Memory")?
+            .buffer()
+            // Technically this can be a lie, as this could be a SharedArrayBuffer too
+            // However, we don't care, because we only ever call slice_with_end anyway
+            .unchecked_into::<js_sys::ArrayBuffer>()
+            .slice_with_end(
+                u32::try_from(data_start).unwrap(),
+                u32::try_from(data_len).unwrap(),
+            );
+        self.db
+            .transaction(&["binaries"])
+            .rw()
+            .run(move |transaction| async move {
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving the 'binaries' object store")?;
+
+                binaries
+                    .put_kv(&binary_id.to_js_string(), &data)
+                    .await
+                    .wrap_context("writing binary")?;
+
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| format!("writing {binary_id:?}"))
     }
 
     async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
