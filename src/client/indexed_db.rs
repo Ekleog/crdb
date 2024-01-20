@@ -14,7 +14,7 @@ use std::{
     ops::Bound,
     sync::Arc,
 };
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -74,7 +74,10 @@ impl IndexedDb {
                     .create()?;
 
                 snapshots_meta
-                    .build_compound_index("latest_object", &["is_latest", "object_id"])
+                    .build_compound_index(
+                        "latest_type_object",
+                        &["is_latest", "type_id", "object_id"],
+                    )
                     .unique()
                     .create()?;
                 snapshots_meta
@@ -167,6 +170,183 @@ impl IndexedDb {
         }
 
         Ok(required_binaries)
+    }
+
+    async fn get_impl<T: Object>(
+        &self,
+        object_id: ObjectId,
+        type_id_js: &JsValue,
+        object_id_js: &JsValue,
+    ) -> crate::Result<FullObject> {
+        self.db
+            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
+            .run(move |transaction| async move {
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving 'snapshots' object store")?;
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving 'snapshots_meta' object store")?;
+                let events = transaction
+                    .object_store("events")
+                    .wrap_context("retrieving 'events' object store")?;
+                let events_meta = transaction
+                    .object_store("events_meta")
+                    .wrap_context("retrieving 'events_meta' object store")?;
+
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving 'creation_object' index")?;
+                let latest_type_object = snapshots_meta
+                    .index("latest_type_object")
+                    .wrap_context("retrieving 'latest_type_object' index")?;
+                let object_event = events_meta
+                    .index("object_event")
+                    .wrap_context("retrieving 'object_event' index")?;
+
+                // Figure out the creation snapshot
+                let creation_snapshot_meta_js = creation_object
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    .await
+                    .wrap_with_context(|| {
+                        format!("fetching creation snapshot metadata for {object_id:?}")
+                    })?
+                    .ok_or_else(|| crate::Error::ObjectDoesNotExist(object_id))?;
+                let creation_snapshot_meta =
+                    serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_snapshot_meta_js)
+                        .wrap_with_context(|| {
+                            format!("deserializing creation snapshot metadata for {object_id:?}")
+                        })?;
+                if creation_snapshot_meta.type_id != *T::type_ulid() {
+                    return Err(crate::Error::WrongType {
+                        object_id,
+                        expected_type_id: *T::type_ulid(),
+                        real_type_id: creation_snapshot_meta.type_id,
+                    }
+                    .into());
+                }
+                let creation_snapshot_id = creation_snapshot_meta.snapshot_id;
+                let creation_snapshot_id_js = creation_snapshot_id.to_js_string();
+                let creation_snapshot_js = snapshots
+                    .get(&creation_snapshot_id_js)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("fetching snapshot data for {creation_snapshot_id:?}")
+                    })?
+                    .ok_or_else(|| {
+                        crate::Error::Other(anyhow!(
+                            "failed to recover data for snapshot {creation_snapshot_id:?}"
+                        ))
+                    })?;
+                let creation_snapshot = Arc::new(
+                    parse_snapshot_js::<T>(
+                        creation_snapshot_meta.snapshot_version,
+                        creation_snapshot_js,
+                    )
+                    .wrap_with_context(|| {
+                        format!("deserializing snapshot data for {creation_snapshot_id:?}")
+                    })?,
+                );
+
+                // Figure out the latest snapshot
+                let latest_snapshot_meta_js = latest_type_object
+                    .get(&Array::from_iter([
+                        &JsValue::from(1),
+                        &type_id_js,
+                        &object_id_js,
+                    ]))
+                    .await
+                    .wrap_with_context(|| {
+                        format!("fetching latest snapshot metadata for {object_id:?}")
+                    })?
+                    .ok_or_else(|| {
+                        crate::Error::Other(anyhow!(
+                            "failed to recover metadata for latest snapshot of {object_id:?}"
+                        ))
+                    })?;
+                let latest_snapshot_meta =
+                    serde_wasm_bindgen::from_value::<SnapshotMeta>(latest_snapshot_meta_js)
+                        .wrap_with_context(|| {
+                            format!("deserializing latest snapshot metadata for {object_id:?}")
+                        })?;
+                let latest_snapshot_id = latest_snapshot_meta.snapshot_id;
+                let latest_snapshot_id_js = latest_snapshot_id.to_js_string();
+                let latest_snapshot_js = snapshots
+                    .get(&latest_snapshot_id_js)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("fetching snapshot data for {latest_snapshot_id:?}")
+                    })?
+                    .ok_or_else(|| {
+                        crate::Error::Other(anyhow!(
+                            "failed to recover data for snapshot {latest_snapshot_id:?}"
+                        ))
+                    })?;
+                let latest_snapshot = Arc::new(
+                    parse_snapshot_js::<T>(
+                        latest_snapshot_meta.snapshot_version,
+                        latest_snapshot_js,
+                    )
+                    .wrap_with_context(|| {
+                        format!("deserializing snapshot data for {latest_snapshot_id:?}")
+                    })?,
+                );
+
+                // List the events in-between
+                let mut changes = BTreeMap::new();
+                let mut to_apply = object_event
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&object_id_js, &**creation_snapshot_id_js])
+                            ..=&**Array::from_iter([&object_id_js, &**latest_snapshot_id_js]),
+                    )
+                    .wrap_with_context(|| format!("filtering only the events for {object_id:?}"))?
+                    .open()
+                    .await
+                    .wrap_with_context(|| format!("listing all events for {object_id:?}"))?;
+                while let Some(event_meta_js) = to_apply.value() {
+                    let event_meta = serde_wasm_bindgen::from_value::<EventMeta>(event_meta_js)
+                        .wrap_context("deserializing event metadata")?;
+                    let event_id = event_meta.event_id;
+                    let event_id_js = event_id.to_js_string();
+                    let event_js = events
+                        .get(&event_id_js)
+                        .await
+                        .wrap_with_context(|| format!("retrieving data for event {event_id:?}"))?
+                        .ok_or_else(|| {
+                            crate::Error::Other(anyhow!("no data for event {event_id:?}"))
+                        })?;
+                    let event = serde_wasm_bindgen::from_value::<T::Event>(event_js)
+                        .wrap_with_context(|| format!("deserializing event {event_id:?}"))?;
+                    changes.insert(event_id, Change::new(Arc::new(event)));
+                    to_apply
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next event")?;
+                }
+
+                // Add the latest snapshot to the latest event
+                if let Some(mut c) = changes.last_entry() {
+                    c.get_mut().set_snapshot(latest_snapshot);
+                } else {
+                    assert!(
+                        creation_snapshot_meta.snapshot_id == latest_snapshot_meta.snapshot_id,
+                        "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
+                        latest_snapshot_meta.snapshot_id,
+                        creation_snapshot_meta.snapshot_id,
+                    );
+                }
+
+                // Finally, return the full object
+                Ok(FullObject::from_parts(
+                    object_id,
+                    creation_snapshot_meta.snapshot_id,
+                    creation_snapshot,
+                    changes,
+                ))
+            })
+            .await
+            .wrap_with_context(|| format!("retrieving {object_id:?} from IndexedDB"))
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
@@ -870,8 +1050,29 @@ impl Db for IndexedDb {
 
     async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
         let object_id_js = object_id.to_js_string();
-        self.db
-            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
+        let type_id_js = T::type_ulid().to_js_string();
+        self.get_impl::<T>(object_id, &type_id_js, &object_id_js)
+            .await
+    }
+
+    async fn query<T: Object>(
+        &self,
+        _user: User,
+        _ignore_not_modified_on_server_since: Option<Timestamp>,
+        q: &Query,
+    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+        let type_id_js = T::type_ulid().to_js_string();
+        let zero_id = EventId::from_u128(0).to_js_string();
+        let max_id = EventId::from_u128(u128::MAX).to_js_string();
+        // TODO: look into setting up indexes and allowing the user to use them?
+        // TODO: think a lot about splitting this transaction to be able to return a real stream by
+        // using cursors? The difficulty will be that another task could clobber the latest index
+        // during that time.
+
+        // List all objects matching the query
+        let objects = self
+            .db
+            .transaction(&["snapshots_meta", "snapshots"])
             .run(move |transaction| async move {
                 let snapshots = transaction
                     .object_store("snapshots")
@@ -879,172 +1080,68 @@ impl Db for IndexedDb {
                 let snapshots_meta = transaction
                     .object_store("snapshots_meta")
                     .wrap_context("retrieving 'snapshots_meta' object store")?;
-                let events = transaction
-                    .object_store("events")
-                    .wrap_context("retrieving 'events' object store")?;
-                let events_meta = transaction
-                    .object_store("events_meta")
-                    .wrap_context("retrieving 'events_meta' object store")?;
 
-                let creation_object = snapshots_meta
-                    .index("creation_object")
-                    .wrap_context("retrieving 'creation_object' index")?;
-                let latest_object = snapshots_meta
-                    .index("latest_object")
-                    .wrap_context("retrieving 'latest_object' index")?;
-                let object_event = events_meta
-                    .index("object_event")
-                    .wrap_context("retrieving 'object_event' index")?;
+                let latest_type_object = snapshots_meta
+                    .index("latest_type_object")
+                    .wrap_context("retrieving 'latest_type_object' index")?;
 
-                // Figure out the creation snapshot
-                let creation_snapshot_meta_js = creation_object
-                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                    .await
-                    .wrap_with_context(|| {
-                        format!("fetching creation snapshot metadata for {object_id:?}")
-                    })?
-                    .ok_or_else(|| crate::Error::ObjectDoesNotExist(object_id))?;
-                let creation_snapshot_meta =
-                    serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_snapshot_meta_js)
-                        .wrap_with_context(|| {
-                            format!("deserializing creation snapshot metadata for {object_id:?}")
-                        })?;
-                if creation_snapshot_meta.type_id != *T::type_ulid() {
-                    return Err(crate::Error::WrongType {
-                        object_id,
-                        expected_type_id: *T::type_ulid(),
-                        real_type_id: creation_snapshot_meta.type_id,
-                    }
-                    .into());
-                }
-                let creation_snapshot_id = creation_snapshot_meta.snapshot_id;
-                let creation_snapshot_id_js = creation_snapshot_id.to_js_string();
-                let creation_snapshot_js = snapshots
-                    .get(&creation_snapshot_id_js)
-                    .await
-                    .wrap_with_context(|| {
-                        format!("fetching snapshot data for {creation_snapshot_id:?}")
-                    })?
-                    .ok_or_else(|| {
-                        crate::Error::Other(anyhow!(
-                            "failed to recover data for snapshot {creation_snapshot_id:?}"
-                        ))
-                    })?;
-                let creation_snapshot = Arc::new(
-                    parse_snapshot_js::<T>(
-                        creation_snapshot_meta.snapshot_version,
-                        creation_snapshot_js,
-                    )
-                    .wrap_with_context(|| {
-                        format!("deserializing snapshot data for {creation_snapshot_id:?}")
-                    })?,
-                );
-
-                // Figure out the latest snapshot
-                let latest_snapshot_meta_js = latest_object
-                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                    .await
-                    .wrap_with_context(|| {
-                        format!("fetching latest snapshot metadata for {object_id:?}")
-                    })?
-                    .ok_or_else(|| {
-                        crate::Error::Other(anyhow!(
-                            "failed to recover metadata for latest snapshot of {object_id:?}"
-                        ))
-                    })?;
-                let latest_snapshot_meta =
-                    serde_wasm_bindgen::from_value::<SnapshotMeta>(latest_snapshot_meta_js)
-                        .wrap_with_context(|| {
-                            format!("deserializing latest snapshot metadata for {object_id:?}")
-                        })?;
-                let latest_snapshot_id = latest_snapshot_meta.snapshot_id;
-                let latest_snapshot_id_js = latest_snapshot_id.to_js_string();
-                let latest_snapshot_js = snapshots
-                    .get(&latest_snapshot_id_js)
-                    .await
-                    .wrap_with_context(|| {
-                        format!("fetching snapshot data for {latest_snapshot_id:?}")
-                    })?
-                    .ok_or_else(|| {
-                        crate::Error::Other(anyhow!(
-                            "failed to recover data for snapshot {latest_snapshot_id:?}"
-                        ))
-                    })?;
-                let latest_snapshot = Arc::new(
-                    parse_snapshot_js::<T>(
-                        latest_snapshot_meta.snapshot_version,
-                        latest_snapshot_js,
-                    )
-                    .wrap_with_context(|| {
-                        format!("deserializing snapshot data for {latest_snapshot_id:?}")
-                    })?,
-                );
-
-                // List the events in-between
-                let mut changes = BTreeMap::new();
-                let mut to_apply = object_event
+                let mut cursor = latest_type_object
                     .cursor()
                     .range(
-                        &**Array::from_iter([&object_id_js, &creation_snapshot_id_js])
-                            ..=&**Array::from_iter([&object_id_js, &latest_snapshot_id_js]),
+                        &**Array::from_iter([&JsValue::from(1), &type_id_js, &zero_id])
+                            ..=&**Array::from_iter([&JsValue::from(1), &type_id_js, &max_id]),
                     )
-                    .wrap_with_context(|| format!("filtering only the events for {object_id:?}"))?
-                    .open()
+                    .wrap_context("limiting cursor to only snapshots of the right type")?
+                    .open_key()
                     .await
-                    .wrap_with_context(|| format!("listing all events for {object_id:?}"))?;
-                while let Some(event_meta_js) = to_apply.value() {
-                    let event_meta = serde_wasm_bindgen::from_value::<EventMeta>(event_meta_js)
-                        .wrap_context("deserializing event metadata")?;
-                    let event_id = event_meta.event_id;
-                    let event_id_js = event_id.to_js_string();
-                    let event_js = events
-                        .get(&event_id_js)
+                    .wrap_context("opening cursor over all latest objects")?;
+                let mut objects = Vec::new();
+                while let Some(snapshot_id_js) = cursor.primary_key() {
+                    let snapshot = snapshots
+                        .get(&snapshot_id_js)
                         .await
-                        .wrap_with_context(|| format!("retrieving data for event {event_id:?}"))?
+                        .wrap_context("retrieving snapshot data for known metadata")?
                         .ok_or_else(|| {
-                            crate::Error::Other(anyhow!("no data for event {event_id:?}"))
+                            crate::Error::Other(anyhow!("no snapshot data for known metadata"))
                         })?;
-                    let event = serde_wasm_bindgen::from_value::<T::Event>(event_js)
-                        .wrap_with_context(|| format!("deserializing event {event_id:?}"))?;
-                    changes.insert(event_id, Change::new(Arc::new(event)));
-                    to_apply
+                    let snapshot = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot)
+                        .wrap_context("deserializing snapshot data as serde_json::Value")?;
+                    if q.matches_json(&snapshot) {
+                        objects.push(
+                            cursor
+                                .key()
+                                .ok_or_else(|| {
+                                    crate::Error::Other(anyhow!(
+                                        "cursor had a primary key but no key"
+                                    ))
+                                })?
+                                .dyn_into::<Array>()
+                                .wrap_context("cursor key was not an array")?
+                                .get(2),
+                        );
+                    }
+                    cursor
                         .advance(1)
                         .await
-                        .wrap_context("going to next event")?;
+                        .wrap_context("going to next snapshot in the database")?;
                 }
-
-                // Add the latest snapshot to the latest event
-                if let Some(mut c) = changes.last_entry() {
-                    c.get_mut().set_snapshot(latest_snapshot);
-                } else {
-                    assert!(
-                        creation_snapshot_meta.snapshot_id == latest_snapshot_meta.snapshot_id,
-                        "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
-                        latest_snapshot_meta.snapshot_id,
-                        creation_snapshot_meta.snapshot_id,
-                    );
-                }
-
-                // Finally, return the full object
-                Ok(FullObject::from_parts(
-                    object_id,
-                    creation_snapshot_meta.snapshot_id,
-                    creation_snapshot,
-                    changes,
-                ))
+                Ok(objects)
             })
             .await
-            .wrap_with_context(|| format!("retrieving {object_id:?} from IndexedDB"))
-    }
+            .wrap_context("finding a first snapshot to answer")?;
 
-    async fn query<T: Object>(
-        &self,
-        _user: User,
-        _ignore_not_modified_on_server_since: Option<Timestamp>,
-        _q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        // todo!()
-        Ok(futures::stream::empty())
+        // Retrieve them one by one
+        Ok(async_stream::stream! {
+            let type_id_js = T::type_ulid().to_js_string();
+            for object_id_js in objects {
+                let object_id = serde_wasm_bindgen::from_value::<ObjectId>(object_id_js.clone())
+                    .wrap_context("deserializing object id")?;
+                match self.get_impl::<T>(object_id, &type_id_js, &object_id_js).await {
+                    Err(crate::Error::ObjectDoesNotExist(_)) => continue,
+                    res => yield res,
+                }
+            }
+        })
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(

@@ -159,14 +159,14 @@ impl Query {
 
     pub fn matches<T: serde::Serialize>(&self, v: T) -> serde_json::Result<bool> {
         let json = serde_json::to_value(v)?;
-        Ok(self.matches_impl(&json))
+        Ok(self.matches_json(&json))
     }
 
-    fn matches_impl(&self, v: &serde_json::Value) -> bool {
+    pub fn matches_json(&self, v: &serde_json::Value) -> bool {
         match self {
-            Query::All(q) => q.iter().all(|q| q.matches_impl(v)),
-            Query::Any(q) => q.iter().any(|q| q.matches_impl(v)),
-            Query::Not(q) => !q.matches_impl(v),
+            Query::All(q) => q.iter().all(|q| q.matches_json(v)),
+            Query::Any(q) => q.iter().any(|q| q.matches_json(v)),
+            Query::Not(q) => !q.matches_json(v),
             Query::Eq(p, to) => Self::deref(v, p)
                 .map(|v| Self::compare_with_nums(v, to))
                 .unwrap_or(false),
