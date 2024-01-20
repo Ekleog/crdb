@@ -1,11 +1,11 @@
-use super::fuzz_helpers::{Database, make_db, SetupState, setup};
+use super::fuzz_helpers::{self, make_db, setup, Database, SetupState};
 
 use crate::{
     db_trait::Db,
     error::ResultExt,
     test_utils::{
-        self, cmp, cmp_query_results, TestEventSimple, TestObjectSimple,
-        EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2, USER_ID_NULL,
+        self, cmp, cmp_query_results, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2,
+        EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2, USER_ID_NULL,
     },
     EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
 };
@@ -168,21 +168,17 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
     Ok(())
 }
 
-fn fuzz_impl(cluster: &SetupState, ops: &Vec<Op>) {
-    tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(async move {
-            let db = make_db(cluster).await;
-            let mut s = FuzzState::new();
-            for (i, op) in ops.iter().enumerate() {
-                apply_op(&db, &mut s, op)
-                    .await
-                    .with_context(|| format!("applying {i}th op: {op:?}"))
-                    .unwrap();
-                db.assert_invariants_generic().await;
-                db.assert_invariants_for::<TestObjectSimple>().await;
-            }
-        });
+async fn fuzz_impl(cluster: &SetupState, ops: &Vec<Op>) {
+    let db = make_db(cluster).await;
+    let mut s = FuzzState::new();
+    for (i, op) in ops.iter().enumerate() {
+        apply_op(&db, &mut s, op)
+            .await
+            .with_context(|| format!("applying {i}th op: {op:?}"))
+            .unwrap();
+        db.assert_invariants_generic().await;
+        db.assert_invariants_for::<TestObjectSimple>().await;
+    }
 }
 
 #[test]
@@ -191,11 +187,15 @@ fn fuzz() {
     bolero::check!()
         .with_iterations(20)
         .with_type()
-        .for_each(move |ops| fuzz_impl(&cluster, ops))
+        .for_each(move |ops| {
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(fuzz_impl(&cluster, ops))
+        })
 }
 
-#[test]
-fn regression_events_1342_fails_to_notice_conflict_on_3() {
+#[fuzz_helpers::test]
+async fn regression_events_1342_fails_to_notice_conflict_on_3() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
@@ -227,11 +227,12 @@ fn regression_events_1342_fails_to_notice_conflict_on_3() {
                 object: Arc::new(TestObjectSimple(b"456".to_vec())),
             },
         ],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regession_proper_error_on_recreate_inexistent() {
+#[fuzz_helpers::test]
+async fn regession_proper_error_on_recreate_inexistent() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
@@ -241,10 +242,11 @@ fn regession_proper_error_on_recreate_inexistent() {
             time: Timestamp::from_ms(0),
         }],
     )
+    .await
 }
 
-#[test]
-fn regression_wrong_error_on_object_already_exists() {
+#[fuzz_helpers::test]
+async fn regression_wrong_error_on_object_already_exists() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
@@ -262,10 +264,11 @@ fn regression_wrong_error_on_object_already_exists() {
             },
         ],
     )
+    .await
 }
 
-#[test]
-fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() {
+#[fuzz_helpers::test]
+async fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
@@ -283,10 +286,11 @@ fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() 
             },
         ],
     )
+    .await
 }
 
-#[test]
-fn regression_submit_on_other_snapshot_date_fails() {
+#[fuzz_helpers::test]
+async fn regression_submit_on_other_snapshot_date_fails() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
@@ -308,11 +312,12 @@ fn regression_submit_on_other_snapshot_date_fails() {
                 event: Arc::new(TestEventSimple::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
         ],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_vacuum_did_not_actually_recreate_objects() {
+#[fuzz_helpers::test]
+async fn regression_vacuum_did_not_actually_recreate_objects() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
@@ -337,11 +342,12 @@ fn regression_vacuum_did_not_actually_recreate_objects() {
                 event: Arc::new(TestEventSimple::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
             },
         ],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict() {
+#[fuzz_helpers::test]
+async fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
@@ -363,11 +369,12 @@ fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict()
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 1, 0, 0, 4])),
             },
         ],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_any_query_crashed_postgres() {
+#[fuzz_helpers::test]
+async fn regression_any_query_crashed_postgres() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -375,11 +382,12 @@ fn regression_any_query_crashed_postgres() {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::All(vec![]),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
+#[fuzz_helpers::test]
+async fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -387,11 +395,12 @@ fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Lt(vec![], Decimal::from_str("0").unwrap()),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_keyed_comparison_was_still_wrong_syntax() {
+#[fuzz_helpers::test]
+async fn regression_keyed_comparison_was_still_wrong_syntax() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -402,11 +411,12 @@ fn regression_keyed_comparison_was_still_wrong_syntax() {
                 Decimal::from_str("0").unwrap(),
             ),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_too_big_decimal_failed_postgres() {
+#[fuzz_helpers::test]
+async fn regression_too_big_decimal_failed_postgres() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -417,11 +427,12 @@ fn regression_too_big_decimal_failed_postgres() {
                 Decimal::from_str(&format!("0.{:030000}1", 0)).unwrap(),
             ),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_postgresql_syntax_for_equality() {
+#[fuzz_helpers::test]
+async fn regression_postgresql_syntax_for_equality() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -432,11 +443,12 @@ fn regression_postgresql_syntax_for_equality() {
                 serde_json::Value::Null,
             ),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
+#[fuzz_helpers::test]
+async fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -447,11 +459,12 @@ fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
                 Decimal::from_str(&format!("0.{:0228}1", 0)).unwrap(),
             ),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_way_too_big_decimal_caused_problems() {
+#[fuzz_helpers::test]
+async fn regression_way_too_big_decimal_caused_problems() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -462,11 +475,12 @@ fn regression_way_too_big_decimal_caused_problems() {
                 Decimal::from_str(&format!("0.{:057859}1", 0)).unwrap(),
             ),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_strings_are_in_keys_too() {
+#[fuzz_helpers::test]
+async fn regression_strings_are_in_keys_too() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -477,11 +491,12 @@ fn regression_strings_are_in_keys_too() {
                 Decimal::from_str("0").unwrap(),
             ),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_cast_error() {
+#[fuzz_helpers::test]
+async fn regression_cast_error() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -496,11 +511,12 @@ fn regression_cast_error() {
                 q: Query::Le(vec![], Decimal::from_str("0").unwrap()),
             },
         ],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_sql_injection_in_path_key() {
+#[fuzz_helpers::test]
+async fn regression_sql_injection_in_path_key() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -511,11 +527,12 @@ fn regression_sql_injection_in_path_key() {
                 serde_json::Value::Null,
             ),
         }],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
+#[fuzz_helpers::test]
+async fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
     // See https://github.com/launchbadge/sqlx/issues/2981
     let cluster = setup();
     fuzz_impl(
@@ -555,11 +572,12 @@ fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
                 ),
             },
         ],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_postgres_null_led_to_not_being_wrong() {
+#[fuzz_helpers::test]
+async fn regression_postgres_null_led_to_not_being_wrong() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
@@ -574,11 +592,12 @@ fn regression_postgres_null_led_to_not_being_wrong() {
                 q: Query::Not(Box::new(Query::ContainsStr(vec![], String::new()))),
             },
         ],
-    );
+    )
+    .await
 }
 
-#[test]
-fn regression_postgres_handled_numbers_as_one_element_arrays() {
+#[fuzz_helpers::test]
+async fn regression_postgres_handled_numbers_as_one_element_arrays() {
     // See also https://www.postgresql.org/message-id/87h6jbbxma.fsf%40coegni.ekleog.org
     tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(tracing::Level::TRACE)
@@ -601,5 +620,6 @@ fn regression_postgres_handled_numbers_as_one_element_arrays() {
                 ),
             },
         ],
-    );
+    )
+    .await
 }

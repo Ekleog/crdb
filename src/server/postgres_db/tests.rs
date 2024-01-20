@@ -85,6 +85,8 @@ mod fuzz_helpers {
     use crate::server::PostgresDb;
     use crate::test_utils::db::ServerConfig;
 
+    pub use tokio::test;
+
     pub type Database = PostgresDb<ServerConfig>;
     pub type SetupState = TmpDb;
 

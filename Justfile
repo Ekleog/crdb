@@ -3,6 +3,7 @@
 fmt:
     cargo fmt
     cd examples/basic && cargo fmt
+    rustfmt --edition 2021 src/test_utils/fuzz_*.rs
 
 test NAME='': (test-crate NAME) (test-example-basic NAME)
 
