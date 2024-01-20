@@ -1,4 +1,4 @@
-use super::TmpDb;
+use super::fuzz_helpers::{self, make_db, make_fuzzer, setup, SetupState};
 use crate::{
     db_trait::Db,
     error::ResultExt,
@@ -71,10 +71,10 @@ struct FuzzState {
 }
 
 impl FuzzState {
-    fn new() -> FuzzState {
+    fn new(is_server: bool) -> FuzzState {
         FuzzState {
             objects: Vec::new(),
-            mem_db: test_utils::MemDb::new(true),
+            mem_db: test_utils::MemDb::new(is_server),
         }
     }
 }
@@ -278,45 +278,29 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
     Ok(())
 }
 
-fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
-    tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(async move {
-            let pool = cluster.pool().await;
-            let db = PostgresDb::connect(pool.clone()).await.unwrap();
-            sqlx::query(include_str!("../cleanup-db.sql"))
-                .execute(&pool)
-                .await
-                .unwrap();
-            let mut s = FuzzState::new();
-            for (i, op) in ops.iter().enumerate() {
-                apply_op(&db, &mut s, op)
-                    .await
-                    .wrap_with_context(|| format!("applying {i}th op: {op:?}"))
-                    .unwrap();
-                db.assert_invariants_generic().await;
-                db.assert_invariants_for::<TestObjectPerms>().await;
-                db.assert_invariants_for::<TestObjectDelegatePerms>().await;
-            }
-        });
+async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) {
+    let db = make_db(cluster).await;
+    let mut s = FuzzState::new(*is_server);
+    for (i, op) in ops.iter().enumerate() {
+        apply_op(&db, &mut s, op)
+            .await
+            .wrap_with_context(|| format!("applying {i}th op: {op:?}"))
+            .unwrap();
+        db.assert_invariants_generic().await;
+        db.assert_invariants_for::<TestObjectPerms>().await;
+        db.assert_invariants_for::<TestObjectDelegatePerms>().await;
+    }
 }
 
-#[test]
-fn fuzz() {
-    let cluster = TmpDb::new();
-    bolero::check!()
-        .with_iterations(20)
-        .with_type()
-        .for_each(move |ops| fuzz_impl(&cluster, ops))
-}
+make_fuzzer!(fuzz, fuzz_impl);
 
-#[test]
-fn regression_get_with_wrong_type_did_not_fail() {
+#[fuzz_helpers::test]
+async fn regression_get_with_wrong_type_did_not_fail() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             CreatePerm {
                 id: ObjectId(Ulid::from_string("0000000000000000000000002D").unwrap()),
                 created_at: EventId(Ulid::from_string("000000000000000000006001S7").unwrap()),
@@ -328,17 +312,18 @@ fn regression_get_with_wrong_type_did_not_fail() {
                 object: 0,
                 at: EVENT_ID_MAX,
             },
-        ],
-    );
+        ]),
+    )
+    .await
 }
 
-#[test]
-fn regression_changing_remote_objects_did_not_refresh_perms() {
+#[fuzz_helpers::test]
+async fn regression_changing_remote_objects_did_not_refresh_perms() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             CreateDelegator {
                 id: ObjectId(Ulid::from_string("00000000000G000000000G0000").unwrap()),
                 created_at: EventId(Ulid::from_string("00ZYNG001A2C09BP0708000000").unwrap()),
@@ -353,33 +338,35 @@ fn regression_changing_remote_objects_did_not_refresh_perms() {
                     Ulid::from_string("00000002004G0004007G054MJJ").unwrap(),
                 ))),
             },
-        ],
-    );
+        ]),
+    )
+    .await
 }
 
-#[test]
-fn regression_self_referencing_object_deadlocks() {
+#[fuzz_helpers::test]
+async fn regression_self_referencing_object_deadlocks() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![CreateDelegator {
+        Arc::new(vec![CreateDelegator {
             id: ObjectId(Ulid::from_string("00008000000030000000000000").unwrap()),
             created_at: EventId(Ulid::from_string("00000000002000001J00000001").unwrap()),
             object: Arc::new(TestObjectDelegatePerms(
                 DbPtr::from_string("00008000000030000000000000").unwrap(),
             )),
-        }],
-    );
+        }]),
+    )
+    .await
 }
 
-#[test]
-fn regression_submit_wrong_type_ignores_failure() {
+#[fuzz_helpers::test]
+async fn regression_submit_wrong_type_ignores_failure() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             CreateDelegator {
                 id: ObjectId(Ulid::from_string("00000000000000000000000002").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000410000000000X3K").unwrap()),
@@ -394,16 +381,17 @@ fn regression_submit_wrong_type_ignores_failure() {
                     Ulid::from_string("00000000000000000000000000").unwrap(),
                 ))),
             },
-        ],
-    );
+        ]),
+    )
+    .await
 }
 
-#[test]
-fn regression_postgres_not_null_was_null() {
-    let cluster = TmpDb::new();
+#[fuzz_helpers::test]
+async fn regression_postgres_not_null_was_null() {
+    let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Op::CreatePerm {
                 id: ObjectId(Ulid::from_string("00040G2081040G2081040G2081").unwrap()),
                 created_at: EventId(Ulid::from_string("01040G20810400C1G60R30C1G6").unwrap()),
@@ -418,6 +406,7 @@ fn regression_postgres_not_null_was_null() {
                     serde_json::Value::Null,
                 ))),
             },
-        ],
-    );
+        ]),
+    )
+    .await
 }

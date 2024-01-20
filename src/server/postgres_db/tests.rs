@@ -4,7 +4,6 @@ use std::time::Duration;
 
 mod fuzz_battle_royale;
 mod fuzz_object_full;
-mod fuzz_remote_perms;
 mod fuzz_sessions;
 mod fuzz_two_threads;
 
@@ -151,4 +150,8 @@ mod fuzz_helpers {
 
 mod fuzz_simple {
     include!("../../test_utils/fuzz_simple.rs");
+}
+
+mod fuzz_remote_perms {
+    include!("../../test_utils/fuzz_remote_perms.rs");
 }
