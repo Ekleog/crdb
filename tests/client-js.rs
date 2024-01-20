@@ -2,7 +2,7 @@
 
 use crdb::{
     crdb_internal::{test_utils::*, Db, LocalDb},
-    Query,
+    Query, Timestamp,
 };
 use futures::stream::StreamExt;
 use std::sync::Arc;
@@ -136,4 +136,13 @@ async fn smoke_test() {
         .map(|o| o.unwrap())
         .collect::<Vec<_>>();
     assert_eq!(all_objects.len(), 1);
+    db.recreate::<TestObjectSimple, _>(
+        Timestamp::from_ms(EVENT_ID_2.0.timestamp_ms()),
+        OBJECT_ID_1,
+        &db,
+    )
+    .await
+    .unwrap();
+    db.assert_invariants_generic().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
 }
