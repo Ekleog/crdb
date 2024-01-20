@@ -93,10 +93,6 @@ impl IndexedDb {
                     .unique()
                     .create()?;
                 snapshots_meta
-                    .build_compound_index("not_uploaded_object", &["upload_not_over", "object_id"])
-                    .unique()
-                    .create()?;
-                snapshots_meta
                     .build_compound_index("object_snapshot", &["object_id", "snapshot_id"])
                     .create()?;
                 snapshots_meta
@@ -105,8 +101,7 @@ impl IndexedDb {
                     .create()?;
 
                 events_meta
-                    .build_compound_index("not_uploaded_event", &["upload_not_over", "event_id"])
-                    .unique()
+                    .build_compound_index("not_uploaded_object", &["upload_not_over", "object_id"])
                     .create()?;
                 events_meta
                     .build_compound_index("object_event", &["object_id", "event_id"])
@@ -382,6 +377,9 @@ impl IndexedDb {
                 let object_event = events_meta
                     .index("object_event")
                     .wrap_context("retrieving the 'object_event' index")?;
+                let not_uploaded_object = events_meta
+                    .index("not_uploaded_object")
+                    .wrap_context("retrieving the 'not_uploaded_object' index")?;
 
                 // Remove all unlocked objects that have completed uploading
                 let mut to_remove = locked_uploaded_object
@@ -401,6 +399,21 @@ impl IndexedDb {
                         .wrap_context("deserializing unlocked object")?;
                     let object_id = s.object_id;
                     let object_id_js = object_id.to_js_string();
+
+                    // If one event of this object has not uploaded yet, skip it
+                    let has_not_uploaded_event = not_uploaded_object
+                        .contains(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                        .await
+                        .wrap_with_context(|| {
+                            format!("checking whether {object_id:?} has a not-yet-uploaded event")
+                        })?;
+                    if has_not_uploaded_event {
+                        to_remove
+                            .advance(1)
+                            .await
+                            .wrap_context("getting next to-remove object")?;
+                        continue;
+                    }
 
                     // Remove all the snapshots
                     let mut snapshots_to_remove = object_snapshot
