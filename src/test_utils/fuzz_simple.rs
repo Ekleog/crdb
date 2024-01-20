@@ -209,7 +209,7 @@ async fn regression_events_1342_fails_to_notice_conflict_on_3() {
 }
 
 #[fuzz_helpers::test]
-async fn regession_proper_error_on_recreate_inexistent() {
+async fn regression_proper_error_on_recreate_inexistent() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
