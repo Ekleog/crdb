@@ -278,9 +278,9 @@ impl IndexedDb {
                 "binaries",
             ])
             .run(move |transaction| async move {
-                let snapshots = transaction.object_store("snapshots").unwrap();
+                let snapshots_store = transaction.object_store("snapshots").unwrap();
                 let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
-                let events = transaction.object_store("events").unwrap();
+                let events_store = transaction.object_store("events").unwrap();
                 let events_meta = transaction.object_store("events_meta").unwrap();
 
                 // Fetch all snapshots
@@ -320,9 +320,9 @@ impl IndexedDb {
                 }
 
                 // For each object
-                for o in objects {
-                    let snapshots = object_snapshots_map.get(&o).unwrap();
-                    let events = object_events_map.get(&o).unwrap();
+                for object_id in objects {
+                    let snapshots = object_snapshots_map.get(&object_id).unwrap();
+                    let events = object_events_map.get(&object_id).unwrap();
 
                     // It has a creation and a latest snapshot that surround all other snapshots
                     let creation = snapshots.first_key_value().unwrap().1;
@@ -336,6 +336,24 @@ impl IndexedDb {
                     // Creation and latest snapshots surround all other events
                     assert!(events.first_key_value().unwrap().0 > &creation.snapshot_id);
                     assert!(events.last_key_value().unwrap().0 == &latest.snapshot_id);
+
+                    // Rebuilding the object gives the same snapshots
+                    let object = snapshots_store
+                        .get(&creation.snapshot_id.to_js_string())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    let mut object = serde_wasm_bindgen::from_value::<T>(object).unwrap();
+                    for (event_id, event_meta) in events.iter() {
+                        let e = events_store
+                            .get(&event_id.to_js_string())
+                            .await
+                            .unwrap()
+                            .unwrap();
+                        let e = serde_wasm_bindgen::from_value::<T::Event>(e).unwrap();
+                        assert_eq!(event_meta.required_binaries, e.required_binaries());
+                        object.apply(DbPtr::from(object_id), &e);
+                    }
                 }
 
                 Ok(())
