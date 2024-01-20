@@ -721,7 +721,7 @@ impl Db for IndexedDb {
             is_creation: Some(1),
             is_latest: Some(1),
             snapshot_version: T::snapshot_version(),
-            is_locked: Some(0), // TODO: allow for atomic create-and-lock
+            is_locked: Some(1),
             upload_not_over: Some(1),
             required_binaries: object.required_binaries(),
         };
@@ -767,7 +767,7 @@ impl Db for IndexedDb {
                         })?;
                     // Ignore a few fields in comparison below
                     old_meta.is_latest = Some(1);
-                    old_meta.is_locked = Some(0);
+                    old_meta.is_locked = Some(1);
                     old_meta.upload_not_over = Some(1);
                     if old_meta != new_snapshot_meta {
                         return Err(crate::Error::ObjectAlreadyExists(object_id).into());

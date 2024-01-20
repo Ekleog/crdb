@@ -50,9 +50,8 @@ impl Db for SqliteDb {
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
         reord::point().await;
-        // TODO: make it possible to atomically create-and-lock an object
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, FALSE, FALSE)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, TRUE, FALSE)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)
