@@ -13,6 +13,7 @@ mod object_delegate_perms;
 mod object_full;
 mod object_perms;
 mod object_simple;
+mod smoke_test;
 mod stubs;
 
 pub use mem_db::MemDb;
