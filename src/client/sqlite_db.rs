@@ -51,7 +51,7 @@ impl Db for SqliteDb {
         let object_json = sqlx::types::Json(&object);
         reord::point().await;
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, TRUE, FALSE)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, $4, $5, TRUE, FALSE)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)
@@ -157,7 +157,7 @@ impl Db for SqliteDb {
         todo!()
     }
 
-    async fn remove(&self, _object_id: ObjectId) -> crate::Result<bool> {
+    async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {
         todo!()
     }
 

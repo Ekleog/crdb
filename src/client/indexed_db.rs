@@ -27,7 +27,6 @@ struct SnapshotMeta {
     is_latest: Option<usize>,   // So, use None for "false" and Some(1) for "true"
     snapshot_version: i32,
     is_locked: Option<usize>, // Only set on creation snapshot, Some(1) if locked and Some(0) if not
-    upload_not_over: Option<usize>, // Only set on creation snapshot, Some(1) if not uploaded yet and Some(0) if uploaded
     required_binaries: Vec<BinPtr>,
 }
 
@@ -35,7 +34,12 @@ struct SnapshotMeta {
 struct EventMeta {
     event_id: EventId,
     object_id: ObjectId,
-    upload_not_over: usize, // 1 if not uploaded already and 0 if not
+    required_binaries: Vec<BinPtr>,
+}
+
+#[allow(dead_code)] // TODO: store in upload_queue_meta
+struct UploadMeta {
+    upload_id: u64,
     required_binaries: Vec<BinPtr>,
 }
 
@@ -65,6 +69,10 @@ impl IndexedDb {
                 db.build_object_store("snapshots").create()?;
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
+                // TODO: store UploadOrBinPtr in upload_queue
+                db.build_object_store("upload_queue")
+                    .auto_increment()
+                    .create()?;
                 let snapshots_meta = db
                     .build_object_store("snapshots_meta")
                     .key_path("snapshot_id")
@@ -72,6 +80,10 @@ impl IndexedDb {
                 let events_meta = db
                     .build_object_store("events_meta")
                     .key_path("event_id")
+                    .create()?;
+                let upload_queue_meta = db
+                    .build_object_store("upload_queue_meta")
+                    .key_path("upload_id")
                     .create()?;
 
                 snapshots_meta
@@ -86,10 +98,7 @@ impl IndexedDb {
                     .unique()
                     .create()?;
                 snapshots_meta
-                    .build_compound_index(
-                        "locked_uploaded_object",
-                        &["is_locked", "upload_not_over", "object_id"],
-                    )
+                    .build_compound_index("locked_object", &["is_locked", "object_id"])
                     .unique()
                     .create()?;
                 snapshots_meta
@@ -101,12 +110,14 @@ impl IndexedDb {
                     .create()?;
 
                 events_meta
-                    .build_compound_index("not_uploaded_object", &["upload_not_over", "object_id"])
-                    .create()?;
-                events_meta
                     .build_compound_index("object_event", &["object_id", "event_id"])
                     .create()?;
                 events_meta
+                    .build_index("required_binaries", "required_binaries")
+                    .multi_entry()
+                    .create()?;
+
+                upload_queue_meta
                     .build_index("required_binaries", "required_binaries")
                     .multi_entry()
                     .create()?;
@@ -132,6 +143,9 @@ impl IndexedDb {
         let events_meta = transaction
             .object_store("events_meta")
             .wrap_context("opening 'events_meta' object store")?;
+        let upload_queue_meta = transaction
+            .object_store("upload_queue_meta")
+            .wrap_context("opening 'upload_queue_meta' object store")?;
 
         let snapshot_required_binaries = snapshots_meta
             .index("required_binaries")
@@ -139,6 +153,9 @@ impl IndexedDb {
         let event_required_binaries = events_meta
             .index("required_binaries")
             .wrap_context("opening 'required_binaries' event index")?;
+        let upload_queue_required_binaries = upload_queue_meta
+            .index("required_binaries")
+            .wrap_context("opening 'required_binaries' upload_queue index")?;
 
         let required_binaries = snapshot_required_binaries
             .get_all_keys(None)
@@ -150,6 +167,13 @@ impl IndexedDb {
                     .get_all_keys(None)
                     .await
                     .wrap_context("listing all required binaries for events")?
+                    .into_iter(),
+            )
+            .chain(
+                upload_queue_required_binaries
+                    .get_all_keys(None)
+                    .await
+                    .wrap_context("listing all required binaries for the upload queue")?
                     .into_iter(),
             );
         let mut res = HashSet::new();
@@ -348,6 +372,7 @@ impl IndexedDb {
                 "snapshots_meta",
                 "events",
                 "events_meta",
+                "upload_queue_meta",
                 "binaries",
             ])
             .run(move |transaction| async move {
@@ -367,9 +392,9 @@ impl IndexedDb {
                     .object_store("binaries")
                     .wrap_context("retrieving the 'binaries' object store")?;
 
-                let locked_uploaded_object = snapshots_meta
-                    .index("locked_uploaded_object")
-                    .wrap_context("retrieving the 'locked_uploaded_object' index")?;
+                let locked_object = snapshots_meta
+                    .index("locked_object")
+                    .wrap_context("retrieving the 'locked_object' index")?;
                 let object_snapshot = snapshots_meta
                     .index("object_snapshot")
                     .wrap_context("retrieving the 'object_snapshot' index")?;
@@ -377,16 +402,13 @@ impl IndexedDb {
                 let object_event = events_meta
                     .index("object_event")
                     .wrap_context("retrieving the 'object_event' index")?;
-                let not_uploaded_object = events_meta
-                    .index("not_uploaded_object")
-                    .wrap_context("retrieving the 'not_uploaded_object' index")?;
 
-                // Remove all unlocked objects that have completed uploading
-                let mut to_remove = locked_uploaded_object
+                // Remove all unlocked objects
+                let mut to_remove = locked_object
                     .cursor()
                     .range(
-                        &**Array::from_iter([&JsValue::from(0), &JsValue::from(0), &zero_id])
-                            ..=&**Array::from_iter([&JsValue::from(0), &JsValue::from(0), &max_id]),
+                        &**Array::from_iter([&JsValue::from(0), &zero_id])
+                            ..=&**Array::from_iter([&JsValue::from(0), &max_id]),
                     )
                     .wrap_context("limiting cursor to only unlocked objects")?
                     .open()
@@ -399,21 +421,6 @@ impl IndexedDb {
                         .wrap_context("deserializing unlocked object")?;
                     let object_id = s.object_id;
                     let object_id_js = object_id.to_js_string();
-
-                    // If one event of this object has not uploaded yet, skip it
-                    let has_not_uploaded_event = not_uploaded_object
-                        .contains(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                        .await
-                        .wrap_with_context(|| {
-                            format!("checking whether {object_id:?} has a not-yet-uploaded event")
-                        })?;
-                    if has_not_uploaded_event {
-                        to_remove
-                            .advance(1)
-                            .await
-                            .wrap_context("getting next to-remove object")?;
-                        continue;
-                    }
 
                     // Remove all the snapshots
                     let mut snapshots_to_remove = object_snapshot
@@ -510,7 +517,12 @@ impl IndexedDb {
         use std::collections::{hash_map, HashMap};
 
         self.db
-            .transaction(&["snapshots_meta", "events_meta", "binaries"])
+            .transaction(&[
+                "snapshots_meta",
+                "events_meta",
+                "upload_queue_meta",
+                "binaries",
+            ])
             .run(move |transaction| async move {
                 let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
                 let events_meta = transaction.object_store("events_meta").unwrap();
@@ -656,7 +668,6 @@ impl IndexedDb {
                     assert!(creation.is_creation == Some(1));
                     assert!(latest.is_latest == Some(1));
                     assert!(creation.is_locked.is_some());
-                    assert!(creation.upload_not_over.is_some());
                     if creation.snapshot_id == latest.snapshot_id {
                         continue;
                     }
@@ -694,7 +705,6 @@ impl IndexedDb {
                             assert!(snapshot_meta.required_binaries == object.required_binaries());
                             assert!(snapshot_meta.type_id == *T::type_ulid());
                             assert!(snapshot_meta.is_locked.is_none());
-                            assert!(snapshot_meta.upload_not_over.is_none());
                         }
                     }
                 }
@@ -722,7 +732,6 @@ impl Db for IndexedDb {
             is_latest: Some(1),
             snapshot_version: T::snapshot_version(),
             is_locked: Some(1),
-            upload_not_over: Some(1),
             required_binaries: object.required_binaries(),
         };
         let object_id_js = object_id.to_js_string();
@@ -768,7 +777,6 @@ impl Db for IndexedDb {
                     // Ignore a few fields in comparison below
                     old_meta.is_latest = Some(1);
                     old_meta.is_locked = Some(1);
-                    old_meta.upload_not_over = Some(1);
                     if old_meta != new_snapshot_meta {
                         return Err(crate::Error::ObjectAlreadyExists(object_id).into());
                     }
@@ -847,7 +855,6 @@ impl Db for IndexedDb {
         let new_event_meta = EventMeta {
             event_id,
             object_id,
-            upload_not_over: 1,
             required_binaries: event.required_binaries(),
         };
         let object_id_js = object_id.to_js_string();
@@ -926,12 +933,10 @@ impl Db for IndexedDb {
                             .ok_or_else(|| {
                                 crate::Error::Other(anyhow!("inserting {event_id:?} failed but the preexisting duplicate seems not to exist"))
                             })?;
-                        let mut old_meta = serde_wasm_bindgen::from_value::<EventMeta>(old_meta_js)
+                        let old_meta = serde_wasm_bindgen::from_value::<EventMeta>(old_meta_js)
                             .wrap_with_context(|| {
                                 format!("deserializing preexisting event metadata for {event_id:?}")
                             })?;
-                        // Ignore a few fields in comparison below
-                        old_meta.upload_not_over = 1;
                         if old_meta != new_event_meta {
                             return Err(crate::Error::EventAlreadyExists(event_id).into());
                         }
@@ -1027,7 +1032,6 @@ impl Db for IndexedDb {
                     is_latest: Some(1),
                     snapshot_version: T::snapshot_version(),
                     is_locked: None,
-                    upload_not_over: None,
                     required_binaries: last_snapshot.required_binaries(),
                 };
                 let last_applied_event_id_js = serde_wasm_bindgen::to_value(&last_applied_event_id)
@@ -1354,7 +1358,6 @@ impl Db for IndexedDb {
                     is_latest: cutoff_is_already_latest.then(|| 1),
                     snapshot_version: T::snapshot_version(),
                     is_locked: creation_snapshot_meta.is_locked,
-                    upload_not_over: creation_snapshot_meta.upload_not_over,
                     required_binaries: object.required_binaries(),
                 };
                 let new_snapshot_meta_js = serde_wasm_bindgen::to_value(&new_snapshot_meta)
@@ -1370,13 +1373,14 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("recreating {object_id:?} at {time:?}"))
     }
 
-    async fn remove(&self, object_id: ObjectId) -> crate::Result<bool> {
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
         let object_id_js = object_id.to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
         let max_id = EventId::from_u128(u128::MAX).to_js_string();
 
         self.db
             .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
+            .rw()
             .run(move |transaction| async move {
                 let snapshots_meta = transaction
                     .object_store("snapshots_meta")
@@ -1401,35 +1405,15 @@ impl Db for IndexedDb {
                 let object_event = events_meta
                     .index("object_event")
                     .wrap_context("retrieving the 'object_event' index")?;
-                let not_uploaded_object = events_meta
-                    .index("not_uploaded_object")
-                    .wrap_context("retrieving the 'not_uploaded_object' index")?;
 
                 // Check we're good to delete this object
-                let creation_meta = creation_object
-                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                    .await
-                    .wrap_context("retrieving creation snapshot")?;
-                let Some(creation_meta) = creation_meta else {
-                    return Err(crate::Error::ObjectAlreadyExists(object_id).into());
-                };
-                let creation_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
-                    .wrap_context("deserializing snapshot metadata")?;
-                let upload_not_over = creation_meta.upload_not_over.ok_or_else(|| {
-                    crate::Error::Other(anyhow!(
-                        "creation snapshot metadata had no upload_not_over field"
-                    ))
-                })?;
-                if upload_not_over != 0 {
-                    return Ok(false);
-                }
-                if not_uploaded_object
+                let object_does_exist = creation_object
                     .contains(&Array::from_iter([&JsValue::from(1), &object_id_js]))
                     .await
-                    .wrap_context("checking whether object has pending event uploads")?
-                {
-                    return Ok(false);
-                }
+                    .wrap_context("retrieving creation snapshot")?;
+                if !object_does_exist {
+                    return Err(crate::Error::ObjectAlreadyExists(object_id).into());
+                };
 
                 // We're good to go, delete everything
                 let mut to_remove = object_snapshot
@@ -1482,7 +1466,7 @@ impl Db for IndexedDb {
                         .wrap_context("going to next to-delete event")?;
                 }
 
-                Ok(true)
+                Ok(())
             })
             .await
             .wrap_with_context(|| format!("removing {object_id:?}"))

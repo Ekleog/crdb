@@ -96,7 +96,7 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< unsubscribe_from_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<bool>> {
+                pub fn [< unsubscribe_from_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {
                     self.db.unsubscribe(object.to_object_id())
                 }
 

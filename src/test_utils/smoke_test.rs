@@ -6,12 +6,12 @@ macro_rules! smoke_test {
         vacuum: $vacuum:expr,
         test_remove: $test_remove:expr,
     ) => {
+        use futures::stream::StreamExt;
+        use std::sync::Arc;
         use $crate::{
             crdb_internal::{test_utils::*, Db},
             Query, Timestamp,
         };
-        use futures::stream::StreamExt;
-        use std::sync::Arc;
 
         $db.create(
             OBJECT_ID_1,
@@ -144,9 +144,20 @@ macro_rules! smoke_test {
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
         if $test_remove {
-            assert!(!$db.remove(OBJECT_ID_1).await.unwrap()); // fail removal, object is not uploaded yet
+            $db.remove(OBJECT_ID_1).await.unwrap();
             $db.assert_invariants_generic().await;
             $db.assert_invariants_for::<TestObjectSimple>().await;
+            let all_objects = $db
+                .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
+                .await
+                .unwrap()
+                .collect::<Vec<$crate::Result<_>>>()
+                .await;
+            let all_objects = all_objects
+                .into_iter()
+                .map(|o| o.unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(all_objects.len(), 0);
         }
         let data = Arc::new(vec![1, 2, 3]);
         let ptr = $crate::hash_binary(&data);
@@ -155,5 +166,5 @@ macro_rules! smoke_test {
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert!($db.get_binary(ptr).await.unwrap().unwrap() == data);
-    }
+    };
 }

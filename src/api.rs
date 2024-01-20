@@ -212,7 +212,7 @@ pub enum NewThing {
     Object(TypeId, ObjectId, serde_json::Value),
     Event(TypeId, ObjectId, EventId, serde_json::Value),
     Recreation(TypeId, ObjectId, Timestamp),
-    Binary(BinPtr, Vec<u8>),
+    Binary(BinPtr, Arc<Vec<u8>>),
     CurrentTime(Timestamp),
 }
 
@@ -221,12 +221,44 @@ pub enum Request {
     Subscribe(HashSet<ObjectId>),
     Unsubscribe(HashSet<ObjectId>),
     GetTime,
+    Upload(Vec<UploadOrBinary>),
     // TODO
+}
+
+#[allow(dead_code)] // TODO: remove
+pub enum Upload {
+    Object {
+        object_id: ObjectId,
+        type_id: TypeId,
+        created_at: EventId,
+        data: serde_json::Value,
+    },
+    Event {
+        event_id: EventId,
+        type_id: TypeId,
+        object_id: ObjectId,
+        data: serde_json::Value,
+    },
+}
+
+#[allow(dead_code)] // TODO: remove
+pub enum UploadOrBinary {
+    Upload(Upload),
+    Binary(Arc<Vec<u8>>),
+}
+
+#[allow(dead_code)] // TODO: remove
+pub enum UploadOrBinPtr {
+    Upload(Upload),
+    BinPtr(BinPtr),
 }
 
 /// One ServerMessage is supposed to hold as many NewThings as possible
 /// without delaying updates, but still avoiding going too far above
 /// than 1M / message, to allow for better resumability.
+///
+/// As an exception, if `as_answer_to` is set, then `new_things` contains
+/// at least the requested thing(s)
 #[allow(dead_code)] // TODO: remove
 pub struct ServerMessage {
     updates_on_server_until: Timestamp,

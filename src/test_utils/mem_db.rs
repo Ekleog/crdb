@@ -262,7 +262,7 @@ impl Db for MemDb {
         Ok(())
     }
 
-    async fn remove(&self, _object_id: ObjectId) -> crate::Result<bool> {
+    async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {
         todo!()
     }
 

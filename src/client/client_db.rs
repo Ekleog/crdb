@@ -66,15 +66,9 @@ impl<A: Authenticator> ClientDb<A> {
         self.api.new_recreations().await
     }
 
-    /// Note that unsubscription can fail if the object has not been fully uploaded yet
-    ///
-    /// This function returns `true` if the unsubscription succeeded.
-    pub async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<bool> {
-        let removal_succeeded = self.db.remove(ptr).await?;
-        if removal_succeeded {
-            self.api.unsubscribe(ptr).await?;
-        }
-        Ok(removal_succeeded)
+    pub async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
+        self.db.remove(ptr).await?;
+        self.api.unsubscribe(ptr).await
     }
 
     pub async fn create<T: Object>(
