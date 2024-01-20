@@ -1210,7 +1210,18 @@ impl Db for IndexedDb {
                     .wrap_context("opening cursor on latest event before cutoff")?
                     .primary_key();
                 let Some(new_creation_event_id_js) = new_creation_event_id_js else {
-                    return Ok(()); // no event before cutoff, nothing to do
+                    // Check whether the object exists, to return the proper error if not
+                    if creation_object
+                        .contains(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                        .await
+                        .wrap_context("checking whether object exists")?
+                    {
+                        // No event before cutoff, nothing to do
+                        return Ok(());
+                    } else {
+                        // Object does not exist, return an error
+                        return Err(crate::Error::ObjectDoesNotExist(object_id).into());
+                    }
                 };
                 let new_creation_event_id =
                     serde_wasm_bindgen::from_value::<EventId>(new_creation_event_id_js.clone())
