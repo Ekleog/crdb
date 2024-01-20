@@ -124,7 +124,6 @@ impl IndexedDb {
         self.is_persistent
     }
 
-    #[allow(dead_code)] // TODO: use in vacuum
     async fn list_required_binaries(
         transaction: &indexed_db::Transaction<crate::Error>,
     ) -> crate::Result<HashSet<BinPtr>> {
