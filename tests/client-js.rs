@@ -1,6 +1,10 @@
 #![cfg(all(feature = "client", target_arch = "wasm32"))]
 
-use crdb::crdb_internal::{test_utils::*, Db, LocalDb};
+use crdb::{
+    crdb_internal::{test_utils::*, Db, LocalDb},
+    Query,
+};
+use futures::stream::StreamExt;
 use std::sync::Arc;
 use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
 
@@ -121,4 +125,15 @@ async fn smoke_test() {
     db.vacuum().await.unwrap();
     db.assert_invariants_generic().await;
     db.assert_invariants_for::<TestObjectSimple>().await;
+    let all_objects = db
+        .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
+        .await
+        .unwrap()
+        .collect::<Vec<crdb::Result<_>>>()
+        .await;
+    let all_objects = all_objects
+        .into_iter()
+        .map(|o| o.unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(all_objects.len(), 1);
 }
