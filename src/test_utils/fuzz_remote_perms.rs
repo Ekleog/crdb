@@ -119,7 +119,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg = db
                 .submit::<TestObjectPerms, _>(o, *event_id, event.clone(), db)
                 .await;
@@ -138,7 +138,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg = db
                 .submit::<TestObjectDelegatePerms, _>(o, *event_id, event.clone(), db)
                 .await;
@@ -153,7 +153,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg: crdb::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                 Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
@@ -176,7 +176,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg: crdb::Result<Arc<TestObjectDelegatePerms>> = match db
                 .get::<TestObjectDelegatePerms>(o)
                 .await
@@ -228,7 +228,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg = db.recreate::<TestObjectPerms, _>(*time, o, db).await;
             let mem = s
                 .mem_db
@@ -241,7 +241,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg = db
                 .recreate::<TestObjectDelegatePerms, _>(*time, o, db)
                 .await;
