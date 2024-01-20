@@ -60,6 +60,7 @@ fuzz-pg-basic ARGS='':
 fuzz-idb-basic ARGS='':
     # TODO: remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
+    WASM_BINDGEN_TEST_TIMEOUT=86400 \
     cargo test --features client,_tests --target wasm32-unknown-unknown \
         client_js::fuzz_simple::fuzz \
         {{ARGS}} \
