@@ -138,39 +138,32 @@ impl IndexedDb {
             .object_store("events_meta")
             .wrap_context("opening 'events_meta' object store")?;
 
-        let mut required_binaries = HashSet::new();
-        let mut s = snapshots_meta
-            .cursor()
-            .open()
+        let snapshot_required_binaries = snapshots_meta
+            .index("required_binaries")
+            .wrap_context("opening 'required_binaries' snapshot index")?;
+        let event_required_binaries = events_meta
+            .index("required_binaries")
+            .wrap_context("opening 'required_binaries' event index")?;
+
+        let required_binaries = snapshot_required_binaries
+            .get_all_keys(None)
             .await
-            .wrap_context("opening cursor on 'snapshots_meta'")?;
-        while let Some(m) = s.value() {
-            required_binaries.extend(
-                serde_wasm_bindgen::from_value::<SnapshotMeta>(m)
-                    .wrap_context("parsing snapshot metadata")?
-                    .required_binaries,
+            .wrap_context("listing all required binaries for snapshots")?
+            .into_iter()
+            .chain(
+                event_required_binaries
+                    .get_all_keys(None)
+                    .await
+                    .wrap_context("listing all required binaries for events")?
+                    .into_iter(),
             );
-            s.advance(1)
-                .await
-                .wrap_context("moving to next snapshot metadata cursor item")?;
-        }
-        let mut e = events_meta
-            .cursor()
-            .open()
-            .await
-            .wrap_context("opening cursor on 'events_meta'")?;
-        while let Some(m) = e.value() {
-            required_binaries.extend(
-                serde_wasm_bindgen::from_value::<EventMeta>(m)
-                    .wrap_context("parsing event metadata")?
-                    .required_binaries,
-            );
-            e.advance(1)
-                .await
-                .wrap_context("moving to next event metadata cursor item")?;
+        let mut res = HashSet::new();
+        for b in required_binaries {
+            let b = serde_wasm_bindgen::from_value::<BinPtr>(b).wrap_context("parsing BinPtr")?;
+            res.insert(b);
         }
 
-        Ok(required_binaries)
+        Ok(res)
     }
 
     async fn get_impl<T: Object>(
