@@ -2,7 +2,7 @@ use rust_decimal::Decimal;
 
 use crate::fts;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
 #[non_exhaustive]
 pub enum JsonPathItem {
@@ -13,7 +13,7 @@ pub enum JsonPathItem {
     Id(i32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[non_exhaustive]
 pub enum Query {
     // Logic operators

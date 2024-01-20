@@ -45,10 +45,14 @@ mod fuzz_helpers {
             .unwrap()
     }
 
-    pub async fn run_with_seed<Fun, Arg, RetFut>(seed: u64, fuzz_impl: Fun) -> Option<String>
+    pub async fn run_with_seed<Fun, Arg, RetFut>(
+        seed: u64,
+        show: bool,
+        fuzz_impl: Fun,
+    ) -> Option<String>
     where
         Fun: FnOnce(&'static (), Arg) -> RetFut,
-        Arg: 'static + bolero::TypeGenerator,
+        Arg: 'static + serde::Serialize + bolero::TypeGenerator,
         RetFut: Future<Output = ()>,
     {
         // Generate the input
@@ -58,6 +62,17 @@ mod fuzz_helpers {
             web_sys::console::log_1(&format!(" -> invalid input").into());
             return None;
         };
+
+        // Show it
+        if show {
+            web_sys::console::log_1(
+                &format!(
+                    "running with input:\n{}",
+                    serde_json::to_string(&input).unwrap()
+                )
+                .into(),
+            );
+        }
 
         // Run it
         let next_db = format!("db{}", COUNTER.load(Ordering::Relaxed));
@@ -80,7 +95,8 @@ mod fuzz_helpers {
                     web_sys::console::log_1(&format!("Fuzzing with seed {seed}").into());
 
                     // Run the input
-                    let Some(used_db) = fuzz_helpers::run_with_seed(seed, $fuzz_impl).await else {
+                    let Some(used_db) = fuzz_helpers::run_with_seed(seed, false, $fuzz_impl).await
+                    else {
                         continue;
                     };
 

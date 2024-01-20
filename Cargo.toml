@@ -70,6 +70,7 @@ uuid = "1.6"
 
 [dev-dependencies]
 num-bigint = { version = "0.4.4", features = ["arbitrary"] }
+serde = { version = "1.0", features = ["rc"] }
 reord = { version = "0.2.2", features = ["test"] }
 rust_decimal = { version = "1.33", features = ["rust-fuzz"] }
 tempfile = "3.9"

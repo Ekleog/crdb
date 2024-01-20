@@ -30,7 +30,9 @@ pub struct DynNewRecreation {
     pub time: Timestamp,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 #[cfg_attr(feature = "_tests", derive(bolero::generator::TypeGenerator))]
 pub struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
