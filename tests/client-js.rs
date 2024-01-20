@@ -1,5 +1,6 @@
 #![cfg(all(feature = "client", target_arch = "wasm32"))]
 
+use crdb::crdb_internal::LocalDb;
 use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -9,5 +10,9 @@ async fn smoke_test() {
     tracing_wasm::set_as_global_default();
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     let db = LocalDb::connect("smoke-test").await.unwrap();
-    crdb::smoke_test!(db);
+    crdb::smoke_test!(
+        db: db,
+        vacuum: db.vacuum(),
+        test_remove: true,
+    );
 }

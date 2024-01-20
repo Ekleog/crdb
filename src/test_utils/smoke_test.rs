@@ -1,9 +1,13 @@
 #[cfg(feature = "_tests")]
 #[macro_export]
 macro_rules! smoke_test {
-    ($db:ident) => {
+    (
+        db: $db:ident,
+        vacuum: $vacuum:expr,
+        test_remove: $test_remove:expr,
+    ) => {
         use $crate::{
-            crdb_internal::{test_utils::*, Db, LocalDb},
+            crdb_internal::{test_utils::*, Db},
             Query, Timestamp,
         };
         use futures::stream::StreamExt;
@@ -116,7 +120,7 @@ macro_rules! smoke_test {
                 .expect("getting last snapshot")
                 .0
         );
-        $db.vacuum().await.unwrap();
+        $vacuum.await.unwrap();
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
         let all_objects = $db
@@ -139,9 +143,11 @@ macro_rules! smoke_test {
         .unwrap();
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
-        assert!(!$db.remove(OBJECT_ID_1).await.unwrap()); // fail removal, object is not uploaded yet
-        $db.assert_invariants_generic().await;
-        $db.assert_invariants_for::<TestObjectSimple>().await;
+        if $test_remove {
+            assert!(!$db.remove(OBJECT_ID_1).await.unwrap()); // fail removal, object is not uploaded yet
+            $db.assert_invariants_generic().await;
+            $db.assert_invariants_for::<TestObjectSimple>().await;
+        }
         let data = Arc::new(vec![1, 2, 3]);
         let ptr = $crate::hash_binary(&data);
         assert!($db.get_binary(ptr).await.unwrap().is_none());
