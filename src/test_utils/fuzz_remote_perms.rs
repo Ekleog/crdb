@@ -261,7 +261,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
     Ok(())
 }
 
-async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) {
+async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) -> Database {
     let db = make_db(cluster).await;
     let mut s = FuzzState::new(*is_server);
     for (i, op) in ops.iter().enumerate() {
@@ -273,6 +273,7 @@ async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>)
         db.assert_invariants_for::<TestObjectPerms>().await;
         db.assert_invariants_for::<TestObjectDelegatePerms>().await;
     }
+    db
 }
 
 make_fuzzer!(fuzz, fuzz_impl);
@@ -297,7 +298,7 @@ async fn regression_get_with_wrong_type_did_not_fail() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -323,7 +324,7 @@ async fn regression_changing_remote_objects_did_not_refresh_perms() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -340,7 +341,7 @@ async fn regression_self_referencing_object_deadlocks() {
             )),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -366,7 +367,7 @@ async fn regression_submit_wrong_type_ignores_failure() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -391,5 +392,5 @@ async fn regression_postgres_not_null_was_null() {
             },
         ]),
     )
-    .await
+    .await;
 }

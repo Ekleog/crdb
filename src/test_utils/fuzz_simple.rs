@@ -156,7 +156,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
     Ok(())
 }
 
-async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) {
+async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) -> Database {
     let db = make_db(cluster).await;
     let mut s = FuzzState::new(*is_server);
     for (i, op) in ops.iter().enumerate() {
@@ -167,6 +167,7 @@ async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>)
         db.assert_invariants_generic().await;
         db.assert_invariants_for::<TestObjectSimple>().await;
     }
+    db
 }
 
 make_fuzzer!(fuzz, fuzz_impl);
@@ -205,7 +206,7 @@ async fn regression_events_1342_fails_to_notice_conflict_on_3() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -219,7 +220,7 @@ async fn regression_proper_error_on_recreate_inexistent() {
             time: Timestamp::from_ms(0),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -241,7 +242,7 @@ async fn regression_wrong_error_on_object_already_exists() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -263,7 +264,7 @@ async fn regression_postgres_did_not_distinguish_between_object_and_event_confli
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -290,7 +291,7 @@ async fn regression_submit_on_other_snapshot_date_fails() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -320,7 +321,7 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -347,7 +348,7 @@ async fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conf
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -360,7 +361,7 @@ async fn regression_any_query_crashed_postgres() {
             q: Query::All(vec![]),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -373,7 +374,7 @@ async fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
             q: Query::Lt(vec![], Decimal::from_str("0").unwrap()),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -389,7 +390,7 @@ async fn regression_keyed_comparison_was_still_wrong_syntax() {
             ),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -405,7 +406,7 @@ async fn regression_too_big_decimal_failed_postgres() {
             ),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -421,7 +422,7 @@ async fn regression_postgresql_syntax_for_equality() {
             ),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -437,7 +438,7 @@ async fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
             ),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -453,7 +454,7 @@ async fn regression_way_too_big_decimal_caused_problems() {
             ),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -469,7 +470,7 @@ async fn regression_strings_are_in_keys_too() {
             ),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -489,7 +490,7 @@ async fn regression_cast_error() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -505,7 +506,7 @@ async fn regression_sql_injection_in_path_key() {
             ),
         }]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -550,7 +551,7 @@ async fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -570,7 +571,7 @@ async fn regression_postgres_null_led_to_not_being_wrong() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -598,7 +599,7 @@ async fn regression_postgres_handled_numbers_as_one_element_arrays() {
             },
         ]),
     )
-    .await
+    .await;
 }
 
 /*
@@ -609,6 +610,6 @@ async fn impl_reproducer() {
         &cluster,
         serde_json::from_str(include_str!("../../repro.json")).unwrap(),
     )
-    .await
+    .await;
 }
 */

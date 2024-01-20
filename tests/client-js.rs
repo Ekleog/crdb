@@ -55,7 +55,7 @@ mod fuzz_helpers {
     where
         Fun: FnOnce(&'static ((), bool), Arg) -> RetFut,
         Arg: 'static + serde::Serialize + bolero::TypeGenerator,
-        RetFut: Future<Output = ()>,
+        RetFut: Future<Output = Database>,
     {
         // Generate the input
         let rng = StdRng::seed_from_u64(seed);
@@ -78,7 +78,8 @@ mod fuzz_helpers {
 
         // Run it
         let next_db = format!("db{}", COUNTER.load(Ordering::Relaxed));
-        fuzz_impl(&((), false), input).await;
+        let db = fuzz_impl(&((), false), input).await;
+        db.close();
         web_sys::console::log_1(&format!(" -> cleaning up").into());
 
         Some(next_db)

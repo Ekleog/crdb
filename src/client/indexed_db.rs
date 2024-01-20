@@ -131,6 +131,11 @@ impl IndexedDb {
         Ok(IndexedDb { is_persistent, db })
     }
 
+    #[cfg(feature = "_tests")]
+    pub fn close(&self) {
+        self.db.close();
+    }
+
     pub fn is_persistent(&self) -> bool {
         self.is_persistent
     }
