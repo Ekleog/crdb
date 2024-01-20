@@ -118,7 +118,7 @@ mod fuzz_helpers {
                     .for_each(move |ops| {
                         tokio::runtime::Runtime::new()
                             .unwrap()
-                            .block_on($fuzz_impl(&cluster, ops))
+                            .block_on($fuzz_impl(&cluster, Arc::clone(ops)))
                     })
             }
         };

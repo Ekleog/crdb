@@ -156,7 +156,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
     Ok(())
 }
 
-async fn fuzz_impl(cluster: &SetupState, ops: &Vec<Op>) {
+async fn fuzz_impl(cluster: &SetupState, ops: Arc<Vec<Op>>) {
     let db = make_db(cluster).await;
     let mut s = FuzzState::new();
     for (i, op) in ops.iter().enumerate() {
@@ -177,7 +177,7 @@ async fn regression_events_1342_fails_to_notice_conflict_on_3() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Create {
                 id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
@@ -203,7 +203,7 @@ async fn regression_events_1342_fails_to_notice_conflict_on_3() {
                 created_at: EVENT_ID_3,
                 object: Arc::new(TestObjectSimple(b"456".to_vec())),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -214,10 +214,10 @@ async fn regression_proper_error_on_recreate_inexistent() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Recreate {
+        Arc::new(vec![Recreate {
             object: 0,
             time: Timestamp::from_ms(0),
-        }],
+        }]),
     )
     .await
 }
@@ -228,7 +228,7 @@ async fn regression_wrong_error_on_object_already_exists() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Create {
                 id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
@@ -239,7 +239,7 @@ async fn regression_wrong_error_on_object_already_exists() {
                 created_at: EVENT_ID_2,
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -250,7 +250,7 @@ async fn regression_postgres_did_not_distinguish_between_object_and_event_confli
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Create {
                 id: ObjectId(Ulid::from_string("0001SPAWVKD5QPWQV100000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -261,7 +261,7 @@ async fn regression_postgres_did_not_distinguish_between_object_and_event_confli
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 244, 0, 105, 111, 110, 0])),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -272,7 +272,7 @@ async fn regression_submit_on_other_snapshot_date_fails() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Create {
                 id: ObjectId(Ulid::from_string("0000000000000004PAVG100000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -288,7 +288,7 @@ async fn regression_submit_on_other_snapshot_date_fails() {
                 event_id: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -299,7 +299,7 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Create {
                 id: ObjectId(Ulid::from_string("00000A58N21A8JM00000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -318,7 +318,7 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
                 event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -329,7 +329,7 @@ async fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conf
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Create {
                 id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -345,7 +345,7 @@ async fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conf
                 created_at: EventId(Ulid::from_string("00000000000000188000NG0000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 1, 0, 0, 4])),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -355,10 +355,10 @@ async fn regression_any_query_crashed_postgres() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::All(vec![]),
-        }],
+        }]),
     )
     .await
 }
@@ -368,10 +368,10 @@ async fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Lt(vec![], Decimal::from_str("0").unwrap()),
-        }],
+        }]),
     )
     .await
 }
@@ -381,13 +381,13 @@ async fn regression_keyed_comparison_was_still_wrong_syntax() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Ge(
                 vec![JsonPathItem::Key(String::new())],
                 Decimal::from_str("0").unwrap(),
             ),
-        }],
+        }]),
     )
     .await
 }
@@ -397,13 +397,13 @@ async fn regression_too_big_decimal_failed_postgres() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Ge(
                 vec![JsonPathItem::Key(String::new())],
                 Decimal::from_str(&format!("0.{:030000}1", 0)).unwrap(),
             ),
-        }],
+        }]),
     )
     .await
 }
@@ -413,13 +413,13 @@ async fn regression_postgresql_syntax_for_equality() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Eq(
                 vec![JsonPathItem::Key(String::new())],
                 serde_json::Value::Null,
             ),
-        }],
+        }]),
     )
     .await
 }
@@ -429,13 +429,13 @@ async fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Le(
                 vec![],
                 Decimal::from_str(&format!("0.{:0228}1", 0)).unwrap(),
             ),
-        }],
+        }]),
     )
     .await
 }
@@ -445,13 +445,13 @@ async fn regression_way_too_big_decimal_caused_problems() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Le(
                 vec![],
                 Decimal::from_str(&format!("0.{:057859}1", 0)).unwrap(),
             ),
-        }],
+        }]),
     )
     .await
 }
@@ -461,13 +461,13 @@ async fn regression_strings_are_in_keys_too() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             q: Query::Le(
                 vec![JsonPathItem::Key(String::from("\0"))],
                 Decimal::from_str("0").unwrap(),
             ),
-        }],
+        }]),
     )
     .await
 }
@@ -477,7 +477,7 @@ async fn regression_cast_error() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Op::Create {
                 id: ObjectId(Ulid::from_string("000000000000000000000002G0").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -487,7 +487,7 @@ async fn regression_cast_error() {
                 user: User(Ulid::from_string("00000000000000000000000001").unwrap()),
                 q: Query::Le(vec![], Decimal::from_str("0").unwrap()),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -497,13 +497,13 @@ async fn regression_sql_injection_in_path_key() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![Op::Query {
+        Arc::new(vec![Op::Query {
             user: User(Ulid::from_string("030C1G60R30C1G60R30C1G60R3").unwrap()),
             q: Query::Eq(
                 vec![JsonPathItem::Key(String::from("'a"))],
                 serde_json::Value::Null,
             ),
-        }],
+        }]),
     )
     .await
 }
@@ -514,7 +514,7 @@ async fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Op::Recreate {
                 object: 0,
                 time: Timestamp::from_ms(1),
@@ -548,7 +548,7 @@ async fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
                     serde_json::Value::Null,
                 ),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -558,7 +558,7 @@ async fn regression_postgres_null_led_to_not_being_wrong() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Op::Create {
                 id: ObjectId(Ulid::from_string("000002C1800G08000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("0000000000200000000002G000").unwrap()),
@@ -568,7 +568,7 @@ async fn regression_postgres_null_led_to_not_being_wrong() {
                 user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
                 q: Query::Not(Box::new(Query::ContainsStr(vec![], String::new()))),
             },
-        ],
+        ]),
     )
     .await
 }
@@ -583,7 +583,7 @@ async fn regression_postgres_handled_numbers_as_one_element_arrays() {
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        &vec![
+        Arc::new(vec![
             Op::Create {
                 id: ObjectId(Ulid::from_string("0000001YR00020000002G002G0").unwrap()),
                 created_at: EventId(Ulid::from_string("0003XA00000G22PB005R1G6000").unwrap()),
@@ -596,7 +596,7 @@ async fn regression_postgres_handled_numbers_as_one_element_arrays() {
                     Decimal::from(158),
                 ),
             },
-        ],
+        ]),
     )
     .await
 }

@@ -18,11 +18,16 @@ async fn smoke_test() {
 }
 
 mod fuzz_helpers {
+    use bolero::{generator::bolero_generator, Driver};
     use crdb::{
         crdb_internal::{test_utils::MemDb, LocalDb},
         Timestamp,
     };
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use rand::{rngs::StdRng, SeedableRng};
+    use std::{
+        future::Future,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     pub use crdb;
     pub use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -40,40 +45,49 @@ mod fuzz_helpers {
             .unwrap()
     }
 
+    pub async fn run_with_seed<Fun, Arg, RetFut>(seed: u64, fuzz_impl: Fun) -> Option<String>
+    where
+        Fun: FnOnce(&'static (), Arg) -> RetFut,
+        Arg: 'static + bolero::TypeGenerator,
+        RetFut: Future<Output = ()>,
+    {
+        // Generate the input
+        let rng = StdRng::seed_from_u64(seed);
+        let mut bolero_gen = bolero_generator::driver::Rng::new(rng, &Default::default());
+        let Some(input) = bolero_gen.gen() else {
+            web_sys::console::log_1(&format!(" -> invalid input").into());
+            return None;
+        };
+
+        // Run it
+        let next_db = format!("db{}", COUNTER.load(Ordering::Relaxed));
+        fuzz_impl(&(), input).await;
+        web_sys::console::log_1(&format!(" -> cleaning up").into());
+
+        Some(next_db)
+    }
+
     macro_rules! make_fuzzer {
         ($name:ident, $fuzz_impl:ident) => {
             #[wasm_bindgen_test::wasm_bindgen_test]
             #[ignore]
             async fn $name() {
-                use bolero::{generator::bolero_generator, Driver};
-                use rand::{rngs::StdRng, Rng, SeedableRng};
+                use rand::Rng;
 
                 loop {
                     // Get a seed
                     let seed: u64 = rand::thread_rng().gen();
                     web_sys::console::log_1(&format!("Fuzzing with seed {seed}").into());
 
-                    // Generate the input
-                    let rng = StdRng::seed_from_u64(seed);
-                    let mut bolero_gen =
-                        bolero_generator::driver::Rng::new(rng, &Default::default());
-                    let Some(input) = bolero_gen.gen() else {
-                        web_sys::console::log_1(&format!(" -> invalid input").into());
+                    // Run the input
+                    let Some(used_db) = fuzz_helpers::run_with_seed(seed, $fuzz_impl).await else {
                         continue;
                     };
-
-                    // Run it
-                    let next_db = format!(
-                        "db{}",
-                        fuzz_helpers::COUNTER.load(std::sync::atomic::Ordering::Relaxed)
-                    );
-                    fuzz_impl(&(), &input).await;
-                    web_sys::console::log_1(&format!(" -> cleaning up").into());
 
                     // Cleanup
                     indexed_db::Factory::<()>::get()
                         .expect("failed retrieving factory")
-                        .delete_database(&next_db)
+                        .delete_database(&used_db)
                         .await
                         .expect("failed cleaning up test database");
                 }
