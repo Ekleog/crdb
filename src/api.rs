@@ -185,7 +185,7 @@ impl<T: Object> DbPtr<T> {
         ObjectId(self.id)
     }
 
-    #[cfg(test)]
+    #[cfg(feature = "_tests")]
     pub fn from_string(s: &str) -> anyhow::Result<DbPtr<T>> {
         Ok(DbPtr {
             id: Ulid::from_string(s)?,

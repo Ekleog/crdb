@@ -139,7 +139,15 @@ mod fuzz_helpers {
                 .unwrap();
             }
             Some(recreate_at) => {
-                let mem = mem_db.recreate_all::<TestObjectSimple>(recreate_at).await;
+                let mem = (|| async {
+                    mem_db.recreate_all::<TestObjectSimple>(recreate_at).await?;
+                    mem_db.recreate_all::<TestObjectPerms>(recreate_at).await?;
+                    mem_db
+                        .recreate_all::<TestObjectDelegatePerms>(recreate_at)
+                        .await?;
+                    Ok(())
+                })()
+                .await;
                 let pg = db.vacuum(Some(recreate_at), None, db, |_| ()).await;
                 cmp(pg, mem)?;
             }

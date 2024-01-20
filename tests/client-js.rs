@@ -143,3 +143,7 @@ mod fuzz_simple {
     }
     */
 }
+
+mod fuzz_remote_perms {
+    include!("../src/test_utils/fuzz_remote_perms.rs");
+}
