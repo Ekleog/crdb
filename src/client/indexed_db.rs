@@ -123,7 +123,6 @@ impl IndexedDb {
 
     #[allow(dead_code)] // TODO: use in vacuum
     async fn list_required_binaries(
-        &self,
         transaction: &indexed_db::Transaction<crate::Error>,
     ) -> crate::Result<HashSet<BinPtr>> {
         let snapshots_meta = transaction
@@ -133,7 +132,6 @@ impl IndexedDb {
             .object_store("events_meta")
             .wrap_context("opening 'events_meta' object store")?;
 
-        // All binaries are present
         let mut required_binaries = HashSet::new();
         let mut s = snapshots_meta
             .cursor()
@@ -189,7 +187,7 @@ impl IndexedDb {
                 let creation_object = snapshots_meta.index("creation_object").unwrap();
 
                 // All binaries are present
-                let required_binaries = self.list_required_binaries(&transaction).await.unwrap();
+                let required_binaries = Self::list_required_binaries(&transaction).await.unwrap();
                 for b in required_binaries {
                     if !binaries
                         .contains(&serde_wasm_bindgen::to_value(&b).unwrap())
@@ -220,17 +218,25 @@ impl IndexedDb {
                     event_cursor.advance(1).await.unwrap();
                 }
 
-                // All non-creation snapshots match an event
+                // All non-creation snapshots match an event, on the same object
                 let mut snapshot_cursor = snapshots_meta.cursor().open().await.unwrap();
                 while let Some(s) = snapshot_cursor.value() {
                     let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap();
-                    if s.is_creation.is_none()
-                        && !events_meta
-                            .contains(&s.snapshot_id.to_js_string())
-                            .await
-                            .unwrap()
-                    {
+                    let e = events_meta
+                        .get(&s.snapshot_id.to_js_string())
+                        .await
+                        .unwrap();
+                    if s.is_creation.is_none() && !e.is_some() {
                         panic!("snapshot {:?} has no corresponding event", s.snapshot_id);
+                    }
+                    if let Some(e) = e {
+                        let e = serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap();
+                        if e.object_id != s.object_id {
+                            panic!(
+                                "object for snapshot and event at {:?} does not match",
+                                s.snapshot_id
+                            );
+                        }
                     }
                     snapshot_cursor.advance(1).await.unwrap();
                 }
