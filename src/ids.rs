@@ -80,8 +80,17 @@ macro_rules! impl_for_id {
     ($type:ty) => {
         #[allow(dead_code)]
         impl $type {
-            pub(crate) fn now() -> Self {
-                Self(Ulid::new())
+            pub fn now() -> Self {
+                #[cfg(not(target_arch = "wasm32"))]
+                let res = Self(Ulid::new());
+                #[cfg(target_arch = "wasm32")]
+                let res = Self(Ulid::from_datetime(
+                    std::time::SystemTime::UNIX_EPOCH
+                        + wasm_timer::SystemTime::now()
+                            .duration_since(wasm_timer::SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                ));
+                res
             }
 
             pub(crate) fn time(&self) -> Timestamp {

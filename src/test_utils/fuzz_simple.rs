@@ -87,7 +87,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg = db
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
@@ -102,7 +102,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg: crdb::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
             {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
@@ -138,7 +138,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .objects
                 .get(*object)
                 .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
+                .unwrap_or_else(|| ObjectId::now());
             let pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
             let mem = s
                 .mem_db
