@@ -284,7 +284,7 @@ impl<D: Db> Db for CacheDb<D> {
         self.cache.write().await.recreate::<T>(object, time)
     }
 
-    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<bool> {
         self.cache.write().await.remove(&object_id);
         self.db.remove(object_id).await
     }

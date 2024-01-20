@@ -1539,7 +1539,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<bool> {
         panic!("Tried removing {object_id:?} from server, but server is supposed to always keep all the history!")
     }
 

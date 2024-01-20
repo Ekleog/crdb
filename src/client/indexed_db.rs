@@ -1356,7 +1356,7 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("recreating {object_id:?} at {time:?}"))
     }
 
-    async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {
+    async fn remove(&self, _object_id: ObjectId) -> crate::Result<bool> {
         todo!()
     }
 
