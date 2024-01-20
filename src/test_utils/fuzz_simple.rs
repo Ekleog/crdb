@@ -1,10 +1,10 @@
-use super::TmpDb;
+use super::fuzz_helpers::{Database, make_db, SetupState, setup};
+
 use crate::{
     db_trait::Db,
     error::ResultExt,
-    server::postgres_db::PostgresDb,
     test_utils::{
-        self, cmp, cmp_query_results, db::ServerConfig, TestEventSimple, TestObjectSimple,
+        self, cmp, cmp_query_results, TestEventSimple, TestObjectSimple,
         EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2, USER_ID_NULL,
     },
     EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
@@ -61,7 +61,7 @@ impl FuzzState {
     }
 }
 
-async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Create {
             id,
@@ -168,16 +168,11 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
     Ok(())
 }
 
-fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
+fn fuzz_impl(cluster: &SetupState, ops: &Vec<Op>) {
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async move {
-            let pool = cluster.pool().await;
-            let db = PostgresDb::connect(pool.clone()).await.unwrap();
-            sqlx::query(include_str!("../cleanup-db.sql"))
-                .execute(&pool)
-                .await
-                .unwrap();
+            let db = make_db(cluster).await;
             let mut s = FuzzState::new();
             for (i, op) in ops.iter().enumerate() {
                 apply_op(&db, &mut s, op)
@@ -192,7 +187,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
 
 #[test]
 fn fuzz() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     bolero::check!()
         .with_iterations(20)
         .with_type()
@@ -202,7 +197,7 @@ fn fuzz() {
 #[test]
 fn regression_events_1342_fails_to_notice_conflict_on_3() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -238,7 +233,7 @@ fn regression_events_1342_fails_to_notice_conflict_on_3() {
 #[test]
 fn regession_proper_error_on_recreate_inexistent() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Recreate {
@@ -251,7 +246,7 @@ fn regession_proper_error_on_recreate_inexistent() {
 #[test]
 fn regression_wrong_error_on_object_already_exists() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -272,7 +267,7 @@ fn regression_wrong_error_on_object_already_exists() {
 #[test]
 fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -293,7 +288,7 @@ fn regression_postgres_did_not_distinguish_between_object_and_event_conflicts() 
 #[test]
 fn regression_submit_on_other_snapshot_date_fails() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -319,7 +314,7 @@ fn regression_submit_on_other_snapshot_date_fails() {
 #[test]
 fn regression_vacuum_did_not_actually_recreate_objects() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -348,7 +343,7 @@ fn regression_vacuum_did_not_actually_recreate_objects() {
 #[test]
 fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict() {
     use Op::*;
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -373,7 +368,7 @@ fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conflict()
 
 #[test]
 fn regression_any_query_crashed_postgres() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -385,7 +380,7 @@ fn regression_any_query_crashed_postgres() {
 
 #[test]
 fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -397,7 +392,7 @@ fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
 
 #[test]
 fn regression_keyed_comparison_was_still_wrong_syntax() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -412,7 +407,7 @@ fn regression_keyed_comparison_was_still_wrong_syntax() {
 
 #[test]
 fn regression_too_big_decimal_failed_postgres() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -427,7 +422,7 @@ fn regression_too_big_decimal_failed_postgres() {
 
 #[test]
 fn regression_postgresql_syntax_for_equality() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -442,7 +437,7 @@ fn regression_postgresql_syntax_for_equality() {
 
 #[test]
 fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -457,7 +452,7 @@ fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
 
 #[test]
 fn regression_way_too_big_decimal_caused_problems() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -472,7 +467,7 @@ fn regression_way_too_big_decimal_caused_problems() {
 
 #[test]
 fn regression_strings_are_in_keys_too() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -487,7 +482,7 @@ fn regression_strings_are_in_keys_too() {
 
 #[test]
 fn regression_cast_error() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -506,7 +501,7 @@ fn regression_cast_error() {
 
 #[test]
 fn regression_sql_injection_in_path_key() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![Op::Query {
@@ -522,7 +517,7 @@ fn regression_sql_injection_in_path_key() {
 #[test]
 fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
     // See https://github.com/launchbadge/sqlx/issues/2981
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -565,7 +560,7 @@ fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
 
 #[test]
 fn regression_postgres_null_led_to_not_being_wrong() {
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![
@@ -589,7 +584,7 @@ fn regression_postgres_handled_numbers_as_one_element_arrays() {
         .with_max_level(tracing::Level::TRACE)
         .init();
 
-    let cluster = TmpDb::new();
+    let cluster = setup();
     fuzz_impl(
         &cluster,
         &vec![

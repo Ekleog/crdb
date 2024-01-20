@@ -6,7 +6,6 @@ mod fuzz_battle_royale;
 mod fuzz_object_full;
 mod fuzz_remote_perms;
 mod fuzz_sessions;
-mod fuzz_simple;
 mod fuzz_two_threads;
 
 const CHECK_NAMED_LOCKS_FOR: Duration = Duration::from_millis(500);
@@ -79,4 +78,31 @@ impl Drop for TmpDb {
             .output()
             .expect("Failed stopping the postgres server");
     }
+}
+
+mod fuzz_helpers {
+    use super::TmpDb;
+    use crate::server::PostgresDb;
+    use crate::test_utils::db::ServerConfig;
+
+    pub type Database = PostgresDb<ServerConfig>;
+    pub type SetupState = TmpDb;
+
+    pub fn setup() -> TmpDb {
+        TmpDb::new()
+    }
+
+    pub async fn make_db(cluster: &TmpDb) -> Database {
+        let pool = cluster.pool().await;
+        let db = PostgresDb::connect(pool.clone()).await.unwrap();
+        sqlx::query(include_str!("./cleanup-db.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        db
+    }
+}
+
+mod fuzz_simple {
+    include!("../../test_utils/fuzz_simple.rs");
 }
