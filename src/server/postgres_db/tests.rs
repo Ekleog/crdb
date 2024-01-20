@@ -93,8 +93,8 @@ mod fuzz_helpers {
     pub type Database = PostgresDb<ServerConfig>;
     pub type SetupState = TmpDb;
 
-    pub fn setup() -> TmpDb {
-        TmpDb::new()
+    pub fn setup() -> (TmpDb, bool) {
+        (TmpDb::new(), true)
     }
 
     pub async fn make_db(cluster: &TmpDb) -> Database {

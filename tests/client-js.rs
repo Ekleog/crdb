@@ -35,7 +35,9 @@ mod fuzz_helpers {
     pub type Database = LocalDb;
     pub type SetupState = ();
 
-    pub fn setup() -> () {}
+    pub fn setup() -> ((), bool) {
+        ((), false)
+    }
 
     pub static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -51,7 +53,7 @@ mod fuzz_helpers {
         fuzz_impl: Fun,
     ) -> Option<String>
     where
-        Fun: FnOnce(&'static (), Arg) -> RetFut,
+        Fun: FnOnce(&'static ((), bool), Arg) -> RetFut,
         Arg: 'static + serde::Serialize + bolero::TypeGenerator,
         RetFut: Future<Output = ()>,
     {
@@ -76,7 +78,7 @@ mod fuzz_helpers {
 
         // Run it
         let next_db = format!("db{}", COUNTER.load(Ordering::Relaxed));
-        fuzz_impl(&(), input).await;
+        fuzz_impl(&((), false), input).await;
         web_sys::console::log_1(&format!(" -> cleaning up").into());
 
         Some(next_db)
@@ -133,4 +135,11 @@ mod fuzz_helpers {
 
 mod fuzz_simple {
     include!("../src/test_utils/fuzz_simple.rs");
+
+    /*
+    #[fuzz_helpers::test]
+    async fn seed_reproducer() {
+        fuzz_helpers::run_with_seed(5710355506847336567, true, fuzz_impl).await;
+    }
+    */
 }

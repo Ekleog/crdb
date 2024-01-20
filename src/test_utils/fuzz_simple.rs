@@ -55,10 +55,10 @@ struct FuzzState {
 }
 
 impl FuzzState {
-    fn new() -> FuzzState {
+    fn new(is_server: bool) -> FuzzState {
         FuzzState {
             objects: Vec::new(),
-            mem_db: test_utils::MemDb::new(),
+            mem_db: test_utils::MemDb::new(is_server),
         }
     }
 }
@@ -156,9 +156,9 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
     Ok(())
 }
 
-async fn fuzz_impl(cluster: &SetupState, ops: Arc<Vec<Op>>) {
+async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) {
     let db = make_db(cluster).await;
-    let mut s = FuzzState::new();
+    let mut s = FuzzState::new(*is_server);
     for (i, op) in ops.iter().enumerate() {
         apply_op(&db, &mut s, op)
             .await
@@ -600,3 +600,15 @@ async fn regression_postgres_handled_numbers_as_one_element_arrays() {
     )
     .await
 }
+
+/*
+#[fuzz_helpers::test]
+async fn impl_reproducer() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        serde_json::from_str(include_str!("../../repro.json")).unwrap(),
+    )
+    .await
+}
+*/

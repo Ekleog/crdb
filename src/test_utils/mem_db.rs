@@ -18,16 +18,18 @@ struct MemDbImpl {
     events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
     objects: HashMap<ObjectId, (TypeId, FullObject)>,
     binaries: HashMap<BinPtr, Arc<Vec<u8>>>,
+    is_server: bool,
 }
 
 pub struct MemDb(Arc<Mutex<MemDbImpl>>);
 
 impl MemDb {
-    pub fn new() -> MemDb {
+    pub fn new(is_server: bool) -> MemDb {
         MemDb(Arc::new(Mutex::new(MemDbImpl {
             events: HashMap::new(),
             objects: HashMap::new(),
             binaries: HashMap::new(),
+            is_server,
         })))
     }
 
@@ -210,6 +212,7 @@ impl Db for MemDb {
         q.check()?;
         let q = &q;
         let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
+        let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
         let res = stream::iter(objects.into_iter())
             .filter_map(|(_, (t, full_object))| async move {
                 if t != *T::type_ulid() {
@@ -218,12 +221,13 @@ impl Db for MemDb {
                 let o = full_object
                     .last_snapshot::<T>()
                     .expect("type error inside MemDb");
-                if !o
-                    .users_who_can_read(self)
-                    .await
-                    .unwrap()
-                    .iter()
-                    .any(|u| *u == user)
+                if (is_server
+                    && !o
+                        .users_who_can_read(self)
+                        .await
+                        .unwrap()
+                        .iter()
+                        .any(|u| *u == user))
                     || !q.matches(&*o).unwrap()
                 {
                     return None;

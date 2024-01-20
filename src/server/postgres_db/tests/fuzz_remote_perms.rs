@@ -74,7 +74,7 @@ impl FuzzState {
     fn new() -> FuzzState {
         FuzzState {
             objects: Vec::new(),
-            mem_db: test_utils::MemDb::new(),
+            mem_db: test_utils::MemDb::new(true),
         }
     }
 }
