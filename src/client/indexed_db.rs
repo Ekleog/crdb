@@ -282,7 +282,6 @@ impl IndexedDb {
                 let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
                 let events = transaction.object_store("events").unwrap();
                 let events_meta = transaction.object_store("events_meta").unwrap();
-                let binaries = transaction.object_store("binaries").unwrap();
 
                 // Fetch all snapshots
                 let snapshots = snapshots_meta.get_all(None).await.unwrap();
@@ -302,29 +301,40 @@ impl IndexedDb {
                         .insert(s.snapshot_id, s);
                 }
 
+                // Fetch all events
+                let events = events_meta.get_all(None).await.unwrap();
+                let events = events
+                    .into_iter()
+                    .map(|e| serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap())
+                    .collect::<Vec<_>>();
+                let mut object_events_map = HashMap::new();
+                for o in objects.iter() {
+                    object_events_map.insert(*o, BTreeMap::new());
+                }
+                for e in events {
+                    object_events_map
+                        .get_mut(&e.object_id)
+                        .unwrap()
+                        .insert(e.event_id, e);
+                }
+
                 // For each object
                 for o in objects {
-                    // It has a creation and a latest snapshot that surround all events and snapshots
-                    assert!(
-                        object_snapshots_map
-                            .get(&o)
-                            .unwrap()
-                            .first_key_value()
-                            .unwrap()
-                            .1
-                            .is_creation
-                            == Some(1)
-                    );
-                    assert!(
-                        object_snapshots_map
-                            .get(&o)
-                            .unwrap()
-                            .last_key_value()
-                            .unwrap()
-                            .1
-                            .is_latest
-                            == Some(1)
-                    );
+                    let snapshots = object_snapshots_map.get(&o).unwrap();
+                    let events = object_events_map.get(&o).unwrap();
+
+                    // It has a creation and a latest snapshot that surround all other snapshots
+                    let creation = snapshots.first_key_value().unwrap().1;
+                    let latest = snapshots.last_key_value().unwrap().1;
+                    assert!(creation.is_creation == Some(1));
+                    assert!(latest.is_latest == Some(1));
+                    if creation.snapshot_id == latest.snapshot_id {
+                        continue;
+                    }
+
+                    // Creation and latest surround all other events
+                    assert!(events.first_key_value().unwrap().0 > &creation.snapshot_id);
+                    assert!(events.last_key_value().unwrap().0 == &latest.snapshot_id);
                 }
 
                 Ok(())
