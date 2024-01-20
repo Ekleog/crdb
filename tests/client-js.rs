@@ -145,4 +145,7 @@ async fn smoke_test() {
     .unwrap();
     db.assert_invariants_generic().await;
     db.assert_invariants_for::<TestObjectSimple>().await;
+    assert!(!db.remove(OBJECT_ID_1).await.unwrap()); // fail removal, object is not uploaded yet
+    db.assert_invariants_generic().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
 }

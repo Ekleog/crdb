@@ -1356,8 +1356,122 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("recreating {object_id:?} at {time:?}"))
     }
 
-    async fn remove(&self, _object_id: ObjectId) -> crate::Result<bool> {
-        todo!()
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<bool> {
+        let object_id_js = object_id.to_js_string();
+        let zero_id = EventId::from_u128(0).to_js_string();
+        let max_id = EventId::from_u128(u128::MAX).to_js_string();
+
+        self.db
+            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
+                let events_meta = transaction
+                    .object_store("events_meta")
+                    .wrap_context("retrieving the 'events_meta' object store")?;
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving the 'snapshots' object store")?;
+                let events = transaction
+                    .object_store("events")
+                    .wrap_context("retrieving the 'events' object store")?;
+
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving the 'creation_object' index")?;
+                let object_snapshot = snapshots_meta
+                    .index("object_snapshot")
+                    .wrap_context("retrieving the 'object_snapshot' index")?;
+
+                let object_event = events_meta
+                    .index("object_event")
+                    .wrap_context("retrieving the 'object_event' index")?;
+                let not_uploaded_object = events_meta
+                    .index("not_uploaded_object")
+                    .wrap_context("retrieving the 'not_uploaded_object' index")?;
+
+                // Check we're good to delete this object
+                let creation_meta = creation_object
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    .await
+                    .wrap_context("retrieving creation snapshot")?;
+                let Some(creation_meta) = creation_meta else {
+                    return Err(crate::Error::ObjectAlreadyExists(object_id).into());
+                };
+                let creation_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
+                    .wrap_context("deserializing snapshot metadata")?;
+                let upload_not_over = creation_meta.upload_not_over.ok_or_else(|| {
+                    crate::Error::Other(anyhow!(
+                        "creation snapshot metadata had no upload_not_over field"
+                    ))
+                })?;
+                if upload_not_over != 0 {
+                    return Ok(false);
+                }
+                if not_uploaded_object
+                    .contains(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    .await
+                    .wrap_context("checking whether object has pending event uploads")?
+                {
+                    return Ok(false);
+                }
+
+                // We're good to go, delete everything
+                let mut to_remove = object_snapshot
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&object_id_js, &zero_id])
+                            ..=&**Array::from_iter([&object_id_js, &max_id]),
+                    )
+                    .wrap_context("limiting to-delete range")?
+                    .open()
+                    .await
+                    .wrap_context("opening to-delete cursor")?;
+                while let Some(snapshot_id_js) = to_remove.primary_key() {
+                    snapshots
+                        .delete(&snapshot_id_js)
+                        .await
+                        .wrap_context("deleting snapshot data")?;
+                    to_remove
+                        .delete()
+                        .await
+                        .wrap_context("deleting snapshot metadata")?;
+                    to_remove
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next to-delete snapshot")?;
+                }
+
+                let mut to_remove = object_event
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&object_id_js, &zero_id])
+                            ..=&**Array::from_iter([&object_id_js, &max_id]),
+                    )
+                    .wrap_context("limiting to-delete range")?
+                    .open()
+                    .await
+                    .wrap_context("opening to-delete cursor")?;
+                while let Some(event_id_js) = to_remove.primary_key() {
+                    events
+                        .delete(&event_id_js)
+                        .await
+                        .wrap_context("deleting event data")?;
+                    to_remove
+                        .delete()
+                        .await
+                        .wrap_context("deleting event metadata")?;
+                    to_remove
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next to-delete event")?;
+                }
+
+                Ok(true)
+            })
+            .await
+            .wrap_with_context(|| format!("removing {object_id:?}"))
     }
 
     async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<Vec<u8>>) -> crate::Result<()> {
