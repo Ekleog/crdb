@@ -32,8 +32,9 @@ mod fuzz_helpers {
 
     pub fn setup() -> () {}
 
+    pub static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
     pub async fn make_db(_cluster: &()) -> Database {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
         LocalDb::connect(&format!("db{}", COUNTER.fetch_add(1, Ordering::Relaxed)))
             .await
             .unwrap()
@@ -44,14 +45,37 @@ mod fuzz_helpers {
             #[wasm_bindgen_test::wasm_bindgen_test]
             #[ignore]
             async fn $name() {
-                use rand::Rng;
+                use bolero::{generator::bolero_generator, Driver};
+                use rand::{rngs::StdRng, Rng, SeedableRng};
 
-                for _ in 0..3 {
+                loop {
+                    // Get a seed
                     let seed: u64 = rand::thread_rng().gen();
                     web_sys::console::log_1(&format!("Fuzzing with seed {seed}").into());
-                    wasm_timer::Delay::new(std::time::Duration::from_secs(1))
+
+                    // Generate the input
+                    let rng = StdRng::seed_from_u64(seed);
+                    let mut bolero_gen =
+                        bolero_generator::driver::Rng::new(rng, &Default::default());
+                    let Some(input) = bolero_gen.gen() else {
+                        web_sys::console::log_1(&format!(" -> invalid input").into());
+                        continue;
+                    };
+
+                    // Run it
+                    let next_db = format!(
+                        "db{}",
+                        fuzz_helpers::COUNTER.load(std::sync::atomic::Ordering::Relaxed)
+                    );
+                    fuzz_impl(&(), &input).await;
+                    web_sys::console::log_1(&format!(" -> cleaning up").into());
+
+                    // Cleanup
+                    indexed_db::Factory::<()>::get()
+                        .expect("failed retrieving factory")
+                        .delete_database(&next_db)
                         .await
-                        .unwrap();
+                        .expect("failed cleaning up test database");
                 }
             }
         };
