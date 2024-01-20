@@ -180,9 +180,7 @@ impl IndexedDb {
                 "binaries",
             ])
             .run(move |transaction| async move {
-                // let snapshots = transaction.object_store("snapshots").unwrap();
                 let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
-                // let events = transaction.object_store("events").unwrap();
                 let events_meta = transaction.object_store("events_meta").unwrap();
                 let binaries = transaction.object_store("binaries").unwrap();
 
@@ -259,6 +257,74 @@ impl IndexedDb {
                         }
                     }
                     snapshot_cursor.advance(1).await.unwrap();
+                }
+
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    #[cfg(feature = "_tests")]
+    pub async fn assert_invariants_for<T: Object>(&self) {
+        use std::collections::HashMap;
+
+        self.db
+            .transaction(&[
+                "snapshots",
+                "snapshots_meta",
+                "events",
+                "events_meta",
+                "binaries",
+            ])
+            .run(move |transaction| async move {
+                let snapshots = transaction.object_store("snapshots").unwrap();
+                let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
+                let events = transaction.object_store("events").unwrap();
+                let events_meta = transaction.object_store("events_meta").unwrap();
+                let binaries = transaction.object_store("binaries").unwrap();
+
+                // Fetch all snapshots
+                let snapshots = snapshots_meta.get_all(None).await.unwrap();
+                let snapshots = snapshots
+                    .into_iter()
+                    .map(|s| serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap())
+                    .collect::<Vec<_>>();
+                let objects = snapshots
+                    .iter()
+                    .map(|s| s.object_id)
+                    .collect::<HashSet<_>>();
+                let mut object_snapshots_map = HashMap::new();
+                for s in snapshots {
+                    object_snapshots_map
+                        .entry(s.object_id)
+                        .or_insert_with(BTreeMap::new)
+                        .insert(s.snapshot_id, s);
+                }
+
+                // For each object
+                for o in objects {
+                    // It has a creation and a latest snapshot that surround all events and snapshots
+                    assert!(
+                        object_snapshots_map
+                            .get(&o)
+                            .unwrap()
+                            .first_key_value()
+                            .unwrap()
+                            .1
+                            .is_creation
+                            == Some(1)
+                    );
+                    assert!(
+                        object_snapshots_map
+                            .get(&o)
+                            .unwrap()
+                            .last_key_value()
+                            .unwrap()
+                            .1
+                            .is_latest
+                            == Some(1)
+                    );
                 }
 
                 Ok(())
