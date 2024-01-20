@@ -361,7 +361,7 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             *bind_idx += 1;
         }
         Query::ContainsStr(path, _) => {
-            // TODO(low): Check normalizer_version and recompute at startup if not the right version
+            // TODO(server): Check normalizer_version and recompute at startup if not the right version
             // This will probably require adding a list of all the json paths to SearchableString's
             // in Object
             res.push_str("COALESCE(to_tsvector(");
