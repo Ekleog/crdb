@@ -1068,6 +1068,7 @@ impl Db for IndexedDb {
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+        q.check()?;
         let type_id_js = T::type_ulid().to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
         let max_id = EventId::from_u128(u128::MAX).to_js_string();
