@@ -72,6 +72,15 @@ fuzz-pg-perms ARGS='':
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_remote_perms__fuzz/corpus.nounit \
         {{ARGS}}
 
+fuzz-idb-perms ARGS='':
+    # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
+    PATH="../wasm-bindgen/target/debug:$PATH" \
+    WASM_BINDGEN_TEST_TIMEOUT=86400 \
+    cargo test --features client,_tests --target wasm32-unknown-unknown \
+        client_js::fuzz_remote_perms::fuzz \
+        {{ARGS}} \
+        -- --include-ignored
+
 fuzz-pg-threads ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_two_threads::fuzz_no_lock_check \
