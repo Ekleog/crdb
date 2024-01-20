@@ -9,7 +9,7 @@ use crate::{
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
 use indexed_db::CursorDirection;
-use js_sys::Array;
+use js_sys::{Array, Uint8Array};
 use std::{
     collections::{BTreeMap, HashSet},
     ops::Bound,
@@ -1478,19 +1478,8 @@ impl Db for IndexedDb {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
-        let data_start = &data[0] as *const u8 as usize;
-        let data_len = data.len();
-        let data = wasm_bindgen::memory()
-            .dyn_into::<js_sys::WebAssembly::Memory>()
-            .wrap_context("wasm_bindgen::memory did not return a WebAssembly::Memory")?
-            .buffer()
-            // Technically this can be a lie, as this could be a SharedArrayBuffer too
-            // However, we don't care, because we only ever call slice_with_end anyway
-            .unchecked_into::<js_sys::ArrayBuffer>()
-            .slice_with_end(
-                u32::try_from(data_start).unwrap(),
-                u32::try_from(data_len).unwrap(),
-            );
+        let ary = Uint8Array::new_with_length(u32::try_from(data.len()).unwrap());
+        ary.copy_from(&data);
         self.db
             .transaction(&["binaries"])
             .rw()
@@ -1500,7 +1489,7 @@ impl Db for IndexedDb {
                     .wrap_context("retrieving the 'binaries' object store")?;
 
                 binaries
-                    .put_kv(&binary_id.to_js_string(), &data)
+                    .put_kv(&binary_id.to_js_string(), &ary)
                     .await
                     .wrap_context("writing binary")?;
 
