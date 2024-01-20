@@ -221,6 +221,8 @@ impl IndexedDb {
                     .open()
                     .await
                     .wrap_context("listing unlocked objects")?;
+                // TODO: could trigger all deletion requests in parallel and only wait for them
+                // all before listing still-required binaries, for performance
                 while let Some(s) = to_remove.value() {
                     let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
                         .wrap_context("deserializing unlocked object")?;
@@ -286,6 +288,29 @@ impl IndexedDb {
                         .advance(1)
                         .await
                         .wrap_context("going to next to-remove object")?;
+                }
+
+                let required_binaries = Self::list_required_binaries(&transaction)
+                    .await
+                    .wrap_context("listing still-required binaries")?;
+                let mut binaries_cursor = binaries
+                    .cursor()
+                    .open_key()
+                    .await
+                    .wrap_context("opening cursor over all binaries")?;
+                while let Some(b) = binaries_cursor.key() {
+                    let b = serde_wasm_bindgen::from_value::<BinPtr>(b)
+                        .wrap_context("deserializing binary id")?;
+                    if !required_binaries.contains(&b) {
+                        binaries_cursor
+                            .delete()
+                            .await
+                            .wrap_with_context(|| format!("deleting {b:?}"))?;
+                    }
+                    binaries_cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next binary")?;
                 }
 
                 Ok(())
