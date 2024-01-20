@@ -97,44 +97,44 @@ pub fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
 }
 
 pub(crate) fn cmp_just_errs<T, U>(
-    pg_res: &crate::Result<T>,
+    testdb_res: &crate::Result<T>,
     mem_res: &crate::Result<U>,
 ) -> anyhow::Result<()> {
-    match (&pg_res, &mem_res) {
+    match (&testdb_res, &mem_res) {
         (Ok(_), Ok(_)) => (),
-        (Err(pg_err), Err(mem_err)) =>
-            anyhow::ensure!(cmp_err(pg_err, mem_err), "postgres err != mem err:\n==========\nPostgres:\n{pg_err:?}\n==========\nMem:\n{mem_err:?}\n=========="),
-        (Ok(_), Err(mem_err)) => anyhow::bail!("pg is ok but mem had an error:\n==========\nMem:\n{mem_err:?}\n=========="),
-        (Err(pg_err), Ok(_)) => anyhow::bail!("mem is ok but pg had an error:\n==========\nPostgres:\n{pg_err:?}\n=========="),
+        (Err(testdb_err), Err(mem_err)) =>
+            anyhow::ensure!(cmp_err(testdb_err, mem_err), "tested db err != mem err:\n==========\nTested DB:\n{testdb_err:?}\n==========\nMem:\n{mem_err:?}\n=========="),
+        (Ok(_), Err(mem_err)) => anyhow::bail!("tested db is ok but mem had an error:\n==========\nMem:\n{mem_err:?}\n=========="),
+        (Err(testdb_err), Ok(_)) => anyhow::bail!("mem is ok but tested db had an error:\n==========\nTested DB:\n{testdb_err:?}\n=========="),
     }
     Ok(())
 }
 
 #[cfg(feature = "_tests")]
 pub fn cmp<T: Debug + Eq>(
-    pg_res: crate::Result<T>,
+    testdb_res: crate::Result<T>,
     mem_res: crate::Result<T>,
 ) -> anyhow::Result<()> {
-    let is_eq = match (&pg_res, &mem_res) {
+    let is_eq = match (&testdb_res, &mem_res) {
         (_, Err(crate::Error::Other(mem))) => panic!("MemDb hit an internal server error: {mem:?}"),
-        (Ok(pg), Ok(mem)) => pg == mem,
-        (Err(pg_err), Err(mem_err)) => cmp_err(pg_err, mem_err),
+        (Ok(testdb), Ok(mem)) => testdb == mem,
+        (Err(testdb_err), Err(mem_err)) => cmp_err(testdb_err, mem_err),
         _ => false,
     };
-    anyhow::ensure!(is_eq, "postgres result != mem result:\n==========\nPostgres:\n{pg_res:?}\n==========\nMem:\n{mem_res:?}\n==========");
+    anyhow::ensure!(is_eq, "tested db result != mem result:\n==========\nTested DB:\n{testdb_res:?}\n==========\nMem:\n{mem_res:?}\n==========");
     Ok(())
 }
 
 #[cfg(feature = "_tests")]
 pub async fn cmp_query_results<T: Debug + Ord + Object>(
-    pg: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
+    testdb: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
     mem: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
 ) -> anyhow::Result<()> {
-    cmp_just_errs(&pg, &mem)?;
-    if !pg.is_ok() {
+    cmp_just_errs(&testdb, &mem)?;
+    if !testdb.is_ok() {
         return Ok(());
     }
-    let pg = pg
+    let testdb = testdb
         .unwrap()
         .collect::<Vec<crate::Result<FullObject>>>()
         .await
@@ -146,24 +146,24 @@ pub async fn cmp_query_results<T: Debug + Ord + Object>(
         .await
         .into_iter()
         .collect::<crate::Result<Vec<FullObject>>>();
-    cmp_just_errs(&pg, &mem)?;
-    if !pg.is_ok() {
+    cmp_just_errs(&testdb, &mem)?;
+    if !testdb.is_ok() {
         return Ok(());
     }
-    let mut pg = pg
+    let mut testdb = testdb
         .unwrap()
         .into_iter()
         .map(|o| o.last_snapshot::<T>())
         .collect::<anyhow::Result<Vec<Arc<T>>>>()
-        .context("getting last snapshot of objects from postgres")?;
+        .context("getting last snapshot of objects from tested db")?;
     let mut mem = mem
         .unwrap()
         .into_iter()
         .map(|o| o.last_snapshot::<T>())
         .collect::<anyhow::Result<Vec<Arc<T>>>>()
         .context("getting last snapshot of objects from mem")?;
-    pg.sort_unstable();
+    testdb.sort_unstable();
     mem.sort_unstable();
-    cmp(Ok(pg), Ok(mem))?;
+    cmp(Ok(testdb), Ok(mem))?;
     Ok(())
 }
