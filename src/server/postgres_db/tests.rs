@@ -81,10 +81,13 @@ impl Drop for TmpDb {
 }
 
 mod fuzz_helpers {
-    use super::TmpDb;
-    use crate::server::PostgresDb;
-    use crate::test_utils::db::ServerConfig;
+    use crate::{
+        server::{postgres_db::tests::TmpDb, PostgresDb},
+        test_utils::{db::ServerConfig, *},
+        Timestamp,
+    };
 
+    pub use crate as crdb;
     pub use tokio::test;
 
     pub type Database = PostgresDb<ServerConfig>;
@@ -122,6 +125,28 @@ mod fuzz_helpers {
     }
 
     pub(crate) use make_fuzzer;
+
+    pub async fn run_vacuum(
+        db: &Database,
+        mem_db: &MemDb,
+        recreate_at: Option<Timestamp>,
+    ) -> anyhow::Result<()> {
+        match recreate_at {
+            None => {
+                db.vacuum(None, None, db, |r| {
+                    panic!("got unexpected recreation {r:?}")
+                })
+                .await
+                .unwrap();
+            }
+            Some(recreate_at) => {
+                let mem = mem_db.recreate_all::<TestObjectSimple>(recreate_at).await;
+                let pg = db.vacuum(Some(recreate_at), None, db, |_| ()).await;
+                cmp(pg, mem)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 mod fuzz_simple {

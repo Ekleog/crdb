@@ -16,3 +16,55 @@ async fn smoke_test() {
         test_remove: true,
     );
 }
+
+mod fuzz_helpers {
+    use crdb::{
+        crdb_internal::{test_utils::MemDb, LocalDb},
+        Timestamp,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    pub use crdb;
+    pub use wasm_bindgen_test::wasm_bindgen_test as test;
+
+    pub type Database = LocalDb;
+    pub type SetupState = ();
+
+    pub fn setup() -> () {}
+
+    pub async fn make_db(_cluster: &()) -> Database {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        LocalDb::connect(&format!("db{}", COUNTER.fetch_add(1, Ordering::Relaxed)))
+            .await
+            .unwrap()
+    }
+
+    macro_rules! make_fuzzer {
+        ($fuzz_impl:ident) => {
+            // TODO
+        };
+    }
+
+    pub(crate) use make_fuzzer;
+
+    pub async fn run_vacuum(
+        db: &Database,
+        _mem_db: &MemDb,
+        recreate_at: Option<Timestamp>,
+    ) -> anyhow::Result<()> {
+        match recreate_at {
+            None => {
+                db.vacuum().await.unwrap();
+            }
+            Some(_recreate_at) => {
+                // TODO: will have some actual stuff to do once (un)lock & co are implemented in MemDb
+                db.vacuum().await.unwrap();
+            }
+        }
+        Ok(())
+    }
+}
+
+mod fuzz_simple {
+    // TODO: include!("../src/test_utils/fuzz_simple.rs");
+}

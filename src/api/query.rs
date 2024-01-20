@@ -42,14 +42,14 @@ pub enum Query {
     ContainsStr(Vec<JsonPathItem>, String),
 }
 
-#[cfg(test)]
+#[cfg(feature = "_tests")]
 impl<'a> arbitrary::Arbitrary<'a> for Query {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Query> {
         arbitrary_impl(u, 0)
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "_tests")]
 fn arbitrary_impl<'a>(
     u: &mut arbitrary::Unstructured<'a>,
     depth: usize,

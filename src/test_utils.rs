@@ -50,7 +50,8 @@ fn eq<T: 'static + Any + Send + Sync + Eq>(
             .context("downcasting rhs")?)
 }
 
-pub(crate) fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
+#[cfg(feature = "_tests")]
+pub fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
     use crate::Error::*;
     match (pg, mem) {
         (MissingBinaries(a), MissingBinaries(b)) => a == b,
@@ -109,7 +110,8 @@ pub(crate) fn cmp_just_errs<T, U>(
     Ok(())
 }
 
-pub(crate) fn cmp<T: Debug + Eq>(
+#[cfg(feature = "_tests")]
+pub fn cmp<T: Debug + Eq>(
     pg_res: crate::Result<T>,
     mem_res: crate::Result<T>,
 ) -> anyhow::Result<()> {
@@ -123,7 +125,8 @@ pub(crate) fn cmp<T: Debug + Eq>(
     Ok(())
 }
 
-pub(crate) async fn cmp_query_results<T: Debug + Ord + Object>(
+#[cfg(feature = "_tests")]
+pub async fn cmp_query_results<T: Debug + Ord + Object>(
     pg: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
     mem: crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>,
 ) -> anyhow::Result<()> {

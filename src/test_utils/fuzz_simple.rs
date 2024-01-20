@@ -1,14 +1,16 @@
-use super::fuzz_helpers::{self, make_db, make_fuzzer, setup, Database, SetupState};
-
-use crate::{
-    db_trait::Db,
-    error::ResultExt,
-    test_utils::{
-        self, cmp, cmp_query_results, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2,
-        EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1, OBJECT_ID_2, USER_ID_NULL,
+use super::fuzz_helpers::{
+    self,
+    crdb::{
+        self,
+        crdb_internal::{
+            test_utils::{self, *},
+            Db, ResultExt,
+        },
+        EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
     },
-    EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
+    make_db, make_fuzzer, run_vacuum, setup, Database, SetupState,
 };
+
 use anyhow::Context;
 use rust_decimal::Decimal;
 use std::{ops::Bound, str::FromStr, sync::Arc};
@@ -101,7 +103,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let pg: crate::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
+            let pg: crdb::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
             {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                 Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
@@ -109,7 +111,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                     Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                 },
             };
-            let mem: crate::Result<Arc<TestObjectSimple>> =
+            let mem: crdb::Result<Arc<TestObjectSimple>> =
                 match s.mem_db.get::<TestObjectSimple>(o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
                     Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
@@ -147,22 +149,8 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
         Op::Remove { object } => {
             let _object = object; // TODO: implement for non-postgresql databases
         }
-        Op::Vacuum { recreate_at: None } => {
-            db.vacuum(None, None, db, |r| {
-                panic!("got unexpected recreation {r:?}")
-            })
-            .await
-            .unwrap();
-        }
-        Op::Vacuum {
-            recreate_at: Some(recreate_at),
-        } => {
-            let mem = s
-                .mem_db
-                .recreate_all::<TestObjectSimple>(*recreate_at)
-                .await;
-            let pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
-            cmp(pg, mem)?;
+        Op::Vacuum { recreate_at } => {
+            run_vacuum(&db, &s.mem_db, *recreate_at).await?;
         }
     }
     Ok(())
