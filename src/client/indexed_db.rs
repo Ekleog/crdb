@@ -343,7 +343,8 @@ impl IndexedDb {
                         .await
                         .unwrap()
                         .unwrap();
-                    let mut object = serde_wasm_bindgen::from_value::<T>(object).unwrap();
+                    let mut object =
+                        parse_snapshot_js::<T>(creation.snapshot_version, object).unwrap();
                     for (event_id, event_meta) in events.iter() {
                         let e = events_store
                             .get(&event_id.to_js_string())
@@ -353,6 +354,18 @@ impl IndexedDb {
                         let e = serde_wasm_bindgen::from_value::<T::Event>(e).unwrap();
                         assert_eq!(event_meta.required_binaries, e.required_binaries());
                         object.apply(DbPtr::from(object_id), &e);
+                        if let Some(snapshot_meta) = snapshots.get(&event_id) {
+                            let s = snapshots_store
+                                .get(&event_id.to_js_string())
+                                .await
+                                .unwrap()
+                                .unwrap();
+                            let s =
+                                parse_snapshot_js::<T>(snapshot_meta.snapshot_version, s).unwrap();
+                            assert!(object == s);
+                            assert!(snapshot_meta.required_binaries == object.required_binaries());
+                            assert!(snapshot_meta.type_id == *T::type_ulid());
+                        }
                     }
                 }
 
