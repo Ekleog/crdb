@@ -169,7 +169,7 @@ async fn fuzz_impl(cluster: &SetupState, ops: &Vec<Op>) {
     }
 }
 
-make_fuzzer!(fuzz_impl);
+make_fuzzer!(fuzz, fuzz_impl);
 
 #[fuzz_helpers::test]
 async fn regression_events_1342_fails_to_notice_conflict_on_3() {

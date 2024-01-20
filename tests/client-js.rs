@@ -40,8 +40,20 @@ mod fuzz_helpers {
     }
 
     macro_rules! make_fuzzer {
-        ($fuzz_impl:ident) => {
-            // TODO
+        ($name:ident, $fuzz_impl:ident) => {
+            #[wasm_bindgen_test::wasm_bindgen_test]
+            #[ignore]
+            async fn $name() {
+                use rand::Rng;
+
+                for _ in 0..3 {
+                    let seed: u64 = rand::thread_rng().gen();
+                    web_sys::console::log_1(&format!("Fuzzing with seed {seed}").into());
+                    wasm_timer::Delay::new(std::time::Duration::from_secs(1))
+                        .await
+                        .unwrap();
+                }
+            }
         };
     }
 
