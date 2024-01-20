@@ -169,6 +169,8 @@ impl IndexedDb {
 
     #[cfg(feature = "_tests")]
     pub async fn assert_invariants_generic(&self) {
+        use std::collections::{hash_map, HashMap};
+
         self.db
             .transaction(&[
                 "snapshots",
@@ -236,6 +238,24 @@ impl IndexedDb {
                                 "object for snapshot and event at {:?} does not match",
                                 s.snapshot_id
                             );
+                        }
+                    }
+                    snapshot_cursor.advance(1).await.unwrap();
+                }
+
+                // All objects have a single type
+                let mut snapshot_cursor = snapshots_meta.cursor().open().await.unwrap();
+                let mut types = HashMap::new();
+                while let Some(s) = snapshot_cursor.value() {
+                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap();
+                    match types.entry(s.object_id) {
+                        hash_map::Entry::Occupied(o) => {
+                            if *o.get() != s.type_id {
+                                panic!("object {:?} has multiple type ids", s.object_id);
+                            }
+                        }
+                        hash_map::Entry::Vacant(v) => {
+                            v.insert(s.type_id);
                         }
                     }
                     snapshot_cursor.advance(1).await.unwrap();
