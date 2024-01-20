@@ -11,7 +11,7 @@ use std::{
 mod tests;
 
 pub trait DynSized: 'static + Any + Send + Sync + deepsize::DeepSizeOf {
-    // TODO: remove these functions once rust supports trait upcasting:
+    // TODO(blocked): remove these functions once rust supports trait upcasting:
     // https://github.com/rust-lang/rust/issues/65991#issuecomment-1869869919
     // https://github.com/rust-lang/rust/issues/119335
     fn arc_to_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync>;

@@ -34,7 +34,7 @@ enum Op {
     },
 }
 
-// TODO: check for equivalence between `.insert()` and `.create()`/`.submit()`
+// TODO(test): check for equivalence between `.insert()` and `.create()`/`.submit()`
 
 fn cache_state_stays_valid_impl((watermark, ops): &(usize, Vec<Op>)) {
     let mut cache = ObjectCache::new(*watermark);

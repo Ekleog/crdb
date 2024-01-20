@@ -65,7 +65,7 @@ pub trait Object:
     fn from_old_snapshot(version: i32, data: serde_json::Value) -> anyhow::Result<Self> {
         unimplemented!()
     }
-    // TODO: allow re-encoding all snapshots in db with the new version using from_old_snapshot
+    // TODO(server): allow re-encoding all snapshots in db with the new version using from_old_snapshot
 
     fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
@@ -204,10 +204,10 @@ impl<T: Object> bolero::TypeGenerator for DbPtr<T> {
     }
 }
 
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub struct RequestId(Ulid);
 
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub enum NewThing {
     Object(TypeId, ObjectId, serde_json::Value),
     Event(TypeId, ObjectId, EventId, serde_json::Value),
@@ -216,16 +216,16 @@ pub enum NewThing {
     CurrentTime(Timestamp),
 }
 
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub enum Request {
     Subscribe(HashSet<ObjectId>),
     Unsubscribe(HashSet<ObjectId>),
     GetTime,
     Upload(Vec<UploadOrBinary>),
-    // TODO
+    // TODO(api)
 }
 
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub enum Upload {
     Object {
         object_id: ObjectId,
@@ -241,13 +241,13 @@ pub enum Upload {
     },
 }
 
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub enum UploadOrBinary {
     Upload(Upload),
     Binary(Arc<Vec<u8>>),
 }
 
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub enum UploadOrBinPtr {
     Upload(Upload),
     BinPtr(BinPtr),
@@ -259,14 +259,14 @@ pub enum UploadOrBinPtr {
 ///
 /// As an exception, if `as_answer_to` is set, then `new_things` contains
 /// at least the requested thing(s)
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub struct ServerMessage {
     updates_on_server_until: Timestamp,
     as_answer_to: Option<RequestId>,
     new_things: Vec<NewThing>,
 }
 
-#[allow(dead_code)] // TODO: remove
+#[allow(dead_code)] // TODO(api): remove
 pub struct ClientMessage {
     request_id: RequestId,
     request: Request,

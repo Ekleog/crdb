@@ -37,7 +37,7 @@ struct EventMeta {
     required_binaries: Vec<BinPtr>,
 }
 
-#[allow(dead_code)] // TODO: store in upload_queue_meta
+#[allow(dead_code)] // TODO(client): store in upload_queue_meta
 struct UploadMeta {
     upload_id: u64,
     required_binaries: Vec<BinPtr>,
@@ -49,6 +49,7 @@ pub struct IndexedDb {
 }
 
 impl IndexedDb {
+    // TODO(client): implement (un)lock
     pub async fn connect(url: &str) -> anyhow::Result<IndexedDb> {
         let window = web_sys::window().ok_or_else(|| anyhow!("not running in a browser"))?;
         let is_persistent = JsFuture::from(window.navigator().storage().persist().wrap_context(
@@ -69,7 +70,7 @@ impl IndexedDb {
                 db.build_object_store("snapshots").create()?;
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
-                // TODO: store UploadOrBinPtr in upload_queue
+                // TODO(client): store UploadOrBinPtr in upload_queue
                 db.build_object_store("upload_queue")
                     .auto_increment()
                     .create()?;
@@ -414,7 +415,7 @@ impl IndexedDb {
                     .open()
                     .await
                     .wrap_context("listing unlocked objects")?;
-                // TODO: could trigger all deletion requests in parallel and only wait for them
+                // TODO(low): could trigger all deletion requests in parallel and only wait for them
                 // all before listing still-required binaries, for performance
                 while let Some(s) = to_remove.value() {
                     let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
@@ -1078,8 +1079,8 @@ impl Db for IndexedDb {
         let type_id_js = T::type_ulid().to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
         let max_id = EventId::from_u128(u128::MAX).to_js_string();
-        // TODO: look into setting up indexes and allowing the user to use them?
-        // TODO: think a lot about splitting this transaction to be able to return a real stream by
+        // TODO(low): look into setting up indexes and allowing the user to use them?
+        // TODO(low): think a lot about splitting this transaction to be able to return a real stream by
         // using cursors? The difficulty will be that another task could clobber the latest index
         // during that time.
 
@@ -1250,7 +1251,7 @@ impl Db for IndexedDb {
                         .wrap_context("deserializing latest snapshot metadata")?;
                 let cutoff_is_already_latest =
                     latest_snapshot_meta.snapshot_id == new_creation_event_id;
-                // TODO: we could optimize there by not recomputing the latest snapshot as we already know it
+                // TODO(low): we could optimize there by not recomputing the latest snapshot as we already know it
 
                 // Find the creation snapshot
                 let creation_snapshot_meta_js = creation_object

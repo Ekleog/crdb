@@ -152,7 +152,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             cmp(pg, mem)?;
         }
         Op::Remove { object } => {
-            let _object = object; // TODO: implement for non-postgres databases
+            let _object = object; // TODO(test): implement for non-postgres databases
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));

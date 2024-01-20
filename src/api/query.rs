@@ -21,7 +21,7 @@ pub enum Query {
     Any(Vec<Query>),
     Not(Box<Query>),
 
-    // TODO: this could be useful?
+    // TODO(low): this could be useful?
     // Any/all the values in the array at JsonPathItem must match Query
     // AnyIn(Vec<JsonPathItem>, Box<Query>),
     // AllIn(Vec<JsonPathItem>, Box<Query>),
@@ -361,7 +361,7 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             *bind_idx += 1;
         }
         Query::ContainsStr(path, _) => {
-            // TODO: Check normalizer_version and recompute at startup if not the right version
+            // TODO(low): Check normalizer_version and recompute at startup if not the right version
             // This will probably require adding a list of all the json paths to SearchableString's
             // in Object
             res.push_str("COALESCE(to_tsvector(");

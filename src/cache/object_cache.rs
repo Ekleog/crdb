@@ -177,7 +177,7 @@ impl ObjectCache {
     pub fn get(&self, id: &ObjectId) -> Option<&FullObject> {
         // Note: we do not actually remember that `id` was touched. This is not too bad, because
         // long-lived `Arc`s during the cache cleanup will lead to them being marked as used.
-        // TODO: still, we should probably record that `id` was touched somewhere, to deal with
+        // TODO(low): still, we should probably record that `id` was touched somewhere, to deal with
         // short-term but recurrent read accesses.
         self.objects.get(id).map(|v| &v.1)
     }

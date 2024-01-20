@@ -362,7 +362,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             let _pg = db.recreate::<TestObjectFull, _>(*time, o, db).await;
         }
         Op::Remove { object } => {
-            let _object = object; // TODO: implement for non-postgres databases
+            let _object = object; // TODO(test): implement for non-postgres databases
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));

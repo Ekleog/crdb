@@ -19,7 +19,7 @@ pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
 pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
-    // TODO: make sure protocol is two-step, with server sending random data to client and
+    // TODO(api): make sure protocol is two-step, with server sending random data to client and
     // only then client answering with the Authenticator? This'd make it possible to use
     // a public key to auth
     fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
@@ -35,7 +35,7 @@ pub struct Server<C: ServerConfig> {
 
 impl<C: ServerConfig> Server<C> {
     pub async fn new(config: C, db: sqlx::PgPool, cache_watermark: usize) -> anyhow::Result<Self> {
-        // TODO: force configuring a vacuuming schedule
+        // TODO(server): force configuring a vacuuming schedule
         <C::ApiConfig as ApiConfig>::check_ulids();
         let postgres_db = Arc::new(postgres_db::PostgresDb::connect(db).await?);
         Ok(Server {
@@ -72,7 +72,7 @@ impl<C: ServerConfig> Server<C> {
                 no_new_changes_before,
                 kill_sessions_older_than,
                 &*self.db,
-                |_| todo!(),
+                |_| unimplemented!(), // TODO(api)
             )
             .await
     }

@@ -8,7 +8,7 @@ use crate::{
 };
 use std::sync::Arc;
 
-// TODO: properly fuzz the whole FullObject API, checking invariants like snapshot validity
+// TODO(test): properly fuzz the whole FullObject API, checking invariants like snapshot validity
 
 #[test]
 fn regression_apply_1324_does_not_type_error() {

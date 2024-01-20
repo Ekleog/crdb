@@ -24,7 +24,7 @@ impl<A: Authenticator> ApiDb<A> {
         todo!()
     }
 
-    // TODO: use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
+    // TODO(api): use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
     pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
         // todo!()
         futures::stream::empty()

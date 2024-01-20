@@ -147,7 +147,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp(pg, mem)?;
         }
         Op::Remove { object } => {
-            let _object = object; // TODO: implement for non-postgresql databases
+            let _object = object; // TODO(test): implement for non-postgresql databases // HERE
         }
         Op::Vacuum { recreate_at } => {
             run_vacuum(&db, &s.mem_db, *recreate_at).await?;

@@ -44,7 +44,7 @@ pub(crate) fn normalize(input: &str) -> String {
                     ),
                 );
                 // Finally, stem for french and english for now
-                // TODO: think how to make this more international? applying two stemmers is bad(tm)
+                // TODO(low): think how to make this more international? applying two stemmers is bad(tm)
                 // We should probably be using eg. cld3 to detect the language, and then stem accordingly
                 res.push_str(
                     &*Stemmer::create(Algorithm::English)

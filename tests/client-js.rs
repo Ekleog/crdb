@@ -125,7 +125,7 @@ mod fuzz_helpers {
                 db.vacuum().await.unwrap();
             }
             Some(_recreate_at) => {
-                // TODO: will have some actual stuff to do once (un)lock & co are implemented in MemDb
+                // TODO(test): will have some actual stuff to do once (un)lock & co are implemented in MemDb
                 db.vacuum().await.unwrap();
             }
         }

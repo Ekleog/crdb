@@ -249,7 +249,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
             cmp(pg, mem)?;
         }
         Op::Remove { object } => {
-            let _object = object; // TODO: implement for non-postgres databases
+            let _object = object; // TODO(test): implement for non-postgres databases
         }
         Op::Vacuum { recreate_at: None } => {
             db.vacuum(None, None, db, |r| {
