@@ -57,6 +57,14 @@ fuzz-pg-basic ARGS='':
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_simple__db_keeps_invariants/corpus.nounit \
         {{ARGS}}
 
+fuzz-idb-basic ARGS='':
+    # TODO: remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
+    PATH="../wasm-bindgen/target/debug:$PATH" \
+    cargo test --features client,_tests --target wasm32-unknown-unknown \
+        client_js::fuzz_simple::fuzz \
+        {{ARGS}} \
+        -- --include-ignored
+
 fuzz-pg-perms ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_remote_perms::fuzz \
