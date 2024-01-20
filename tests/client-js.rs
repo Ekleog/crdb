@@ -118,4 +118,7 @@ async fn smoke_test() {
             .expect("getting last snapshot")
             .0
     );
+    db.vacuum().await.unwrap();
+    db.assert_invariants_generic().await;
+    db.assert_invariants_for::<TestObjectSimple>().await;
 }

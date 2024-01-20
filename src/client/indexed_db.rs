@@ -167,9 +167,9 @@ impl IndexedDb {
         Ok(required_binaries)
     }
 
-    #[cfg(feature = "_tests")]
-    pub async fn assert_invariants_generic(&self) {
-        use std::collections::{hash_map, HashMap};
+    pub async fn vacuum(&self) -> crate::Result<()> {
+        let zero_object_id = ObjectId::from_u128(0).to_js_string();
+        let max_object_id = ObjectId::from_u128(u128::MAX).to_js_string();
 
         self.db
             .transaction(&[
@@ -179,6 +179,49 @@ impl IndexedDb {
                 "events_meta",
                 "binaries",
             ])
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
+                let events_meta = transaction
+                    .object_store("events_meta")
+                    .wrap_context("retrieving the 'events_meta' object store")?;
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving the 'binaries' object store")?;
+
+                let locked_object = snapshots_meta
+                    .index("locked_object")
+                    .wrap_context("retrieving the 'locked_object' index")?;
+                let object_snapshot = snapshots_meta
+                    .index("object_snapshot")
+                    .wrap_context("retrieving the 'object_snapshot' index")?;
+
+                // Remove all unlocked objects
+                let mut to_remove = locked_object
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&JsValue::from(0), &zero_object_id])
+                            ..=&**Array::from_iter([&JsValue::from(0), &max_object_id]),
+                    )
+                    .wrap_context("limiting cursor to only unlocked objects")?
+                    .open()
+                    .await
+                    .wrap_context("listing unlocked objects")?;
+                // TODO
+
+                Ok(())
+            })
+            .await
+            .wrap_context("vacuuming the database")
+    }
+
+    #[cfg(feature = "_tests")]
+    pub async fn assert_invariants_generic(&self) {
+        use std::collections::{hash_map, HashMap};
+
+        self.db
+            .transaction(&["snapshots_meta", "events_meta", "binaries"])
             .run(move |transaction| async move {
                 let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
                 let events_meta = transaction.object_store("events_meta").unwrap();
@@ -270,13 +313,7 @@ impl IndexedDb {
         use std::collections::HashMap;
 
         self.db
-            .transaction(&[
-                "snapshots",
-                "snapshots_meta",
-                "events",
-                "events_meta",
-                "binaries",
-            ])
+            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
             .run(move |transaction| async move {
                 let snapshots_store = transaction.object_store("snapshots").unwrap();
                 let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
@@ -329,6 +366,8 @@ impl IndexedDb {
                     let latest = snapshots.last_key_value().unwrap().1;
                     assert!(creation.is_creation == Some(1));
                     assert!(latest.is_latest == Some(1));
+                    assert!(creation.is_locked.is_some());
+                    assert!(creation.upload_not_over.is_some());
                     if creation.snapshot_id == latest.snapshot_id {
                         continue;
                     }
@@ -365,6 +404,8 @@ impl IndexedDb {
                             assert!(object == s);
                             assert!(snapshot_meta.required_binaries == object.required_binaries());
                             assert!(snapshot_meta.type_id == *T::type_ulid());
+                            assert!(snapshot_meta.is_locked.is_none());
+                            assert!(snapshot_meta.upload_not_over.is_none());
                         }
                     }
                 }
