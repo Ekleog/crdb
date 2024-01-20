@@ -1499,8 +1499,26 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("writing {binary_id:?}"))
     }
 
-    async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        todo!()
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        let ary = self
+            .db
+            .transaction(&["binaries"])
+            .run(move |transaction| async move {
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving the 'binaries' object store")?;
+
+                binaries.get(&binary_id.to_js_string()).await
+            })
+            .await
+            .wrap_with_context(|| format!("fetching {binary_id:?}"))?;
+        let Some(ary) = ary else {
+            return Ok(None);
+        };
+        let ary = ary
+            .dyn_into::<Uint8Array>()
+            .wrap_context("recovering Uint8Array from stored data")?;
+        Ok(Some(Arc::new(ary.to_vec())))
     }
 }
 

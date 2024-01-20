@@ -149,9 +149,10 @@ async fn smoke_test() {
     db.assert_invariants_generic().await;
     db.assert_invariants_for::<TestObjectSimple>().await;
     let data = Arc::new(vec![1, 2, 3]);
-    db.create_binary(crdb::hash_binary(&data), data)
-        .await
-        .unwrap();
+    let ptr = crdb::hash_binary(&data);
+    assert!(db.get_binary(ptr).await.unwrap().is_none());
+    db.create_binary(ptr, data.clone()).await.unwrap();
     db.assert_invariants_generic().await;
     db.assert_invariants_for::<TestObjectSimple>().await;
+    assert!(db.get_binary(ptr).await.unwrap().unwrap() == data);
 }
