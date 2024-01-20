@@ -1,4 +1,4 @@
-use super::fuzz_helpers::{self, make_db, setup, Database, SetupState};
+use super::fuzz_helpers::{self, make_db, make_fuzzer, setup, Database, SetupState};
 
 use crate::{
     db_trait::Db,
@@ -181,18 +181,7 @@ async fn fuzz_impl(cluster: &SetupState, ops: &Vec<Op>) {
     }
 }
 
-#[test]
-fn fuzz() {
-    let cluster = setup();
-    bolero::check!()
-        .with_iterations(20)
-        .with_type()
-        .for_each(move |ops| {
-            tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(fuzz_impl(&cluster, ops))
-        })
-}
+make_fuzzer!(fuzz_impl);
 
 #[fuzz_helpers::test]
 async fn regression_events_1342_fails_to_notice_conflict_on_3() {

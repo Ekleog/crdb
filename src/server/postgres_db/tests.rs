@@ -103,6 +103,25 @@ mod fuzz_helpers {
             .unwrap();
         db
     }
+
+    macro_rules! make_fuzzer {
+        ($fuzz_impl:ident) => {
+            #[test]
+            fn fuzz() {
+                let cluster = setup();
+                bolero::check!()
+                    .with_iterations(20)
+                    .with_type()
+                    .for_each(move |ops| {
+                        tokio::runtime::Runtime::new()
+                            .unwrap()
+                            .block_on($fuzz_impl(&cluster, ops))
+                    })
+            }
+        };
+    }
+
+    pub(crate) use make_fuzzer;
 }
 
 mod fuzz_simple {
