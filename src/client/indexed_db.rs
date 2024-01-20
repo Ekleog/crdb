@@ -291,14 +291,16 @@ impl IndexedDb {
                     .collect::<Vec<_>>();
                 let objects = snapshots
                     .iter()
-                    .map(|s| s.object_id)
+                    .filter_map(|s| (s.type_id == *T::type_ulid()).then(|| s.object_id))
                     .collect::<HashSet<_>>();
                 let mut object_snapshots_map = HashMap::new();
+                for o in objects.iter() {
+                    object_snapshots_map.insert(*o, BTreeMap::new());
+                }
                 for s in snapshots {
-                    object_snapshots_map
-                        .entry(s.object_id)
-                        .or_insert_with(BTreeMap::new)
-                        .insert(s.snapshot_id, s);
+                    if let Some(o) = object_snapshots_map.get_mut(&s.object_id) {
+                        o.insert(s.snapshot_id, s);
+                    }
                 }
 
                 // Fetch all events
@@ -312,10 +314,9 @@ impl IndexedDb {
                     object_events_map.insert(*o, BTreeMap::new());
                 }
                 for e in events {
-                    object_events_map
-                        .get_mut(&e.object_id)
-                        .unwrap()
-                        .insert(e.event_id, e);
+                    if let Some(o) = object_events_map.get_mut(&e.object_id) {
+                        o.insert(e.event_id, e);
+                    }
                 }
 
                 // For each object
@@ -332,7 +333,7 @@ impl IndexedDb {
                         continue;
                     }
 
-                    // Creation and latest surround all other events
+                    // Creation and latest snapshots surround all other events
                     assert!(events.first_key_value().unwrap().0 > &creation.snapshot_id);
                     assert!(events.last_key_value().unwrap().0 == &latest.snapshot_id);
                 }
