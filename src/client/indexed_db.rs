@@ -82,7 +82,10 @@ impl IndexedDb {
                     .unique()
                     .create()?;
                 snapshots_meta
-                    .build_compound_index("locked_object", &["is_locked", "object_id"])
+                    .build_compound_index(
+                        "locked_uploaded_object",
+                        &["is_locked", "upload_not_over", "object_id"],
+                    )
                     .unique()
                     .create()?;
                 snapshots_meta
@@ -168,8 +171,8 @@ impl IndexedDb {
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
-        let zero_object_id = ObjectId::from_u128(0).to_js_string();
-        let max_object_id = ObjectId::from_u128(u128::MAX).to_js_string();
+        let zero_id = ObjectId::from_u128(0).to_js_string();
+        let max_id = ObjectId::from_u128(u128::MAX).to_js_string();
 
         self.db
             .transaction(&[
@@ -186,29 +189,104 @@ impl IndexedDb {
                 let events_meta = transaction
                     .object_store("events_meta")
                     .wrap_context("retrieving the 'events_meta' object store")?;
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving the 'snapshots' object store")?;
+                let events = transaction
+                    .object_store("events")
+                    .wrap_context("retrieving the 'events' object store")?;
                 let binaries = transaction
                     .object_store("binaries")
                     .wrap_context("retrieving the 'binaries' object store")?;
 
-                let locked_object = snapshots_meta
-                    .index("locked_object")
-                    .wrap_context("retrieving the 'locked_object' index")?;
+                let locked_uploaded_object = snapshots_meta
+                    .index("locked_uploaded_object")
+                    .wrap_context("retrieving the 'locked_uploaded_object' index")?;
                 let object_snapshot = snapshots_meta
                     .index("object_snapshot")
                     .wrap_context("retrieving the 'object_snapshot' index")?;
 
-                // Remove all unlocked objects
-                let mut to_remove = locked_object
+                let object_event = events_meta
+                    .index("object_event")
+                    .wrap_context("retrieving the 'object_event' index")?;
+
+                // Remove all unlocked objects that have completed uploading
+                let mut to_remove = locked_uploaded_object
                     .cursor()
                     .range(
-                        &**Array::from_iter([&JsValue::from(0), &zero_object_id])
-                            ..=&**Array::from_iter([&JsValue::from(0), &max_object_id]),
+                        &**Array::from_iter([&JsValue::from(0), &JsValue::from(0), &zero_id])
+                            ..=&**Array::from_iter([&JsValue::from(0), &JsValue::from(0), &max_id]),
                     )
                     .wrap_context("limiting cursor to only unlocked objects")?
                     .open()
                     .await
                     .wrap_context("listing unlocked objects")?;
-                // TODO
+                while let Some(s) = to_remove.value() {
+                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
+                        .wrap_context("deserializing unlocked object")?;
+                    let object_id = s.object_id;
+                    let object_id_js = object_id.to_js_string();
+
+                    // Remove all the snapshots
+                    let mut snapshots_to_remove = object_snapshot
+                        .cursor()
+                        .range(
+                            &**Array::from_iter([&object_id_js, &zero_id])
+                                ..=&**Array::from_iter([&object_id_js, &max_id]),
+                        )
+                        .wrap_context("limiting the range to to-delete snapshots")?
+                        .open()
+                        .await
+                        .wrap_context("opening cursor of to-delete snapshots")?;
+                    while let Some(s) = snapshots_to_remove.value() {
+                        let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
+                            .wrap_context("deserializing to-remove snapshot metadata")?;
+                        snapshots
+                            .delete(&s.snapshot_id.to_js_string())
+                            .await
+                            .wrap_context("failed deleting snapshot")?;
+                        snapshots_to_remove.delete().await.wrap_with_context(|| {
+                            format!("failed deleting snapshot metadata of {object_id:?}")
+                        })?;
+                        snapshots_to_remove
+                            .advance(1)
+                            .await
+                            .wrap_context("going to next to-remove snapshot")?;
+                    }
+
+                    // Remove all the events
+                    let mut events_to_remove = object_event
+                        .cursor()
+                        .range(
+                            &**Array::from_iter([&object_id_js, &zero_id])
+                                ..=&**Array::from_iter([&object_id_js, &max_id]),
+                        )
+                        .wrap_context("limiting the range to to-delete events")?
+                        .open()
+                        .await
+                        .wrap_context("opening cursor of to-delete events")?;
+                    while let Some(e) = events_to_remove.value() {
+                        let e = serde_wasm_bindgen::from_value::<EventMeta>(e)
+                            .wrap_context("deserializing to-remove event metadata")?;
+                        events
+                            .delete(&e.event_id.to_js_string())
+                            .await
+                            .wrap_context("failed deleting event")?;
+                        events_to_remove.delete().await.wrap_with_context(|| {
+                            format!("failed deleting event of {object_id:?}")
+                        })?;
+                        events_to_remove
+                            .advance(1)
+                            .await
+                            .wrap_context("going to next to-remove event")?;
+                    }
+
+                    // Continue
+                    to_remove
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next to-remove object")?;
+                }
 
                 Ok(())
             })
