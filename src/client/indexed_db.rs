@@ -1036,9 +1036,11 @@ impl Db for IndexedDb {
                     .wrap_with_context(|| format!("serializing the snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))?;
                 let new_last_snapshot_js = serde_wasm_bindgen::to_value(&last_snapshot)
                     .wrap_with_context(|| format!("serializing the snapshot for {object_id:?} at {last_applied_event_id:?}"))?;
-                snapshots_meta.add(&new_last_snapshot_meta_js)
-                    .await
-                    .wrap_with_context(|| format!("saving new last snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))?;
+                snapshots_meta.add(&new_last_snapshot_meta_js).await.map_err(|err| match err {
+                    indexed_db::Error::AlreadyExists => crate::Error::EventAlreadyExists(event_id),
+                    e => crate::Error::Other(anyhow::Error::from(e).context(format!("saving new last snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))),
+
+                })?;
                 snapshots.add_kv(&last_applied_event_id_js, &new_last_snapshot_js)
                     .await
                     .wrap_with_context(|| format!("saving new last snapshot data for {object_id:?} at {last_applied_event_id:?}"))?;
