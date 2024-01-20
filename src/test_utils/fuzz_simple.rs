@@ -576,9 +576,9 @@ async fn regression_postgres_null_led_to_not_being_wrong() {
 #[fuzz_helpers::test]
 async fn regression_postgres_handled_numbers_as_one_element_arrays() {
     // See also https://www.postgresql.org/message-id/87h6jbbxma.fsf%40coegni.ekleog.org
-    tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(tracing::Level::TRACE)
-        .init();
+    // tracing_subscriber::FmtSubscriber::builder()
+    //     .with_max_level(tracing::Level::TRACE)
+    //     .init();
 
     let cluster = setup();
     fuzz_impl(

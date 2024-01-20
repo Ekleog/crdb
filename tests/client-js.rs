@@ -66,5 +66,5 @@ mod fuzz_helpers {
 }
 
 mod fuzz_simple {
-    // TODO: include!("../src/test_utils/fuzz_simple.rs");
+    include!("../src/test_utils/fuzz_simple.rs");
 }
