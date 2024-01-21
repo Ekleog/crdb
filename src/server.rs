@@ -43,7 +43,7 @@ impl<C: ServerConfig> Server<C> {
         config: C,
         db: sqlx::PgPool,
         cache_watermark: usize,
-        vacuum_schedule: VacuumSchedule<Tz>,
+        vacuum_schedule: ServerVacuumSchedule<Tz>,
     ) -> anyhow::Result<(Self, JoinHandle<usize>)>
     where
         Tz: 'static + Send + chrono::TimeZone,
@@ -134,16 +134,16 @@ impl<C: ServerConfig> Server<C> {
     }
 }
 
-pub struct VacuumSchedule<Tz: chrono::TimeZone> {
+pub struct ServerVacuumSchedule<Tz: chrono::TimeZone> {
     schedule: cron::Schedule,
     timezone: Tz,
     recreate_older_than: Option<Duration>,
     kill_sessions_older_than: Option<Duration>,
 }
 
-impl<Tz: chrono::TimeZone> VacuumSchedule<Tz> {
-    pub fn new(schedule: cron::Schedule, timezone: Tz) -> VacuumSchedule<Tz> {
-        VacuumSchedule {
+impl<Tz: chrono::TimeZone> ServerVacuumSchedule<Tz> {
+    pub fn new(schedule: cron::Schedule, timezone: Tz) -> ServerVacuumSchedule<Tz> {
+        ServerVacuumSchedule {
             schedule,
             timezone,
             recreate_older_than: None,

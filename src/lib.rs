@@ -35,7 +35,7 @@ mod client {
 #[cfg(feature = "server")]
 mod server;
 #[cfg(feature = "server")]
-pub use server::{Authenticator, Server, VacuumSchedule};
+pub use server::{Authenticator, Server, ServerVacuumSchedule};
 #[cfg(not(feature = "server"))]
 mod server {
     #[macro_export]

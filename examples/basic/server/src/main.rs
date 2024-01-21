@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
         api::db::ServerConfig,
         db,
         8 * 1024 * 1024,
-        crdb::VacuumSchedule::new(
+        crdb::ServerVacuumSchedule::new(
             crdb::cron::Schedule::from_str("").unwrap(),
             crdb::chrono::Utc,
         ),
