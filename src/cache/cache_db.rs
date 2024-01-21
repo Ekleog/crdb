@@ -1,4 +1,4 @@
-use super::{BinariesCache, CacheConfig, ObjectCache};
+use super::{BinariesCache, ObjectCache};
 use crate::{
     db_trait::Db, error::ResultExt, full_object::FullObject, hash_binary, BinPtr, CanDoCallbacks,
     CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
@@ -14,119 +14,12 @@ pub struct CacheDb<D: Db> {
 }
 
 impl<D: Db> CacheDb<D> {
-    #[cfg(feature = "client")]
-    // TODO(client): this should move to ClientDb
-    pub fn watch_from<C: CacheConfig, A: crate::client::Authenticator>(
-        self: &Arc<Self>,
-        api: &Arc<crate::client::ApiDb<A>>,
-    ) {
-        use futures::pin_mut;
-
-        // Watch new objects
-        crate::spawn({
-            let api = api.clone();
-            let internal_db = self.db.clone();
-            let cache = self.cache.clone();
-            let this = self.clone();
-            async move {
-                let new_objects = api.new_objects().await;
-                pin_mut!(new_objects);
-                while let Some(o) = new_objects.next().await {
-                    let mut cache = cache.write().await;
-                    let object = o.id;
-                    if let Err(error) =
-                        C::create_in_db(&*internal_db, o.clone(), false, &*this).await
-                    {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            "failed creating received object in internal db"
-                        );
-                    }
-                    if let Err(error) = C::create(&mut *cache, o).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            "failed creating received object in cache"
-                        );
-                    }
-                }
-            }
-        });
-
-        // Watch new events
-        crate::spawn({
-            let api = api.clone();
-            let internal_db = self.db.clone();
-            let cache = self.cache.clone();
-            let this = self.clone();
-            async move {
-                let new_events = api.new_events().await;
-                pin_mut!(new_events);
-                while let Some(e) = new_events.next().await {
-                    let mut cache = cache.write().await;
-                    let object = e.object_id;
-                    let event = e.id;
-                    if let Err(error) = C::submit_in_db(&*internal_db, e.clone(), &*this).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            ?event,
-                            "failed submitting received object to internal db"
-                        );
-                    }
-                    // DO NOT re-fetch object when receiving an event not in cache for it.
-                    // Without this, users would risk unsubscribing from an object, then receiving
-                    // an event on this object (as a race condition), and then staying subscribed.
-                    if let Err(error) = C::submit(&mut *cache, e).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            ?event,
-                            "failed submitting received event to cache"
-                        );
-                    }
-                }
-            }
-        });
-
-        // Watch new re-creations
-        crate::spawn({
-            let api = api.clone();
-            let internal_db = self.db.clone();
-            let cache = self.cache.clone();
-            let this = self.clone();
-            async move {
-                let new_recreations = api.new_recreations().await;
-                pin_mut!(new_recreations);
-                while let Some(s) = new_recreations.next().await {
-                    let mut cache = cache.write().await;
-                    let object = s.object_id;
-                    if let Err(error) = C::recreate_in_db(&*internal_db, s.clone(), &*this).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            "failed recreating as per received event in internal db"
-                        );
-                    }
-                    if let Err(error) = C::recreate(&mut *cache, s).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            "failed recreating as per received event in cache"
-                        )
-                    }
-                }
-            }
-        });
-    }
-
     /// Note that `watermark` will still keep in the cache all objects still in use by the program.
     /// So, setting `watermark` to a value too low (eg. less than the size of objects actually in use by the
     /// program) would make cache operation slow.
     /// For this reason, if the cache used size reaches the watermark, then the watermark will be
     /// automatically increased.
-    pub(crate) fn new<C: CacheConfig>(db: Arc<D>, watermark: usize) -> Arc<CacheDb<D>> {
+    pub(crate) fn new(db: Arc<D>, watermark: usize) -> Arc<CacheDb<D>> {
         let cache = Arc::new(RwLock::new(ObjectCache::new(watermark)));
         let this = Arc::new(CacheDb {
             db: db.clone(),

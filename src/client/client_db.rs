@@ -28,13 +28,83 @@ impl<A: Authenticator> ClientDb<A> {
         // https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
-        let db = CacheDb::new::<C>(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
-        db.watch_from::<C, _>(&api);
-        Ok(ClientDb {
+        let db = CacheDb::new(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
+        let this = ClientDb {
             api,
             db,
             vacuum_guard: RwLock::new(()),
-        })
+        };
+        this.setup_watchers::<C>();
+        Ok(this)
+    }
+
+    fn setup_watchers<C: ApiConfig>(&self) {
+        use futures::pin_mut;
+
+        // Watch new objects
+        crate::spawn({
+            let api = self.api.clone();
+            let local_db = self.db.clone();
+            async move {
+                let new_objects = api.new_objects().await;
+                pin_mut!(new_objects);
+                while let Some(o) = new_objects.next().await {
+                    let object = o.id;
+                    if let Err(error) = C::create(&*local_db, o.clone(), false, &*local_db).await {
+                        tracing::error!(
+                            ?error,
+                            ?object,
+                            "failed creating received object in internal db"
+                        );
+                    }
+                }
+            }
+        });
+
+        // Watch new events
+        crate::spawn({
+            let api = self.api.clone();
+            let local_db = self.db.clone();
+            async move {
+                let new_events = api.new_events().await;
+                pin_mut!(new_events);
+                while let Some(e) = new_events.next().await {
+                    let object = e.object_id;
+                    let event = e.id;
+                    if let Err(error) = C::submit(&*local_db, e.clone(), &*local_db).await {
+                        tracing::error!(
+                            ?error,
+                            ?object,
+                            ?event,
+                            "failed submitting received object to internal db"
+                        );
+                    }
+                    // DO NOT re-fetch object when receiving an event not in cache for it.
+                    // Without this, users would risk unsubscribing from an object, then receiving
+                    // an event on this object (as a race condition), and then staying subscribed.
+                }
+            }
+        });
+
+        // Watch new re-creations
+        crate::spawn({
+            let api = self.api.clone();
+            let local_db = self.db.clone();
+            async move {
+                let new_recreations = api.new_recreations().await;
+                pin_mut!(new_recreations);
+                while let Some(s) = new_recreations.next().await {
+                    let object = s.object_id;
+                    if let Err(error) = C::recreate(&*local_db, s.clone(), &*local_db).await {
+                        tracing::error!(
+                            ?error,
+                            ?object,
+                            "failed recreating as per received event in internal db"
+                        );
+                    }
+                }
+            }
+        });
     }
 
     pub fn user(&self) -> User {

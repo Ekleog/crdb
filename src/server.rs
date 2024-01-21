@@ -56,7 +56,7 @@ impl<C: ServerConfig> Server<C> {
 
         // Connect to the database and setup the cache
         let postgres_db = Arc::new(postgres_db::PostgresDb::connect(db).await?);
-        let db = CacheDb::new::<C::ApiConfig>(postgres_db.clone(), cache_watermark);
+        let db = CacheDb::new(postgres_db.clone(), cache_watermark);
 
         // Start the upgrading task
         let upgrade_handle = tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));

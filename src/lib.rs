@@ -45,6 +45,7 @@ mod server {
 }
 
 // Stuff used by macros
+// TODO(low): verify all the stuff here is actually required (and review the whole pub crate api too)
 #[doc(hidden)]
 pub mod crdb_internal {
     #[cfg(feature = "client")]
@@ -55,7 +56,7 @@ pub mod crdb_internal {
     pub use crate::test_utils;
     pub use crate::{
         api::{parse_snapshot, ApiConfig, CanDoCallbacks},
-        cache::{CacheConfig, ObjectCache},
+        cache::ObjectCache,
         db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
         error::ResultExt,
         hash_binary, private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object,
