@@ -35,7 +35,7 @@ mod client {
 #[cfg(feature = "server")]
 mod server;
 #[cfg(feature = "server")]
-pub use server::{Authenticator, Server};
+pub use server::{Authenticator, Server, VacuumSchedule};
 #[cfg(not(feature = "server"))]
 mod server {
     #[macro_export]
@@ -76,6 +76,11 @@ pub mod crdb_internal {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use sqlx;
+
+#[cfg(feature = "server")]
+pub use cron;
+
+pub use chrono;
 
 // This module needs to actually be public, because the `generate` macros need to be
 // able to implement the traits. However, making it doc(hidden) makes it look as though
