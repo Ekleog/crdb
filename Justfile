@@ -63,6 +63,7 @@ fuzz-idb-basic ARGS='':
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
     cargo test --features client,_tests --target wasm32-unknown-unknown \
         client_js::fuzz_simple::fuzz \
+        --profile fuzz \
         {{ARGS}} \
         -- --include-ignored
 
@@ -78,6 +79,7 @@ fuzz-idb-perms ARGS='':
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
     cargo test --features client,_tests --target wasm32-unknown-unknown \
         client_js::fuzz_remote_perms::fuzz \
+        --profile fuzz \
         {{ARGS}} \
         -- --include-ignored
 
