@@ -227,7 +227,7 @@ pub enum Request {
     Unsubscribe(HashSet<ObjectId>),
     GetTime,
     Upload(Vec<UploadOrBinary>),
-    // TODO(api)
+    // TODO(api): does this have everything we want to do?
 }
 
 #[allow(dead_code)] // TODO(api): remove

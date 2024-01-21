@@ -26,7 +26,7 @@ impl SqliteDb {
     }
 }
 
-#[allow(unused_variables)] // TODO: remove
+#[allow(unused_variables)] // TODO(sqlite): remove
 impl Db for SqliteDb {
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
@@ -42,7 +42,7 @@ impl Db for SqliteDb {
             .await
             .wrap_context("acquiring sqlite transaction")?;
 
-        // TODO add reord lock over whole database
+        // TODO(sqlite): add reord lock over whole database
 
         reord::point().await;
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
@@ -132,11 +132,11 @@ impl Db for SqliteDb {
         event: Arc<T::Event>,
         cb: &C,
     ) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(sqlite): implement
     }
 
     async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
-        todo!()
+        unimplemented!() // TODO(sqlite): implement
     }
 
     async fn query<T: Object>(
@@ -145,7 +145,7 @@ impl Db for SqliteDb {
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        // todo!()
+        // unimplemented!() // TODO(sqlite): implement
         Ok(futures::stream::empty())
     }
 
@@ -155,18 +155,18 @@ impl Db for SqliteDb {
         object: ObjectId,
         cb: &C,
     ) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(sqlite): implement
     }
 
     async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(sqlite): implement
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(sqlite): implement
     }
 
     async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        todo!()
+        unimplemented!() // TODO(sqlite): implement
     }
 }

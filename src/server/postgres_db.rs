@@ -26,7 +26,7 @@ mod tests;
 pub struct PostgresDb<Config: ServerConfig> {
     db: sqlx::PgPool,
     event_locks: LockPool<EventId>,
-    // TODO: make into a RwLockPool, which locks the snapshot fields
+    // TODO(low): make into a RwLockPool, which locks the snapshot fields
     // create and submit take a write(), get and update_users_who_can_read
     // take a read(). This should significantly improve performance
     object_locks: LockPool<ObjectId>,

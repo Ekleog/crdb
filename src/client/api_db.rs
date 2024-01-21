@@ -13,7 +13,7 @@ pub struct ApiDb<A: Authenticator> {
 
 impl<A: Authenticator> ApiDb<A> {
     pub async fn connect(_base_url: Arc<String>, _auth: Arc<A>) -> anyhow::Result<ApiDb<A>> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     pub fn user(&self) -> User {
@@ -21,12 +21,12 @@ impl<A: Authenticator> ApiDb<A> {
     }
 
     pub async fn disconnect(&self) -> anyhow::Result<()> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     // TODO(api): use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
     pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        // todo!()
+        // unimplemented!() // TODO(api): implement
         futures::stream::empty()
     }
 
@@ -35,19 +35,19 @@ impl<A: Authenticator> ApiDb<A> {
     /// with `created`, or obtained with `get` or `query`, as well as all objects
     /// received through `new_objects`, excluding objects explicitly unsubscribed from
     pub async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        // todo!()
+        // unimplemented!() // TODO(api): implement
         futures::stream::empty()
     }
 
     pub async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        // todo!()
+        // unimplemented!() // TODO(api): implement
         futures::stream::empty()
     }
 
     /// Note that this function unsubscribes ALL the streams that have ever been taken for
     /// this object; and purges it from the local database.
     pub async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     pub async fn create<T: Object>(
@@ -56,7 +56,7 @@ impl<A: Authenticator> ApiDb<A> {
         _created_at: EventId,
         _object: Arc<T>,
     ) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     pub async fn submit<T: Object>(
@@ -65,11 +65,11 @@ impl<A: Authenticator> ApiDb<A> {
         _event_id: EventId,
         _event: Arc<T::Event>,
     ) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     pub async fn get<T: Object>(&self, _object_id: ObjectId) -> crate::Result<FullObject> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     pub async fn query<T: Object>(
@@ -78,7 +78,7 @@ impl<A: Authenticator> ApiDb<A> {
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         _q: &Query,
     ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        // todo!()
+        // unimplemented!() // TODO(api): implement
         Ok(futures::stream::empty())
     }
 
@@ -87,7 +87,7 @@ impl<A: Authenticator> ApiDb<A> {
         _time: Timestamp,
         _object: ObjectId,
     ) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     pub async fn create_binary(
@@ -95,10 +95,10 @@ impl<A: Authenticator> ApiDb<A> {
         _binary_id: BinPtr,
         _data: Arc<Vec<u8>>,
     ) -> crate::Result<()> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 
     pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
-        todo!()
+        unimplemented!() // TODO(api): implement
     }
 }
