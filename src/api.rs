@@ -66,6 +66,7 @@ pub trait Object:
         unimplemented!()
     }
     // TODO(server): allow re-encoding all snapshots in db with the new version using from_old_snapshot
+    // This should happen for all snapshots that have a non-latest snapshot_version or normalizer_version
 
     fn can_create<'a, C: CanDoCallbacks>(
         &'a self,

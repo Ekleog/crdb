@@ -156,6 +156,8 @@ mod fuzz_helpers {
     }
 }
 
+// TODO(test): add tests that validate that upgrading the version of objects or normalizer works fine
+
 mod fuzz_simple {
     include!("../../test_utils/fuzz_simple.rs");
 }
