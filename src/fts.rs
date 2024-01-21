@@ -67,35 +67,44 @@ pub(crate) fn matches(value: &str, pat: &str) -> bool {
 }
 
 #[derive(Clone, deepsize::DeepSizeOf, educe::Educe, serde::Deserialize, serde::Serialize)]
-#[educe(Deref, Eq, Ord, PartialEq, PartialOrd)]
-pub struct SearchableString {
-    #[serde(rename = "_crdb-str")]
-    #[educe(Deref)]
-    value: String,
-
-    #[serde(rename = "_crdb-normalized")]
-    #[educe(Eq(ignore), Ord(ignore))]
-    normalized: String,
-
-    #[serde(rename = "_crdb-normalizer-version")]
-    #[educe(Eq(ignore), Ord(ignore))]
-    normalizer_version: usize,
-}
+#[educe(Deref, DerefMut, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(from = "SearchableStringSer", into = "SearchableStringSer")]
+pub struct SearchableString(#[educe(Deref, DerefMut)] pub String);
 
 impl SearchableString {
     pub fn new() -> SearchableString {
-        SearchableString {
-            value: String::new(),
-            normalized: String::new(),
-            normalizer_version: normalizer_version(),
-        }
+        SearchableString(String::new())
     }
 }
 
 impl<T: Into<String>> From<T> for SearchableString {
     fn from(value: T) -> SearchableString {
-        let value: String = value.into();
-        SearchableString {
+        SearchableString(value.into())
+    }
+}
+
+impl Debug for SearchableString {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(fmt)
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct SearchableStringSer {
+    #[serde(rename = "_crdb-str")]
+    value: String,
+
+    #[serde(rename = "_crdb-normalized")]
+    normalized: String,
+
+    #[serde(rename = "_crdb-normalizer-version")]
+    normalizer_version: usize,
+}
+
+impl From<SearchableString> for SearchableStringSer {
+    fn from(value: SearchableString) -> SearchableStringSer {
+        let value: String = value.0;
+        SearchableStringSer {
             normalizer_version: normalizer_version(),
             normalized: normalize(&value),
             value,
@@ -103,9 +112,9 @@ impl<T: Into<String>> From<T> for SearchableString {
     }
 }
 
-impl Debug for SearchableString {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.value.fmt(fmt)
+impl From<SearchableStringSer> for SearchableString {
+    fn from(value: SearchableStringSer) -> SearchableString {
+        SearchableString(value.value)
     }
 }
 

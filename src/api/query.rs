@@ -362,8 +362,7 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
         }
         Query::ContainsStr(path, _) => {
             // TODO(server): Check normalizer_version and recompute at startup if not the right version
-            // This will probably require adding a list of all the json paths to SearchableString's
-            // in Object
+            // We'll have to add a normalizer_version field to the snapshots table and handle it like snapshot bump
             res.push_str("COALESCE(to_tsvector(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
             res.push_str(&format!(
