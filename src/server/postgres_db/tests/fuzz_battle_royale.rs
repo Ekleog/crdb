@@ -136,7 +136,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let _pg = db.create(*id, *created_at, object.clone(), db).await;
+            let _pg = db.create(*id, *created_at, object.clone(), true, db).await;
         }
         Op::SubmitSimple {
             object,
@@ -163,7 +163,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg: crate::Result<Arc<TestObjectSimple>> =
-                match db.get::<TestObjectSimple>(o).await {
+                match db.get::<TestObjectSimple>(true, o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                     Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
                         Ok(o) => Ok(o.1),
@@ -193,7 +193,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let _pg = db.create(*id, *created_at, object.clone(), db).await;
+            let _pg = db.create(*id, *created_at, object.clone(), true, db).await;
         }
         Op::SubmitPerms {
             object,
@@ -219,14 +219,14 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg: crate::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await
-            {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
-                    Ok(o) => Ok(o.1),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
+            let _pg: crate::Result<Arc<TestObjectPerms>> =
+                match db.get::<TestObjectPerms>(true, o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                    },
+                };
         }
         Op::QueryPerms { user, q } => {
             let _pg = db
@@ -250,7 +250,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let _pg = db.create(*id, *created_at, object.clone(), db).await;
+            let _pg = db.create(*id, *created_at, object.clone(), true, db).await;
         }
         Op::SubmitDelegatePerms {
             object,
@@ -277,7 +277,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg: crate::Result<Arc<TestObjectDelegatePerms>> = match db
-                .get::<TestObjectDelegatePerms>(o)
+                .get::<TestObjectDelegatePerms>(true, o)
                 .await
             {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
@@ -311,7 +311,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let _pg = db.create(*id, *created_at, object.clone(), db).await;
+            let _pg = db.create(*id, *created_at, object.clone(), true, db).await;
         }
         Op::SubmitFull {
             object,
@@ -337,13 +337,14 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg: crate::Result<Arc<TestObjectFull>> = match db.get::<TestObjectFull>(o).await {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
-                    Ok(o) => Ok(o.1),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
+            let _pg: crate::Result<Arc<TestObjectFull>> =
+                match db.get::<TestObjectFull>(true, o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                    },
+                };
         }
         Op::QueryFull { user, q } => {
             let _pg = db

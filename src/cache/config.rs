@@ -35,6 +35,7 @@ pub trait CacheConfig {
     fn create_in_db<D: Db, C: CanDoCallbacks>(
         db: &D,
         o: DynNewObject,
+        lock: bool,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 

@@ -51,7 +51,6 @@ pub struct IndexedDb {
 }
 
 impl IndexedDb {
-    // TODO(client): implement (un)lock
     pub async fn connect(url: &str) -> anyhow::Result<IndexedDb> {
         let window = web_sys::window().ok_or_else(|| anyhow!("not running in a browser"))?;
         let is_persistent = JsFuture::from(window.navigator().storage().persist().wrap_context(
@@ -195,12 +194,18 @@ impl IndexedDb {
 
     async fn get_impl<T: Object>(
         &self,
+        lock: bool,
         object_id: ObjectId,
         type_id_js: &JsValue,
         object_id_js: &JsValue,
     ) -> crate::Result<FullObject> {
-        self.db
-            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
+        let mut transaction =
+            self.db
+                .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"]);
+        if lock {
+            transaction = transaction.rw();
+        }
+        transaction
             .run(move |transaction| async move {
                 let snapshots = transaction
                     .object_store("snapshots")
@@ -233,7 +238,7 @@ impl IndexedDb {
                         format!("fetching creation snapshot metadata for {object_id:?}")
                     })?
                     .ok_or_else(|| crate::Error::ObjectDoesNotExist(object_id))?;
-                let creation_snapshot_meta =
+                let mut creation_snapshot_meta =
                     serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_snapshot_meta_js)
                         .wrap_with_context(|| {
                             format!("deserializing creation snapshot metadata for {object_id:?}")
@@ -268,6 +273,19 @@ impl IndexedDb {
                         format!("deserializing snapshot data for {creation_snapshot_id:?}")
                     })?,
                 );
+
+                // Rewrite the creation snapshot if needed
+                if lock && creation_snapshot_meta.is_locked != Some(1) {
+                    creation_snapshot_meta.is_locked = Some(1);
+                    let new_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot_meta)
+                        .wrap_context("serializing snapshot metadata")?;
+                    snapshots_meta
+                        .put(&new_snapshot_js)
+                        .await
+                        .wrap_with_context(|| {
+                            format!("locking creation snapshot for {object_id:?} in database")
+                        })?;
+                }
 
                 // Figure out the latest snapshot
                 let latest_snapshot_meta_js = latest_type_object
@@ -730,6 +748,7 @@ impl Db for IndexedDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        lock: bool,
         _cb: &C,
     ) -> crate::Result<()> {
         let new_snapshot_meta = SnapshotMeta {
@@ -740,7 +759,7 @@ impl Db for IndexedDb {
             is_latest: Some(1),
             normalizer_version: fts::normalizer_version(),
             snapshot_version: T::snapshot_version(),
-            is_locked: Some(1),
+            is_locked: Some(lock as usize),
             required_binaries: object.required_binaries(),
         };
         let object_id_js = object_id.to_js_string();
@@ -785,7 +804,7 @@ impl Db for IndexedDb {
                         })?;
                     // Ignore a few fields in comparison below
                     old_meta.is_latest = Some(1);
-                    old_meta.is_locked = Some(1);
+                    old_meta.is_locked = Some(lock as usize);
                     if old_meta != new_snapshot_meta {
                         return Err(crate::Error::ObjectAlreadyExists(object_id).into());
                     }
@@ -1071,10 +1090,10 @@ impl Db for IndexedDb {
             })
     }
 
-    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         let object_id_js = object_id.to_js_string();
         let type_id_js = T::type_ulid().to_js_string();
-        self.get_impl::<T>(object_id, &type_id_js, &object_id_js)
+        self.get_impl::<T>(lock, object_id, &type_id_js, &object_id_js)
             .await
     }
 
@@ -1160,7 +1179,7 @@ impl Db for IndexedDb {
             for object_id_js in objects {
                 let object_id = serde_wasm_bindgen::from_value::<ObjectId>(object_id_js.clone())
                     .wrap_context("deserializing object id")?;
-                match self.get_impl::<T>(object_id, &type_id_js, &object_id_js).await {
+                match self.get_impl::<T>(false, object_id, &type_id_js, &object_id_js).await {
                     Err(crate::Error::ObjectDoesNotExist(_)) => continue,
                     res => yield res,
                 }
@@ -1418,6 +1437,47 @@ impl Db for IndexedDb {
             })
             .await
             .wrap_with_context(|| format!("recreating {object_id:?} at {time:?}"))
+    }
+
+    async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
+        let object_id_js = object_id.to_js_string();
+
+        self.db
+            .transaction(&["snapshots_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
+
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving the 'creation_object' index")?;
+
+                let Some(snapshot_js) = creation_object
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    .await
+                    .wrap_context("retrieving creation snapshot")?
+                else {
+                    // Object was already removed from database, so it was already unlocked
+                    return Ok(());
+                };
+
+                let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
+                    .wrap_context("deserializing snapshot metadata")?;
+                snapshot_meta.is_locked = Some(0);
+                let snapshot_js = serde_wasm_bindgen::to_value(&snapshot_meta)
+                    .wrap_context("reserializing snapshot metadata")?;
+
+                snapshots_meta
+                    .put(&snapshot_js)
+                    .await
+                    .wrap_context("saving the unlocked creation snapshot metadata")?;
+
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"))
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

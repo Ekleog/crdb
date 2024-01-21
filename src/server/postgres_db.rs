@@ -1487,6 +1487,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        _lock: bool,
         cb: &C,
     ) -> crate::Result<()> {
         self.create_impl(object_id, created_at, object, cb).await?;
@@ -1521,7 +1522,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -1624,6 +1625,10 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         self.recreate_impl::<T, _>(time, object_id, cb).await?;
 
         Ok(())
+    }
+
+    async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
+        panic!("Tried unlocking {object_id:?} from server, but server is supposed to always keep all the history!")
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

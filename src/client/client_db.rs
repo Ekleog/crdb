@@ -21,8 +21,6 @@ impl<A: Authenticator> ClientDb<A> {
         local_db: &str,
         cache_watermark: usize,
     ) -> anyhow::Result<ClientDb<A>> {
-        // TODO(client): add an API to mark objects as "locked" so that they (and their binaries)
-        // cannot be vacuumed out of the local db
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
         let db = CacheDb::new::<C>(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
@@ -66,7 +64,11 @@ impl<A: Authenticator> ClientDb<A> {
         self.api.new_recreations().await
     }
 
-    pub async fn unsubscribe(&self, ptr: ObjectId) -> anyhow::Result<()> {
+    pub async fn unlock(&self, ptr: ObjectId) -> crate::Result<()> {
+        self.db.unlock(ptr).await
+    }
+
+    pub async fn unsubscribe(&self, ptr: ObjectId) -> crate::Result<()> {
         self.db.remove(ptr).await?;
         self.api.unsubscribe(ptr).await
     }
@@ -78,7 +80,9 @@ impl<A: Authenticator> ClientDb<A> {
         object: Arc<T>,
     ) -> crate::Result<()> {
         self.api.create(id, created_at, object.clone()).await?;
-        self.db.create(id, created_at, object, &*self.db).await
+        self.db
+            .create(id, created_at, object, true, &*self.db)
+            .await
     }
 
     pub async fn submit<T: Object>(
@@ -95,14 +99,20 @@ impl<A: Authenticator> ClientDb<A> {
             .await
     }
 
-    pub async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
-        match self.db.get::<T>(object_id).await {
+    pub async fn get<T: Object>(
+        &self,
+        lock: bool,
+        object_id: ObjectId,
+    ) -> crate::Result<FullObject> {
+        match self.db.get::<T>(lock, object_id).await {
             Ok(r) => return Ok(r),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
         let res = self.api.get::<T>(object_id).await?;
-        self.db.create_all::<T, _>(res.clone(), &*self.db).await?;
+        self.db
+            .create_all::<T, _>(res.clone(), lock, &*self.db)
+            .await?;
         Ok(res)
     }
 
@@ -116,13 +126,13 @@ impl<A: Authenticator> ClientDb<A> {
 
     pub async fn query_remote<T: Object>(
         &self,
-        user: User,
+        lock: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
         Ok(self
             .api
-            .query::<T>(user, ignore_not_modified_on_server_since, q)
+            .query::<T>(self.user(), ignore_not_modified_on_server_since, q)
             .await?
             .then({
                 let db = self.db.clone();
@@ -130,7 +140,7 @@ impl<A: Authenticator> ClientDb<A> {
                     let db = db.clone();
                     async move {
                         let o = o?;
-                        db.create_all::<T, _>(o.clone(), &*db).await?;
+                        db.create_all::<T, _>(o.clone(), lock, &*db).await?;
                         Ok(o)
                     }
                 }

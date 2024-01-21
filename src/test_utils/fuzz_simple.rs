@@ -77,10 +77,10 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             object,
         } => {
             s.objects.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
+            let pg = db.create(*id, *created_at, object.clone(), true, db).await;
             let mem = s
                 .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
+                .create(*id, *created_at, object.clone(), true, &s.mem_db)
                 .await;
             cmp(pg, mem)?;
         }
@@ -101,16 +101,16 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
         }
         Op::Get { object, at } => {
             let o = s.object(*object);
-            let pg: crdb::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
-            {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
-                    Ok(o) => Ok(o.1),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
+            let pg: crdb::Result<Arc<TestObjectSimple>> =
+                match db.get::<TestObjectSimple>(true, o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                    },
+                };
             let mem: crdb::Result<Arc<TestObjectSimple>> =
-                match s.mem_db.get::<TestObjectSimple>(o).await {
+                match s.mem_db.get::<TestObjectSimple>(true, o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
                     Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
                         Ok(o) => Ok(o.1),

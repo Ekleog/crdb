@@ -17,6 +17,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
+            true,
             &$db,
         )
         .await
@@ -27,6 +28,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_2,
             Arc::new(TestObjectSimple::stub_2()),
+            true,
             &$db,
         )
         .await
@@ -37,6 +39,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
+            true,
             &$db,
         )
         .await
@@ -75,7 +78,7 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             Vec::<u8>::new(),
-            $db.get::<TestObjectSimple>(OBJECT_ID_1)
+            $db.get::<TestObjectSimple>(false, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
                 .last_snapshot::<TestObjectSimple>()
@@ -94,7 +97,7 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             Vec::<u8>::new(),
-            $db.get::<TestObjectSimple>(OBJECT_ID_1)
+            $db.get::<TestObjectSimple>(true, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
                 .last_snapshot::<TestObjectSimple>()
@@ -113,7 +116,7 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             b"baz".to_vec(),
-            $db.get::<TestObjectSimple>(OBJECT_ID_1)
+            $db.get::<TestObjectSimple>(false, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
                 .last_snapshot::<TestObjectSimple>()

@@ -15,6 +15,7 @@ pub struct CacheDb<D: Db> {
 
 impl<D: Db> CacheDb<D> {
     #[cfg(feature = "client")]
+    // TODO(client): this should move to ClientDb
     pub fn watch_from<C: CacheConfig, A: crate::client::Authenticator>(
         self: &Arc<Self>,
         api: &Arc<crate::client::ApiDb<A>>,
@@ -33,7 +34,9 @@ impl<D: Db> CacheDb<D> {
                 while let Some(o) = new_objects.next().await {
                     let mut cache = cache.write().await;
                     let object = o.id;
-                    if let Err(error) = C::create_in_db(&*internal_db, o.clone(), &*this).await {
+                    if let Err(error) =
+                        C::create_in_db(&*internal_db, o.clone(), false, &*this).await
+                    {
                         tracing::error!(
                             ?error,
                             ?object,
@@ -158,6 +161,7 @@ impl<D: Db> CacheDb<D> {
     pub async fn create_all<T: Object, C: CanDoCallbacks>(
         &self,
         o: FullObject,
+        lock: bool,
         cb: &C,
     ) -> crate::Result<()> {
         let (creation, changes) = o.extract_all_clone();
@@ -169,6 +173,7 @@ impl<D: Db> CacheDb<D> {
                 .arc_to_any()
                 .downcast::<T>()
                 .expect("Type provided to `CacheDb::create_all` is wrong"),
+            lock,
             cb,
         )
         .await?;
@@ -194,13 +199,16 @@ impl<D: Db> Db for CacheDb<D> {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        lock: bool,
         cb: &C,
     ) -> crate::Result<()> {
         // First change db, then the cache, because db can rely on the `get`s from the
         // cache to compute `users_who_can_read`, and this in turn means that the cache
         // should never (lock reads or) return not up-to-date information, nor return
         // information that has not yet been validated by the database.
-        self.db.create(id, created_at, object.clone(), cb).await?;
+        self.db
+            .create(id, created_at, object.clone(), lock, cb)
+            .await?;
         self.cache.write().await.create(id, created_at, object)?;
         Ok(())
     }
@@ -226,14 +234,14 @@ impl<D: Db> Db for CacheDb<D> {
         Ok(())
     }
 
-    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         {
             let cache = self.cache.read().await;
             if let Some(res) = cache.get(&object_id) {
                 return Ok(res.clone());
             }
         }
-        let res = self.db.get::<T>(object_id).await?;
+        let res = self.db.get::<T>(lock, object_id).await?;
         debug_assert!(
             res.id() == object_id,
             "Got result with id {:?} instead of expected id {object_id:?}",
@@ -282,6 +290,10 @@ impl<D: Db> Db for CacheDb<D> {
     ) -> crate::Result<()> {
         self.db.recreate::<T, C>(time, object, cb).await?;
         self.cache.write().await.recreate::<T>(object, time)
+    }
+
+    async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
+        self.db.unlock(object_id).await
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

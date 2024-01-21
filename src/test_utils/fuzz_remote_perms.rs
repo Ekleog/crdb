@@ -96,10 +96,10 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             object,
         } => {
             s.objects.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
+            let pg = db.create(*id, *created_at, object.clone(), true, db).await;
             let mem = s
                 .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
+                .create(*id, *created_at, object.clone(), true, &s.mem_db)
                 .await;
             cmp(pg, mem)?;
         }
@@ -109,10 +109,10 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             object,
         } => {
             s.objects.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), db).await;
+            let pg = db.create(*id, *created_at, object.clone(), true, db).await;
             let mem = s
                 .mem_db
-                .create(*id, *created_at, object.clone(), &s.mem_db)
+                .create(*id, *created_at, object.clone(), true, &s.mem_db)
                 .await;
             cmp(pg, mem)?;
         }
@@ -148,15 +148,16 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
         }
         Op::GetPerm { object, at } => {
             let o = s.object(*object);
-            let pg: crdb::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
-                    Ok(o) => Ok(o.1),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
+            let pg: crdb::Result<Arc<TestObjectPerms>> =
+                match db.get::<TestObjectPerms>(true, o).await {
+                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
+                    Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
+                        Ok(o) => Ok(o.1),
+                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
+                    },
+                };
             let mem: crdb::Result<Arc<TestObjectPerms>> =
-                match s.mem_db.get::<TestObjectPerms>(o).await {
+                match s.mem_db.get::<TestObjectPerms>(true, o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
                     Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
                         Ok(o) => Ok(o.1),
@@ -168,7 +169,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
         Op::GetDelegator { object, at } => {
             let o = s.object(*object);
             let pg: crdb::Result<Arc<TestObjectDelegatePerms>> = match db
-                .get::<TestObjectDelegatePerms>(o)
+                .get::<TestObjectDelegatePerms>(true, o)
                 .await
             {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
@@ -178,7 +179,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 },
             };
             let mem: crdb::Result<Arc<TestObjectDelegatePerms>> =
-                match s.mem_db.get::<TestObjectDelegatePerms>(o).await {
+                match s.mem_db.get::<TestObjectDelegatePerms>(true, o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
                     Ok(o) => match o
                         .get_snapshot_at::<TestObjectDelegatePerms>(Bound::Included(*at))

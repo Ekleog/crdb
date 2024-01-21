@@ -63,7 +63,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let _pg = db.create(*id, *created_at, object.clone(), db).await;
+            let _pg = db.create(*id, *created_at, object.clone(), true, db).await;
         }
         Op::Submit {
             object,
@@ -90,7 +90,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg: crate::Result<Arc<TestObjectSimple>> =
-                match db.get::<TestObjectSimple>(o).await {
+                match db.get::<TestObjectSimple>(true, o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                     Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
                         Ok(o) => Ok(o.1),

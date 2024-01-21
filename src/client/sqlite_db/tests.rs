@@ -21,6 +21,7 @@ async fn smoke_test(db: sqlx::SqlitePool) {
         OBJECT_ID_1,
         EVENT_ID_1,
         Arc::new(TestObjectSimple::stub_1()),
+        true,
         &db,
     )
     .await

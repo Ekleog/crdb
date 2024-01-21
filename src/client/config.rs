@@ -44,6 +44,8 @@ macro_rules! generate_client {
                 self.db.disconnect()
             }
 
+            // TODO(client): figure out a way to make sure that CreateBinary-then-CreateObject cannot
+            // have a Vacuum in the middle that discards the binary before object creation succeeds.
             pub fn create_binary(&self, data: crdb::Arc<Vec<u8>>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
                 let binary_id = crdb::hash_binary(&*data);
                 self.db.create_binary(binary_id, data)
@@ -51,6 +53,15 @@ macro_rules! generate_client {
 
             pub fn get_binary(&self, binary_id: crdb::BinPtr) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<Option<crdb::Arc<Vec<u8>>>>> {
                 self.db.get_binary(binary_id)
+            }
+
+            /// To lock, use `get` with the `lock` argument set to `true`
+            pub fn unlock<T: crdb::Object>(&self, object: crdb::DbPtr<T>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
+                self.db.unlock(object.to_object_id())
+            }
+
+            pub fn unsubscribe<T: crdb::Object>(&self, object: crdb::DbPtr<T>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
+                self.db.unsubscribe(object.to_object_id())
             }
 
             $(crdb::paste! {
@@ -96,10 +107,6 @@ macro_rules! generate_client {
                     }
                 }
 
-                pub fn [< unsubscribe_from_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {
-                    self.db.unsubscribe(object.to_object_id())
-                }
-
                 pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();
@@ -115,9 +122,9 @@ macro_rules! generate_client {
                     self.db.submit::<$object>(object.to_object_id(), crdb::EventId(id), event)
                 }
 
-                pub fn [< get_ $name >](&self, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {
+                pub fn [< get_ $name >](&self, lock: bool, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {
                     async move {
-                        self.db.get::<$object>(object.to_object_id()).await?.last_snapshot()
+                        self.db.get::<$object>(lock, object.to_object_id()).await?.last_snapshot()
                             .wrap_with_context(|| format!("getting last snapshot of {object:?}"))
                     }
                 }
@@ -133,14 +140,19 @@ macro_rules! generate_client {
                     }
                 }
 
+                // TODO(low): does this user-exposed function really need `ignore_not_modified_on_server_since`?
+                // Can we not hide it by subscribing not only to individual objects, but to Query's so that crdb
+                // itself could handle that internally? Or maybe even just by fetching all objects that are
+                // readable and were created since the last connection upon login?
                 pub fn [< query_ $name _remote >]<'a>(
                     &'a self,
+                    lock: bool,
                     ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
                     q: &'a crdb::Query,
                 ) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
                         Ok(self.db.query_remote::<$object>(
-                            self.db.user(),
+                            lock,
                             ignore_not_modified_on_server_since,
                             q,
                         )

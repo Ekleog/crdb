@@ -92,6 +92,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        lock: bool,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
     fn submit<T: Object, C: CanDoCallbacks>(
@@ -102,7 +103,11 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 
-    fn get<T: Object>(&self, ptr: ObjectId) -> impl CrdbFuture<Output = crate::Result<FullObject>>;
+    fn get<T: Object>(
+        &self,
+        lock: bool,
+        ptr: ObjectId,
+    ) -> impl CrdbFuture<Output = crate::Result<FullObject>>;
     /// Note: this function can also be used to populate the cache, as the cache will include
     /// any item returned by this function.
     fn query<T: Object>(
@@ -115,10 +120,11 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         time: Timestamp,
-        object: ObjectId,
+        object_id: ObjectId,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
-    fn remove(&self, object: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
+    fn unlock(&self, object_id: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
+    fn remove(&self, object_id: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
 
     fn create_binary(
         &self,

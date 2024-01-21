@@ -79,6 +79,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        _lock: bool, // TODO(test): implement (un)lock semantics for client-side tests
         _cb: &C,
     ) -> crate::Result<()> {
         let mut this = self.0.lock().await;
@@ -187,7 +188,7 @@ impl Db for MemDb {
         }
     }
 
-    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         match self.0.lock().await.objects.get(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
             Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
@@ -260,6 +261,10 @@ impl Db for MemDb {
         }
         recreate::<T>(o, time, &mut this.events).wrap_context("recreating object")?;
         Ok(())
+    }
+
+    async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
+        unimplemented!() // TODO(test)
     }
 
     async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {

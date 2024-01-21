@@ -46,7 +46,7 @@ impl<A: Authenticator> ApiDb<A> {
 
     /// Note that this function unsubscribes ALL the streams that have ever been taken for
     /// this object; and purges it from the local database.
-    pub async fn unsubscribe(&self, _ptr: ObjectId) -> anyhow::Result<()> {
+    pub async fn unsubscribe(&self, _ptr: ObjectId) -> crate::Result<()> {
         unimplemented!() // TODO(api): implement
     }
 

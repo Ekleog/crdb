@@ -25,7 +25,7 @@ impl<D: Db> private::Sealed for D {}
 
 impl<D: Db> CanDoCallbacks for D {
     async fn get<T: Object>(&self, object_id: DbPtr<T>) -> crate::Result<Arc<T>> {
-        Ok(<D as Db>::get::<T>(&self, ObjectId(object_id.id))
+        Ok(<D as Db>::get::<T>(&self, false, ObjectId(object_id.id))
             .await
             .wrap_with_context(|| format!("requesting {object_id:?} from database"))?
             .last_snapshot()
@@ -342,14 +342,14 @@ macro_rules! generate_api {
                 Err(crdb::Error::TypeDoesNotExist(s.type_id))
             }
 
-            async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, cb: &C) -> crdb::Result<()> {
+            async fn create_in_db<D: crdb::Db, C: crdb::CanDoCallbacks>(db: &D, o: crdb::DynNewObject, lock: bool, cb: &C) -> crdb::Result<()> {
                 $(
                     if o.type_id == *<$object as crdb::Object>::type_ulid() {
                         let object = o.object
                             .arc_to_any()
                             .downcast::<$object>()
                             .expect("got new object that could not be downcast to its type_id");
-                        return db.create::<$object, _>(o.id, o.created_at, object, cb).await;
+                        return db.create::<$object, _>(o.id, o.created_at, object, lock, cb).await;
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(o.type_id))

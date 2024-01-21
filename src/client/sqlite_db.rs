@@ -33,6 +33,7 @@ impl Db for SqliteDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        lock: bool,
         cb: &C,
     ) -> crate::Result<()> {
         reord::point().await;
@@ -51,7 +52,7 @@ impl Db for SqliteDb {
         let object_json = sqlx::types::Json(&object);
         reord::point().await;
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, TRUE)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)
@@ -60,6 +61,7 @@ impl Db for SqliteDb {
         .bind(&fts::normalizer_version())
         .bind(snapshot_version)
         .bind(object_json)
+        .bind(lock)
         .execute(&mut *t)
         .await
         .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
@@ -135,7 +137,7 @@ impl Db for SqliteDb {
         unimplemented!() // TODO(sqlite): implement
     }
 
-    async fn get<T: Object>(&self, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         unimplemented!() // TODO(sqlite): implement
     }
 
@@ -155,6 +157,10 @@ impl Db for SqliteDb {
         object: ObjectId,
         cb: &C,
     ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite): implement
+    }
+
+    async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite): implement
     }
 
