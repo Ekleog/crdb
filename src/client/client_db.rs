@@ -7,34 +7,39 @@ use crate::{
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use futures::StreamExt;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 pub struct ClientDb<A: Authenticator> {
     api: Arc<ApiDb<A>>,
     db: Arc<CacheDb<LocalDb>>,
-    vacuum_guard: RwLock<()>,
+    db_bypass: Arc<LocalDb>,
+    vacuum_guard: Arc<RwLock<()>>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
-    pub async fn connect<C: ApiConfig>(
+    pub async fn connect<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
         base_url: Arc<String>,
         auth: Arc<A>,
         local_db: &str,
         cache_watermark: usize,
+        vacuum_schedule: ClientVacuumSchedule<F>,
     ) -> anyhow::Result<ClientDb<A>> {
         // TODO(client): Make user configure a vacuum schedule, and lock vacuuming on a write lock on the
         // vacuum_guard here. Maybe have the vacuum be skipped unless there's enough storage used, as per
         // https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
-        let db = CacheDb::new(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
+        let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
+        let db = CacheDb::new(db_bypass.clone(), cache_watermark);
         let this = ClientDb {
             api,
             db,
-            vacuum_guard: RwLock::new(()),
+            db_bypass,
+            vacuum_guard: Arc::new(RwLock::new(())),
         };
         this.setup_watchers::<C>();
+        this.setup_autovacuum(vacuum_schedule);
         Ok(this)
     }
 
@@ -103,6 +108,32 @@ impl<A: Authenticator> ClientDb<A> {
                         );
                     }
                 }
+            }
+        });
+    }
+
+    fn setup_autovacuum<F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
+        &self,
+        vacuum_schedule: ClientVacuumSchedule<F>,
+    ) {
+        let db_bypass = self.db_bypass.clone();
+        let vacuum_guard = self.vacuum_guard.clone();
+        crate::spawn(async move {
+            loop {
+                match db_bypass.storage_info().await {
+                    Ok(storage_info) => {
+                        if (vacuum_schedule.filter)(storage_info) {
+                            let _lock = vacuum_guard.write().await;
+                            if let Err(err) = db_bypass.vacuum().await {
+                                tracing::error!(?err, "error occurred while vacuuming");
+                            }
+                        }
+                    }
+                    Err(err) => tracing::error!(
+                        ?err,
+                        "failed recovering storage info to check for vacuumability"
+                    ),
+                };
             }
         });
     }
@@ -253,5 +284,42 @@ impl<A: Authenticator> ClientDb<A> {
         };
         self.db.create_binary(binary_id, res.clone()).await?;
         Ok(Some(res))
+    }
+}
+
+pub struct ClientVacuumSchedule<F> {
+    frequency: Duration,
+    filter: F,
+}
+
+pub struct ClientStorageInfo {
+    pub used: usize,
+    pub quota: usize,
+    pub unlocked_objects: usize,
+}
+
+impl<F> ClientVacuumSchedule<F> {
+    pub fn new(frequency: Duration) -> ClientVacuumSchedule<fn(ClientStorageInfo) -> bool> {
+        ClientVacuumSchedule {
+            frequency,
+            filter: |_| true,
+        }
+    }
+
+    pub fn never() -> ClientVacuumSchedule<fn(ClientStorageInfo) -> bool> {
+        ClientVacuumSchedule {
+            frequency: Duration::from_secs(86400),
+            filter: |_| false,
+        }
+    }
+
+    /// If the provided function returns `true`, then vacuum will happen
+    ///
+    /// The `ClientStorageInfo` provided is all approximate information.
+    pub fn filter<G: Fn(ClientStorageInfo) -> bool>(self, filter: G) -> ClientVacuumSchedule<G> {
+        ClientVacuumSchedule {
+            frequency: self.frequency,
+            filter,
+        }
     }
 }

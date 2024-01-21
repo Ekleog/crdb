@@ -29,12 +29,16 @@ macro_rules! generate_client {
         }
 
         impl $client_db {
-            pub fn connect(base_url: crdb::Arc<String>, auth: crdb::Arc<$authenticator>, local_db: String, cache_watermark: usize)
-                -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<$client_db>>
-            {
+            pub fn connect<F: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool>(
+                base_url: crdb::Arc<String>,
+                auth: crdb::Arc<$authenticator>,
+                local_db: String,
+                cache_watermark: usize,
+                vacuum_schedule: crdb::ClientVacuumSchedule<F>,
+            ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<$client_db>> {
                 async move {
                     Ok($client_db {
-                        db: crdb::ClientDb::connect::<$api_config>(base_url, auth, &local_db, cache_watermark).await?,
+                        db: crdb::ClientDb::connect::<$api_config, F>(base_url, auth, &local_db, cache_watermark, vacuum_schedule).await?,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     })
                 }

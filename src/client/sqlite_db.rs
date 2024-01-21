@@ -5,6 +5,8 @@ use crate::{
 use anyhow::Context;
 use std::sync::Arc;
 
+use super::ClientStorageInfo;
+
 #[cfg(test)]
 mod tests;
 
@@ -23,6 +25,14 @@ impl SqliteDb {
 
     pub async fn connect(url: &str) -> anyhow::Result<SqliteDb> {
         Self::connect_impl(sqlx::SqlitePool::connect(url).await?).await
+    }
+
+    pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn vacuum(&self) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite)
     }
 }
 

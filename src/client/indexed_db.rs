@@ -1,5 +1,6 @@
 use crate::{
     api::parse_snapshot_js,
+    client::ClientStorageInfo,
     db_trait::Db,
     error::ResultExt,
     fts,
@@ -386,6 +387,10 @@ impl IndexedDb {
             })
             .await
             .wrap_with_context(|| format!("retrieving {object_id:?} from IndexedDB"))
+    }
+
+    pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
+        unimplemented!() // TODO(client)
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
