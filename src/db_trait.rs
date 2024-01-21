@@ -72,6 +72,20 @@ impl Timestamp {
     }
 }
 
+impl From<std::time::SystemTime> for Timestamp {
+    fn from(t: std::time::SystemTime) -> Timestamp {
+        // SystemTime.duration_since(UNIX_EPOCH) always returns a UTC number of seconds
+        Timestamp(
+            u64::try_from(
+                t.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+            )
+            .unwrap(),
+        )
+    }
+}
+
 pub trait Db: 'static + CrdbSend + CrdbSync {
     fn create<T: Object, C: CanDoCallbacks>(
         &self,

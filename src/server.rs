@@ -72,24 +72,12 @@ impl<C: ServerConfig> Server<C> {
                         .to_std()
                         .unwrap_or_else(|_| Duration::from_secs(0));
                     tokio::time::sleep(sleep_for).await;
-                    // TODO(high): regularize all time handling to all be done in UTC
-                    let no_new_changes_before = vacuum_schedule.recreate_older_than.map(|d| {
-                        Timestamp::from_ms(
-                            (SystemTime::now() - d)
-                                .duration_since(SystemTime::UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis() as u64,
-                        )
-                    });
-                    let kill_sessions_older_than =
-                        vacuum_schedule.kill_sessions_older_than.map(|d| {
-                            Timestamp::from_ms(
-                                (SystemTime::now() - d)
-                                    .duration_since(SystemTime::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_millis() as u64,
-                            )
-                        });
+                    let no_new_changes_before = vacuum_schedule
+                        .recreate_older_than
+                        .map(|d| Timestamp::from(SystemTime::now() - d));
+                    let kill_sessions_older_than = vacuum_schedule
+                        .kill_sessions_older_than
+                        .map(|d| Timestamp::from(SystemTime::now() - d));
                     if let Err(err) = postgres_db
                         .vacuum(
                             no_new_changes_before,
