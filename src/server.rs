@@ -10,7 +10,7 @@ use std::{
     net::SocketAddr,
     sync::Arc,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 mod config;
 mod postgres_db;
@@ -34,18 +34,27 @@ pub struct Server<C: ServerConfig> {
 }
 
 impl<C: ServerConfig> Server<C> {
-    pub async fn new(config: C, db: sqlx::PgPool, cache_watermark: usize) -> anyhow::Result<Self> {
+    /// Returns both the server itself, as well as a `JoinHandle` that will resolve once all the operations
+    /// needed for database upgrading are over. The handle resolves with the number of errors that occurred
+    /// during the upgrade, normal runs would return 0. There will be one error message in the tracing logs
+    /// for each such error.
+    pub async fn new(
+        config: C,
+        db: sqlx::PgPool,
+        cache_watermark: usize,
+    ) -> anyhow::Result<(Self, JoinHandle<usize>)> {
         // TODO(server): force configuring a vacuuming schedule
         <C::ApiConfig as ApiConfig>::check_ulids();
         let postgres_db = Arc::new(postgres_db::PostgresDb::connect(db).await?);
-        tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
-        Ok(Server {
+        let upgrade_handle = tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
+        let this = Server {
             _config: config,
             db: CacheDb::new::<C::ApiConfig>(postgres_db.clone(), cache_watermark),
             postgres_db,
             _watchers: HashMap::new(),
             _sessions: HashMap::new(),
-        })
+        };
+        Ok((this, upgrade_handle))
     }
 
     pub async fn serve(&self, addr: &SocketAddr) -> anyhow::Result<()> {
