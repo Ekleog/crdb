@@ -30,33 +30,43 @@
       },
       {
         "ordinal": 5,
-        "name": "snapshot_version",
+        "name": "normalizer_version",
         "type_info": "Int4"
       },
       {
         "ordinal": 6,
+        "name": "snapshot_version",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
         "name": "snapshot",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "users_who_can_read",
         "type_info": "UuidArray"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "users_who_can_read_depends_on",
         "type_info": "UuidArray"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "reverse_dependents_to_update",
         "type_info": "UuidArray"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "required_binaries",
         "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 12,
+        "name": "last_modified",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -72,9 +82,11 @@
       false,
       false,
       false,
+      false,
       true,
       true,
       true,
+      false,
       false
     ]
   },

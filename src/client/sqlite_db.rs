@@ -1,6 +1,6 @@
 use crate::{
-    db_trait::Db, error::ResultExt, full_object::FullObject, BinPtr, CanDoCallbacks, CrdbStream,
-    EventId, Object, ObjectId, Query, Timestamp, User,
+    db_trait::Db, error::ResultExt, fts, full_object::FullObject, BinPtr, CanDoCallbacks,
+    CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -51,12 +51,13 @@ impl Db for SqliteDb {
         let object_json = sqlx::types::Json(&object);
         reord::point().await;
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, $4, $5, TRUE, FALSE)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, TRUE)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)
         .bind(type_id)
         .bind(object_id)
+        .bind(&fts::normalizer_version())
         .bind(snapshot_version)
         .bind(object_json)
         .execute(&mut *t)

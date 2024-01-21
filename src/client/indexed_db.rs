@@ -2,6 +2,7 @@ use crate::{
     api::parse_snapshot_js,
     db_trait::Db,
     error::ResultExt,
+    fts,
     full_object::{Change, FullObject},
     BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Timestamp,
     TypeId, User,
@@ -25,6 +26,7 @@ struct SnapshotMeta {
     object_id: ObjectId,
     is_creation: Option<usize>, // IndexedDB cannot index booleans, but never indexes missing properties
     is_latest: Option<usize>,   // So, use None for "false" and Some(1) for "true"
+    normalizer_version: i32,
     snapshot_version: i32,
     is_locked: Option<usize>, // Only set on creation snapshot, Some(1) if locked and Some(0) if not
     required_binaries: Vec<BinPtr>,
@@ -736,6 +738,7 @@ impl Db for IndexedDb {
             object_id,
             is_creation: Some(1),
             is_latest: Some(1),
+            normalizer_version: fts::normalizer_version(),
             snapshot_version: T::snapshot_version(),
             is_locked: Some(1),
             required_binaries: object.required_binaries(),
@@ -1036,6 +1039,7 @@ impl Db for IndexedDb {
                     object_id,
                     is_creation: None,
                     is_latest: Some(1),
+                    normalizer_version: fts::normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     is_locked: None,
                     required_binaries: last_snapshot.required_binaries(),
@@ -1398,6 +1402,7 @@ impl Db for IndexedDb {
                     object_id,
                     is_creation: Some(1),
                     is_latest: cutoff_is_already_latest.then(|| 1),
+                    normalizer_version: fts::normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     is_locked: creation_snapshot_meta.is_locked,
                     required_binaries: object.required_binaries(),

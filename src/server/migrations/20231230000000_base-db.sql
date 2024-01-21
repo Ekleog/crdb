@@ -19,6 +19,7 @@ CREATE TABLE snapshots (
     object_id UUID NOT NULL,
     is_creation BOOLEAN NOT NULL,
     is_latest BOOLEAN NOT NULL,
+    normalizer_version INTEGER NOT NULL,
     snapshot_version INTEGER NOT NULL,
     snapshot JSONB NOT NULL,
     -- The three below are nullable, and set to a correct value only for is_latest snapshots

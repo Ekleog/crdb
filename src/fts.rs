@@ -14,7 +14,8 @@ const CASEMAPPER: CaseMapper = CaseMapper::new();
 const DECOMPOSER: DecomposingNormalizer = DecomposingNormalizer::new_nfd();
 const RECOMPOSER: ComposingNormalizer = ComposingNormalizer::new_nfc();
 
-pub(crate) fn normalizer_version() -> usize {
+#[cfg(any(feature = "client", feature = "server"))]
+pub(crate) fn normalizer_version() -> i32 {
     0
 }
 
@@ -96,16 +97,12 @@ struct SearchableStringSer {
 
     #[serde(rename = "_crdb-normalized")]
     normalized: String,
-
-    #[serde(rename = "_crdb-normalizer-version")]
-    normalizer_version: usize,
 }
 
 impl From<SearchableString> for SearchableStringSer {
     fn from(value: SearchableString) -> SearchableStringSer {
         let value: String = value.0;
         SearchableStringSer {
-            normalizer_version: normalizer_version(),
             normalized: normalize(&value),
             value,
         }

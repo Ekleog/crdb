@@ -3,6 +3,7 @@ use crate::{
     api::{parse_snapshot, query::Bind},
     db_trait::{Db, DynNewRecreation, Timestamp},
     error::ResultExt,
+    fts,
     full_object::{Change, FullObject},
     BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
     SessionRef, SessionToken, TypeId, User,
@@ -532,13 +533,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         reord::maybe_lock().await;
         let result = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+            "INSERT INTO snapshots VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
         )
         .bind(snapshot_id)
         .bind(T::type_ulid())
         .bind(object_id)
         .bind(is_creation)
         .bind(is_latest)
+        .bind(&fts::normalizer_version())
         .bind(T::snapshot_version())
         .bind(sqlx::types::Json(object))
         .bind(users_who_can_read)
@@ -596,10 +598,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let required_binaries = object.required_binaries();
         reord::maybe_lock().await;
         let affected = // PostgreSQL needs a lock on the unique index from here until transaction completion, hence the above reord::Lock
-            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING")
+            sqlx::query("INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING")
                 .bind(created_at)
                 .bind(type_id)
                 .bind(object_id)
+                .bind(&fts::normalizer_version())
                 .bind(snapshot_version)
                 .bind(object_json)
                 .bind(&users_who_can_read)

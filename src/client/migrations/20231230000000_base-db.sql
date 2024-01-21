@@ -12,6 +12,7 @@ CREATE TABLE snapshots (
     object_id BLOB NOT NULL,
     is_creation BOOLEAN NOT NULL,
     is_latest BOOLEAN NOT NULL,
+    normalizer_version INTEGER NOT NULL,
     snapshot_version INTEGER NOT NULL,
     snapshot BLOB NOT NULL, -- JSONB
     -- Whether we need to keep the object in the database, because the
