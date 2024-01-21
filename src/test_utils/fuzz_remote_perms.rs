@@ -376,3 +376,48 @@ async fn regression_postgres_not_null_was_null() {
     )
     .await;
 }
+
+#[fuzz_helpers::test]
+async fn regression_indexeddb_did_not_check_recreation_type_on_nothing_to_do() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreatePerm {
+                id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectPerms(USER_ID_1)),
+            },
+            Op::RecreateDelegator {
+                object: 0,
+                time: Timestamp::from_ms(1),
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+async fn regression_indexeddb_did_not_check_recreation_type_on_stuff_to_do() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreatePerm {
+                id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectPerms(USER_ID_1)),
+            },
+            Op::SubmitPerm {
+                object: 0,
+                event_id: EVENT_ID_2,
+                event: Arc::new(TestEventPerms::Set(USER_ID_2)),
+            },
+            Op::RecreateDelegator {
+                object: 0,
+                time: Timestamp::from_ms(1 << 47),
+            },
+        ]),
+    )
+    .await;
+}

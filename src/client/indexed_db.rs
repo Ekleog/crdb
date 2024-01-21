@@ -1222,12 +1222,24 @@ impl Db for IndexedDb {
                     .wrap_context("opening cursor on latest event before cutoff")?
                     .primary_key();
                 let Some(new_creation_event_id_js) = new_creation_event_id_js else {
-                    // Check whether the object exists, to return the proper error if not
-                    if creation_object
-                        .contains(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    // Check whether the object exists and is of the right type, to return the proper error if not
+                    if let Some(creation_meta) = creation_object
+                        .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
                         .await
                         .wrap_context("checking whether object exists")?
                     {
+                        let creation_meta =
+                            serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
+                                .wrap_context("parsing snapshot metadata")?;
+                        // Check the type of the preexisting object is correct
+                        if creation_meta.type_id != *T::type_ulid() {
+                            return Err(crate::Error::WrongType {
+                                object_id,
+                                expected_type_id: *T::type_ulid(),
+                                real_type_id: creation_meta.type_id,
+                            }
+                            .into());
+                        }
                         // No event before cutoff, nothing to do
                         return Ok(());
                     } else {
@@ -1240,7 +1252,7 @@ impl Db for IndexedDb {
                         .wrap_context("deserializing event id")?;
 
                 // Check if the requested cutoff is the current latest snapshot
-                let latest_snapshot_meta_js = latest_type_object
+                let Some(latest_snapshot_meta_js) = latest_type_object
                     .get(&Array::from_iter([
                         &JsValue::from(1),
                         &type_id_js,
@@ -1248,9 +1260,33 @@ impl Db for IndexedDb {
                     ]))
                     .await
                     .wrap_context("retrieving latest snapshot")?
-                    .ok_or_else(|| {
-                        crate::Error::Other(anyhow!("no latest snapshot for {object_id:?}"))
-                    })?;
+                else {
+                    // No latest snapshot. This is most likely due to the type not being the expected
+                    // one, because we already checked there are some events for this object, but let's
+                    // validate
+                    if let Some(creation_meta) = creation_object
+                        .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                        .await
+                        .wrap_context("checking creation object")?
+                    {
+                        let creation_meta =
+                            serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
+                                .wrap_context("parsing snapshot metadata")?;
+                        // Check the type of the preexisting object is correct
+                        if creation_meta.type_id != *T::type_ulid() {
+                            return Err(crate::Error::WrongType {
+                                object_id,
+                                expected_type_id: *T::type_ulid(),
+                                real_type_id: creation_meta.type_id,
+                            }
+                            .into());
+                        }
+                        return Err(crate::Error::Other(anyhow!("hit unexpected code path: there is an object of the right type but it's not in the latest index")).into());
+                    } else {
+                        // Object does not exist, return an error
+                        return Err(crate::Error::Other(anyhow!("hit unexpected code path: there are events for the object but no creation snapshot")).into());
+                    }
+                };
                 let latest_snapshot_meta =
                     serde_wasm_bindgen::from_value::<SnapshotMeta>(latest_snapshot_meta_js)
                         .wrap_context("deserializing latest snapshot metadata")?;

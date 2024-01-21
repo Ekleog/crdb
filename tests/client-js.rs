@@ -137,14 +137,19 @@ mod fuzz_helpers {
 mod fuzz_simple {
     include!("../src/test_utils/fuzz_simple.rs");
 
-    /*
     #[fuzz_helpers::test]
+    #[cfg(disabled)]
     async fn seed_reproducer() {
         fuzz_helpers::run_with_seed(5710355506847336567, true, fuzz_impl).await;
     }
-    */
 }
 
 mod fuzz_remote_perms {
     include!("../src/test_utils/fuzz_remote_perms.rs");
+
+    #[fuzz_helpers::test]
+    #[cfg(disabled)]
+    async fn seed_reproducer() {
+        fuzz_helpers::run_with_seed(8002174428813084636, true, fuzz_impl).await;
+    }
 }
