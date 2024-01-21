@@ -1,11 +1,14 @@
 use super::postgres_db::{ComboLock, PostgresDb};
 use crate::{api::ApiConfig, CanDoCallbacks, CrdbFuture, ObjectId, Timestamp, TypeId, User};
+use std::sync::Arc;
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
     type Auth;
 
     type ApiConfig: ApiConfig;
+
+    fn reencode_old_versions(call_on: Arc<PostgresDb<Self>>) -> impl CrdbFuture<Output = ()>;
 
     fn get_users_who_can_read<'a, C: CanDoCallbacks>(
         call_on: &'a PostgresDb<Self>,
@@ -35,6 +38,12 @@ macro_rules! generate_server {
         impl crdb::ServerConfig for $name {
             type Auth = $auth;
             type ApiConfig = $api_config;
+
+            async fn reencode_old_versions(call_on: std::sync::Arc<crdb::PostgresDb<Self>>) {
+                $(
+                    call_on.reencode_old_versions::<$object>().await;
+                )*
+            }
 
             async fn get_users_who_can_read<'a, C: crdb::CanDoCallbacks>(
                 call_on: &'a crdb::PostgresDb<Self>,

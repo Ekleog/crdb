@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT normalizer_version, snapshot_version, snapshot\n                FROM snapshots\n                WHERE snapshot_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "normalizer_version",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "snapshot_version",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "snapshot",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3a68bce37f20ee80237933149ee8ced00cb0086b5f1320f5b1329e1e183f0a66"
+}

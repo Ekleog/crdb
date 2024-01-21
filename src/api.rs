@@ -61,12 +61,18 @@ pub trait Object:
     fn snapshot_version() -> i32 {
         0
     }
+    /// Parse this object type from an older snapshot version
+    ///
+    /// Note that all metadata, in particular `required_binaries` and `users_who_can_read`
+    /// MUST NOT change with a change in versioning. This method is designed only for
+    /// changing the on-the-wire representation of an object, not for changing its semantics.
+    ///
+    /// Semantics changes should happen by sending an "upgrade" event to the object, and
+    /// if cleanup is warranted then performing mass object recreation on the server afterwise.
     #[allow(unused_variables)]
     fn from_old_snapshot(version: i32, data: serde_json::Value) -> anyhow::Result<Self> {
         unimplemented!()
     }
-    // TODO(server): allow re-encoding all snapshots in db with the new version using from_old_snapshot
-    // This should happen for all snapshots that have a non-latest snapshot_version or normalizer_version
 
     fn can_create<'a, C: CanDoCallbacks>(
         &'a self,

@@ -155,6 +155,86 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(())
     }
 
+    async fn reencode<T: Object>(
+        &self,
+        object_id: ObjectId,
+        snapshot_id: EventId,
+    ) -> crate::Result<()> {
+        // First, take a lock on the object, so that no new event comes in during
+        // execution that would be overwritten by this select-then-update
+        let _lock = self.object_locks.async_lock(object_id).await;
+
+        // Then, read the snapshot, knowing it can't change under our feet
+        let Some(s) = sqlx::query!(
+            "
+                SELECT normalizer_version, snapshot_version, snapshot
+                FROM snapshots
+                WHERE snapshot_id = $1
+            ",
+            snapshot_id as EventId,
+        )
+        .fetch_optional(&self.db)
+        .await
+        .wrap_with_context(|| format!("fetching snapshot {snapshot_id:?}"))?
+        else {
+            // No such snapshot. It was certainly deleted by a concurrent vacuum or similar. Ignore.
+            return Ok(());
+        };
+
+        // If it is already up-to-date (eg. has been rewritten by an event coming in), ignore
+        if s.normalizer_version >= fts::normalizer_version()
+            && s.snapshot_version >= T::snapshot_version()
+        {
+            return Ok(());
+        }
+
+        // If not, we still need to parse-and-reencode it
+        let snapshot = parse_snapshot::<T>(s.snapshot_version, s.snapshot)
+            .wrap_with_context(|| format!("parsing snapshot {snapshot_id:?}"))?;
+        sqlx::query("UPDATE snapshots SET snapshot = $1 WHERE snapshot_id = $2")
+            .bind(sqlx::types::Json(&snapshot))
+            .bind(snapshot_id)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("re-encoding snapshot data for {snapshot_id:?}"))?;
+
+        Ok(())
+    }
+
+    pub async fn reencode_old_versions<T: Object>(&self) {
+        let mut old_snapshots = sqlx::query(
+            "
+                SELECT object_id, snapshot_id
+                FROM snapshots
+                WHERE type_id = $1
+                AND (snapshot_version < $2 OR normalizer_version < $3)
+            ",
+        )
+        .bind(T::type_ulid())
+        .bind(T::snapshot_version())
+        .bind(fts::normalizer_version())
+        .fetch(&self.db);
+        while let Some(s) = old_snapshots.next().await {
+            let s = match s {
+                Ok(s) => s,
+                Err(err) => {
+                    tracing::warn!(?err, "failed retrieving one snapshot for upgrade");
+                    continue;
+                }
+            };
+            let object_id = ObjectId::from_uuid(s.get(0));
+            let snapshot_id = EventId::from_uuid(s.get(1));
+            if let Err(err) = self.reencode::<T>(object_id, snapshot_id).await {
+                tracing::warn!(
+                    ?err,
+                    ?object_id,
+                    ?snapshot_id,
+                    "failed reencoding snapshot with newer version",
+                );
+            }
+        }
+    }
+
     /// Cleans up and optimizes up the database
     ///
     /// After running this, the database will reject any new change that would happen before

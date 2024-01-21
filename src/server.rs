@@ -38,6 +38,7 @@ impl<C: ServerConfig> Server<C> {
         // TODO(server): force configuring a vacuuming schedule
         <C::ApiConfig as ApiConfig>::check_ulids();
         let postgres_db = Arc::new(postgres_db::PostgresDb::connect(db).await?);
+        tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
         Ok(Server {
             _config: config,
             db: CacheDb::new::<C::ApiConfig>(postgres_db.clone(), cache_watermark),
