@@ -61,6 +61,12 @@ impl FuzzState {
             mem_db: test_utils::MemDb::new(is_server),
         }
     }
+
+    fn object(&self, id: usize) -> ObjectId {
+        #[cfg(target_arch = "wasm32")]
+        let id = id % (self.objects.len() + 1); // make valid inputs more likely
+        self.objects.get(id).copied().unwrap_or_else(ObjectId::now)
+    }
 }
 
 async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
@@ -83,11 +89,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             event_id,
             event,
         } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg = db
                 .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
                 .await;
@@ -98,11 +100,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp(pg, mem)?;
         }
         Op::Get { object, at } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg: crdb::Result<Arc<TestObjectSimple>> = match db.get::<TestObjectSimple>(o).await
             {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
@@ -134,11 +132,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp_query_results::<TestObjectSimple>(pg, mem).await?;
         }
         Op::Recreate { object, time } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
             let mem = s
                 .mem_db

@@ -80,6 +80,12 @@ impl FuzzState {
             mem_db: test_utils::MemDb::new(is_server),
         }
     }
+
+    fn object(&self, id: usize) -> ObjectId {
+        #[cfg(target_arch = "wasm32")]
+        let id = id % (self.objects.len() + 1); // make valid inputs more likely
+        self.objects.get(id).copied().unwrap_or_else(ObjectId::now)
+    }
 }
 
 async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
@@ -115,11 +121,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             event_id,
             event,
         } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg = db
                 .submit::<TestObjectPerms, _>(o, *event_id, event.clone(), db)
                 .await;
@@ -134,11 +136,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             event_id,
             event,
         } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg = db
                 .submit::<TestObjectDelegatePerms, _>(o, *event_id, event.clone(), db)
                 .await;
@@ -149,11 +147,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp(pg, mem)?;
         }
         Op::GetPerm { object, at } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg: crdb::Result<Arc<TestObjectPerms>> = match db.get::<TestObjectPerms>(o).await {
                 Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
                 Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
@@ -172,11 +166,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp(pg, mem)?;
         }
         Op::GetDelegator { object, at } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg: crdb::Result<Arc<TestObjectDelegatePerms>> = match db
                 .get::<TestObjectDelegatePerms>(o)
                 .await
@@ -224,11 +214,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp_query_results::<TestObjectDelegatePerms>(pg, mem).await?;
         }
         Op::RecreatePerm { object, time } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg = db.recreate::<TestObjectPerms, _>(*time, o, db).await;
             let mem = s
                 .mem_db
@@ -237,11 +223,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp(pg, mem)?;
         }
         Op::RecreateDelegator { object, time } => {
-            let o = s
-                .objects
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId::now());
+            let o = s.object(*object);
             let pg = db
                 .recreate::<TestObjectDelegatePerms, _>(*time, o, db)
                 .await;
