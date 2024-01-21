@@ -44,8 +44,15 @@ macro_rules! generate_client {
                 self.db.disconnect()
             }
 
-            // TODO(client): figure out a way to make sure that CreateBinary-then-CreateObject cannot
-            // have a Vacuum in the middle that discards the binary before object creation succeeds.
+            /// Pauses the vacuum until the returned mutex guard is dropped
+            pub fn pause_vacuum(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::tokio::sync::RwLockReadGuard<'_, ()>> {
+                self.db.pause_vacuum()
+            }
+
+            /// Note: when creating a binary, it can be vacuumed away any time until an object or
+            /// event is added that requires it. As such, you probably want to use `pause_vacuum`
+            /// to make sure the created binary is not vacuumed away before the object or event
+            /// had enough time to get created.
             pub fn create_binary(&self, data: crdb::Arc<Vec<u8>>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
                 let binary_id = crdb::hash_binary(&*data);
                 self.db.create_binary(binary_id, data)

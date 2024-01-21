@@ -71,6 +71,7 @@ pub mod crdb_internal {
         ops::Bound,
         sync::{Arc, Mutex},
     };
+    pub use tokio;
     pub use ulid::{self, Ulid};
 }
 

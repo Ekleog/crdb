@@ -8,10 +8,12 @@ use crate::{
 };
 use futures::StreamExt;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct ClientDb<A: Authenticator> {
     api: Arc<ApiDb<A>>,
     db: Arc<CacheDb<LocalDb>>,
+    vacuum_guard: RwLock<()>,
 }
 
 impl<A: Authenticator> ClientDb<A> {
@@ -21,11 +23,18 @@ impl<A: Authenticator> ClientDb<A> {
         local_db: &str,
         cache_watermark: usize,
     ) -> anyhow::Result<ClientDb<A>> {
+        // TODO(client): Make user configure a vacuum schedule, and lock vacuuming on a write lock on the
+        // vacuum_guard here. Maybe have the vacuum be skipped unless there's enough storage used, as per
+        // https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
         let db = CacheDb::new::<C>(Arc::new(LocalDb::connect(local_db).await?), cache_watermark);
         db.watch_from::<C, _>(&api);
-        Ok(ClientDb { api, db })
+        Ok(ClientDb {
+            api,
+            db,
+            vacuum_guard: RwLock::new(()),
+        })
     }
 
     pub fn user(&self) -> User {
@@ -34,6 +43,10 @@ impl<A: Authenticator> ClientDb<A> {
 
     pub async fn disconnect(&self) -> anyhow::Result<()> {
         self.api.disconnect().await
+    }
+
+    pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
+        self.vacuum_guard.read().await
     }
 
     pub async fn clear_cache(&self) {
