@@ -262,7 +262,7 @@ pub enum UploadOrBinPtr {
     BinPtr(BinPtr),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct UploadId(i64);
 
 /// One ServerMessage is supposed to hold as many NewThings as possible

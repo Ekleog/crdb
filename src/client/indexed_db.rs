@@ -585,7 +585,19 @@ impl IndexedDb {
         self.db
             .transaction(&["upload_queue_meta"])
             .run(move |transaction| async move {
-                unimplemented!() // TODO(client)
+                let keys = transaction
+                    .object_store("upload_queue_meta")
+                    .wrap_context("retrieving 'upload_queue_meta' object store")?
+                    .get_all_keys(None)
+                    .await
+                    .wrap_context("getting all keys from upload_queue_meta")?;
+                let mut res = Vec::with_capacity(keys.len());
+                for k in keys.into_iter() {
+                    let k = serde_wasm_bindgen::from_value::<UploadId>(k)
+                        .wrap_context("deserializing upload id")?;
+                    res.push(k);
+                }
+                Ok(res)
             })
             .await
             .wrap_context("listing upload queue")
