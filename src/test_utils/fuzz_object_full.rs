@@ -240,3 +240,19 @@ async fn regression_postgres_crashed_on_null_byte_in_string() {
     )
     .await;
 }
+
+#[fuzz_helpers::test]
+async fn regression_indexeddb_vacuum_was_borken() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateBinary {
+                data: Arc::new(vec![1, 2, 3]),
+                fake_id: None,
+            },
+            Op::Vacuum { recreate_at: None },
+        ]),
+    )
+    .await;
+}

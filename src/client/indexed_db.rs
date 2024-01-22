@@ -438,6 +438,7 @@ impl IndexedDb {
                 "upload_queue_meta",
                 "binaries",
             ])
+            .rw()
             .run(move |transaction| async move {
                 let snapshots_meta = transaction
                     .object_store("snapshots_meta")
@@ -551,7 +552,7 @@ impl IndexedDb {
                     .wrap_context("listing still-required binaries")?;
                 let mut binaries_cursor = binaries
                     .cursor()
-                    .open_key()
+                    .open()
                     .await
                     .wrap_context("opening cursor over all binaries")?;
                 while let Some(b) = binaries_cursor.key() {
