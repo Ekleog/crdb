@@ -915,6 +915,8 @@ impl Db for IndexedDb {
         let new_snapshot_js = serde_wasm_bindgen::to_value(&*object)
             .wrap_with_context(|| format!("serializing {object_id:?}"))?;
         let required_binaries = object.required_binaries();
+        // TODO(low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+        crate::check_strings(&serde_json::to_value(&*object).wrap_context("serializing to json")?)?;
 
         let res = self
             .db
@@ -1102,6 +1104,9 @@ impl Db for IndexedDb {
                     }
                     .into());
                 }
+
+                // TODO(low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+                crate::check_strings(&serde_json::to_value(&*event).wrap_context("serializing to json")?)?;
 
                 // Insert the event metadata, checking for collisions
                 match events_meta.add(&new_event_meta_js).await {
