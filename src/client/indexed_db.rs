@@ -1,5 +1,5 @@
 use crate::{
-    api::parse_snapshot_js,
+    api::{parse_snapshot_js, UploadId, UploadOrBinPtr},
     client::ClientStorageInfo,
     db_trait::Db,
     error::ResultExt,
@@ -41,7 +41,6 @@ struct EventMeta {
     required_binaries: Vec<BinPtr>,
 }
 
-#[allow(dead_code)] // TODO(client): store in upload_queue_meta
 struct UploadMeta {
     upload_id: u64,
     required_binaries: Vec<BinPtr>,
@@ -74,7 +73,6 @@ impl IndexedDb {
                 db.build_object_store("snapshots").create()?;
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
-                // TODO(client): store UploadOrBinPtr in upload_queue
                 db.build_object_store("upload_queue")
                     .auto_increment()
                     .create()?;
@@ -581,6 +579,48 @@ impl IndexedDb {
             self.objects_unlocked_this_run.set(0);
         }
         res
+    }
+
+    pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        self.db
+            .transaction(&["upload_queue_meta"])
+            .run(move |transaction| async move {
+                unimplemented!() // TODO(client)
+            })
+            .await
+            .wrap_context("listing upload queue")
+    }
+
+    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<UploadOrBinPtr> {
+        self.db
+            .transaction(&["upload_queue"])
+            .run(move |transaction| async move {
+                unimplemented!() // TODO(client)
+            })
+            .await
+            .wrap_with_context(|| format!("retrieving data for {upload_id:?}"))
+    }
+
+    pub async fn enqueue_upload(&self, upload: UploadOrBinPtr) -> crate::Result<UploadId> {
+        self.db
+            .transaction(&["upload_queue", "upload_queue_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                unimplemented!() // TODO(client)
+            })
+            .await
+            .wrap_context("registering not-yet-completed upload")
+    }
+
+    pub async fn upload_finished(&self, upload_id: UploadId) -> crate::Result<()> {
+        self.db
+            .transaction(&["upload_queue", "upload_queue_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                unimplemented!() // TODO(client)
+            })
+            .await
+            .wrap_with_context(|| format!("registering {upload_id:?} as having completed"))
     }
 
     #[cfg(feature = "_tests")]

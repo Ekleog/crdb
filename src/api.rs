@@ -257,11 +257,13 @@ pub enum UploadOrBinary {
     Binary(Arc<Vec<u8>>),
 }
 
-#[allow(dead_code)] // TODO(api): remove
 pub enum UploadOrBinPtr {
     Upload(Upload),
     BinPtr(BinPtr),
 }
+
+#[derive(Copy, Clone, Debug)]
+pub struct UploadId(i64);
 
 /// One ServerMessage is supposed to hold as many NewThings as possible
 /// without delaying updates, but still avoiding going too far above
