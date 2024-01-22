@@ -41,8 +41,8 @@ struct EventMeta {
     required_binaries: Vec<BinPtr>,
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct UploadMeta {
-    upload_id: u64,
     required_binaries: Vec<BinPtr>,
 }
 
@@ -73,9 +73,7 @@ impl IndexedDb {
                 db.build_object_store("snapshots").create()?;
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
-                db.build_object_store("upload_queue")
-                    .auto_increment()
-                    .create()?;
+                db.build_object_store("upload_queue").create()?;
                 let snapshots_meta = db
                     .build_object_store("snapshots_meta")
                     .key_path("snapshot_id")
@@ -86,7 +84,7 @@ impl IndexedDb {
                     .create()?;
                 let upload_queue_meta = db
                     .build_object_store("upload_queue_meta")
-                    .key_path("upload_id")
+                    .auto_increment()
                     .create()?;
 
                 snapshots_meta
@@ -622,12 +620,34 @@ impl IndexedDb {
             .wrap_with_context(|| format!("retrieving data for {upload_id:?}"))
     }
 
-    pub async fn enqueue_upload(&self, upload: UploadOrBinPtr) -> crate::Result<UploadId> {
+    pub async fn enqueue_upload(
+        &self,
+        upload: UploadOrBinPtr,
+        required_binaries: Vec<BinPtr>,
+    ) -> crate::Result<UploadId> {
+        let metadata = UploadMeta { required_binaries };
+        let metadata =
+            serde_wasm_bindgen::to_value(&metadata).wrap_context("serializing upload metadata")?;
+        let data = serde_wasm_bindgen::to_value(&upload).wrap_context("serializing upload data")?;
         self.db
             .transaction(&["upload_queue", "upload_queue_meta"])
             .rw()
             .run(move |transaction| async move {
-                unimplemented!() // TODO(client)
+                let upload_id = transaction
+                    .object_store("upload_queue_meta")
+                    .wrap_context("retrieving 'upload_queue_meta' object store")?
+                    .add(&metadata)
+                    .await
+                    .wrap_context("saving upload metadata")?;
+                transaction
+                    .object_store("upload_queue")
+                    .wrap_context("retrieving 'upload_queue' object store")?
+                    .add_kv(&upload_id, &data)
+                    .await
+                    .wrap_context("saving upload data")?;
+                let upload_id = serde_wasm_bindgen::from_value::<UploadId>(upload_id)
+                    .wrap_context("deserializing upload id")?;
+                Ok(upload_id)
             })
             .await
             .wrap_context("registering not-yet-completed upload")
