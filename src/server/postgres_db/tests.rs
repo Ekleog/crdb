@@ -3,7 +3,7 @@ use crate::test_utils::db::ServerConfig;
 use std::time::Duration;
 
 mod fuzz_battle_royale;
-mod fuzz_object_full;
+mod fuzz_object_full; // TODO(test) share this fuzzer with other databases
 mod fuzz_sessions;
 mod fuzz_two_threads;
 
