@@ -2,8 +2,7 @@ use super::fuzz_helpers::{
     self,
     crdb::{
         self,
-        db_trait::Db,
-        error::ResultExt,
+        crdb_internal::{Db, ResultExt},
         fts::SearchableString,
         test_utils::{self, *},
         BinPtr, EventId, Object, ObjectId, Query, Timestamp, User,
@@ -163,7 +162,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
     Ok(())
 }
 
-async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) {
+async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) -> Database {
     let db = make_db(cluster).await;
     let mut s = FuzzState::new(*is_server);
     for (i, op) in ops.iter().enumerate() {
@@ -174,6 +173,7 @@ async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>)
         db.assert_invariants_generic().await;
         db.assert_invariants_for::<TestObjectFull>().await;
     }
+    db
 }
 
 make_fuzzer!(fuzz, fuzz_impl);

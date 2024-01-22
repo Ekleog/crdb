@@ -59,7 +59,7 @@ pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
     serde::Serialize,
 )]
 #[educe(Debug)]
-pub struct BinPtr(#[educe(Debug(method(std::fmt::Display::fmt)))] pub(crate) Ulid);
+pub struct BinPtr(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
 #[derive(
     Clone,
