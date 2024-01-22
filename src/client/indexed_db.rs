@@ -1798,7 +1798,7 @@ async fn check_required_binaries(
     let missing_binaries = future::try_join_all(binaries.iter().map(|&b| {
         binaries_store
             .contains(&b.to_js_string())
-            .map_ok(move |present| present.then_some(b))
+            .map_ok(move |present| (!present).then_some(b))
     }))
     .await
     .wrap_with_context(|| format!("checking for required binaries {binaries:?}"))?

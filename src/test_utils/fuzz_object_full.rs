@@ -193,7 +193,7 @@ async fn regression_create_binary_always_failed() {
 }
 
 #[fuzz_helpers::test]
-async fn regression_postgres_considered_missing_binaries_the_other_way_around() {
+async fn regression_postgres_and_indexeddb_considered_missing_binaries_the_other_way_around() {
     use Op::*;
     let cluster = setup();
     fuzz_impl(
