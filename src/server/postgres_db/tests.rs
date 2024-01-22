@@ -106,9 +106,9 @@ mod fuzz_helpers {
     }
 
     macro_rules! make_fuzzer {
-        ($name:ident, $fuzz_impl:ident) => {
+        ($fuzzer_name:expr, $function_name:ident, $fuzz_impl:ident) => {
             #[test]
-            fn $name() {
+            fn $function_name() {
                 let cluster = setup();
                 bolero::check!()
                     .with_iterations(10)

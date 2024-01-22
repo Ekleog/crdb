@@ -259,7 +259,7 @@ async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>)
     db
 }
 
-make_fuzzer!(fuzz, fuzz_impl);
+make_fuzzer!("fuzz_remote_perms", fuzz, fuzz_impl);
 
 #[fuzz_helpers::test]
 async fn regression_get_with_wrong_type_did_not_fail() {

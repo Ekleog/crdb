@@ -86,16 +86,18 @@ mod fuzz_helpers {
     }
 
     macro_rules! make_fuzzer {
-        ($name:ident, $fuzz_impl:ident) => {
+        ($fuzzer_name: expr, $function_name:ident, $fuzz_impl:ident) => {
             #[wasm_bindgen_test::wasm_bindgen_test]
             #[ignore]
-            async fn $name() {
+            async fn $function_name() {
                 use rand::Rng;
 
                 loop {
                     // Get a seed
                     let seed: u64 = rand::thread_rng().gen();
-                    web_sys::console::log_1(&format!("Fuzzing with seed {seed}").into());
+                    web_sys::console::log_1(
+                        &format!("Fuzzing {} with seed {seed}", $fuzzer_name).into(),
+                    );
 
                     // Run the input
                     let Some(used_db) = fuzz_helpers::run_with_seed(seed, false, $fuzz_impl).await

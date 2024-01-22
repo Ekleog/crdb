@@ -176,7 +176,7 @@ async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>)
     db
 }
 
-make_fuzzer!(fuzz, fuzz_impl);
+make_fuzzer!("fuzz_object_full", fuzz, fuzz_impl);
 
 #[fuzz_helpers::test]
 async fn regression_create_binary_always_failed() {

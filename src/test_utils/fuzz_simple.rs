@@ -164,7 +164,7 @@ async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>)
     db
 }
 
-make_fuzzer!(fuzz, fuzz_impl);
+make_fuzzer!("fuzz_simple", fuzz, fuzz_impl);
 
 #[fuzz_helpers::test]
 async fn regression_events_1342_fails_to_notice_conflict_on_3() {
