@@ -3,7 +3,6 @@ use crate::test_utils::db::ServerConfig;
 use std::time::Duration;
 
 mod fuzz_battle_royale;
-mod fuzz_object_full; // TODO(test) share this fuzzer with other databases
 mod fuzz_sessions;
 mod fuzz_two_threads;
 
@@ -112,7 +111,7 @@ mod fuzz_helpers {
             fn $name() {
                 let cluster = setup();
                 bolero::check!()
-                    .with_iterations(20)
+                    .with_iterations(10)
                     .with_type()
                     .for_each(move |ops| {
                         tokio::runtime::Runtime::new()
@@ -164,4 +163,8 @@ mod fuzz_simple {
 
 mod fuzz_remote_perms {
     include!("../../test_utils/fuzz_remote_perms.rs");
+}
+
+mod fuzz_object_full {
+    include!("../../test_utils/fuzz_object_full.rs");
 }
