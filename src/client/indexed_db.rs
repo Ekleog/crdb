@@ -658,7 +658,21 @@ impl IndexedDb {
             .transaction(&["upload_queue", "upload_queue_meta"])
             .rw()
             .run(move |transaction| async move {
-                unimplemented!() // TODO(client)
+                let upload_id = serde_wasm_bindgen::to_value(&upload_id)
+                    .wrap_context("serializing upload id")?;
+                transaction
+                    .object_store("upload_queue")
+                    .wrap_context("retrieving 'upload_queue' object store")?
+                    .delete(&upload_id)
+                    .await
+                    .wrap_context("deleting upload data")?;
+                transaction
+                    .object_store("upload_queue_meta")
+                    .wrap_context("retrieving 'upload_queue_meta' object store")?
+                    .delete(&upload_id)
+                    .await
+                    .wrap_context("deleting upload metadata")?;
+                Ok(())
             })
             .await
             .wrap_with_context(|| format!("registering {upload_id:?} as having completed"))
