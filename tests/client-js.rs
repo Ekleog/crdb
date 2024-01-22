@@ -153,3 +153,13 @@ mod fuzz_remote_perms {
         fuzz_helpers::run_with_seed(8002174428813084636, true, fuzz_impl).await;
     }
 }
+
+mod fuzz_object_full {
+    include!("../src/test_utils/fuzz_object_full.rs");
+
+    #[fuzz_helpers::test]
+    #[cfg(disabled)]
+    async fn seed_reproducer() {
+        fuzz_helpers::run_with_seed(8002174428813084636, true, fuzz_impl).await;
+    }
+}

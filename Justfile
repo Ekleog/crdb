@@ -100,6 +100,16 @@ fuzz-pg-full ARGS='':
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_object_full__fuzz/corpus.nounit \
         {{ARGS}}
 
+fuzz-idb-full ARGS='':
+    # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
+    PATH="../wasm-bindgen/target/debug:$PATH" \
+    WASM_BINDGEN_TEST_TIMEOUT=86400 \
+    cargo test --features client,_tests --target wasm32-unknown-unknown \
+        client_js::fuzz_object_full::fuzz \
+        --profile fuzz \
+        {{ARGS}} \
+        -- --include-ignored
+
 fuzz-pg-threads-royale ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_battle_royale::fuzz_no_lock_check \
