@@ -1,6 +1,10 @@
 use crate::{
-    db_trait::Db, error::ResultExt, fts, full_object::FullObject, BinPtr, CanDoCallbacks,
-    CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    api::{UploadId, UploadOrBinPtr},
+    db_trait::Db,
+    error::ResultExt,
+    fts,
+    full_object::FullObject,
+    BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -32,6 +36,26 @@ impl SqliteDb {
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn get_upload(&self, _upload_id: UploadId) -> crate::Result<UploadOrBinPtr> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn enqueue_upload(
+        &self,
+        _upload: UploadOrBinPtr,
+        _required_binaries: Vec<BinPtr>,
+    ) -> crate::Result<UploadId> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
 }
