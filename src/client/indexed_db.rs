@@ -11,8 +11,9 @@ use crate::{
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
 use indexed_db::CursorDirection;
-use js_sys::{Array, Uint8Array};
+use js_sys::{Array, JsString, Uint8Array};
 use std::{
+    cell::Cell,
     collections::{BTreeMap, HashSet},
     ops::Bound,
     sync::Arc,
@@ -49,6 +50,7 @@ struct UploadMeta {
 pub struct IndexedDb {
     is_persistent: bool,
     db: indexed_db::Database<crate::Error>,
+    objects_unlocked_this_run: Cell<usize>,
 }
 
 impl IndexedDb {
@@ -130,7 +132,11 @@ impl IndexedDb {
             .await
             .wrap_with_context(|| format!("opening IndexedDb {url:?} at version {VERSION}"))?;
 
-        Ok(IndexedDb { is_persistent, db })
+        Ok(IndexedDb {
+            is_persistent,
+            db,
+            objects_unlocked_this_run: Cell::new(0),
+        })
     }
 
     #[cfg(feature = "_tests")]
@@ -390,14 +396,44 @@ impl IndexedDb {
     }
 
     pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
-        unimplemented!() // TODO(client)
+        let window = web_sys::window()
+            .ok_or_else(|| crate::Error::Other(anyhow!("not running in a browser")))?;
+        let storage = window.navigator().storage();
+        let estimate = storage.estimate().map_err(|_| {
+            crate::Error::Other(anyhow!(
+                "failed getting a storage estimate from the browser"
+            ))
+        })?;
+        let estimate = wasm_bindgen_futures::JsFuture::from(estimate)
+            .await
+            .map_err(|_| {
+                crate::Error::Other(anyhow!("storage estimate promise returned an error"))
+            })?;
+        let quota = js_sys::Reflect::get(&estimate, &JsString::from("quota"))
+            .map_err(|_| crate::Error::Other(anyhow!("storage estimate had no quota field")))?
+            .as_f64()
+            .ok_or_else(|| {
+                crate::Error::Other(anyhow!("storage estimate for quota was not a number"))
+            })? as usize;
+        let usage = js_sys::Reflect::get(&estimate, &JsString::from("usage"))
+            .map_err(|_| crate::Error::Other(anyhow!("storage estimate had no quota field")))?
+            .as_f64()
+            .ok_or_else(|| {
+                crate::Error::Other(anyhow!("storage estimate for quota was not a number"))
+            })? as usize;
+        Ok(ClientStorageInfo {
+            quota,
+            usage,
+            objects_unlocked_this_run: self.objects_unlocked_this_run.get(),
+        })
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
         let zero_id = ObjectId::from_u128(0).to_js_string();
         let max_id = ObjectId::from_u128(u128::MAX).to_js_string();
 
-        self.db
+        let res = self
+            .db
             .transaction(&[
                 "snapshots",
                 "snapshots_meta",
@@ -540,7 +576,11 @@ impl IndexedDb {
                 Ok(())
             })
             .await
-            .wrap_context("vacuuming the database")
+            .wrap_context("vacuuming the database");
+        if res.is_ok() {
+            self.objects_unlocked_this_run.set(0);
+        }
+        res
     }
 
     #[cfg(feature = "_tests")]
@@ -775,7 +815,8 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("serializing {object_id:?}"))?;
         let required_binaries = object.required_binaries();
 
-        self.db
+        let res = self
+            .db
             .transaction(&["snapshots", "snapshots_meta", "events", "binaries"])
             .rw()
             .run(move |transaction| async move {
@@ -875,7 +916,12 @@ impl Db for IndexedDb {
                 }
             })
             .await
-            .wrap_with_context(|| format!("running creation transaction for {object_id:?}"))
+            .wrap_with_context(|| format!("running creation transaction for {object_id:?}"));
+        if res.is_ok() && !lock {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(
@@ -1447,7 +1493,8 @@ impl Db for IndexedDb {
     async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
         let object_id_js = object_id.to_js_string();
 
-        self.db
+        let res = self
+            .db
             .transaction(&["snapshots_meta"])
             .rw()
             .run(move |transaction| async move {
@@ -1482,7 +1529,12 @@ impl Db for IndexedDb {
                 Ok(())
             })
             .await
-            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"))
+            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
@@ -1590,7 +1642,8 @@ impl Db for IndexedDb {
         }
         let ary = Uint8Array::new_with_length(u32::try_from(data.len()).unwrap());
         ary.copy_from(&data);
-        self.db
+        let res = self
+            .db
             .transaction(&["binaries"])
             .rw()
             .run(move |transaction| async move {
@@ -1606,7 +1659,12 @@ impl Db for IndexedDb {
                 Ok(())
             })
             .await
-            .wrap_with_context(|| format!("writing {binary_id:?}"))
+            .wrap_with_context(|| format!("writing {binary_id:?}"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
     }
 
     async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {

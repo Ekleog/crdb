@@ -25,9 +25,6 @@ impl<A: Authenticator> ClientDb<A> {
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
     ) -> anyhow::Result<ClientDb<A>> {
-        // TODO(client): Make user configure a vacuum schedule, and lock vacuuming on a write lock on the
-        // vacuum_guard here. Maybe have the vacuum be skipped unless there's enough storage used, as per
-        // https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate
         C::check_ulids();
         let api = Arc::new(ApiDb::connect(base_url, auth).await?);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
@@ -293,9 +290,9 @@ pub struct ClientVacuumSchedule<F> {
 }
 
 pub struct ClientStorageInfo {
-    pub used: usize,
+    pub usage: usize,
     pub quota: usize,
-    pub unlocked_objects: usize,
+    pub objects_unlocked_this_run: usize,
 }
 
 impl<F> ClientVacuumSchedule<F> {
