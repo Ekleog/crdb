@@ -607,7 +607,16 @@ impl IndexedDb {
         self.db
             .transaction(&["upload_queue"])
             .run(move |transaction| async move {
-                unimplemented!() // TODO(client)
+                let res = transaction
+                    .object_store("upload_queue")
+                    .wrap_context("retrieving 'upload_queue' object store")?
+                    .get(&JsValue::from(upload_id.0))
+                    .await
+                    .wrap_context("fetching data from upload_queue store")?
+                    .ok_or_else(|| indexed_db::Error::DoesNotExist)?;
+                let res = serde_wasm_bindgen::from_value::<UploadOrBinPtr>(res)
+                    .wrap_context("deserializing data")?;
+                Ok(res)
             })
             .await
             .wrap_with_context(|| format!("retrieving data for {upload_id:?}"))

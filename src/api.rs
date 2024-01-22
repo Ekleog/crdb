@@ -236,6 +236,7 @@ pub enum Request {
 }
 
 #[allow(dead_code)] // TODO(api): remove
+#[derive(serde::Deserialize, serde::Serialize)]
 pub enum Upload {
     Object {
         object_id: ObjectId,
@@ -252,18 +253,20 @@ pub enum Upload {
 }
 
 #[allow(dead_code)] // TODO(api): remove
+#[derive(serde::Deserialize, serde::Serialize)]
 pub enum UploadOrBinary {
     Upload(Upload),
     Binary(Arc<Vec<u8>>),
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 pub enum UploadOrBinPtr {
     Upload(Upload),
     BinPtr(BinPtr),
 }
 
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
-pub struct UploadId(i64);
+pub struct UploadId(pub i64);
 
 /// One ServerMessage is supposed to hold as many NewThings as possible
 /// without delaying updates, but still avoiding going too far above
