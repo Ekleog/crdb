@@ -654,7 +654,8 @@ impl IndexedDb {
     }
 
     pub async fn upload_finished(&self, upload_id: UploadId) -> crate::Result<()> {
-        self.db
+        let res = self
+            .db
             .transaction(&["upload_queue", "upload_queue_meta"])
             .rw()
             .run(move |transaction| async move {
@@ -675,7 +676,12 @@ impl IndexedDb {
                 Ok(())
             })
             .await
-            .wrap_with_context(|| format!("registering {upload_id:?} as having completed"))
+            .wrap_with_context(|| format!("registering {upload_id:?} as having completed"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
     }
 
     #[cfg(feature = "_tests")]
