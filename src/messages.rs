@@ -92,16 +92,19 @@ pub enum ResponsePart {
     Error(crate::SerializableError),
     Sessions(Vec<Session>),
     CurrentTime(Timestamp),
-    Objects(Vec<ApiObject>),
+    Objects(Vec<MaybeObject>),
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-pub struct ApiObject {
-    object_id: ObjectId,
-    created_at: EventId,
-    type_id: TypeId,
-    creation_snapshot: serde_json::Value,
-    events: BTreeMap<EventId, serde_json::Value>,
+pub enum MaybeObject {
+    AlreadySubscribed(ObjectId),
+    NotYetSubscribed {
+        object_id: ObjectId,
+        created_at: EventId,
+        type_id: TypeId,
+        creation_snapshot: serde_json::Value,
+        events: BTreeMap<EventId, serde_json::Value>,
+    },
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
