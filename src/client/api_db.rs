@@ -5,6 +5,12 @@ use crate::{
 };
 use std::sync::Arc;
 
+pub enum ConnectionState {
+    Connected,
+    Disconnected,
+    InvalidToken,
+}
+
 pub struct ApiDb {
     user: User,
 }
@@ -14,9 +20,7 @@ impl ApiDb {
         unimplemented!() // TODO(api): implement
     }
 
-    /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
-    /// we just noticed a disconnection.
-    pub fn on_connection_state_change(&self, _cb: impl Fn(bool)) {
+    pub fn on_connection_state_change(&self, _cb: impl Fn(ConnectionState)) {
         unimplemented!() // TODO(api): implement
     }
 

@@ -6,7 +6,7 @@ mod indexed_db;
 #[cfg(not(target_arch = "wasm32"))]
 mod sqlite_db;
 
-pub use api_db::ApiDb;
+pub use api_db::{ApiDb, ConnectionState};
 pub use client_db::{ClientDb, ClientStorageInfo, ClientVacuumSchedule};
 pub use config::{NewEvent, NewObject, NewRecreation};
 #[cfg(target_arch = "wasm32")]

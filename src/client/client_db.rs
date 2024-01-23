@@ -1,4 +1,4 @@
-use super::{ApiDb, LocalDb};
+use super::{api_db::ConnectionState, ApiDb, LocalDb};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
@@ -136,7 +136,7 @@ impl ClientDb {
 
     /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
     /// we just noticed a disconnection.
-    pub fn on_connection_state_change(&self, cb: impl Fn(bool)) {
+    pub fn on_connection_state_change(&self, cb: impl Fn(ConnectionState)) {
         self.api.on_connection_state_change(cb)
     }
 

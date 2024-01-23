@@ -50,7 +50,9 @@ mod server {
 #[doc(hidden)]
 pub mod crdb_internal {
     #[cfg(feature = "client")]
-    pub use crate::client::{ClientDb, ClientStorageInfo, ClientVacuumSchedule, LocalDb};
+    pub use crate::client::{
+        ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionState, LocalDb,
+    };
     #[cfg(feature = "server")]
     pub use crate::server::{ComboLock, PostgresDb, ServerConfig};
     #[cfg(feature = "_tests")]
