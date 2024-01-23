@@ -18,15 +18,14 @@ pub struct ClientDb {
 }
 
 impl ClientDb {
-    pub async fn connect<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
+    pub async fn new<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
         base_url: Arc<String>,
-        token: SessionToken,
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
     ) -> anyhow::Result<ClientDb> {
         C::check_ulids();
-        let api = Arc::new(ApiDb::connect(base_url, token).await?);
+        let api = Arc::new(ApiDb::new(base_url)?);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
         let this = ClientDb {
@@ -135,12 +134,23 @@ impl ClientDb {
         });
     }
 
+    /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
+    /// we just noticed a disconnection.
+    pub fn on_connection_state_change(&self, cb: impl Fn(bool)) {
+        self.api.on_connection_state_change(cb)
+    }
+
+    pub fn login(&self, token: SessionToken) -> anyhow::Result<()> {
+        self.api.login(token)
+    }
+
     pub fn user(&self) -> User {
         self.api.user()
     }
 
-    pub async fn disconnect(&self) -> anyhow::Result<()> {
-        self.api.disconnect().await
+    pub async fn logout(&self) -> anyhow::Result<()> {
+        // TODO(api): flush self.db
+        self.api.logout().await
     }
 
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
@@ -180,6 +190,7 @@ impl ClientDb {
     }
 
     pub async fn unsubscribe(&self, ptr: ObjectId) -> crate::Result<()> {
+        // TODO(client): automatically call `api.unsubscribe` when `vacuum` removes an object
         self.db.remove(ptr).await?;
         self.api.unsubscribe(ptr).await
     }

@@ -31,21 +31,30 @@ macro_rules! generate_client {
         impl $client_db {
             pub fn connect<F: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool>(
                 base_url: crdb::Arc<String>,
-                token: crdb::SessionToken,
                 local_db: String,
                 cache_watermark: usize,
                 vacuum_schedule: crdb::ClientVacuumSchedule<F>,
             ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<$client_db>> {
                 async move {
                     Ok($client_db {
-                        db: crdb::ClientDb::connect::<$api_config, F>(base_url, token, &local_db, cache_watermark, vacuum_schedule).await?,
+                        db: crdb::ClientDb::new::<$api_config, F>(base_url, &local_db, cache_watermark, vacuum_schedule).await?,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     })
                 }
             }
 
-            pub fn disconnect(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {
-                self.db.disconnect()
+            /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
+            /// we just noticed a disconnection.
+            pub fn on_connection_state_change(&self, cb: impl Fn(bool)) {
+                self.db.on_connection_state_change(cb)
+            }
+
+            pub fn login(&self, token: crdb::SessionToken) -> anyhow::Result<()> {
+                self.db.login(token)
+            }
+
+            pub fn logout(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {
+                self.db.logout()
             }
 
             /// Pauses the vacuum until the returned mutex guard is dropped

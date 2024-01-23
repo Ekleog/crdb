@@ -10,7 +10,17 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub async fn connect(_base_url: Arc<String>, _token: SessionToken) -> anyhow::Result<ApiDb> {
+    pub fn new(_base_url: Arc<String>) -> anyhow::Result<ApiDb> {
+        unimplemented!() // TODO(api): implement
+    }
+
+    /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
+    /// we just noticed a disconnection.
+    pub fn on_connection_state_change(&self, _cb: impl Fn(bool)) {
+        unimplemented!() // TODO(api): implement
+    }
+
+    pub fn login(&self, _token: SessionToken) -> anyhow::Result<()> {
         unimplemented!() // TODO(api): implement
     }
 
@@ -18,7 +28,7 @@ impl ApiDb {
         self.user
     }
 
-    pub async fn disconnect(&self) -> anyhow::Result<()> {
+    pub async fn logout(&self) -> anyhow::Result<()> {
         unimplemented!() // TODO(api): implement
     }
 
@@ -29,9 +39,9 @@ impl ApiDb {
     }
 
     /// This function returns all new events for events on objects that have been subscribed
-    /// on. Objects subscribed on are all the objects that have ever been created
-    /// with `created`, or obtained with `get` or `query`, as well as all objects
-    /// received through `new_objects`, excluding objects explicitly unsubscribed from
+    /// on. Objects subscribed on are all the objects that have ever been created with `create`,
+    /// or obtained with `get` or `query` and subscribed on, excluding objects explicitly
+    /// unsubscribed from
     pub async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
         // unimplemented!() // TODO(api): implement
         futures::stream::empty()
