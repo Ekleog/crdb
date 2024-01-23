@@ -23,10 +23,10 @@ pub enum Command {
     Logout,
 }
 
-pub enum ConnectionState {
+pub enum ConnectionEvent {
+    LoggingIn,
     Connected,
-    Disconnected,
-    NoValidToken,
+    LoggedOut,
 }
 
 pub enum State {
@@ -45,7 +45,7 @@ pub enum State {
 pub struct Connection {
     pub state: State,
     pub commands: mpsc::UnboundedReceiver<Command>,
-    pub state_change_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>>,
+    pub event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     pub new_objects_sender: async_broadcast::Sender<DynNewObject>,
     pub new_events_sender: async_broadcast::Sender<DynNewEvent>,
     pub new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
@@ -65,11 +65,11 @@ impl Connection {
                     match command {
                         Command::Login { url, token } => {
                             self.state = State::Disconnected { url, token };
-                            self.state_change_cb.read().unwrap()(ConnectionState::Disconnected);
+                            self.event_cb.read().unwrap()(ConnectionEvent::LoggingIn);
                         }
                         Command::Logout => {
                             self.state = State::NoValidToken;
-                            self.state_change_cb.read().unwrap()(ConnectionState::NoValidToken);
+                            self.event_cb.read().unwrap()(ConnectionEvent::LoggedOut);
                         }
                     }
                 }

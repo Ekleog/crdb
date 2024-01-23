@@ -51,7 +51,7 @@ mod server {
 pub mod crdb_internal {
     #[cfg(feature = "client")]
     pub use crate::client::{
-        ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionState, LocalDb,
+        ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb,
     };
     #[cfg(feature = "server")]
     pub use crate::server::{ComboLock, PostgresDb, ServerConfig};

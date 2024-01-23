@@ -44,8 +44,8 @@ macro_rules! generate_client {
 
             /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
             /// we just noticed a disconnection.
-            pub fn on_connection_state_change(&self, cb: impl 'static + Send + Sync + Fn(crdb::ConnectionState)) {
-                self.db.on_connection_state_change(cb)
+            pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(crdb::ConnectionEvent)) {
+                self.db.on_connection_event(cb)
             }
 
             pub fn login(&self, url: crdb::Arc<String>, token: crdb::SessionToken) {

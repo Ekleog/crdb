@@ -1,4 +1,4 @@
-use super::{connection::ConnectionState, ApiDb, LocalDb};
+use super::{connection::ConnectionEvent, ApiDb, LocalDb};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
@@ -146,8 +146,8 @@ impl ClientDb {
 
     /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
     /// we just noticed a disconnection.
-    pub fn on_connection_state_change(&self, cb: impl 'static + Send + Sync + Fn(ConnectionState)) {
-        self.api.on_connection_state_change(cb)
+    pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {
+        self.api.on_connection_event(cb)
     }
 
     pub fn login(&self, url: Arc<String>, token: SessionToken) {

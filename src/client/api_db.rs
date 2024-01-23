@@ -1,4 +1,4 @@
-use super::connection::{Command, Connection, ConnectionState, State};
+use super::connection::{Command, Connection, ConnectionEvent, State};
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
@@ -9,7 +9,7 @@ use std::sync::{Arc, RwLock};
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
-    connection_state_change_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>>,
+    connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     new_objects_receiver: async_broadcast::InactiveReceiver<DynNewObject>,
     new_events_receiver: async_broadcast::InactiveReceiver<DynNewEvent>,
     new_recreations_receiver: async_broadcast::InactiveReceiver<DynNewRecreation>,
@@ -24,13 +24,13 @@ impl ApiDb {
         new_objects_sender.set_await_active(false);
         new_events_sender.set_await_active(false);
         new_recreations_sender.set_await_active(false);
-        let connection_state_change_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
+        let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let (connection, commands) = mpsc::unbounded();
         crate::spawn(
             Connection {
                 commands,
                 state: State::NoValidToken,
-                state_change_cb: connection_state_change_cb.clone(),
+                event_cb: connection_event_cb.clone(),
                 new_events_sender,
                 new_objects_sender,
                 new_recreations_sender,
@@ -39,15 +39,15 @@ impl ApiDb {
         );
         ApiDb {
             connection,
-            connection_state_change_cb,
+            connection_event_cb,
             new_objects_receiver: new_objects_receiver.deactivate(),
             new_events_receiver: new_events_receiver.deactivate(),
             new_recreations_receiver: new_recreations_receiver.deactivate(),
         }
     }
 
-    pub fn on_connection_state_change(&self, cb: impl 'static + Send + Sync + Fn(ConnectionState)) {
-        *self.connection_state_change_cb.write().unwrap() = Box::new(cb);
+    pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {
+        *self.connection_event_cb.write().unwrap() = Box::new(cb);
     }
 
     pub fn login(&self, url: Arc<String>, token: SessionToken) {
