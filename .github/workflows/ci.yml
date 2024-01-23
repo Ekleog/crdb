@@ -31,12 +31,11 @@ jobs:
         with:
           crate: wasm-bindgen-cli
 
-      # Setup cargo cache
-      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43
-        with:
-          workspaces: |
-            .
-            examples/basic
+      # Setup sccache, that'll share build artifacts with all the target directories
+      - uses: mozilla-actions/sccache-action@1e15924c00ed1446db9e44e8f02628488e7258ec
+      - run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
 
       # Setup chromedriver for client-js tests
       - uses: nanasess/setup-chromedriver@480d644e773cd6d53e4cb76557c8ad5e5806d7da
