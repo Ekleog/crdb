@@ -1,19 +1,11 @@
-use futures::{channel::mpsc, StreamExt};
-
+use super::connection::{Command, Connection, ConnectionState, State};
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
+use futures::channel::mpsc;
 use std::sync::{Arc, RwLock};
-
-enum Command {
-    Login {
-        url: Arc<String>,
-        token: SessionToken,
-    },
-    Logout,
-}
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
@@ -141,64 +133,5 @@ impl ApiDb {
 
     pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
         unimplemented!() // TODO(api): implement
-    }
-}
-
-pub enum ConnectionState {
-    Connected,
-    Disconnected,
-    NoValidToken,
-}
-
-enum State {
-    NoValidToken,
-    Disconnected {
-        url: Arc<String>,
-        token: SessionToken,
-    },
-    Connected {
-        url: Arc<String>,
-        token: SessionToken,
-        // TODO(api): keep running websocket feed
-    },
-}
-
-struct Connection {
-    state: State,
-    commands: mpsc::UnboundedReceiver<Command>,
-    state_change_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>>,
-    new_objects_sender: async_broadcast::Sender<DynNewObject>,
-    new_events_sender: async_broadcast::Sender<DynNewEvent>,
-    new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
-}
-
-impl Connection {
-    async fn run(mut self) {
-        let mut next_command = self.commands.next();
-        loop {
-            // TODO(api): regularly send GetTime requests for ping/pong checking
-            tokio::select! {
-                command = next_command => {
-                    next_command = self.commands.next();
-                    let Some(command) = command else {
-                        break; // ApiDb was dropped, let's close ourselves
-                    };
-                    match command {
-                        Command::Login { url, token } => {
-                            self.state = State::Disconnected { url, token };
-                            self.state_change_cb.read().unwrap()(ConnectionState::Disconnected);
-                        }
-                        Command::Logout => {
-                            self.state = State::NoValidToken;
-                            self.state_change_cb.read().unwrap()(ConnectionState::NoValidToken);
-                        }
-                    }
-                }
-            }
-
-            if let State::Disconnected { url, token } = self.state {
-                unimplemented!() // TODO(api)
-            }
-        }
     }
 }

@@ -1,4 +1,4 @@
-use super::{api_db::ConnectionState, ApiDb, LocalDb};
+use super::{connection::ConnectionState, ApiDb, LocalDb};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
