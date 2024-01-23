@@ -47,8 +47,9 @@ impl ApiDb {
         self.connection_state_change_cb.read().unwrap()(ConnectionState::Disconnected);
     }
 
-    pub async fn logout(&self) -> anyhow::Result<()> {
-        unimplemented!() // TODO(api): implement
+    pub fn logout(&self) {
+        *self.state.write().unwrap() = State::NotLoggedInYet;
+        self.connection_state_change_cb.read().unwrap()(ConnectionState::InvalidToken);
     }
 
     // TODO(api): use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications

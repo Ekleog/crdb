@@ -145,8 +145,9 @@ impl ClientDb {
     }
 
     pub async fn logout(&self) -> anyhow::Result<()> {
+        self.api.logout();
         // TODO(api): flush self.db
-        self.api.logout().await
+        Ok(())
     }
 
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
