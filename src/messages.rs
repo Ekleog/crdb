@@ -88,7 +88,7 @@ pub enum ResponsePart {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ApiObject {
-    id: ObjectId,
+    object_id: ObjectId,
     created_at: EventId,
     type_id: TypeId,
     creation_snapshot: serde_json::Value,
