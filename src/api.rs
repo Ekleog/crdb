@@ -2,10 +2,11 @@ use crate::{
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     error::ResultExt,
     future::{CrdbSend, CrdbSync},
-    BinPtr, CrdbFuture, EventId, ObjectId, Timestamp, TypeId, User,
+    messages::Upload,
+    BinPtr, CrdbFuture, ObjectId, TypeId, User,
 };
 use anyhow::Context;
-use std::{any::Any, collections::HashSet, marker::PhantomData, sync::Arc};
+use std::{any::Any, marker::PhantomData, sync::Arc};
 use ulid::Ulid;
 
 pub(crate) mod query;
@@ -214,77 +215,13 @@ impl<T: Object> bolero::TypeGenerator for DbPtr<T> {
     }
 }
 
-#[allow(dead_code)] // TODO(api): remove
-pub struct RequestId(Ulid);
-
-#[allow(dead_code)] // TODO(api): remove
-pub enum NewThing {
-    Object(TypeId, ObjectId, serde_json::Value),
-    Event(TypeId, ObjectId, EventId, serde_json::Value),
-    Recreation(TypeId, ObjectId, Timestamp),
-    Binary(BinPtr, Arc<Vec<u8>>),
-    CurrentTime(Timestamp),
-}
-
-#[allow(dead_code)] // TODO(api): remove
-pub enum Request {
-    Subscribe(HashSet<ObjectId>),
-    Unsubscribe(HashSet<ObjectId>),
-    GetTime,
-    Upload(Vec<UploadOrBinary>),
-    // TODO(api): does this have everything we want to do?
-}
-
-#[allow(dead_code)] // TODO(api): remove
-#[derive(serde::Deserialize, serde::Serialize)]
-pub enum Upload {
-    Object {
-        object_id: ObjectId,
-        type_id: TypeId,
-        created_at: EventId,
-        data: serde_json::Value,
-    },
-    Event {
-        event_id: EventId,
-        type_id: TypeId,
-        object_id: ObjectId,
-        data: serde_json::Value,
-    },
-}
-
-#[allow(dead_code)] // TODO(api): remove
-#[derive(serde::Deserialize, serde::Serialize)]
-pub enum UploadOrBinary {
-    Upload(Upload),
-    Binary(Arc<Vec<u8>>),
-}
+#[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct UploadId(pub i64);
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub enum UploadOrBinPtr {
     Upload(Upload),
     BinPtr(BinPtr),
-}
-
-#[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
-pub struct UploadId(pub i64);
-
-/// One ServerMessage is supposed to hold as many NewThings as possible
-/// without delaying updates, but still avoiding going too far above
-/// than 1M / message, to allow for better resumability.
-///
-/// As an exception, if `as_answer_to` is set, then `new_things` contains
-/// at least the requested thing(s)
-#[allow(dead_code)] // TODO(api): remove
-pub struct ServerMessage {
-    updates_on_server_until: Timestamp,
-    as_answer_to: Option<RequestId>,
-    new_things: Vec<NewThing>,
-}
-
-#[allow(dead_code)] // TODO(api): remove
-pub struct ClientMessage {
-    request_id: RequestId,
-    request: Request,
 }
 
 pub trait ApiConfig: crate::private::Sealed {
