@@ -26,7 +26,7 @@ enum State {
 pub struct ApiDb {
     base_url: Arc<String>,
     state: RwLock<State>,
-    connection_state_change_cb: RwLock<Box<dyn Fn(ConnectionState)>>,
+    connection_state_change_cb: RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>,
 }
 
 impl ApiDb {
@@ -38,7 +38,7 @@ impl ApiDb {
         }
     }
 
-    pub fn on_connection_state_change(&self, cb: impl 'static + Fn(ConnectionState)) {
+    pub fn on_connection_state_change(&self, cb: impl 'static + Send + Sync + Fn(ConnectionState)) {
         *self.connection_state_change_cb.write().unwrap() = Box::new(cb);
     }
 

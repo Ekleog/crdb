@@ -136,7 +136,7 @@ impl ClientDb {
 
     /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
     /// we just noticed a disconnection.
-    pub fn on_connection_state_change(&self, cb: impl 'static + Fn(ConnectionState)) {
+    pub fn on_connection_state_change(&self, cb: impl 'static + Send + Sync + Fn(ConnectionState)) {
         self.api.on_connection_state_change(cb)
     }
 
