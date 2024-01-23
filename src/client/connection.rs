@@ -5,6 +5,16 @@ use crate::{
 use futures::{channel::mpsc, StreamExt};
 use std::sync::{Arc, RwLock};
 
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+
+#[cfg(not(target_arch = "wasm32"))]
+use native as implem;
+#[cfg(target_arch = "wasm32")]
+use wasm as implem;
+
 pub enum Command {
     Login {
         url: Arc<String>,
@@ -28,7 +38,7 @@ pub enum State {
     Connected {
         url: Arc<String>,
         token: SessionToken,
-        // TODO(api): keep running websocket feed
+        socket: implem::WebSocket,
     },
 }
 
