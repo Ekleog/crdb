@@ -1,9 +1,7 @@
 use crate::{
-    api::ApiConfig, cache::CacheDb, messages::ServerMessage, ObjectId, Session, SessionToken,
-    Timestamp,
+    api::ApiConfig, cache::CacheDb, messages::ServerMessage, ObjectId, SessionToken, Timestamp,
 };
 use anyhow::Context;
-use axum::http::StatusCode;
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
@@ -17,13 +15,6 @@ mod postgres_db;
 
 pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
-
-pub trait Authenticator<Auth>: for<'a> serde::Deserialize<'a> + serde::Serialize {
-    // TODO(api): make sure protocol is two-step, with server sending random data to client and
-    // only then client answering with the Authenticator? This'd make it possible to use
-    // a public key to auth
-    fn authenticate(data: Auth) -> Result<Session, (StatusCode, String)>;
-}
 
 pub struct Server<C: ServerConfig> {
     db: Arc<CacheDb<PostgresDb<C>>>,
@@ -102,6 +93,7 @@ impl<C: ServerConfig> Server<C> {
         Ok((this, upgrade_handle))
     }
 
+    // TODO(api): replace with a function that just takes in a websocket io stream
     pub async fn serve(&self, addr: &SocketAddr) -> anyhow::Result<()> {
         let listener = tokio::net::TcpListener::bind(addr)
             .await

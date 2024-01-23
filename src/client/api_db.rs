@@ -1,18 +1,16 @@
-use super::Authenticator;
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp, User,
 };
 use std::sync::Arc;
 
-pub struct ApiDb<A: Authenticator> {
-    _auth: A,
+pub struct ApiDb {
     user: User,
 }
 
-impl<A: Authenticator> ApiDb<A> {
-    pub async fn connect(_base_url: Arc<String>, _auth: Arc<A>) -> anyhow::Result<ApiDb<A>> {
+impl ApiDb {
+    pub async fn connect(_base_url: Arc<String>, _token: SessionToken) -> anyhow::Result<ApiDb> {
         unimplemented!() // TODO(api): implement
     }
 

@@ -36,7 +36,7 @@ mod client {
 #[cfg(feature = "server")]
 mod server;
 #[cfg(feature = "server")]
-pub use server::{Authenticator, Server, ServerVacuumSchedule};
+pub use server::{Server, ServerVacuumSchedule};
 #[cfg(not(feature = "server"))]
 mod server {
     #[macro_export]
@@ -60,8 +60,10 @@ pub mod crdb_internal {
         cache::ObjectCache,
         db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
         error::ResultExt,
-        hash_binary, private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object,
-        ObjectId, Query, Result, Timestamp, TypeId, User,
+        hash_binary, private,
+        session::SessionToken,
+        BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object, ObjectId, Query, Result,
+        Timestamp, TypeId, User,
     };
     pub use anyhow;
     pub use futures::{self, future, stream, Stream};
@@ -135,7 +137,6 @@ pub fn check_strings(v: &serde_json::Value) -> crate::Result<()> {
 macro_rules! db {
     (
         $v:vis mod $module:ident {
-            auth: $authenticator:ty,
             api_config: $api_config:ident,
             server_config: $server_config:ident,
             client_db: $client_db:ident,
@@ -152,9 +153,9 @@ macro_rules! db {
             use crdb::ResultExt as CrdbResultExt;
             use crdb::stream::StreamExt as CrdbStreamExt;
 
-            $crate::generate_api!($authenticator | $api_config | $($object),*);
-            $crate::generate_client!($authenticator | $api_config | $client_db | $($name: $object),*);
-            $crate::generate_server!($authenticator | $api_config | $server_config | $($object),*);
+            $crate::generate_api!($api_config | $($object),*);
+            $crate::generate_client!($api_config | $client_db | $($name: $object),*);
+            $crate::generate_server!($api_config | $server_config | $($object),*);
         }
     }
 }

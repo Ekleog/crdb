@@ -1,12 +1,13 @@
 #![allow(dead_code)] // TODO(api): remove
 
-use crate::{EventId, ObjectId, Query, Timestamp, TypeId};
+use crate::{EventId, ObjectId, Query, SessionToken, Timestamp, TypeId};
 use std::{
     collections::{BTreeMap, HashSet},
     sync::Arc,
 };
 use ulid::Ulid;
 
+// TODO(low): review what all the (de)serialized JSON for all the types defined here looks like
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ClientMessage {
     request_id: RequestId,
@@ -18,6 +19,7 @@ pub struct RequestId(Ulid);
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub enum Request {
+    SetToken(SessionToken),
     GetTime,
     // TODO(low): add a way to fetch only the new events, when we already have most of one big object?
     Get {

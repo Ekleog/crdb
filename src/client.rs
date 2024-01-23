@@ -13,12 +13,3 @@ pub use config::{NewEvent, NewObject, NewRecreation};
 pub use indexed_db::IndexedDb as LocalDb;
 #[cfg(not(target_arch = "wasm32"))]
 pub use sqlite_db::SqliteDb as LocalDb;
-
-pub trait Authenticator:
-    'static + Send + Sync + for<'de> serde::Deserialize<'de> + serde::Serialize
-{
-}
-impl<T: 'static + Send + Sync + for<'de> serde::Deserialize<'de> + serde::Serialize> Authenticator
-    for T
-{
-}

@@ -25,7 +25,6 @@ pub use stubs::*;
 
 crate::db! {
     pub mod db {
-        auth: (),
         api_config: ApiConfig,
         server_config: ServerConfig,
         client_db: ClientDb,

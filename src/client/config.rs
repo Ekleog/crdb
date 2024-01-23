@@ -20,25 +20,25 @@ pub struct NewRecreation<T: Object> {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_client {
-    ( $authenticator:ty | $api_config:ident | $client_db:ident | $($name:ident : $object:ty),* ) => {
+    ( $api_config:ident | $client_db:ident | $($name:ident : $object:ty),* ) => {
         // TODO(api): also have a way to force a server round-trip NOW, for eg. permissions change.
         // This should probably be done by somehow exposing the queue for ApiDb
         pub struct $client_db {
-            db: crdb::ClientDb<$authenticator>,
+            db: crdb::ClientDb,
             ulid: crdb::Mutex<crdb::ulid::Generator>,
         }
 
         impl $client_db {
             pub fn connect<F: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool>(
                 base_url: crdb::Arc<String>,
-                auth: crdb::Arc<$authenticator>,
+                token: crdb::SessionToken,
                 local_db: String,
                 cache_watermark: usize,
                 vacuum_schedule: crdb::ClientVacuumSchedule<F>,
             ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<$client_db>> {
                 async move {
                     Ok($client_db {
-                        db: crdb::ClientDb::connect::<$api_config, F>(base_url, auth, &local_db, cache_watermark, vacuum_schedule).await?,
+                        db: crdb::ClientDb::connect::<$api_config, F>(base_url, token, &local_db, cache_watermark, vacuum_schedule).await?,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     })
                 }

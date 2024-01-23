@@ -1,9 +1,6 @@
 use crdb::{CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
 use ulid::Ulid;
 
-#[derive(serde::Deserialize, serde::Serialize)]
-pub struct Authenticator;
-
 #[derive(
     Clone, Default, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize,
 )]
@@ -65,7 +62,6 @@ impl crdb::Event for FooEvent {
 
 crdb::db! {
     pub mod db {
-        auth: super::Authenticator,
         api_config: ApiConfig,
         server_config: ServerConfig,
         client_db: Db,

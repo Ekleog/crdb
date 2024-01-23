@@ -262,7 +262,7 @@ pub trait ApiConfig: crate::private::Sealed {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_api {
-    ( $authenticator:ty | $config:ident | $($object:ty),* ) => {
+    ( $config:ident | $($object:ty),* ) => {
         pub struct $config;
 
         impl crdb::private::Sealed for $config {}

@@ -1,32 +1,32 @@
-use super::{ApiDb, Authenticator, LocalDb};
+use super::{ApiDb, LocalDb};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
     db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp, User,
 };
 use futures::StreamExt;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
-pub struct ClientDb<A: Authenticator> {
-    api: Arc<ApiDb<A>>,
+pub struct ClientDb {
+    api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
     vacuum_guard: Arc<RwLock<()>>,
 }
 
-impl<A: Authenticator> ClientDb<A> {
+impl ClientDb {
     pub async fn connect<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
         base_url: Arc<String>,
-        auth: Arc<A>,
+        token: SessionToken,
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
-    ) -> anyhow::Result<ClientDb<A>> {
+    ) -> anyhow::Result<ClientDb> {
         C::check_ulids();
-        let api = Arc::new(ApiDb::connect(base_url, auth).await?);
+        let api = Arc::new(ApiDb::connect(base_url, token).await?);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
         let this = ClientDb {

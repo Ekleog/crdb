@@ -4,8 +4,6 @@ use std::sync::Arc;
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
-    type Auth;
-
     type ApiConfig: ApiConfig;
 
     fn reencode_old_versions(call_on: Arc<PostgresDb<Self>>) -> impl CrdbFuture<Output = usize>;
@@ -31,12 +29,11 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_server {
-    ( $auth:ty | $api_config:ident | $name:ident | $($object:ty),* ) => {
+    ( $api_config:ident | $name:ident | $($object:ty),* ) => {
         pub struct $name;
 
         impl crdb::private::Sealed for $name {}
         impl crdb::ServerConfig for $name {
-            type Auth = $auth;
             type ApiConfig = $api_config;
 
             async fn reencode_old_versions(call_on: std::sync::Arc<crdb::PostgresDb<Self>>) -> usize {
