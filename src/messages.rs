@@ -19,6 +19,7 @@ pub struct RequestId(Ulid);
 #[derive(serde::Deserialize, serde::Serialize)]
 pub enum Request {
     GetTime,
+    // TODO(low): add a way to fetch only the new events, when we already have most of one big object?
     Get {
         object_ids: HashSet<ObjectId>,
         only_updated_since: Option<Timestamp>,
