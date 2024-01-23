@@ -104,6 +104,7 @@ pub enum MaybeObject {
         type_id: TypeId,
         creation_snapshot: serde_json::Value,
         events: BTreeMap<EventId, serde_json::Value>,
+        now_have_all_until: Timestamp,
     },
 }
 
