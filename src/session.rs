@@ -26,7 +26,7 @@ pub struct NewSession {
     pub expiration_time: Option<Timestamp>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Session {
     pub user_id: User,
     pub session_ref: SessionRef,
