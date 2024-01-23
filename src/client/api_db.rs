@@ -27,14 +27,33 @@ pub struct ApiDb {
     base_url: Arc<String>,
     state: RwLock<State>,
     connection_state_change_cb: RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>,
+    new_objects_sender: async_broadcast::Sender<DynNewObject>,
+    new_events_sender: async_broadcast::Sender<DynNewEvent>,
+    new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
+    new_objects_receiver: async_broadcast::InactiveReceiver<DynNewObject>,
+    new_events_receiver: async_broadcast::InactiveReceiver<DynNewEvent>,
+    new_recreations_receiver: async_broadcast::InactiveReceiver<DynNewRecreation>,
 }
 
 impl ApiDb {
     pub fn new(base_url: Arc<String>) -> ApiDb {
+        let (mut new_objects_sender, new_objects_receiver) = async_broadcast::broadcast(128);
+        let (mut new_events_sender, new_events_receiver) = async_broadcast::broadcast(128);
+        let (mut new_recreations_sender, new_recreations_receiver) =
+            async_broadcast::broadcast(128);
+        new_objects_sender.set_await_active(false);
+        new_events_sender.set_await_active(false);
+        new_recreations_sender.set_await_active(false);
         ApiDb {
             base_url,
             state: RwLock::new(State::NotLoggedInYet),
             connection_state_change_cb: RwLock::new(Box::new(|_| ())),
+            new_objects_sender,
+            new_events_sender,
+            new_recreations_sender,
+            new_objects_receiver: new_objects_receiver.deactivate(),
+            new_events_receiver: new_events_receiver.deactivate(),
+            new_recreations_receiver: new_recreations_receiver.deactivate(),
         }
     }
 
@@ -52,10 +71,8 @@ impl ApiDb {
         self.connection_state_change_cb.read().unwrap()(ConnectionState::InvalidToken);
     }
 
-    // TODO(api): use the async_broadcast crate with overflow disabled to fan-out in a blocking manner the new_object/event notifications
     pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        // unimplemented!() // TODO(api): implement
-        futures::stream::empty()
+        self.new_objects_receiver.activate_cloned()
     }
 
     /// This function returns all new events for events on objects that have been subscribed
@@ -63,13 +80,11 @@ impl ApiDb {
     /// or obtained with `get` or `query` and subscribed on, excluding objects explicitly
     /// unsubscribed from
     pub async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        // unimplemented!() // TODO(api): implement
-        futures::stream::empty()
+        self.new_events_receiver.activate_cloned()
     }
 
     pub async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        // unimplemented!() // TODO(api): implement
-        futures::stream::empty()
+        self.new_recreations_receiver.activate_cloned()
     }
 
     /// Note that this function unsubscribes ALL the streams that have ever been taken for
