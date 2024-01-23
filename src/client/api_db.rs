@@ -1,5 +1,4 @@
-use futures::channel::mpsc;
-use tokio_util::sync::CancellationToken;
+use futures::{channel::mpsc, StreamExt};
 
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
@@ -7,26 +6,6 @@ use crate::{
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use std::sync::{Arc, RwLock};
-
-pub enum ConnectionState {
-    Connected,
-    Disconnected,
-    InvalidToken,
-}
-
-enum State {
-    NotLoggedInYet,
-    InvalidToken,
-    Disconnected {
-        url: Arc<String>,
-        token: SessionToken,
-    },
-    Connected {
-        url: Arc<String>,
-        token: SessionToken,
-        // TODO(api): keep running websocket feed
-    },
-}
 
 enum Command {
     Login {
@@ -42,7 +21,6 @@ pub struct ApiDb {
     new_objects_receiver: async_broadcast::InactiveReceiver<DynNewObject>,
     new_events_receiver: async_broadcast::InactiveReceiver<DynNewEvent>,
     new_recreations_receiver: async_broadcast::InactiveReceiver<DynNewRecreation>,
-    _cleanup_token: tokio_util::sync::DropGuard,
 }
 
 impl ApiDb {
@@ -55,7 +33,6 @@ impl ApiDb {
         new_events_sender.set_await_active(false);
         new_recreations_sender.set_await_active(false);
         let connection_state_change_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
-        let cancellation_token = CancellationToken::new();
         let (connection, commands) = mpsc::unbounded();
         crate::spawn(
             Connection {
@@ -65,7 +42,6 @@ impl ApiDb {
                 new_events_sender,
                 new_objects_sender,
                 new_recreations_sender,
-                cancellation_token: cancellation_token.clone(),
             }
             .run(),
         );
@@ -75,7 +51,6 @@ impl ApiDb {
             new_objects_receiver: new_objects_receiver.deactivate(),
             new_events_receiver: new_events_receiver.deactivate(),
             new_recreations_receiver: new_recreations_receiver.deactivate(),
-            _cleanup_token: cancellation_token.drop_guard(),
         }
     }
 
@@ -169,6 +144,26 @@ impl ApiDb {
     }
 }
 
+pub enum ConnectionState {
+    Connected,
+    Disconnected,
+    InvalidToken,
+}
+
+enum State {
+    NotLoggedInYet,
+    InvalidToken,
+    Disconnected {
+        url: Arc<String>,
+        token: SessionToken,
+    },
+    Connected {
+        url: Arc<String>,
+        token: SessionToken,
+        // TODO(api): keep running websocket feed
+    },
+}
+
 struct Connection {
     state: State,
     commands: mpsc::UnboundedReceiver<Command>,
@@ -176,11 +171,30 @@ struct Connection {
     new_objects_sender: async_broadcast::Sender<DynNewObject>,
     new_events_sender: async_broadcast::Sender<DynNewEvent>,
     new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
-    cancellation_token: CancellationToken,
 }
 
 impl Connection {
     async fn run(mut self) {
-        unimplemented!() // TODO(api): implement
+        let mut next_command = self.commands.next();
+        loop {
+            tokio::select! {
+                command = next_command => {
+                    next_command = self.commands.next();
+                    let Some(command) = command else {
+                        break; // ApiDb was dropped, let's close ourselves
+                    };
+                    match command {
+                        Command::Login { url, token } => {
+                            self.state = State::Disconnected { url, token };
+                            self.state_change_cb.read().unwrap()(ConnectionState::Disconnected);
+                        }
+                        Command::Logout => {
+                            self.state = State::InvalidToken;
+                            self.state_change_cb.read().unwrap()(ConnectionState::InvalidToken);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
