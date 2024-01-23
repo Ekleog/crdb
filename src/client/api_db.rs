@@ -1,3 +1,6 @@
+use futures::channel::mpsc;
+use tokio_util::sync::CancellationToken;
+
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
@@ -25,15 +28,21 @@ enum State {
     },
 }
 
+enum Command {
+    Login {
+        url: Arc<String>,
+        token: SessionToken,
+    },
+    Logout,
+}
+
 pub struct ApiDb {
-    state: RwLock<State>,
-    connection_state_change_cb: RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>,
-    new_objects_sender: async_broadcast::Sender<DynNewObject>,
-    new_events_sender: async_broadcast::Sender<DynNewEvent>,
-    new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
+    connection: mpsc::UnboundedSender<Command>,
+    connection_state_change_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>>,
     new_objects_receiver: async_broadcast::InactiveReceiver<DynNewObject>,
     new_events_receiver: async_broadcast::InactiveReceiver<DynNewEvent>,
     new_recreations_receiver: async_broadcast::InactiveReceiver<DynNewRecreation>,
+    _cleanup_token: tokio_util::sync::DropGuard,
 }
 
 impl ApiDb {
@@ -45,15 +54,28 @@ impl ApiDb {
         new_objects_sender.set_await_active(false);
         new_events_sender.set_await_active(false);
         new_recreations_sender.set_await_active(false);
+        let connection_state_change_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
+        let cancellation_token = CancellationToken::new();
+        let (connection, commands) = mpsc::unbounded();
+        crate::spawn(
+            Connection {
+                commands,
+                state: State::NotLoggedInYet,
+                state_change_cb: connection_state_change_cb.clone(),
+                new_events_sender,
+                new_objects_sender,
+                new_recreations_sender,
+                cancellation_token: cancellation_token.clone(),
+            }
+            .run(),
+        );
         ApiDb {
-            state: RwLock::new(State::NotLoggedInYet),
-            connection_state_change_cb: RwLock::new(Box::new(|_| ())),
-            new_objects_sender,
-            new_events_sender,
-            new_recreations_sender,
+            connection,
+            connection_state_change_cb,
             new_objects_receiver: new_objects_receiver.deactivate(),
             new_events_receiver: new_events_receiver.deactivate(),
             new_recreations_receiver: new_recreations_receiver.deactivate(),
+            _cleanup_token: cancellation_token.drop_guard(),
         }
     }
 
@@ -62,13 +84,15 @@ impl ApiDb {
     }
 
     pub fn login(&self, url: Arc<String>, token: SessionToken) {
-        *self.state.write().unwrap() = State::Disconnected { url, token };
-        self.connection_state_change_cb.read().unwrap()(ConnectionState::Disconnected);
+        self.connection
+            .unbounded_send(Command::Login { url, token })
+            .expect("connection cannot go away before sender does")
     }
 
     pub fn logout(&self) {
-        *self.state.write().unwrap() = State::NotLoggedInYet;
-        self.connection_state_change_cb.read().unwrap()(ConnectionState::InvalidToken);
+        self.connection
+            .unbounded_send(Command::Logout)
+            .expect("connection cannot go away before sender does")
     }
 
     pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
@@ -141,6 +165,22 @@ impl ApiDb {
     }
 
     pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+        unimplemented!() // TODO(api): implement
+    }
+}
+
+struct Connection {
+    state: State,
+    commands: mpsc::UnboundedReceiver<Command>,
+    state_change_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>>,
+    new_objects_sender: async_broadcast::Sender<DynNewObject>,
+    new_events_sender: async_broadcast::Sender<DynNewEvent>,
+    new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
+    cancellation_token: CancellationToken,
+}
+
+impl Connection {
+    async fn run(mut self) {
         unimplemented!() // TODO(api): implement
     }
 }
