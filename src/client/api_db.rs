@@ -3,7 +3,7 @@ use crate::{
     full_object::FullObject,
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub enum ConnectionState {
     Connected,
@@ -26,6 +26,7 @@ enum State {
 pub struct ApiDb {
     base_url: Arc<String>,
     state: State,
+    connection_state_change_cb: RwLock<Box<dyn Fn(ConnectionState)>>,
 }
 
 impl ApiDb {
@@ -33,11 +34,12 @@ impl ApiDb {
         ApiDb {
             base_url,
             state: State::NotLoggedInYet,
+            connection_state_change_cb: RwLock::new(Box::new(|_| ())),
         }
     }
 
-    pub fn on_connection_state_change(&self, _cb: impl Fn(ConnectionState)) {
-        unimplemented!() // TODO(api): implement
+    pub fn on_connection_state_change(&self, cb: impl 'static + Fn(ConnectionState)) {
+        *self.connection_state_change_cb.write().unwrap() = Box::new(cb);
     }
 
     pub fn login(&self, _token: SessionToken) -> anyhow::Result<()> {
