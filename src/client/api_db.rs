@@ -1,7 +1,7 @@
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp, User,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use std::sync::Arc;
 
@@ -11,13 +11,29 @@ pub enum ConnectionState {
     InvalidToken,
 }
 
+enum State {
+    NotLoggedInYet,
+    InvalidToken,
+    Disconnected {
+        token: SessionToken,
+    },
+    Connected {
+        token: SessionToken,
+        // TODO(api): keep running websocket feed
+    },
+}
+
 pub struct ApiDb {
-    user: User,
+    base_url: Arc<String>,
+    state: State,
 }
 
 impl ApiDb {
-    pub fn new(_base_url: Arc<String>) -> anyhow::Result<ApiDb> {
-        unimplemented!() // TODO(api): implement
+    pub fn new(base_url: Arc<String>) -> ApiDb {
+        ApiDb {
+            base_url,
+            state: State::NotLoggedInYet,
+        }
     }
 
     pub fn on_connection_state_change(&self, _cb: impl Fn(ConnectionState)) {
@@ -26,10 +42,6 @@ impl ApiDb {
 
     pub fn login(&self, _token: SessionToken) -> anyhow::Result<()> {
         unimplemented!() // TODO(api): implement
-    }
-
-    pub fn user(&self) -> User {
-        self.user
     }
 
     pub async fn logout(&self) -> anyhow::Result<()> {
@@ -86,7 +98,6 @@ impl ApiDb {
 
     pub async fn query<T: Object>(
         &self,
-        _user: User,
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         _q: &Query,
     ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {

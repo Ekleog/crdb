@@ -25,7 +25,7 @@ impl ClientDb {
         vacuum_schedule: ClientVacuumSchedule<F>,
     ) -> anyhow::Result<ClientDb> {
         C::check_ulids();
-        let api = Arc::new(ApiDb::new(base_url)?);
+        let api = Arc::new(ApiDb::new(base_url));
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
         let this = ClientDb {
@@ -144,10 +144,6 @@ impl ClientDb {
         self.api.login(token)
     }
 
-    pub fn user(&self) -> User {
-        self.api.user()
-    }
-
     pub async fn logout(&self) -> anyhow::Result<()> {
         // TODO(api): flush self.db
         self.api.logout().await
@@ -240,10 +236,10 @@ impl ClientDb {
 
     pub async fn query_local<'a, T: Object>(
         &'a self,
-        user: User,
         q: &'a Query,
     ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<FullObject>>> {
-        self.db.query::<T>(user, None, q).await
+        // User is ignored for LocalDb queries
+        self.db.query::<T>(User::from_u128(0), None, q).await
     }
 
     pub async fn query_remote<T: Object>(
@@ -254,7 +250,7 @@ impl ClientDb {
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
         Ok(self
             .api
-            .query::<T>(self.user(), ignore_not_modified_on_server_since, q)
+            .query::<T>(ignore_not_modified_on_server_since, q)
             .await?
             .then({
                 let db = self.db.clone();

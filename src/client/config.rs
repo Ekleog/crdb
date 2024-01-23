@@ -151,7 +151,7 @@ macro_rules! generate_client {
 
                 pub fn [< query_ $name _local >]<'a>(&'a self, q: &'a crdb::Query) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     async move {
-                        Ok(self.db.query_local::<$object>(self.db.user(), q)
+                        Ok(self.db.query_local::<$object>(q)
                             .await?
                             .then(|o| async move {
                                 o?.last_snapshot()
