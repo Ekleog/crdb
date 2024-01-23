@@ -21,11 +21,12 @@ pub enum Request {
     GetTime,
     Get {
         object_ids: HashSet<ObjectId>,
-        if_updated_since: Option<Timestamp>,
+        only_updated_since: Option<Timestamp>,
         subscribe: bool,
     },
     Query {
         query: Query,
+        only_updated_since: Option<Timestamp>,
         subscribe: bool,
     },
     Unsubscribe(HashSet<ObjectId>),
