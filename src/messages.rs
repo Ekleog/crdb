@@ -123,5 +123,4 @@ pub enum Update {
         object_id: ObjectId,
         time: Timestamp,
     },
-    Binary(Arc<Vec<u8>>),
 }
