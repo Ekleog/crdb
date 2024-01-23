@@ -250,6 +250,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         cb: &C,
         notify_recreation: impl Fn(DynNewRecreation),
     ) -> crate::Result<()> {
+        // TODO(low): do not vacuum away binaries that have been uploaded less than an hour ago
+        // TODO(low): also keep an "upload time" field on events, and allow fetching just the new events for an object
         if let Some(t) = kill_sessions_older_than {
             // Discard all sessions that were last active too long ago
             reord::point().await;
