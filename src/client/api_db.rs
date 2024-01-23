@@ -25,7 +25,7 @@ enum State {
 
 pub struct ApiDb {
     base_url: Arc<String>,
-    state: State,
+    state: RwLock<State>,
     connection_state_change_cb: RwLock<Box<dyn Fn(ConnectionState)>>,
 }
 
@@ -33,7 +33,7 @@ impl ApiDb {
     pub fn new(base_url: Arc<String>) -> ApiDb {
         ApiDb {
             base_url,
-            state: State::NotLoggedInYet,
+            state: RwLock::new(State::NotLoggedInYet),
             connection_state_change_cb: RwLock::new(Box::new(|_| ())),
         }
     }
@@ -42,8 +42,9 @@ impl ApiDb {
         *self.connection_state_change_cb.write().unwrap() = Box::new(cb);
     }
 
-    pub fn login(&self, _token: SessionToken) -> anyhow::Result<()> {
-        unimplemented!() // TODO(api): implement
+    pub fn login(&self, token: SessionToken) {
+        *self.state.write().unwrap() = State::Disconnected { token };
+        self.connection_state_change_cb.read().unwrap()(ConnectionState::Disconnected);
     }
 
     pub async fn logout(&self) -> anyhow::Result<()> {

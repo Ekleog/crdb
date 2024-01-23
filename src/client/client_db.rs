@@ -140,7 +140,7 @@ impl ClientDb {
         self.api.on_connection_state_change(cb)
     }
 
-    pub fn login(&self, token: SessionToken) -> anyhow::Result<()> {
+    pub fn login(&self, token: SessionToken) {
         self.api.login(token)
     }
 

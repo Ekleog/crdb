@@ -49,7 +49,7 @@ macro_rules! generate_client {
                 self.db.on_connection_state_change(cb)
             }
 
-            pub fn login(&self, token: crdb::SessionToken) -> anyhow::Result<()> {
+            pub fn login(&self, token: crdb::SessionToken) {
                 self.db.login(token)
             }
 
