@@ -9,6 +9,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio::{sync::mpsc, task::JoinHandle};
+use tokio_util::sync::CancellationToken;
 
 mod config;
 mod postgres_db;
@@ -19,6 +20,7 @@ pub use config::ServerConfig;
 pub struct Server<C: ServerConfig> {
     db: Arc<CacheDb<PostgresDb<C>>>,
     postgres_db: Arc<PostgresDb<C>>,
+    _cleanup_token: tokio_util::sync::DropGuard,
     // TODO(api): use all the below
     _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
     _sessions: HashMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
@@ -52,16 +54,21 @@ impl<C: ServerConfig> Server<C> {
         let upgrade_handle = tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
 
         // Setup the auto-vacuum task
+        let cancellation_token = CancellationToken::new();
         tokio::task::spawn({
             let postgres_db = postgres_db.clone();
             let db = db.clone();
+            let cancellation_token = cancellation_token.clone();
             async move {
                 for next_time in vacuum_schedule.schedule.upcoming(vacuum_schedule.timezone) {
                     let sleep_for = next_time.signed_duration_since(chrono::Utc::now());
                     let sleep_for = sleep_for
                         .to_std()
                         .unwrap_or_else(|_| Duration::from_secs(0));
-                    tokio::time::sleep(sleep_for).await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(sleep_for) => (),
+                        _ = cancellation_token.cancelled() => break,
+                    }
                     let no_new_changes_before = vacuum_schedule
                         .recreate_older_than
                         .map(|d| Timestamp::from(SystemTime::now() - d));
@@ -87,6 +94,7 @@ impl<C: ServerConfig> Server<C> {
         let this = Server {
             db,
             postgres_db,
+            _cleanup_token: cancellation_token.drop_guard(),
             _watchers: HashMap::new(),
             _sessions: HashMap::new(),
         };
