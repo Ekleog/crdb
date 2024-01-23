@@ -6,15 +6,17 @@ use crate::{
     full_object::FullObject,
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp, User,
 };
-use futures::StreamExt;
+use futures::{pin_mut, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
     vacuum_guard: Arc<RwLock<()>>,
+    _cleanup_token: tokio_util::sync::DropGuard,
 }
 
 impl ClientDb {
@@ -28,19 +30,22 @@ impl ClientDb {
         let api = Arc::new(ApiDb::new(base_url));
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
+        let cancellation_token = CancellationToken::new();
         let this = ClientDb {
             api,
             db,
             db_bypass,
             vacuum_guard: Arc::new(RwLock::new(())),
+            _cleanup_token: cancellation_token.clone().drop_guard(),
         };
         this.setup_watchers::<C>();
-        this.setup_autovacuum(vacuum_schedule);
+        this.setup_autovacuum(vacuum_schedule, cancellation_token);
         Ok(this)
     }
 
     fn setup_watchers<C: ApiConfig>(&self) {
-        use futures::pin_mut;
+        // No need for a cancellation token: these tasks will automatically end as soon as the stream
+        // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
 
         // Watch new objects
         crate::spawn({
@@ -111,6 +116,7 @@ impl ClientDb {
     fn setup_autovacuum<F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
         &self,
         vacuum_schedule: ClientVacuumSchedule<F>,
+        cancellation_token: CancellationToken,
     ) {
         let db_bypass = self.db_bypass.clone();
         let vacuum_guard = self.vacuum_guard.clone();
@@ -130,6 +136,11 @@ impl ClientDb {
                         "failed recovering storage info to check for vacuumability"
                     ),
                 };
+
+                tokio::select! {
+                    _ = tokio::time::sleep(vacuum_schedule.frequency) => (),
+                    _ = cancellation_token.cancelled() => break,
+                }
             }
         });
     }
