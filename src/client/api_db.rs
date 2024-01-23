@@ -37,7 +37,7 @@ impl ApiDb {
         crate::spawn(
             Connection {
                 commands,
-                state: State::NotLoggedInYet,
+                state: State::NoValidToken,
                 state_change_cb: connection_state_change_cb.clone(),
                 new_events_sender,
                 new_objects_sender,
@@ -147,12 +147,11 @@ impl ApiDb {
 pub enum ConnectionState {
     Connected,
     Disconnected,
-    InvalidToken,
+    NoValidToken,
 }
 
 enum State {
-    NotLoggedInYet,
-    InvalidToken,
+    NoValidToken,
     Disconnected {
         url: Arc<String>,
         token: SessionToken,
@@ -177,6 +176,7 @@ impl Connection {
     async fn run(mut self) {
         let mut next_command = self.commands.next();
         loop {
+            // TODO(api): regularly send GetTime requests for ping/pong checking
             tokio::select! {
                 command = next_command => {
                     next_command = self.commands.next();
@@ -189,11 +189,15 @@ impl Connection {
                             self.state_change_cb.read().unwrap()(ConnectionState::Disconnected);
                         }
                         Command::Logout => {
-                            self.state = State::InvalidToken;
-                            self.state_change_cb.read().unwrap()(ConnectionState::InvalidToken);
+                            self.state = State::NoValidToken;
+                            self.state_change_cb.read().unwrap()(ConnectionState::NoValidToken);
                         }
                     }
                 }
+            }
+
+            if let State::Disconnected { url, token } = self.state {
+                unimplemented!() // TODO(api)
             }
         }
     }
