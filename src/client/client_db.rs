@@ -21,13 +21,12 @@ pub struct ClientDb {
 
 impl ClientDb {
     pub async fn new<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
-        base_url: Arc<String>,
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
     ) -> anyhow::Result<ClientDb> {
         C::check_ulids();
-        let api = Arc::new(ApiDb::new(base_url));
+        let api = Arc::new(ApiDb::new());
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
         let cancellation_token = CancellationToken::new();
@@ -151,8 +150,8 @@ impl ClientDb {
         self.api.on_connection_state_change(cb)
     }
 
-    pub fn login(&self, token: SessionToken) {
-        self.api.login(token)
+    pub fn login(&self, url: Arc<String>, token: SessionToken) {
+        self.api.login(url, token)
     }
 
     pub async fn logout(&self) -> anyhow::Result<()> {

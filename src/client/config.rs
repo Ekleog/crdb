@@ -30,14 +30,13 @@ macro_rules! generate_client {
 
         impl $client_db {
             pub fn connect<F: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool>(
-                base_url: crdb::Arc<String>,
                 local_db: String,
                 cache_watermark: usize,
                 vacuum_schedule: crdb::ClientVacuumSchedule<F>,
             ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<$client_db>> {
                 async move {
                     Ok($client_db {
-                        db: crdb::ClientDb::new::<$api_config, F>(base_url, &local_db, cache_watermark, vacuum_schedule).await?,
+                        db: crdb::ClientDb::new::<$api_config, F>(&local_db, cache_watermark, vacuum_schedule).await?,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     })
                 }
@@ -49,8 +48,8 @@ macro_rules! generate_client {
                 self.db.on_connection_state_change(cb)
             }
 
-            pub fn login(&self, token: crdb::SessionToken) {
-                self.db.login(token)
+            pub fn login(&self, url: crdb::Arc<String>, token: crdb::SessionToken) {
+                self.db.login(url, token)
             }
 
             pub fn logout(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {

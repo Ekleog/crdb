@@ -15,16 +15,17 @@ enum State {
     NotLoggedInYet,
     InvalidToken,
     Disconnected {
+        url: Arc<String>,
         token: SessionToken,
     },
     Connected {
+        url: Arc<String>,
         token: SessionToken,
         // TODO(api): keep running websocket feed
     },
 }
 
 pub struct ApiDb {
-    base_url: Arc<String>,
     state: RwLock<State>,
     connection_state_change_cb: RwLock<Box<dyn Send + Sync + Fn(ConnectionState)>>,
     new_objects_sender: async_broadcast::Sender<DynNewObject>,
@@ -36,7 +37,7 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub fn new(base_url: Arc<String>) -> ApiDb {
+    pub fn new() -> ApiDb {
         let (mut new_objects_sender, new_objects_receiver) = async_broadcast::broadcast(128);
         let (mut new_events_sender, new_events_receiver) = async_broadcast::broadcast(128);
         let (mut new_recreations_sender, new_recreations_receiver) =
@@ -45,7 +46,6 @@ impl ApiDb {
         new_events_sender.set_await_active(false);
         new_recreations_sender.set_await_active(false);
         ApiDb {
-            base_url,
             state: RwLock::new(State::NotLoggedInYet),
             connection_state_change_cb: RwLock::new(Box::new(|_| ())),
             new_objects_sender,
@@ -61,8 +61,8 @@ impl ApiDb {
         *self.connection_state_change_cb.write().unwrap() = Box::new(cb);
     }
 
-    pub fn login(&self, token: SessionToken) {
-        *self.state.write().unwrap() = State::Disconnected { token };
+    pub fn login(&self, url: Arc<String>, token: SessionToken) {
+        *self.state.write().unwrap() = State::Disconnected { url, token };
         self.connection_state_change_cb.read().unwrap()(ConnectionState::Disconnected);
     }
 
