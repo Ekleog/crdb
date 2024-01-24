@@ -32,7 +32,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
     fn query<T: Object>(
         &self,
         user: User,
-        ignore_until: Option<Timestamp>,
+        only_updated_since: Option<Timestamp>,
         q: &Query,
     ) -> impl CrdbFuture<Output = crate::Result<Vec<ObjectId>>>;
 

@@ -178,7 +178,7 @@ impl Db for SqliteDb {
     async fn query<T: Object>(
         &self,
         user: User,
-        ignore_until: Option<Timestamp>,
+        only_updated_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
         unimplemented!() // TODO(sqlite): implement

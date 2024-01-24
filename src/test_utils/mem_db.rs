@@ -203,12 +203,12 @@ impl Db for MemDb {
     async fn query<T: Object>(
         &self,
         user: User,
-        ignore_until: Option<Timestamp>,
+        only_updated_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
         assert!(
             // TODO(test): with the new Db api this should get better
-            ignore_until.is_none(),
+            only_updated_since.is_none(),
             "Time-based tests are currently not implemented"
         );
         q.check()?;

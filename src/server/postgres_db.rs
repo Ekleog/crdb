@@ -1552,7 +1552,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
     async fn query<T: Object>(
         &self,
         user: User,
-        ignore_until: Option<Timestamp>,
+        only_updated_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
         reord::point().await;
@@ -1581,7 +1581,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             ",
             q.where_clause(4)
         );
-        let min_last_modified = ignore_until
+        let min_last_modified = only_updated_since
             .map(|t| t.time_ms_i())
             .transpose()?
             .unwrap_or(0);
