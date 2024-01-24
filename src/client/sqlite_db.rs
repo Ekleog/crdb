@@ -4,7 +4,7 @@ use crate::{
     error::ResultExt,
     fts,
     full_object::FullObject,
-    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -33,6 +33,10 @@ impl SqliteDb {
 
     pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
         unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn query<T: Object>(&self, _q: &Query) -> crate::Result<Vec<ObjectId>> {
+        unimplemented!() // TODO(sqlite): implement
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
@@ -172,15 +176,6 @@ impl Db for SqliteDb {
     }
 
     async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
-        unimplemented!() // TODO(sqlite): implement
-    }
-
-    async fn query<T: Object>(
-        &self,
-        user: User,
-        only_updated_since: Option<Timestamp>,
-        q: &Query,
-    ) -> crate::Result<Vec<ObjectId>> {
         unimplemented!() // TODO(sqlite): implement
     }
 

@@ -1,11 +1,10 @@
 use crate::{
     full_object::FullObject,
     future::{CrdbSend, CrdbSync},
-    BinPtr, CanDoCallbacks, CrdbFuture, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, CrdbFuture, EventId, Object, ObjectId, Timestamp,
 };
 use std::sync::Arc;
 
-// TODO(high): rename into CachedDb
 pub trait Db: 'static + CrdbSend + CrdbSync {
     /// TODO(high): Returns the new latest snapshot if it actually changed
     fn create<T: Object, C: CanDoCallbacks>(
@@ -32,14 +31,6 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         lock: bool,
         ptr: ObjectId,
     ) -> impl CrdbFuture<Output = crate::Result<FullObject>>;
-
-    // TODO(high): remove from Db trait? it has no impact on the Cache
-    fn query<T: Object>(
-        &self,
-        user: User,
-        only_updated_since: Option<Timestamp>,
-        q: &Query,
-    ) -> impl CrdbFuture<Output = crate::Result<Vec<ObjectId>>>;
 
     // TODO(high): remove from Db trait? it has no impact on the latest-snapshot cache anyway
     fn recreate<T: Object, C: CanDoCallbacks>(

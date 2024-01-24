@@ -4,6 +4,7 @@ macro_rules! smoke_test {
     (
         db: $db:ident,
         vacuum: $vacuum:expr,
+        query_all: $query_all:expr,
         test_remove: $test_remove:expr,
     ) => {
         use std::sync::Arc;
@@ -125,10 +126,7 @@ macro_rules! smoke_test {
         $vacuum.await.unwrap();
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
-        let all_objects = $db
-            .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
-            .await
-            .unwrap();
+        let all_objects = $query_all;
         assert_eq!(all_objects.len(), 1);
         $db.recreate::<TestObjectSimple, _>(
             Timestamp::from_ms(EVENT_ID_2.0.timestamp_ms()),
@@ -143,10 +141,7 @@ macro_rules! smoke_test {
             $db.remove(OBJECT_ID_1).await.unwrap();
             $db.assert_invariants_generic().await;
             $db.assert_invariants_for::<TestObjectSimple>().await;
-            let all_objects = $db
-                .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
-                .await
-                .unwrap();
+            let all_objects = $query_all;
             assert_eq!(all_objects.len(), 0);
         }
         let data = Arc::new([1u8, 2, 3]) as Arc<[u8]>;

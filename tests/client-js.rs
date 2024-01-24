@@ -13,6 +13,10 @@ async fn smoke_test() {
     crdb::smoke_test!(
         db: db,
         vacuum: db.vacuum(),
+        query_all: db
+            .query::<TestObjectSimple>(&Query::All(vec![]))
+            .await
+            .unwrap(),
         test_remove: true,
     );
 }
@@ -20,8 +24,8 @@ async fn smoke_test() {
 mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
     use crdb::{
-        crdb_internal::{test_utils::MemDb, LocalDb},
-        Timestamp,
+        crdb_internal::{test_utils::*, LocalDb, ResultExt},
+        Object, Query, Timestamp, User,
     };
     use rand::{rngs::StdRng, SeedableRng};
     use std::{
@@ -117,6 +121,21 @@ mod fuzz_helpers {
     }
 
     pub(crate) use make_fuzzer;
+
+    pub async fn run_query<T: Object>(
+        db: &Database,
+        mem_db: &MemDb,
+        _user: User,
+        _only_updated_since: Option<Timestamp>,
+        query: &Query,
+    ) -> anyhow::Result<()> {
+        let pg = db.query::<T>(query).await.wrap_context("querying postgres");
+        let mem = mem_db
+            .query::<T>(USER_ID_NULL, None, query)
+            .await
+            .wrap_context("querying mem");
+        cmp(pg, mem)
+    }
 
     pub async fn run_vacuum(
         db: &Database,

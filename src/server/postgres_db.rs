@@ -1243,6 +1243,67 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(true)
     }
 
+    pub async fn query<T: Object>(
+        &self,
+        user: User,
+        only_updated_since: Option<Timestamp>,
+        q: &Query,
+    ) -> crate::Result<Vec<ObjectId>> {
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // Atomically perform all the reads here
+        reord::point().await;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .wrap_context("setting transaction as repeatable read")?;
+
+        let query = format!(
+            "
+                SELECT object_id
+                FROM snapshots
+                WHERE is_latest
+                AND type_id = $1
+                AND $2 = ANY (users_who_can_read)
+                AND last_modified > $3
+                AND ({})
+            ",
+            q.where_clause(4)
+        );
+        let min_last_modified = only_updated_since
+            .map(|t| t.time_ms_i())
+            .transpose()?
+            .unwrap_or(0);
+        reord::point().await;
+        let mut query = sqlx::query(&query)
+            .persistent(false) // TODO(blocked): remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
+            .bind(T::type_ulid())
+            .bind(user)
+            .bind(min_last_modified);
+        for b in q.binds()? {
+            match b {
+                Bind::Json(v) => query = query.bind(v),
+                Bind::Str(v) => query = query.bind(v),
+                Bind::String(v) => query = query.bind(v),
+                Bind::Decimal(v) => query = query.bind(v),
+                Bind::I32(v) => query = query.bind(v),
+            }
+        }
+        reord::point().await;
+        let res = query
+            .map(|row| ObjectId::from_uuid(row.get(0)))
+            .fetch_all(&mut *transaction)
+            .await
+            .wrap_with_context(|| format!("listing objects matching query {q:?}"))?;
+
+        Ok(res)
+    }
+
     #[cfg(test)]
     async fn assert_invariants_generic(&self) {
         // All binaries are present
@@ -1548,67 +1609,6 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             .wrap_context("setting transaction as repeatable read")?;
 
         get_impl::<T>(&mut *transaction, object_id).await
-    }
-
-    async fn query<T: Object>(
-        &self,
-        user: User,
-        only_updated_since: Option<Timestamp>,
-        q: &Query,
-    ) -> crate::Result<Vec<ObjectId>> {
-        reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
-        // Atomically perform all the reads here
-        reord::point().await;
-        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-            .execute(&mut *transaction)
-            .await
-            .wrap_context("setting transaction as repeatable read")?;
-
-        let query = format!(
-            "
-                SELECT object_id
-                FROM snapshots
-                WHERE is_latest
-                AND type_id = $1
-                AND $2 = ANY (users_who_can_read)
-                AND last_modified > $3
-                AND ({})
-            ",
-            q.where_clause(4)
-        );
-        let min_last_modified = only_updated_since
-            .map(|t| t.time_ms_i())
-            .transpose()?
-            .unwrap_or(0);
-        reord::point().await;
-        let mut query = sqlx::query(&query)
-            .persistent(false) // TODO(blocked): remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
-            .bind(T::type_ulid())
-            .bind(user)
-            .bind(min_last_modified);
-        for b in q.binds()? {
-            match b {
-                Bind::Json(v) => query = query.bind(v),
-                Bind::Str(v) => query = query.bind(v),
-                Bind::String(v) => query = query.bind(v),
-                Bind::Decimal(v) => query = query.bind(v),
-                Bind::I32(v) => query = query.bind(v),
-            }
-        }
-        reord::point().await;
-        let res = query
-            .map(|row| ObjectId::from_uuid(row.get(0)))
-            .fetch_all(&mut *transaction)
-            .await
-            .wrap_with_context(|| format!("listing objects matching query {q:?}"))?;
-
-        Ok(res)
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(

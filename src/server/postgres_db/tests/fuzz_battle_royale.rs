@@ -27,8 +27,8 @@ enum Op {
         at: EventId,
     },
     QuerySimple {
-        user: User,
-        q: Query,
+        _user: User,
+        _q: Query,
     },
     RecreateSimple {
         object: usize,
@@ -49,8 +49,8 @@ enum Op {
         at: EventId,
     },
     QueryPerms {
-        user: User,
-        q: Query,
+        _user: User,
+        _q: Query,
     },
     RecreatePerms {
         object: usize,
@@ -71,8 +71,8 @@ enum Op {
         at: EventId,
     },
     QueryDelegatePerms {
-        user: User,
-        q: Query,
+        _user: User,
+        _q: Query,
     },
     RecreateDelegatePerms {
         object: usize,
@@ -93,8 +93,8 @@ enum Op {
         at: EventId,
     },
     QueryFull {
-        user: User,
-        q: Query,
+        _user: User,
+        _q: Query,
     },
     RecreateFull {
         object: usize,
@@ -167,11 +167,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     },
                 };
         }
-        Op::QuerySimple { user, q } => {
-            let _pg = db
-                .query::<TestObjectSimple>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
+        Op::QuerySimple { .. } => {
+            // TODO(test): when there's something actually tested
+            // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreateSimple { object, time } => {
             let o = s
@@ -224,11 +222,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     },
                 };
         }
-        Op::QueryPerms { user, q } => {
-            let _pg = db
-                .query::<TestObjectPerms>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
+        Op::QueryPerms { .. } => {
+            // TODO(test): when there's something actually tested
+            // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreatePerms { object, time } => {
             let o = s
@@ -283,11 +279,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 },
             };
         }
-        Op::QueryDelegatePerms { user, q } => {
-            let _pg = db
-                .query::<TestObjectDelegatePerms>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
+        Op::QueryDelegatePerms { .. } => {
+            // TODO(test): when there's something actually tested
+            // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreateDelegatePerms { object, time } => {
             let o = s
@@ -342,11 +336,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     },
                 };
         }
-        Op::QueryFull { user, q } => {
-            let _pg = db
-                .query::<TestObjectFull>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
+        Op::QueryFull { .. } => {
+            // TODO(test): when there's something actually tested
+            // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreateFull { object, time } => {
             let o = s

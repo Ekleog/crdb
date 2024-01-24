@@ -7,7 +7,7 @@ use super::fuzz_helpers::{
             Db, DbPtr, EventId, ObjectId, Query, ResultExt, Timestamp, User,
         },
     },
-    make_db, make_fuzzer, run_vacuum, setup, Database, SetupState,
+    make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
 use std::{ops::Bound, sync::Arc};
 use ulid::Ulid;
@@ -189,28 +189,10 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp(pg, mem)?;
         }
         Op::QueryPerms { user, q } => {
-            let pg = db
-                .query::<TestObjectPerms>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectPerms>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp(pg, mem)?;
+            run_query::<TestObjectPerms>(&db, &s.mem_db, *user, None, q).await?;
         }
         Op::QueryDelegatePerms { user, q } => {
-            let pg = db
-                .query::<TestObjectDelegatePerms>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectDelegatePerms>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp(pg, mem)?;
+            run_query::<TestObjectDelegatePerms>(&db, &s.mem_db, *user, None, q).await?;
         }
         Op::RecreatePerm { object, time } => {
             let o = s.object(*object);

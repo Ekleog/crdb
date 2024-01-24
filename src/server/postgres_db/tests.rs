@@ -17,6 +17,10 @@ async fn smoke_test(db: sqlx::PgPool) {
     crate::smoke_test!(
         db: db,
         vacuum: db.vacuum(Some(EVENT_ID_3.time()), Some(OBJECT_ID_3.time()), &db, |_| ()),
+        query_all: db
+            .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
+            .await
+            .unwrap(),
         test_remove: false,
     );
 }
@@ -82,7 +86,7 @@ mod fuzz_helpers {
     use crate::{
         server::{postgres_db::tests::TmpDb, PostgresDb},
         test_utils::{db::ServerConfig, *},
-        Timestamp,
+        Object, Query, ResultExt, Timestamp, User,
     };
 
     pub use crate as crdb;
@@ -123,6 +127,24 @@ mod fuzz_helpers {
     }
 
     pub(crate) use make_fuzzer;
+
+    pub async fn run_query<T: Object>(
+        db: &Database,
+        mem_db: &MemDb,
+        user: User,
+        only_updated_since: Option<Timestamp>,
+        query: &Query,
+    ) -> anyhow::Result<()> {
+        let pg = db
+            .query::<T>(user, only_updated_since, query)
+            .await
+            .wrap_context("querying postgres");
+        let mem = mem_db
+            .query::<T>(user, only_updated_since, query)
+            .await
+            .wrap_context("querying mem");
+        cmp(pg, mem)
+    }
 
     pub async fn run_vacuum(
         db: &Database,

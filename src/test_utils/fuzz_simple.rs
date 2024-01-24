@@ -8,7 +8,7 @@ use super::fuzz_helpers::{
         },
         EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
     },
-    make_db, make_fuzzer, run_vacuum, setup, Database, SetupState,
+    make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
 
 use anyhow::Context;
@@ -119,16 +119,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             cmp(pg, mem)?;
         }
         Op::Query { user, q } => {
-            let pg = db
-                .query::<TestObjectSimple>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
-            let mem = s
-                .mem_db
-                .query::<TestObjectSimple>(*user, None, &q)
-                .await
-                .wrap_context("querying mem");
-            cmp(pg, mem)?;
+            run_query::<TestObjectSimple>(&db, &s.mem_db, *user, None, q).await?;
         }
         Op::Recreate { object, time } => {
             let o = s.object(*object);

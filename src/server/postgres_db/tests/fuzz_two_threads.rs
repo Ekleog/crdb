@@ -27,8 +27,8 @@ enum Op {
         at: EventId,
     },
     Query {
-        user: User,
-        q: Query,
+        _user: User,
+        _q: Query,
     },
     Recreate {
         object: usize,
@@ -97,11 +97,9 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     },
                 };
         }
-        Op::Query { user, q } => {
-            let _pg = db
-                .query::<TestObjectSimple>(*user, None, &q)
-                .await
-                .wrap_context("querying postgres");
+        Op::Query { .. } => {
+            // TODO(test): when there's something actually tested
+            // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::Recreate { object, time } => {
             let o = s

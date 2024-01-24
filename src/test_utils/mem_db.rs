@@ -44,6 +44,48 @@ impl MemDb {
         }
         Ok(())
     }
+
+    pub async fn query<T: Object>(
+        &self,
+        user: User,
+        only_updated_since: Option<Timestamp>,
+        q: &Query,
+    ) -> crate::Result<Vec<ObjectId>> {
+        assert!(
+            // TODO(test): with the new Db api this should get better
+            only_updated_since.is_none(),
+            "Time-based tests are currently not implemented"
+        );
+        q.check()?;
+        let q = &q;
+        let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
+        let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
+        stream::iter(objects.into_iter())
+            .filter_map(|(_, (t, full_object))| async move {
+                if t != *T::type_ulid() {
+                    return None;
+                }
+                let o = full_object
+                    .last_snapshot::<T>()
+                    .expect("type error inside MemDb");
+                if (is_server
+                    && !o
+                        .users_who_can_read(self)
+                        .await
+                        .unwrap()
+                        .iter()
+                        .any(|u| *u == user))
+                    || !q.matches(&*o).unwrap()
+                {
+                    return None;
+                }
+                Some(Ok(full_object.id()))
+            })
+            .collect::<Vec<crate::Result<ObjectId>>>()
+            .await
+            .into_iter()
+            .collect::<crate::Result<Vec<ObjectId>>>()
+    }
 }
 
 fn recreate<T: Object>(
@@ -198,48 +240,6 @@ impl Db for MemDb {
             }),
             Some((_, o)) => Ok(o.clone()),
         }
-    }
-
-    async fn query<T: Object>(
-        &self,
-        user: User,
-        only_updated_since: Option<Timestamp>,
-        q: &Query,
-    ) -> crate::Result<Vec<ObjectId>> {
-        assert!(
-            // TODO(test): with the new Db api this should get better
-            only_updated_since.is_none(),
-            "Time-based tests are currently not implemented"
-        );
-        q.check()?;
-        let q = &q;
-        let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
-        let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
-        stream::iter(objects.into_iter())
-            .filter_map(|(_, (t, full_object))| async move {
-                if t != *T::type_ulid() {
-                    return None;
-                }
-                let o = full_object
-                    .last_snapshot::<T>()
-                    .expect("type error inside MemDb");
-                if (is_server
-                    && !o
-                        .users_who_can_read(self)
-                        .await
-                        .unwrap()
-                        .iter()
-                        .any(|u| *u == user))
-                    || !q.matches(&*o).unwrap()
-                {
-                    return None;
-                }
-                Some(Ok(full_object.id()))
-            })
-            .collect::<Vec<crate::Result<ObjectId>>>()
-            .await
-            .into_iter()
-            .collect::<crate::Result<Vec<ObjectId>>>()
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(

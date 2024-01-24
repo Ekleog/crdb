@@ -7,7 +7,6 @@ use crate::{
     full_object::{Change, FullObject},
     object::parse_snapshot_js,
     BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId,
-    User,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -423,6 +422,80 @@ impl IndexedDb {
             usage,
             objects_unlocked_this_run: self.objects_unlocked_this_run.get(),
         })
+    }
+
+    pub async fn query<T: Object>(&self, q: &Query) -> crate::Result<Vec<ObjectId>> {
+        q.check()?;
+        let type_id_js = T::type_ulid().to_js_string();
+        let zero_id = EventId::from_u128(0).to_js_string();
+        let max_id = EventId::from_u128(u128::MAX).to_js_string();
+        // TODO(low): look into setting up indexes and allowing the user to use them?
+        // TODO(low): think a lot about splitting this transaction to be able to return a real stream by
+        // using cursors? The difficulty will be that another task could clobber the latest index
+        // during that time.
+
+        // List all objects matching the query
+        let objects = self
+            .db
+            .transaction(&["snapshots_meta", "snapshots"])
+            .run(move |transaction| async move {
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving 'snapshots' object store")?;
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving 'snapshots_meta' object store")?;
+
+                let latest_type_object = snapshots_meta
+                    .index("latest_type_object")
+                    .wrap_context("retrieving 'latest_type_object' index")?;
+
+                let mut cursor = latest_type_object
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&JsValue::from(1), &type_id_js, &zero_id])
+                            ..=&**Array::from_iter([&JsValue::from(1), &type_id_js, &max_id]),
+                    )
+                    .wrap_context("limiting cursor to only snapshots of the right type")?
+                    .open_key()
+                    .await
+                    .wrap_context("opening cursor over all latest objects")?;
+                let mut objects = Vec::new();
+                while let Some(snapshot_id_js) = cursor.primary_key() {
+                    let snapshot = snapshots
+                        .get(&snapshot_id_js)
+                        .await
+                        .wrap_context("retrieving snapshot data for known metadata")?
+                        .ok_or_else(|| {
+                            crate::Error::Other(anyhow!("no snapshot data for known metadata"))
+                        })?;
+                    let snapshot = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot)
+                        .wrap_context("deserializing snapshot data as serde_json::Value")?;
+                    if q.matches_json(&snapshot) {
+                        let object_id_js = cursor
+                            .key()
+                            .ok_or_else(|| {
+                                crate::Error::Other(anyhow!("cursor had a primary key but no key"))
+                            })?
+                            .dyn_into::<Array>()
+                            .wrap_context("cursor key was not an array")?
+                            .get(2);
+                        let object_id = serde_wasm_bindgen::from_value::<ObjectId>(object_id_js)
+                            .wrap_context("deserializing object id")?;
+                        objects.push(object_id);
+                    }
+                    cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next snapshot in the database")?;
+                }
+                Ok(objects)
+            })
+            .await
+            .wrap_context("finding a first snapshot to answer")?;
+
+        // Retrieve them one by one
+        Ok(objects)
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
@@ -1254,85 +1327,6 @@ impl Db for IndexedDb {
         let type_id_js = T::type_ulid().to_js_string();
         self.get_impl::<T>(lock, object_id, &type_id_js, &object_id_js)
             .await
-    }
-
-    async fn query<T: Object>(
-        &self,
-        _user: User,
-        _ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: &Query,
-    ) -> crate::Result<Vec<ObjectId>> {
-        q.check()?;
-        let type_id_js = T::type_ulid().to_js_string();
-        let zero_id = EventId::from_u128(0).to_js_string();
-        let max_id = EventId::from_u128(u128::MAX).to_js_string();
-        // TODO(low): look into setting up indexes and allowing the user to use them?
-        // TODO(low): think a lot about splitting this transaction to be able to return a real stream by
-        // using cursors? The difficulty will be that another task could clobber the latest index
-        // during that time.
-
-        // List all objects matching the query
-        let objects = self
-            .db
-            .transaction(&["snapshots_meta", "snapshots"])
-            .run(move |transaction| async move {
-                let snapshots = transaction
-                    .object_store("snapshots")
-                    .wrap_context("retrieving 'snapshots' object store")?;
-                let snapshots_meta = transaction
-                    .object_store("snapshots_meta")
-                    .wrap_context("retrieving 'snapshots_meta' object store")?;
-
-                let latest_type_object = snapshots_meta
-                    .index("latest_type_object")
-                    .wrap_context("retrieving 'latest_type_object' index")?;
-
-                let mut cursor = latest_type_object
-                    .cursor()
-                    .range(
-                        &**Array::from_iter([&JsValue::from(1), &type_id_js, &zero_id])
-                            ..=&**Array::from_iter([&JsValue::from(1), &type_id_js, &max_id]),
-                    )
-                    .wrap_context("limiting cursor to only snapshots of the right type")?
-                    .open_key()
-                    .await
-                    .wrap_context("opening cursor over all latest objects")?;
-                let mut objects = Vec::new();
-                while let Some(snapshot_id_js) = cursor.primary_key() {
-                    let snapshot = snapshots
-                        .get(&snapshot_id_js)
-                        .await
-                        .wrap_context("retrieving snapshot data for known metadata")?
-                        .ok_or_else(|| {
-                            crate::Error::Other(anyhow!("no snapshot data for known metadata"))
-                        })?;
-                    let snapshot = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot)
-                        .wrap_context("deserializing snapshot data as serde_json::Value")?;
-                    if q.matches_json(&snapshot) {
-                        let object_id_js = cursor
-                            .key()
-                            .ok_or_else(|| {
-                                crate::Error::Other(anyhow!("cursor had a primary key but no key"))
-                            })?
-                            .dyn_into::<Array>()
-                            .wrap_context("cursor key was not an array")?
-                            .get(2);
-                        let object_id = serde_wasm_bindgen::from_value::<ObjectId>(object_id_js)
-                            .wrap_context("deserializing object id")?;
-                        objects.push(object_id);
-                    }
-                    cursor
-                        .advance(1)
-                        .await
-                        .wrap_context("going to next snapshot in the database")?;
-                }
-                Ok(objects)
-            })
-            .await
-            .wrap_context("finding a first snapshot to answer")?;
-
-        // Retrieve them one by one
-        Ok(objects)
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
