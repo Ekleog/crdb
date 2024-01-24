@@ -151,9 +151,7 @@ impl Connection {
                     request_id,
                     request: Request::SetToken(token),
                 };
-                let message =
-                    serde_json::to_string(&message).expect("failed serializing client message");
-                if let Err(err) = implem::send_text(&mut socket, message).await {
+                if let Err(err) = Self::send(&mut socket, &message).await {
                     self.event_cb.read().unwrap()(ConnectionEvent::FailedSendingToken(err));
                     self.state = State::Disconnected { url, token }; // try again next loop
                     continue;
@@ -170,5 +168,10 @@ impl Connection {
 
     fn is_trying_to_connect(&self) -> bool {
         matches!(self.state, State::Disconnected { .. })
+    }
+
+    async fn send(sock: &mut implem::WebSocket, msg: &ClientMessage) -> anyhow::Result<()> {
+        let msg = serde_json::to_string(msg)?;
+        implem::send_text(sock, msg).await
     }
 }
