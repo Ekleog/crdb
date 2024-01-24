@@ -65,7 +65,6 @@ impl ClientDb {
                     let object_id = u.object_id;
                     let type_id = u.type_id;
                     // TODO(client): record `u.now_have_all_until` somewhere
-                    // TODO(client): expose updates in _some_ way to the user
                     match u.data {
                         UpdateData::Creation { created_at, data } => {
                             if let Err(err) =
