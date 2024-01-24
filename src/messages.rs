@@ -1,12 +1,10 @@
 #![allow(dead_code)] // TODO(api): remove
 
 use crate::{
-    ids::RequestId, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, TypeId,
+    ids::RequestId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
+    TypeId,
 };
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashSet};
 
 // TODO(low): review what all the (de)serialized JSON for all the types defined here looks like
 #[derive(serde::Deserialize, serde::Serialize)]
