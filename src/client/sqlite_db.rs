@@ -39,6 +39,10 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite): implement
     }
 
+    pub async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
+        unimplemented!() // TODO(test)
+    }
+
     pub async fn vacuum(&self) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
@@ -185,10 +189,6 @@ impl Db for SqliteDb {
         object: ObjectId,
         cb: &C,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite): implement
-    }
-
-    async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite): implement
     }
 

@@ -40,9 +40,6 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 
-    // TODO(high): remove from the Db trait, it is only used by client and has no impact on the latest-snapshot cache anyway
-    fn unlock(&self, object_id: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
-
     fn remove(&self, object_id: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
 
     fn create_binary(

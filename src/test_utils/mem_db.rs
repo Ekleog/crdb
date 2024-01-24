@@ -86,6 +86,10 @@ impl MemDb {
             .into_iter()
             .collect::<crate::Result<Vec<ObjectId>>>()
     }
+
+    pub async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
+        unimplemented!() // TODO(test)
+    }
 }
 
 fn recreate<T: Object>(
@@ -263,10 +267,6 @@ impl Db for MemDb {
         }
         recreate::<T>(o, time, &mut this.events).wrap_context("recreating object")?;
         Ok(())
-    }
-
-    async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
-        unimplemented!() // TODO(test)
     }
 
     async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {

@@ -158,10 +158,6 @@ impl<D: Db> Db for CacheDb<D> {
         self.cache.write().await.recreate::<T>(object, time)
     }
 
-    async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
-        self.db.unlock(object_id).await
-    }
-
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
         self.cache.write().await.remove(&object_id);
         self.db.remove(object_id).await

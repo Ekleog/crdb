@@ -1629,10 +1629,6 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
-        panic!("Tried unlocking {object_id:?} from server, but server is supposed to always keep all the history!")
-    }
-
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
         panic!("Tried removing {object_id:?} from server, but server is supposed to always keep all the history!")
     }

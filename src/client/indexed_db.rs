@@ -498,6 +498,53 @@ impl IndexedDb {
         Ok(objects)
     }
 
+    pub async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
+        let object_id_js = object_id.to_js_string();
+
+        let res = self
+            .db
+            .transaction(&["snapshots_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
+
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving the 'creation_object' index")?;
+
+                let Some(snapshot_js) = creation_object
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    .await
+                    .wrap_context("retrieving creation snapshot")?
+                else {
+                    // Object was already removed from database, so it was already unlocked
+                    return Ok(());
+                };
+
+                let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
+                    .wrap_context("deserializing snapshot metadata")?;
+                snapshot_meta.is_locked = Some(0);
+                let snapshot_js = serde_wasm_bindgen::to_value(&snapshot_meta)
+                    .wrap_context("reserializing snapshot metadata")?;
+
+                snapshots_meta
+                    .put(&snapshot_js)
+                    .await
+                    .wrap_context("saving the unlocked creation snapshot metadata")?;
+
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
+    }
+
     pub async fn vacuum(&self) -> crate::Result<()> {
         let zero_id = ObjectId::from_u128(0).to_js_string();
         let max_id = ObjectId::from_u128(u128::MAX).to_js_string();
@@ -1579,53 +1626,6 @@ impl Db for IndexedDb {
             })
             .await
             .wrap_with_context(|| format!("recreating {object_id:?} at {time:?}"))
-    }
-
-    async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
-        let object_id_js = object_id.to_js_string();
-
-        let res = self
-            .db
-            .transaction(&["snapshots_meta"])
-            .rw()
-            .run(move |transaction| async move {
-                let snapshots_meta = transaction
-                    .object_store("snapshots_meta")
-                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
-
-                let creation_object = snapshots_meta
-                    .index("creation_object")
-                    .wrap_context("retrieving the 'creation_object' index")?;
-
-                let Some(snapshot_js) = creation_object
-                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                    .await
-                    .wrap_context("retrieving creation snapshot")?
-                else {
-                    // Object was already removed from database, so it was already unlocked
-                    return Ok(());
-                };
-
-                let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
-                    .wrap_context("deserializing snapshot metadata")?;
-                snapshot_meta.is_locked = Some(0);
-                let snapshot_js = serde_wasm_bindgen::to_value(&snapshot_meta)
-                    .wrap_context("reserializing snapshot metadata")?;
-
-                snapshots_meta
-                    .put(&snapshot_js)
-                    .await
-                    .wrap_context("saving the unlocked creation snapshot metadata")?;
-
-                Ok(())
-            })
-            .await
-            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"));
-        if res.is_ok() {
-            self.objects_unlocked_this_run
-                .set(self.objects_unlocked_this_run.get() + 1);
-        }
-        res
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
