@@ -7,13 +7,13 @@ use crate::{
 use std::collections::{BTreeMap, HashSet};
 
 // TODO(low): review what all the (de)serialized JSON for all the types defined here looks like
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ClientMessage {
     pub request_id: RequestId,
     pub request: Request,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Request {
     SetToken(SessionToken),
     RenameSession(String),
@@ -38,13 +38,13 @@ pub enum Request {
     Upload(Vec<UploadOrBinary>),
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum UploadOrBinary {
     Upload(Upload),
     Binary, // If set to `Binary`, then the binary is in the websocket frame of type `Binary` just after this one
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Upload {
     Object {
         object_id: ObjectId,
@@ -70,7 +70,7 @@ pub enum Upload {
 ///
 /// Any subsequent updates, obtained by subscribing to the object or
 /// query, will be pushed as `Update`s.
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ServerMessage {
     Response {
         request: RequestId,
@@ -83,7 +83,7 @@ pub enum ServerMessage {
     },
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ResponsePart {
     Success,
     Error(crate::SerializableError),
@@ -94,7 +94,7 @@ pub enum ResponsePart {
     // websocket frame of type Binary per requested binary.
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum MaybeObject {
     AlreadySubscribed(ObjectId),
     NotYetSubscribed {
@@ -107,7 +107,7 @@ pub enum MaybeObject {
     },
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Update {
     Object {
         object_id: ObjectId,

@@ -1,9 +1,10 @@
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     ids::RequestId,
-    messages::{ClientMessage, Request, ServerMessage},
+    messages::{ClientMessage, Request, ResponsePart, ServerMessage},
     SessionToken,
 };
+use anyhow::anyhow;
 use futures::{channel::mpsc, StreamExt};
 use std::{
     sync::{Arc, RwLock},
@@ -33,6 +34,7 @@ pub enum ConnectionEvent {
     FailedConnecting(anyhow::Error),
     FailedSendingToken(anyhow::Error),
     LostConnection(anyhow::Error),
+    InvalidToken(SessionToken),
     Connected,
     LoggedOut,
 }
@@ -139,10 +141,31 @@ impl Connection {
                     }
                     Ok(message) => match self.state {
                         State::NoValidInfo | State::Disconnected { .. } => unreachable!(),
-                        State::TokenSent { url, token, socket, request_id } => {
-                            unimplemented!() // TODO(api): actually implement
+                        State::TokenSent { url, token, socket, request_id } => match message {
+                            ServerMessage::Response {
+                                request,
+                                response: ResponsePart::Success,
+                                last_response: true
+                            } if request == request_id => {
+                                self.state = State::Connected { url, token, socket };
+                                self.event_cb.read().unwrap()(ConnectionEvent::Connected);
+                            }
+                            ServerMessage::Response {
+                                request,
+                                response: ResponsePart::Error(crate::SerializableError::InvalidToken(tok)),
+                                last_response: true
+                            } if request == request_id && tok == token => {
+                                self.state = State::NoValidInfo;
+                                self.event_cb.read().unwrap()(ConnectionEvent::InvalidToken(token));
+                            }
+                            resp => {
+                                self.state = State::NoValidInfo;
+                                self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(
+                                    anyhow!("Unexpected server answer to login request: {resp:?}")
+                                ));
+                            }
                         }
-                        State::Connected { url, token, socket } => {
+                        State::Connected { .. } => {
                             unimplemented!() // TODO(api): actually implement
                         }
                     }
