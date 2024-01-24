@@ -4,7 +4,7 @@ use crate::{
     SessionToken,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, StreamExt};
+use futures::{channel::mpsc, stream, SinkExt, StreamExt};
 use std::{
     sync::{Arc, RwLock},
     time::Duration,
@@ -224,7 +224,15 @@ impl Connection {
             panic!("Called handle_connected_message while not actually connected");
         };
         match message {
-            ServerMessage::Updates(updates) => unimplemented!(), // TODO(api): implement
+            ServerMessage::Updates(updates) => {
+                if let Err(err) = self
+                    .update_sender
+                    .send_all(&mut stream::iter(updates).map(Ok))
+                    .await
+                {
+                    tracing::error!(?err, "failed sending updates");
+                }
+            }
             ServerMessage::Response {
                 request,
                 response,
