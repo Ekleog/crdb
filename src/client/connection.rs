@@ -131,8 +131,14 @@ impl Connection {
                 }
 
                 // Listen for incoming server messages
-                Some(message) = self.state.next_msg() => {
-                    unimplemented!() // TODO(api)
+                Some(message) = self.state.next_msg() => match self.state {
+                    State::NoValidInfo | State::Disconnected { .. } => unreachable!(),
+                    State::TokenSent { url, token, socket, request_id } => {
+                        unimplemented!() // TODO(api): actually implement
+                    }
+                    State::Connected { url, token, socket } => {
+                        unimplemented!() // TODO(api): actually implement
+                    }
                 }
             }
 
