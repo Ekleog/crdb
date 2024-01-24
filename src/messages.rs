@@ -1,5 +1,3 @@
-#![allow(dead_code)] // TODO(api): remove
-
 use crate::{
     ids::RequestId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
     TypeId,
