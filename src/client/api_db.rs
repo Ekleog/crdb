@@ -27,14 +27,13 @@ impl ApiDb {
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let (connection, commands) = mpsc::unbounded();
         crate::spawn(
-            Connection {
+            Connection::new(
                 commands,
-                state: State::NoValidInfo,
-                event_cb: connection_event_cb.clone(),
+                connection_event_cb.clone(),
                 new_events_sender,
                 new_objects_sender,
                 new_recreations_sender,
-            }
+            )
             .run(),
         );
         ApiDb {

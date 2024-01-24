@@ -53,15 +53,32 @@ pub enum State {
 }
 
 pub struct Connection {
-    pub state: State,
-    pub commands: mpsc::UnboundedReceiver<Command>,
-    pub event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
-    pub new_objects_sender: async_broadcast::Sender<DynNewObject>,
-    pub new_events_sender: async_broadcast::Sender<DynNewEvent>,
-    pub new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
+    state: State,
+    commands: mpsc::UnboundedReceiver<Command>,
+    event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
+    new_objects_sender: async_broadcast::Sender<DynNewObject>,
+    new_events_sender: async_broadcast::Sender<DynNewEvent>,
+    new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
 }
 
 impl Connection {
+    pub fn new(
+        commands: mpsc::UnboundedReceiver<Command>,
+        event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
+        new_events_sender: async_broadcast::Sender<DynNewEvent>,
+        new_objects_sender: async_broadcast::Sender<DynNewObject>,
+        new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
+    ) -> Connection {
+        Connection {
+            commands,
+            state: State::NoValidInfo,
+            event_cb,
+            new_events_sender,
+            new_objects_sender,
+            new_recreations_sender,
+        }
+    }
+
     pub async fn run(mut self) {
         let mut next_command = self.commands.next();
         loop {
