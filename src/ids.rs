@@ -76,6 +76,21 @@ pub struct BinPtr(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 #[educe(Debug)]
 pub struct User(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
+#[derive(
+    Clone,
+    Copy,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    educe::Educe,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+#[educe(Debug)]
+pub struct RequestId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
+
 macro_rules! impl_for_id {
     ($type:ty) => {
         #[allow(dead_code)]
@@ -208,3 +223,4 @@ impl_for_id!(EventId);
 impl_for_id!(TypeId);
 impl_for_id!(BinPtr);
 impl_for_id!(User);
+impl_for_id!(RequestId);

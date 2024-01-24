@@ -1,21 +1,19 @@
 #![allow(dead_code)] // TODO(api): remove
 
-use crate::{EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, TypeId};
+use crate::{
+    ids::RequestId, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, TypeId,
+};
 use std::{
     collections::{BTreeMap, HashSet},
     sync::Arc,
 };
-use ulid::Ulid;
 
 // TODO(low): review what all the (de)serialized JSON for all the types defined here looks like
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ClientMessage {
-    request_id: RequestId,
-    request: Request,
+    pub request_id: RequestId,
+    pub request: Request,
 }
-
-#[derive(serde::Deserialize, serde::Serialize)]
-pub struct RequestId(Ulid);
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub enum Request {

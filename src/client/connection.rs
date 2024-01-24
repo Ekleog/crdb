@@ -1,5 +1,7 @@
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
+    ids::RequestId,
+    messages::{ClientMessage, Request},
     SessionToken,
 };
 use futures::{channel::mpsc, StreamExt};
@@ -26,6 +28,7 @@ pub enum Command {
 pub enum ConnectionEvent {
     LoggingIn,
     FailedConnecting(String),
+    FailedSendingToken(String),
     Connected,
     LoggedOut,
 }
@@ -35,6 +38,12 @@ pub enum State {
     Disconnected {
         url: Arc<String>,
         token: SessionToken,
+    },
+    TokenSent {
+        url: Arc<String>,
+        token: SessionToken,
+        socket: implem::WebSocket,
+        request_id: RequestId,
     },
     Connected {
         url: Arc<String>,
@@ -77,7 +86,7 @@ impl Connection {
             }
 
             if let State::Disconnected { url, token } = self.state {
-                let socket = match implem::connect(&*url).await {
+                let mut socket = match implem::connect(&*url).await {
                     Ok(socket) => socket,
                     Err(err) => {
                         self.event_cb.read().unwrap()(ConnectionEvent::FailedConnecting(err));
@@ -85,7 +94,24 @@ impl Connection {
                         continue;
                     }
                 };
-                unimplemented!() // TODO(api)
+                let request_id = RequestId::now();
+                let message = ClientMessage {
+                    request_id,
+                    request: Request::SetToken(token),
+                };
+                let message =
+                    serde_json::to_vec(&message).expect("failed serializing client message");
+                if let Err(err) = implem::send(&mut socket, message).await {
+                    self.event_cb.read().unwrap()(ConnectionEvent::FailedSendingToken(err));
+                    self.state = State::NoValidInfo;
+                    continue;
+                }
+                self.state = State::TokenSent {
+                    url,
+                    token,
+                    socket,
+                    request_id,
+                };
             }
         }
     }
