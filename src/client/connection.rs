@@ -5,7 +5,10 @@ use crate::{
     SessionToken,
 };
 use futures::{channel::mpsc, StreamExt};
-use std::sync::{Arc, RwLock};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
@@ -82,7 +85,12 @@ impl Connection {
     pub async fn run(mut self) {
         loop {
             // TODO(api): regularly send GetTime requests for ping/pong checking
+            // TODO(low): ping/pong should probably be eg. 1 minute when user is inactive, and 10s when active
             tokio::select! {
+                // TODO(low): this should probably listen on network status, with eg. window.ononline, to not retry
+                // when network is down?
+                _reconnect_attempt_interval = tokio::time::sleep(Duration::from_secs(10)),
+                    if self.is_trying_to_connect() => (),
                 // Note: StreamExt::next is cancellation-safe on any Stream
                 command = self.commands.next() => {
                     let Some(command) = command else {
@@ -106,7 +114,7 @@ impl Connection {
                     Ok(socket) => socket,
                     Err(err) => {
                         self.event_cb.read().unwrap()(ConnectionEvent::FailedConnecting(err));
-                        self.state = State::NoValidInfo;
+                        self.state = State::Disconnected { url, token }; // try again next loop
                         continue;
                     }
                 };
@@ -119,7 +127,7 @@ impl Connection {
                     serde_json::to_vec(&message).expect("failed serializing client message");
                 if let Err(err) = implem::send(&mut socket, message).await {
                     self.event_cb.read().unwrap()(ConnectionEvent::FailedSendingToken(err));
-                    self.state = State::NoValidInfo;
+                    self.state = State::Disconnected { url, token }; // try again next loop
                     continue;
                 }
                 self.state = State::TokenSent {
@@ -130,5 +138,9 @@ impl Connection {
                 };
             }
         }
+    }
+
+    fn is_trying_to_connect(&self) -> bool {
+        matches!(self.state, State::Disconnected { .. })
     }
 }
