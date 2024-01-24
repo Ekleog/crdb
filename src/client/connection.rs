@@ -135,12 +135,17 @@ impl Connection {
 
                 // Listen for incoming server messages
                 Some(message) = self.state.next_msg() => match message {
+
+                    // There was an error in the stream. Likely disconnection.
                     Err(err) => {
                         self.state = self.state.disconnect();
                         self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
                     }
+
                     Ok(message) => match self.state {
                         State::NoValidInfo | State::Disconnected { .. } => unreachable!(),
+
+                        // We were waiting for an answer to SetToken. Handle it.
                         State::TokenSent { url, token, socket, request_id } => match message {
                             ServerMessage::Response {
                                 request,
@@ -165,6 +170,8 @@ impl Connection {
                                 ));
                             }
                         }
+
+                        // Main function, must now deal with requests and updates.
                         State::Connected { .. } => {
                             unimplemented!() // TODO(api): actually implement
                         }
@@ -172,7 +179,7 @@ impl Connection {
                 }
             }
 
-            // Attempt connecting if we're in a connection loop
+            // Attempt connecting if we're not connected but have connection info
             if let State::Disconnected { url, token } = self.state {
                 let mut socket = match implem::connect(&*url).await {
                     Ok(socket) => socket,
