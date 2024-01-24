@@ -150,12 +150,12 @@ impl<D: Db> Db for CacheDb<D> {
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
+        object_id: ObjectId,
         time: Timestamp,
-        object: ObjectId,
         cb: &C,
     ) -> crate::Result<()> {
-        self.db.recreate::<T, C>(time, object, cb).await?;
-        self.cache.write().await.recreate::<T>(object, time)
+        self.db.recreate::<T, C>(object_id, time, cb).await?;
+        self.cache.write().await.recreate::<T>(object_id, time)
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

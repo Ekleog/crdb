@@ -103,7 +103,7 @@ macro_rules! generate_api {
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        return db.recreate::<$object, _>(time, object_id, db).await;
+                        return db.recreate::<$object, _>(object_id, time, db).await;
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

@@ -163,11 +163,15 @@ impl ObjectCache {
         Ok(res)
     }
 
-    pub fn recreate<T: Object>(&mut self, object: ObjectId, time: Timestamp) -> crate::Result<()> {
-        if let Some((t, o)) = self.objects.get_mut(&object) {
+    pub fn recreate<T: Object>(
+        &mut self,
+        object_id: ObjectId,
+        time: Timestamp,
+    ) -> crate::Result<()> {
+        if let Some((t, o)) = self.objects.get_mut(&object_id) {
             let updater = SizeUpdater::new(&mut self.size, &o);
             o.recreate_at::<T>(time)?;
-            *t = Self::touched(&mut self.last_accessed, object, *t);
+            *t = Self::touched(&mut self.last_accessed, object_id, *t);
             std::mem::drop(updater);
             self.apply_watermark();
         }

@@ -32,11 +32,10 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         ptr: ObjectId,
     ) -> impl CrdbFuture<Output = crate::Result<FullObject>>;
 
-    // TODO(high): remove from Db trait? it has no impact on the latest-snapshot cache anyway
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
-        time: Timestamp,
         object_id: ObjectId,
+        time: Timestamp,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 

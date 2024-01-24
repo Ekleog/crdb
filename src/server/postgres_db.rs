@@ -1038,8 +1038,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     /// Returns `true` iff the object actually changed
     pub async fn recreate_impl<T: Object, C: CanDoCallbacks>(
         &self,
-        time: Timestamp,
         object_id: ObjectId,
+        time: Timestamp,
         cb: &C,
     ) -> crate::Result<bool> {
         if time.time_ms()
@@ -1613,8 +1613,8 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
-        time: Timestamp,
         object_id: ObjectId,
+        time: Timestamp,
         cb: &C,
     ) -> crate::Result<()> {
         // Acquire the lock required to recreate the object
@@ -1624,7 +1624,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         let _lock = self.object_locks.async_lock(object_id).await;
 
-        self.recreate_impl::<T, _>(time, object_id, cb).await?;
+        self.recreate_impl::<T, _>(object_id, time, cb).await?;
 
         Ok(())
     }

@@ -1378,8 +1378,8 @@ impl Db for IndexedDb {
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
-        time: Timestamp,
         object_id: ObjectId,
+        time: Timestamp,
         _cb: &C,
     ) -> crate::Result<()> {
         let object_id_js = object_id.to_js_string();

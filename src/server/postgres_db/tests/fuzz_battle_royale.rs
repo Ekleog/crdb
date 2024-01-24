@@ -179,7 +179,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
+            let _pg = db.recreate::<TestObjectSimple, _>(o, *time, db).await;
         }
         Op::CreatePerms {
             id,
@@ -234,7 +234,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg = db.recreate::<TestObjectPerms, _>(*time, o, db).await;
+            let _pg = db.recreate::<TestObjectPerms, _>(o, *time, db).await;
         }
         Op::CreateDelegatePerms {
             id,
@@ -292,7 +292,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db
-                .recreate::<TestObjectDelegatePerms, _>(*time, o, db)
+                .recreate::<TestObjectDelegatePerms, _>(o, *time, db)
                 .await;
         }
         Op::CreateFull {
@@ -348,7 +348,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg = db.recreate::<TestObjectFull, _>(*time, o, db).await;
+            let _pg = db.recreate::<TestObjectFull, _>(o, *time, db).await;
         }
         Op::Remove { object } => {
             let _object = object; // TODO(test): implement for non-postgres databases

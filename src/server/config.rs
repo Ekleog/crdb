@@ -73,7 +73,7 @@ macro_rules! generate_server {
             ) -> crdb::Result<bool> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        return call_on.recreate_impl::<$object, C>(time, object_id, cb).await;
+                        return call_on.recreate_impl::<$object, C>(object_id, time, cb).await;
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

@@ -185,8 +185,8 @@ impl Db for SqliteDb {
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
-        time: Timestamp,
         object: ObjectId,
+        time: Timestamp,
         cb: &C,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite): implement

@@ -196,21 +196,21 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
         }
         Op::RecreatePerm { object, time } => {
             let o = s.object(*object);
-            let pg = db.recreate::<TestObjectPerms, _>(*time, o, db).await;
+            let pg = db.recreate::<TestObjectPerms, _>(o, *time, db).await;
             let mem = s
                 .mem_db
-                .recreate::<TestObjectPerms, _>(*time, o, &s.mem_db)
+                .recreate::<TestObjectPerms, _>(o, *time, &s.mem_db)
                 .await;
             cmp(pg, mem)?;
         }
         Op::RecreateDelegator { object, time } => {
             let o = s.object(*object);
             let pg = db
-                .recreate::<TestObjectDelegatePerms, _>(*time, o, db)
+                .recreate::<TestObjectDelegatePerms, _>(o, *time, db)
                 .await;
             let mem = s
                 .mem_db
-                .recreate::<TestObjectDelegatePerms, _>(*time, o, &s.mem_db)
+                .recreate::<TestObjectDelegatePerms, _>(o, *time, &s.mem_db)
                 .await;
             cmp(pg, mem)?;
         }

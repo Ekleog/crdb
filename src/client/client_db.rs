@@ -268,11 +268,11 @@ impl ClientDb {
 
     pub async fn recreate<T: Object>(
         &self,
-        time: Timestamp,
         object: ObjectId,
+        time: Timestamp,
     ) -> crate::Result<()> {
-        self.db.recreate::<T, _>(time, object, &*self.db).await?;
-        self.api.recreate::<T>(time, object).await
+        self.db.recreate::<T, _>(object, time, &*self.db).await?;
+        self.api.recreate::<T>(object, time).await
     }
 
     pub async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {

@@ -81,8 +81,8 @@ impl ApiDb {
 
     pub async fn recreate<T: Object>(
         &self,
-        _time: Timestamp,
         _object: ObjectId,
+        _time: Timestamp,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(api): implement
     }

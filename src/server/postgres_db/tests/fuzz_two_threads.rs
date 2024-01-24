@@ -109,7 +109,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg = db.recreate::<TestObjectSimple, _>(*time, o, db).await;
+            let _pg = db.recreate::<TestObjectSimple, _>(o, *time, db).await;
         }
         Op::Remove { object } => {
             let _object = object; // TODO(test): implement for non-postgres databases

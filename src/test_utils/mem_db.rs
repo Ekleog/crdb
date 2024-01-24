@@ -248,8 +248,8 @@ impl Db for MemDb {
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
-        time: Timestamp,
         object_id: ObjectId,
+        time: Timestamp,
         _cb: &C,
     ) -> crate::Result<()> {
         let mut this = self.0.lock().await;

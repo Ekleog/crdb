@@ -129,8 +129,8 @@ macro_rules! smoke_test {
         let all_objects = $query_all;
         assert_eq!(all_objects.len(), 1);
         $db.recreate::<TestObjectSimple, _>(
-            Timestamp::from_ms(EVENT_ID_2.0.timestamp_ms()),
             OBJECT_ID_1,
+            Timestamp::from_ms(EVENT_ID_2.0.timestamp_ms()),
             &$db,
         )
         .await
