@@ -1,10 +1,11 @@
 use super::ServerConfig;
 use crate::{
-    api::{parse_snapshot, query::Bind},
+    api::query::Bind,
     db_trait::{Db, DynNewRecreation, Timestamp},
     error::ResultExt,
     fts,
     full_object::{Change, FullObject},
+    object::parse_snapshot,
     BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
     SessionRef, SessionToken, TypeId, User,
 };
@@ -384,7 +385,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             >,
         }
 
-        impl<'a, 'b, C: CanDoCallbacks> crate::api::private::Sealed for TrackingCanDoCallbacks<'a, 'b, C> {}
+        impl<'a, 'b, C: CanDoCallbacks> crate::object::private::Sealed
+            for TrackingCanDoCallbacks<'a, 'b, C>
+        {
+        }
 
         impl<'a, 'b, C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'a, 'b, C> {
             async fn get<T: Object>(&self, object_id: crate::DbPtr<T>) -> crate::Result<Arc<T>> {

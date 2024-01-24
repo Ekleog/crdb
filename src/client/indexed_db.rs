@@ -1,10 +1,11 @@
 use crate::{
-    api::{parse_snapshot_js, UploadId, UploadOrBinPtr},
+    api::{UploadId, UploadOrBinPtr},
     client::ClientStorageInfo,
     db_trait::Db,
     error::ResultExt,
     fts,
     full_object::{Change, FullObject},
+    object::parse_snapshot_js,
     BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Timestamp,
     TypeId, User,
 };

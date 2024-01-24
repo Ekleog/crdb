@@ -7,6 +7,7 @@ mod full_object;
 mod future;
 mod ids;
 mod messages;
+mod object;
 mod session;
 #[cfg(feature = "_tests")]
 pub mod test_utils;
@@ -14,12 +15,17 @@ pub mod test_utils;
 #[cfg(all(test, not(feature = "_tests")))]
 const _: () = panic!("running tests without the `_tests` feature enabled");
 
-pub use api::{CanDoCallbacks, DbPtr, Event, JsonPathItem, Object, Query};
+pub use api::{DbPtr, JsonPathItem, Query};
 pub use db_trait::Timestamp;
 pub use error::{Error, Result, SerializableError};
 pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
 pub use ids::{BinPtr, EventId, ObjectId, TypeId, User};
+pub use object::{CanDoCallbacks, Event, Object};
 pub use session::{NewSession, Session, SessionRef, SessionToken};
+
+use db_trait::Db;
+use error::ResultExt;
+use future::{CrdbSend, CrdbSync};
 
 #[cfg(feature = "client")]
 mod client;
@@ -58,11 +64,13 @@ pub mod crdb_internal {
     #[cfg(feature = "_tests")]
     pub use crate::test_utils;
     pub use crate::{
-        api::{parse_snapshot, ApiConfig, CanDoCallbacks},
+        api::ApiConfig,
         cache::ObjectCache,
         db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
         error::ResultExt,
-        hash_binary, private,
+        hash_binary,
+        object::{parse_snapshot, CanDoCallbacks},
+        private,
         session::SessionToken,
         BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object, ObjectId, Query, Result,
         Timestamp, TypeId, User,
