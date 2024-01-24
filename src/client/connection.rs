@@ -32,6 +32,7 @@ pub enum ConnectionEvent {
     LoggingIn,
     FailedConnecting(anyhow::Error),
     FailedSendingToken(anyhow::Error),
+    LostConnection(anyhow::Error),
     Connected,
     LoggedOut,
 }
@@ -56,6 +57,15 @@ pub enum State {
 }
 
 impl State {
+    fn disconnect(self) -> Self {
+        match self {
+            State::NoValidInfo => State::NoValidInfo,
+            State::Disconnected { url, token }
+            | State::TokenSent { url, token, .. }
+            | State::Connected { url, token, .. } => State::Disconnected { url, token },
+        }
+    }
+
     async fn next_msg(&mut self) -> Option<anyhow::Result<ServerMessage>> {
         match self {
             State::NoValidInfo | State::Disconnected { .. } => None,
@@ -122,13 +132,19 @@ impl Connection {
                 }
 
                 // Listen for incoming server messages
-                Some(message) = self.state.next_msg() => match self.state {
-                    State::NoValidInfo | State::Disconnected { .. } => unreachable!(),
-                    State::TokenSent { url, token, socket, request_id } => {
-                        unimplemented!() // TODO(api): actually implement
+                Some(message) = self.state.next_msg() => match message {
+                    Err(err) => {
+                        self.state = self.state.disconnect();
+                        self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
                     }
-                    State::Connected { url, token, socket } => {
-                        unimplemented!() // TODO(api): actually implement
+                    Ok(message) => match self.state {
+                        State::NoValidInfo | State::Disconnected { .. } => unreachable!(),
+                        State::TokenSent { url, token, socket, request_id } => {
+                            unimplemented!() // TODO(api): actually implement
+                        }
+                        State::Connected { url, token, socket } => {
+                            unimplemented!() // TODO(api): actually implement
+                        }
                     }
                 }
             }
