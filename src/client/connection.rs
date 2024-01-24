@@ -173,7 +173,7 @@ impl Connection {
 
                         // Main function, must now deal with requests and updates.
                         State::Connected { .. } => {
-                            unimplemented!() // TODO(api): actually implement
+                            self.handle_connected_message(message).await;
                         }
                     }
                 }
@@ -224,6 +224,13 @@ impl Connection {
                 self.event_cb.read().unwrap()(ConnectionEvent::LoggedOut);
             }
         }
+    }
+
+    async fn handle_connected_message(&mut self, message: ServerMessage) {
+        let State::Connected { socket, .. } = &mut self.state else {
+            panic!("Called handle_connected_message while not actually connected");
+        };
+        unimplemented!() // TODO(api): actually implement
     }
 
     async fn send(sock: &mut implem::WebSocket, msg: &ClientMessage) -> anyhow::Result<()> {
