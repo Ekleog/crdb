@@ -64,7 +64,7 @@ macro_rules! generate_server {
                 Err(crdb::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn recreate<'a, C: crdb::CanDoCallbacks>(
+            async fn recreate_no_lock<'a, C: crdb::CanDoCallbacks>(
                 call_on: &'a crdb::PostgresDb<Self>,
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
