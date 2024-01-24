@@ -108,22 +108,24 @@ pub enum MaybeObject {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum Update {
-    Object {
-        object_id: ObjectId,
-        type_id: TypeId,
+pub struct Update {
+    object_id: ObjectId,
+    type_id: TypeId,
+    data: UpdateData,
+    now_have_all_until: Timestamp,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum UpdateData {
+    Creation {
         created_at: EventId,
         data: serde_json::Value,
     },
     Event {
         event_id: EventId,
-        type_id: TypeId,
-        object_id: ObjectId,
         data: serde_json::Value,
     },
     Recreation {
-        type_id: TypeId,
-        object_id: ObjectId,
         time: Timestamp,
     },
 }

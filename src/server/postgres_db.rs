@@ -695,6 +695,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(&users_who_can_read_depends_on)
                 .bind(&rdeps)
                 .bind(&required_binaries)
+                // TODO(server): this below and similar should be passed in as arguments, so that they can be sent over the websocket
                 .bind(Timestamp::now().time_ms_i()?)
                 .execute(&mut *transaction)
                 .await

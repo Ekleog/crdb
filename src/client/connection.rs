@@ -230,7 +230,17 @@ impl Connection {
         let State::Connected { socket, .. } = &mut self.state else {
             panic!("Called handle_connected_message while not actually connected");
         };
-        unimplemented!() // TODO(api): actually implement
+        match message {
+            ServerMessage::Update {
+                updates,
+                now_have_all_until,
+            } => unimplemented!(), // TODO(api): implement
+            ServerMessage::Response {
+                request,
+                response,
+                last_response,
+            } => unimplemented!(), // TODO(api): implement
+        }
     }
 
     async fn send(sock: &mut implem::WebSocket, msg: &ClientMessage) -> anyhow::Result<()> {
