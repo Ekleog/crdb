@@ -21,6 +21,10 @@ make-test-db:
 rebuild-offline-queries: make-test-db
     cargo sqlx prepare --database-url "postgres:///crdb-test?host=/run/postgresql" -- --all-features --tests
 
+list-todo-types:
+    rg 'TODO\(' | grep -v Justfile | sed 's/^.*TODO(//;s/).*$//' | sort -u || true
+    rg 'TODO[^(]' | grep -v Justfile || true
+
 test-crate NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-crate-client-js NAME) (test-crate-server NAME)
 test-crate-standalone NAME='': (test-crate-api NAME) (test-crate-client-native NAME)
 
