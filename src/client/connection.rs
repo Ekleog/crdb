@@ -80,12 +80,11 @@ impl Connection {
     }
 
     pub async fn run(mut self) {
-        let mut next_command = self.commands.next();
         loop {
             // TODO(api): regularly send GetTime requests for ping/pong checking
             tokio::select! {
-                command = next_command => {
-                    next_command = self.commands.next();
+                // Note: StreamExt::next is cancellation-safe on any Stream
+                command = self.commands.next() => {
                     let Some(command) = command else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
