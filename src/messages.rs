@@ -106,10 +106,10 @@ pub enum MaybeObject {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Update {
-    object_id: ObjectId,
-    type_id: TypeId,
-    data: UpdateData,
-    now_have_all_until: Timestamp,
+    pub object_id: ObjectId,
+    pub type_id: TypeId,
+    pub data: UpdateData,
+    pub now_have_all_until: Timestamp,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

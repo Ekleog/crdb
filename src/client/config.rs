@@ -84,48 +84,6 @@ macro_rules! generate_client {
             }
 
             $(crdb::paste! {
-                pub fn [< new_ $name _objects >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + crdb::CrdbStream<Item = $crate::NewObject<$object>>> {
-                    async move {
-                        self.db
-                            .new_objects()
-                            .await
-                            .filter(|o| crdb::future::ready(o.type_id == *<$object as crdb::Object>::type_ulid()))
-                            .map(|o| $crate::NewObject {
-                                ptr: crdb::DbPtr::from(o.id),
-                                object: o.object.arc_to_any().downcast::<$object>()
-                                    .expect("Failed downcasting object with checked type id")
-                            })
-                    }
-                }
-
-                pub fn [< new_ $name _events >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + crdb::CrdbStream<Item = $crate::NewEvent<$object>>> {
-                    async move {
-                        self.db
-                            .new_events()
-                            .await
-                            .filter(|o| crdb::future::ready(o.type_id == *<$object as crdb::Object>::type_ulid()))
-                            .map(|o| $crate::NewEvent {
-                                object: crdb::DbPtr::from(o.object_id),
-                                id: o.id,
-                                event: o.event.arc_to_any().downcast::<<$object as crdb::Object>::Event>()
-                                    .expect("Failed downcasting event with checked type id")
-                            })
-                    }
-                }
-
-                pub fn [< new_ $name _recreations >](&self) -> impl '_ + crdb::CrdbFuture<Output = impl '_ + Send + crdb::Stream<Item = $crate::NewRecreation<$object>>> {
-                    async move {
-                        self.db
-                            .new_recreations()
-                            .await
-                            .filter(|o| crdb::future::ready(o.type_id == *<$object as crdb::Object>::type_ulid()))
-                            .map(|o| $crate::NewRecreation {
-                                object: crdb::DbPtr::from(o.object_id),
-                                time: o.time,
-                            })
-                    }
-                }
-
                 pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();

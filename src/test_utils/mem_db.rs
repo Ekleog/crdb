@@ -3,8 +3,8 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     full_object::{DynSized, FullObject},
-    BinPtr, CanDoCallbacks, CrdbStream, DynNewEvent, DynNewObject, DynNewRecreation, Event,
-    EventId, Object, ObjectId, Query, Timestamp, TypeId, User,
+    BinPtr, CanDoCallbacks, CrdbStream, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId,
+    User,
 };
 use futures::{stream, Stream, StreamExt};
 use std::{

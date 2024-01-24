@@ -4,10 +4,11 @@ use crate::{
     error::ResultExt,
     fts,
     full_object::{Change, FullObject},
+    messages::{Update, UpdateData},
     object::parse_snapshot,
     query::Bind,
-    BinPtr, CanDoCallbacks, CrdbStream, DbPtr, DynNewRecreation, Event, EventId, Object, ObjectId,
-    Query, Session, SessionRef, SessionToken, Timestamp, TypeId, User,
+    BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
+    SessionRef, SessionToken, Timestamp, TypeId, User,
 };
 use anyhow::Context;
 use futures::StreamExt;
@@ -249,7 +250,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         no_new_changes_before: Option<Timestamp>,
         kill_sessions_older_than: Option<Timestamp>,
         cb: &C,
-        notify_recreation: impl Fn(DynNewRecreation),
+        notify_recreation: impl Fn(Update),
     ) -> crate::Result<()> {
         // TODO(low): do not vacuum away binaries that have been uploaded less than an hour ago
         // TODO(low): also keep an "upload time" field on events, and allow fetching just the new events for an object
@@ -325,10 +326,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                         })?;
                     if did_recreate {
                         reord::point().await;
-                        notify_recreation(DynNewRecreation {
+                        notify_recreation(Update {
                             type_id,
                             object_id,
-                            time,
+                            data: UpdateData::Recreation { time },
+                            now_have_all_until: Timestamp::now(), // TODO(server): this is a lie
                         });
                     }
                 }

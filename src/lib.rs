@@ -2,7 +2,6 @@ mod api;
 mod cache;
 mod db_trait;
 mod dbptr;
-mod dyn_new;
 mod error;
 pub mod fts;
 mod full_object;
@@ -29,9 +28,7 @@ pub use session::{NewSession, Session, SessionRef, SessionToken};
 pub use timestamp::Timestamp;
 
 use db_trait::Db;
-use dyn_new::{DynNewEvent, DynNewObject, DynNewRecreation};
 use error::ResultExt;
-use full_object::DynSized;
 use future::{CrdbSend, CrdbSync};
 
 #[cfg(feature = "client")]
@@ -74,7 +71,6 @@ pub mod crdb_internal {
         api::ApiConfig,
         cache::ObjectCache,
         db_trait::Db,
-        dyn_new::{DynNewEvent, DynNewObject, DynNewRecreation},
         error::ResultExt,
         hash_binary,
         object::{parse_snapshot, CanDoCallbacks},

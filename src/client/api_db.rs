@@ -1,7 +1,7 @@
 use super::connection::{Command, Connection, ConnectionEvent};
 use crate::{
-    full_object::FullObject, BinPtr, CrdbStream, DynNewEvent, DynNewObject, DynNewRecreation,
-    EventId, Object, ObjectId, Query, SessionToken, Timestamp,
+    full_object::FullObject, messages::Update, BinPtr, CrdbStream, EventId, Object, ObjectId,
+    Query, SessionToken, Timestamp,
 };
 use futures::channel::mpsc;
 use std::sync::{Arc, RwLock};
@@ -9,39 +9,21 @@ use std::sync::{Arc, RwLock};
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
-    new_objects_receiver: async_broadcast::InactiveReceiver<DynNewObject>,
-    new_events_receiver: async_broadcast::InactiveReceiver<DynNewEvent>,
-    new_recreations_receiver: async_broadcast::InactiveReceiver<DynNewRecreation>,
 }
 
 impl ApiDb {
-    pub fn new() -> ApiDb {
-        let (mut new_objects_sender, new_objects_receiver) = async_broadcast::broadcast(128);
-        let (mut new_events_sender, new_events_receiver) = async_broadcast::broadcast(128);
-        let (mut new_recreations_sender, new_recreations_receiver) =
-            async_broadcast::broadcast(128);
-        new_objects_sender.set_await_active(false);
-        new_events_sender.set_await_active(false);
-        new_recreations_sender.set_await_active(false);
+    pub fn new() -> (ApiDb, mpsc::UnboundedReceiver<Update>) {
+        let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let (connection, commands) = mpsc::unbounded();
-        crate::spawn(
-            Connection::new(
-                commands,
-                connection_event_cb.clone(),
-                new_events_sender,
-                new_objects_sender,
-                new_recreations_sender,
-            )
-            .run(),
-        );
-        ApiDb {
-            connection,
-            connection_event_cb,
-            new_objects_receiver: new_objects_receiver.deactivate(),
-            new_events_receiver: new_events_receiver.deactivate(),
-            new_recreations_receiver: new_recreations_receiver.deactivate(),
-        }
+        crate::spawn(Connection::new(commands, connection_event_cb.clone(), update_sender).run());
+        (
+            ApiDb {
+                connection,
+                connection_event_cb,
+            },
+            update_receiver,
+        )
     }
 
     pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {
@@ -58,22 +40,6 @@ impl ApiDb {
         self.connection
             .unbounded_send(Command::Logout)
             .expect("connection cannot go away before sender does")
-    }
-
-    pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        self.new_objects_receiver.activate_cloned()
-    }
-
-    /// This function returns all new events for events on objects that have been subscribed
-    /// on. Objects subscribed on are all the objects that have ever been created with `create`,
-    /// or obtained with `get` or `query` and subscribed on, excluding objects explicitly
-    /// unsubscribed from
-    pub async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        self.new_events_receiver.activate_cloned()
-    }
-
-    pub async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        self.new_recreations_receiver.activate_cloned()
     }
 
     /// Note that this function unsubscribes ALL the streams that have ever been taken for

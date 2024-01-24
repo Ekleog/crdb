@@ -1,7 +1,7 @@
 use crate::{
     ids::RequestId,
-    messages::{ClientMessage, Request, ResponsePart, ServerMessage},
-    DynNewEvent, DynNewObject, DynNewRecreation, SessionToken,
+    messages::{ClientMessage, Request, ResponsePart, ServerMessage, Update},
+    SessionToken,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, StreamExt};
@@ -89,26 +89,20 @@ pub struct Connection {
     state: State,
     commands: mpsc::UnboundedReceiver<Command>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
-    new_objects_sender: async_broadcast::Sender<DynNewObject>,
-    new_events_sender: async_broadcast::Sender<DynNewEvent>,
-    new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
+    update_sender: mpsc::UnboundedSender<Update>,
 }
 
 impl Connection {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
         event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
-        new_events_sender: async_broadcast::Sender<DynNewEvent>,
-        new_objects_sender: async_broadcast::Sender<DynNewObject>,
-        new_recreations_sender: async_broadcast::Sender<DynNewRecreation>,
+        update_sender: mpsc::UnboundedSender<Update>,
     ) -> Connection {
         Connection {
             commands,
             state: State::NoValidInfo,
             event_cb,
-            new_events_sender,
-            new_objects_sender,
-            new_recreations_sender,
+            update_sender,
         }
     }
 

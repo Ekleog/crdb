@@ -1,10 +1,13 @@
 use super::{connection::ConnectionEvent, ApiDb, LocalDb};
 use crate::{
-    api::ApiConfig, cache::CacheDb, db_trait::Db, full_object::FullObject, BinPtr, CrdbStream,
-    DynNewEvent, DynNewObject, DynNewRecreation, EventId, Object, ObjectId, Query, SessionToken,
-    Timestamp, User,
+    api::ApiConfig,
+    cache::CacheDb,
+    db_trait::Db,
+    full_object::FullObject,
+    messages::{Update, UpdateData},
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp, User,
 };
-use futures::{pin_mut, StreamExt};
+use futures::{channel::mpsc, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -24,7 +27,8 @@ impl ClientDb {
         vacuum_schedule: ClientVacuumSchedule<F>,
     ) -> anyhow::Result<ClientDb> {
         C::check_ulids();
-        let api = Arc::new(ApiDb::new());
+        let (api, updates_receiver) = ApiDb::new();
+        let api = Arc::new(api);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
         let cancellation_token = CancellationToken::new();
@@ -35,75 +39,61 @@ impl ClientDb {
             vacuum_guard: Arc::new(RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
         };
-        this.setup_watchers::<C>();
+        this.setup_watchers::<C>(updates_receiver);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
         Ok(this)
     }
 
-    fn setup_watchers<C: ApiConfig>(&self) {
-        // No need for a cancellation token: these tasks will automatically end as soon as the stream
+    fn setup_watchers<C: ApiConfig>(&self, mut updates_receiver: mpsc::UnboundedReceiver<Update>) {
+        // No need for a cancellation token: this task will automatically end as soon as the stream
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
-
-        // Watch new objects
         crate::spawn({
-            let api = self.api.clone();
             let local_db = self.db.clone();
             async move {
-                let new_objects = api.new_objects().await;
-                pin_mut!(new_objects);
-                while let Some(o) = new_objects.next().await {
-                    let object = o.id;
-                    if let Err(error) = C::create(&*local_db, o.clone(), false, &*local_db).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            "failed creating received object in internal db"
-                        );
-                    }
-                }
-            }
-        });
-
-        // Watch new events
-        crate::spawn({
-            let api = self.api.clone();
-            let local_db = self.db.clone();
-            async move {
-                let new_events = api.new_events().await;
-                pin_mut!(new_events);
-                while let Some(e) = new_events.next().await {
-                    let object = e.object_id;
-                    let event = e.id;
-                    if let Err(error) = C::submit(&*local_db, e.clone(), &*local_db).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            ?event,
-                            "failed submitting received object to internal db"
-                        );
-                    }
-                    // DO NOT re-fetch object when receiving an event not in cache for it.
-                    // Without this, users would risk unsubscribing from an object, then receiving
-                    // an event on this object (as a race condition), and then staying subscribed.
-                }
-            }
-        });
-
-        // Watch new re-creations
-        crate::spawn({
-            let api = self.api.clone();
-            let local_db = self.db.clone();
-            async move {
-                let new_recreations = api.new_recreations().await;
-                pin_mut!(new_recreations);
-                while let Some(s) = new_recreations.next().await {
-                    let object = s.object_id;
-                    if let Err(error) = C::recreate(&*local_db, s.clone(), &*local_db).await {
-                        tracing::error!(
-                            ?error,
-                            ?object,
-                            "failed recreating as per received event in internal db"
-                        );
+                while let Some(u) = updates_receiver.next().await {
+                    let object_id = u.object_id;
+                    let type_id = u.type_id;
+                    // TODO(client): record `u.now_have_all_until` somewhere
+                    // TODO(client): expose updates in _some_ way to the user
+                    match u.data {
+                        UpdateData::Creation { created_at, data } => {
+                            if let Err(err) =
+                                C::create(&*local_db, type_id, object_id, created_at, data, false)
+                                    .await
+                            {
+                                tracing::error!(
+                                    ?err,
+                                    ?object_id,
+                                    "failed creating received object in internal db"
+                                );
+                            }
+                        }
+                        UpdateData::Event { event_id, data } => {
+                            if let Err(err) =
+                                C::submit(&*local_db, type_id, object_id, event_id, data).await
+                            {
+                                tracing::error!(
+                                    ?err,
+                                    ?object_id,
+                                    ?event_id,
+                                    "failed submitting received object to internal db"
+                                );
+                            }
+                            // DO NOT re-fetch object when receiving an event not in cache for it.
+                            // Without this, users would risk unsubscribing from an object, then receiving
+                            // an event on this object (as a race condition), and then staying subscribed.
+                        }
+                        UpdateData::Recreation { time } => {
+                            if let Err(err) =
+                                C::recreate(&*local_db, type_id, object_id, time).await
+                            {
+                                tracing::error!(
+                                    ?err,
+                                    ?object_id,
+                                    "failed recreating as per received event in internal db"
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -176,18 +166,6 @@ impl ClientDb {
 
     pub async fn reduce_size_to(&mut self, size: usize) {
         self.db.reduce_size_to(size).await
-    }
-
-    pub async fn new_objects(&self) -> impl CrdbStream<Item = DynNewObject> {
-        self.api.new_objects().await
-    }
-
-    pub async fn new_events(&self) -> impl CrdbStream<Item = DynNewEvent> {
-        self.api.new_events().await
-    }
-
-    pub async fn new_recreations(&self) -> impl CrdbStream<Item = DynNewRecreation> {
-        self.api.new_recreations().await
     }
 
     pub async fn unlock(&self, ptr: ObjectId) -> crate::Result<()> {
