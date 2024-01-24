@@ -1,6 +1,7 @@
 mod api;
 mod cache;
 mod db_trait;
+mod dbptr;
 mod error;
 pub mod fts;
 mod full_object;
@@ -15,8 +16,9 @@ pub mod test_utils;
 #[cfg(all(test, not(feature = "_tests")))]
 const _: () = panic!("running tests without the `_tests` feature enabled");
 
-pub use api::{DbPtr, JsonPathItem, Query};
+pub use api::{JsonPathItem, Query};
 pub use db_trait::Timestamp;
+pub use dbptr::DbPtr;
 pub use error::{Error, Result, SerializableError};
 pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
 pub use ids::{BinPtr, EventId, ObjectId, TypeId, User};
