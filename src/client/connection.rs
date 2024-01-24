@@ -1,8 +1,7 @@
 use crate::{
-    db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     ids::RequestId,
     messages::{ClientMessage, Request, ResponsePart, ServerMessage},
-    SessionToken,
+    DynNewEvent, DynNewObject, DynNewRecreation, SessionToken,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, StreamExt};

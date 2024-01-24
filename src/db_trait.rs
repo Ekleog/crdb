@@ -1,33 +1,10 @@
 use crate::{
-    full_object::{DynSized, FullObject},
+    full_object::FullObject,
     future::{CrdbSend, CrdbSync},
     BinPtr, CanDoCallbacks, CrdbFuture, CrdbStream, EventId, Object, ObjectId, Query, Timestamp,
-    TypeId, User,
+    User,
 };
 use std::sync::Arc;
-
-#[derive(Clone)]
-pub struct DynNewObject {
-    pub type_id: TypeId,
-    pub id: ObjectId,
-    pub created_at: EventId,
-    pub object: Arc<dyn DynSized>,
-}
-
-#[derive(Clone)]
-pub struct DynNewEvent {
-    pub type_id: TypeId,
-    pub object_id: ObjectId,
-    pub id: EventId,
-    pub event: Arc<dyn DynSized>,
-}
-
-#[derive(Clone, Debug)]
-pub struct DynNewRecreation {
-    pub type_id: TypeId,
-    pub object_id: ObjectId,
-    pub time: Timestamp,
-}
 
 pub trait Db: 'static + CrdbSend + CrdbSync {
     fn create<T: Object, C: CanDoCallbacks>(

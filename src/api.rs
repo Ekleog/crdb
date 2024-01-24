@@ -1,7 +1,6 @@
 use crate::{
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
-    messages::Upload,
-    BinPtr, CanDoCallbacks, CrdbFuture,
+    db_trait::Db, messages::Upload, BinPtr, CanDoCallbacks, CrdbFuture, DynNewEvent, DynNewObject,
+    DynNewRecreation,
 };
 
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]

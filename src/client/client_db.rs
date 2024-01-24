@@ -1,10 +1,8 @@
 use super::{connection::ConnectionEvent, ApiDb, LocalDb};
 use crate::{
-    api::ApiConfig,
-    cache::CacheDb,
-    db_trait::{Db, DynNewEvent, DynNewObject, DynNewRecreation},
-    full_object::FullObject,
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp, User,
+    api::ApiConfig, cache::CacheDb, db_trait::Db, full_object::FullObject, BinPtr, CrdbStream,
+    DynNewEvent, DynNewObject, DynNewRecreation, EventId, Object, ObjectId, Query, SessionToken,
+    Timestamp, User,
 };
 use futures::{pin_mut, StreamExt};
 use std::{sync::Arc, time::Duration};
