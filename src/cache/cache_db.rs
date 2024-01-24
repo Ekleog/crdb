@@ -194,7 +194,7 @@ impl<D: Db> Db for CacheDb<D> {
         self.db.remove(object_id).await
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         debug_assert!(
             binary_id == hash_binary(&*data),
             "Provided id {binary_id:?} does not match value hash {:?}",
@@ -204,7 +204,7 @@ impl<D: Db> Db for CacheDb<D> {
         self.db.create_binary(binary_id, data).await
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
         if let Some(res) = self.binaries.read().await.get(&binary_id) {
             return Ok(Some(res.clone()));
         }

@@ -18,7 +18,7 @@ async fn smoke_test() {
 }
 
 mod fuzz_helpers {
-    use bolero::{generator::bolero_generator, Driver};
+    use bolero::{generator::bolero_generator, ValueGenerator};
     use crdb::{
         crdb_internal::{test_utils::MemDb, LocalDb},
         Timestamp,
@@ -54,13 +54,13 @@ mod fuzz_helpers {
     ) -> Option<String>
     where
         Fun: FnOnce(&'static ((), bool), Arg) -> RetFut,
-        Arg: 'static + serde::Serialize + bolero::TypeGenerator,
+        Arg: 'static + serde::Serialize + for<'a> arbitrary::Arbitrary<'a>,
         RetFut: Future<Output = Database>,
     {
         // Generate the input
         let rng = StdRng::seed_from_u64(seed);
         let mut bolero_gen = bolero_generator::driver::Rng::new(rng, &Default::default());
-        let Some(input) = bolero_gen.gen() else {
+        let Some(input) = bolero::gen_arbitrary().generate(&mut bolero_gen) else {
             web_sys::console::log_1(&format!(" -> invalid input").into());
             return None;
         };

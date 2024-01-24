@@ -10,7 +10,7 @@ use std::{ops::Bound, sync::Arc};
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
-#[derive(Debug, bolero::generator::TypeGenerator)]
+#[derive(Debug, arbitrary::Arbitrary)]
 enum Op {
     Create {
         id: ObjectId,
@@ -28,7 +28,6 @@ enum Op {
     },
     Query {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     Recreate {
@@ -189,7 +188,7 @@ fn fuzz_no_lock_check() {
     bolero::check!()
         .with_iterations(20)
         .with_shrink_time(std::time::Duration::from_millis(0))
-        .with_type()
+        .with_arbitrary()
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);
             config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
@@ -202,7 +201,7 @@ fn fuzz_checking_locks() {
     let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(20)
-        .with_type()
+        .with_arbitrary()
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);
             config.check_named_locks_work_for = Some(CHECK_NAMED_LOCKS_FOR);

@@ -16,7 +16,7 @@ use rust_decimal::Decimal;
 use std::{ops::Bound, str::FromStr, sync::Arc};
 use ulid::Ulid;
 
-#[derive(Debug, bolero::generator::TypeGenerator, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
 enum Op {
     Create {
         id: ObjectId,
@@ -34,7 +34,6 @@ enum Op {
     },
     Query {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     Recreate {

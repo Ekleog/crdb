@@ -8,7 +8,7 @@ use anyhow::Context;
 use std::collections::{HashMap, HashSet};
 use ulid::Ulid;
 
-#[derive(Debug, bolero::generator::TypeGenerator)]
+#[derive(Debug, arbitrary::Arbitrary)]
 enum Op {
     Login(NewSession),
     Resume(usize),
@@ -172,7 +172,7 @@ fn fuzz() {
     let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(20)
-        .with_type()
+        .with_arbitrary()
         .for_each(move |ops| fuzz_impl(&cluster, ops))
 }
 

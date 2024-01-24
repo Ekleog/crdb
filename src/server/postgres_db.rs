@@ -1642,7 +1642,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         panic!("Tried removing {object_id:?} from server, but server is supposed to always keep all the history!")
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
@@ -1657,7 +1657,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
         reord::point().await;
         Ok(sqlx::query!(
             "SELECT data FROM binaries WHERE binary_id = $1",
@@ -1666,7 +1666,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         .fetch_optional(&self.db)
         .await
         .wrap_with_context(|| format!("getting {binary_id:?} from database"))?
-        .map(|res| Arc::new(res.data)))
+        .map(|res| res.data.into_boxed_slice().into()))
     }
 }
 

@@ -68,6 +68,7 @@ pub(crate) fn matches(value: &str, pat: &str) -> bool {
 }
 
 #[derive(Clone, deepsize::DeepSizeOf, educe::Educe, serde::Deserialize, serde::Serialize)]
+#[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
 #[educe(Deref, DerefMut, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(from = "SearchableStringSer", into = "SearchableStringSer")]
 pub struct SearchableString(#[educe(Deref, DerefMut)] pub String);

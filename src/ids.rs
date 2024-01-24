@@ -206,9 +206,9 @@ macro_rules! impl_for_id {
         }
 
         #[cfg(feature = "_tests")]
-        impl bolero::generator::TypeGenerator for $type {
-            fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
-                Some(Self(Ulid::from_bytes(<[u8; 16] as bolero::generator::TypeGenerator>::generate::<D>(driver)?)))
+        impl<'a> arbitrary::Arbitrary<'a> for $type {
+            fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+                Ok(Self(Ulid::from_bytes(u.arbitrary()?)))
             }
         }
 

@@ -112,7 +112,7 @@ mod fuzz_helpers {
                 let cluster = setup();
                 bolero::check!()
                     .with_iterations(10)
-                    .with_type()
+                    .with_arbitrary()
                     .for_each(move |ops| {
                         tokio::runtime::Runtime::new()
                             .unwrap()

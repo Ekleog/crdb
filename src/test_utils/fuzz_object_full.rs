@@ -13,7 +13,7 @@ use anyhow::Context;
 use std::{ops::Bound, sync::Arc};
 use ulid::Ulid;
 
-#[derive(Debug, bolero::generator::TypeGenerator, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
 enum Op {
     Create {
         id: ObjectId,
@@ -31,7 +31,6 @@ enum Op {
     },
     Query {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     Recreate {
@@ -42,7 +41,7 @@ enum Op {
         object: usize,
     },
     CreateBinary {
-        data: Arc<Vec<u8>>,
+        data: Arc<[u8]>,
         fake_id: Option<BinPtr>,
     },
     Vacuum {
@@ -185,7 +184,7 @@ async fn regression_create_binary_always_failed() {
     fuzz_impl(
         &cluster,
         Arc::new(vec![CreateBinary {
-            data: Arc::new(vec![60, 164, 171, 171, 123, 98, 174, 193, 202, 183, 86]),
+            data: Arc::new([60u8, 164, 171, 171, 123, 98, 174, 193, 202, 183, 86]) as _,
             fake_id: None,
         }]),
     )
@@ -248,7 +247,7 @@ async fn regression_indexeddb_vacuum_was_borken() {
         &cluster,
         Arc::new(vec![
             Op::CreateBinary {
-                data: Arc::new(vec![1, 2, 3]),
+                data: Arc::new([1u8, 2, 3]) as _,
                 fake_id: None,
             },
             Op::Vacuum { recreate_at: None },

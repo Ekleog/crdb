@@ -12,7 +12,7 @@ use super::fuzz_helpers::{
 use std::{ops::Bound, sync::Arc};
 use ulid::Ulid;
 
-#[derive(Debug, bolero::generator::TypeGenerator, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
 enum Op {
     CreatePerm {
         id: ObjectId,
@@ -44,12 +44,10 @@ enum Op {
     },
     QueryPerms {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     QueryDelegatePerms {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     RecreatePerm {

@@ -4,7 +4,7 @@ use ulid::Ulid;
 #[derive(
     Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
 )]
-#[cfg_attr(feature = "_tests", derive(bolero::generator::TypeGenerator))]
+#[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
 pub struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
 
 impl Timestamp {

@@ -41,10 +41,10 @@ impl<T: Object> DbPtr<T> {
 }
 
 #[cfg(feature = "_tests")]
-impl<T: Object> bolero::TypeGenerator for DbPtr<T> {
-    fn generate<D: bolero::Driver>(driver: &mut D) -> Option<DbPtr<T>> {
-        <[u8; 16]>::generate(driver).map(|b| Self {
-            id: Ulid::from_bytes(b),
+impl<'a, T: Object> arbitrary::Arbitrary<'a> for DbPtr<T> {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            id: Ulid::from_bytes(u.arbitrary()?),
             _phantom: PhantomData,
         })
     }

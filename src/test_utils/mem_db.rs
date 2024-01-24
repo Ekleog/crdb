@@ -17,7 +17,7 @@ struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
     events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
     objects: HashMap<ObjectId, (TypeId, FullObject)>,
-    binaries: HashMap<BinPtr, Arc<Vec<u8>>>,
+    binaries: HashMap<BinPtr, Arc<[u8]>>,
     is_server: bool,
 }
 
@@ -271,7 +271,7 @@ impl Db for MemDb {
         unimplemented!() // TODO(test)
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         if binary_id != crate::hash_binary(&data) {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
@@ -279,7 +279,7 @@ impl Db for MemDb {
         Ok(())
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
         Ok(self.0.lock().await.binaries.get(&binary_id).cloned())
     }
 }

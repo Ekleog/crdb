@@ -49,10 +49,10 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
     fn create_binary(
         &self,
         binary_id: BinPtr,
-        data: Arc<Vec<u8>>,
+        data: Arc<[u8]>,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
     fn get_binary(
         &self,
         binary_id: BinPtr,
-    ) -> impl CrdbFuture<Output = anyhow::Result<Option<Arc<Vec<u8>>>>>;
+    ) -> impl CrdbFuture<Output = anyhow::Result<Option<Arc<[u8]>>>>;
 }

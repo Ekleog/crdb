@@ -202,11 +202,11 @@ impl Db for SqliteDb {
         unimplemented!() // TODO(sqlite): implement
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite): implement
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
         unimplemented!() // TODO(sqlite): implement
     }
 }

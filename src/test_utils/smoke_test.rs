@@ -162,7 +162,7 @@ macro_rules! smoke_test {
                 .collect::<Vec<_>>();
             assert_eq!(all_objects.len(), 0);
         }
-        let data = Arc::new(vec![1, 2, 3]);
+        let data = Arc::new([1u8, 2, 3]) as Arc<[u8]>;
         let ptr = $crate::hash_binary(&data);
         assert!($db.get_binary(ptr).await.unwrap().is_none());
         $db.create_binary(ptr, data.clone()).await.unwrap();

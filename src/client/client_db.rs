@@ -283,12 +283,12 @@ impl ClientDb {
         self.api.recreate::<T>(time, object).await
     }
 
-    pub async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    pub async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         self.db.create_binary(binary_id, data.clone()).await?;
         self.api.create_binary(binary_id, data).await
     }
 
-    pub async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    pub async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
         if let Some(res) = self.db.get_binary(binary_id).await? {
             return Ok(Some(res));
         }

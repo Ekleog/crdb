@@ -14,22 +14,15 @@ use std::future::Future;
     Ord,
     PartialEq,
     PartialOrd,
-    bolero::generator::TypeGenerator,
+    arbitrary::Arbitrary,
     deepsize::DeepSizeOf,
     serde::Deserialize,
     serde::Serialize,
 )]
 pub struct TestObjectFull {
-    #[generator(bolero::generator::gen_with::<String>().len(0..8_usize).map_gen(SearchableString::from))]
     pub name: SearchableString,
-
-    #[generator(bolero::generator::gen_with::<Vec<_>>().len(0..2_usize))]
     pub deps: Vec<DbPtr<TestObjectFull>>,
-
-    #[generator(bolero::generator::gen_with::<Vec<_>>().len(0..2_usize))]
     pub bins: Vec<BinPtr>,
-
-    #[generator(bolero::generator::gen_with::<Vec<_>>().len(0..2_usize))]
     pub users: Vec<User>,
 }
 
@@ -38,7 +31,7 @@ pub struct TestObjectFull {
     Debug,
     Eq,
     PartialEq,
-    bolero::generator::TypeGenerator,
+    arbitrary::Arbitrary,
     deepsize::DeepSizeOf,
     serde::Deserialize,
     serde::Serialize,

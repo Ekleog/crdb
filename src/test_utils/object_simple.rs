@@ -10,28 +10,26 @@ use crate::{
     Ord,
     PartialEq,
     PartialOrd,
-    bolero::generator::TypeGenerator,
+    arbitrary::Arbitrary,
     deepsize::DeepSizeOf,
     serde::Deserialize,
     serde::Serialize,
 )]
-pub struct TestObjectSimple(
-    #[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] pub Vec<u8>,
-);
+pub struct TestObjectSimple(pub Vec<u8>);
 
 #[derive(
     Clone,
     Debug,
     Eq,
     PartialEq,
-    bolero::generator::TypeGenerator,
+    arbitrary::Arbitrary,
     deepsize::DeepSizeOf,
     serde::Deserialize,
     serde::Serialize,
 )]
 pub enum TestEventSimple {
-    Set(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>),
-    Append(#[generator(bolero::generator::gen_with::<Vec<_>>().len(8_usize))] Vec<u8>),
+    Set(Vec<u8>),
+    Append(Vec<u8>),
     Clear,
 }
 

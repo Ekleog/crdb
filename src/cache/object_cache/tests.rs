@@ -2,7 +2,7 @@ use super::ObjectCache;
 use crate::{test_utils::*, EventId, ObjectId, Timestamp};
 use std::sync::Arc;
 
-#[derive(Debug, bolero::generator::TypeGenerator)]
+#[derive(Debug, arbitrary::Arbitrary)]
 enum Op {
     Create {
         id: ObjectId,
@@ -99,7 +99,7 @@ fn cache_state_stays_valid_impl((watermark, ops): &(usize, Vec<Op>)) {
 #[test]
 fn cache_state_stays_valid() {
     bolero::check!()
-        .with_type()
+        .with_arbitrary()
         .for_each(cache_state_stays_valid_impl);
 }
 

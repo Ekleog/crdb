@@ -10,7 +10,7 @@ use std::{ops::Bound, sync::Arc};
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
-#[derive(Debug, bolero::generator::TypeGenerator)]
+#[derive(Debug, arbitrary::Arbitrary)]
 enum Op {
     CreateSimple {
         id: ObjectId,
@@ -28,7 +28,6 @@ enum Op {
     },
     QuerySimple {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     RecreateSimple {
@@ -51,7 +50,6 @@ enum Op {
     },
     QueryPerms {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     RecreatePerms {
@@ -74,7 +72,6 @@ enum Op {
     },
     QueryDelegatePerms {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     RecreateDelegatePerms {
@@ -97,7 +94,6 @@ enum Op {
     },
     QueryFull {
         user: User,
-        #[generator(bolero::gen_arbitrary())]
         q: Query,
     },
     RecreateFull {
@@ -108,7 +104,7 @@ enum Op {
         object: usize,
     },
     CreateBinary {
-        data: Arc<Vec<u8>>,
+        data: Arc<[u8]>,
         fake_id: Option<BinPtr>,
     },
     Vacuum {
@@ -448,7 +444,7 @@ fn fuzz_no_lock_check() {
     bolero::check!()
         .with_iterations(20)
         .with_shrink_time(std::time::Duration::from_millis(0))
-        .with_type()
+        .with_arbitrary()
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);
             config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
@@ -461,7 +457,7 @@ fn fuzz_checking_locks() {
     let cluster = TmpDb::new();
     bolero::check!()
         .with_iterations(20)
-        .with_type()
+        .with_arbitrary()
         .for_each(move |(seed, ops)| {
             let mut config = reord::Config::from_seed(*seed);
             config.check_named_locks_work_for = Some(CHECK_NAMED_LOCKS_FOR);

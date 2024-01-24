@@ -1744,7 +1744,7 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("removing {object_id:?}"))
     }
 
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<Vec<u8>>) -> crate::Result<()> {
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
@@ -1775,7 +1775,7 @@ impl Db for IndexedDb {
         res
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
         let ary = self
             .db
             .transaction(&["binaries"])
@@ -1794,7 +1794,7 @@ impl Db for IndexedDb {
         let ary = ary
             .dyn_into::<Uint8Array>()
             .wrap_context("recovering Uint8Array from stored data")?;
-        Ok(Some(Arc::new(ary.to_vec())))
+        Ok(Some(ary.to_vec().into_boxed_slice().into()))
     }
 }
 

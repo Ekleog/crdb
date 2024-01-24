@@ -121,15 +121,11 @@ impl ApiDb {
         unimplemented!() // TODO(api): implement
     }
 
-    pub async fn create_binary(
-        &self,
-        _binary_id: BinPtr,
-        _data: Arc<Vec<u8>>,
-    ) -> crate::Result<()> {
+    pub async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<[u8]>) -> crate::Result<()> {
         unimplemented!() // TODO(api): implement
     }
 
-    pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
+    pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
         unimplemented!() // TODO(api): implement
     }
 }
