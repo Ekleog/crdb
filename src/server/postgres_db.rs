@@ -1,13 +1,13 @@
 use super::ServerConfig;
 use crate::{
-    db_trait::{Db, DynNewRecreation, Timestamp},
+    db_trait::{Db, DynNewRecreation},
     error::ResultExt,
     fts,
     full_object::{Change, FullObject},
     object::parse_snapshot,
     query::Bind,
     BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
-    SessionRef, SessionToken, TypeId, User,
+    SessionRef, SessionToken, Timestamp, TypeId, User,
 };
 use anyhow::Context;
 use futures::StreamExt;
