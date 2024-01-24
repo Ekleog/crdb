@@ -118,16 +118,7 @@ impl Connection {
                     let Some(command) = command else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
-                    match command {
-                        Command::Login { url, token } => {
-                            self.state = State::Disconnected { url, token };
-                            self.event_cb.read().unwrap()(ConnectionEvent::LoggingIn);
-                        }
-                        Command::Logout => {
-                            self.state = State::NoValidInfo;
-                            self.event_cb.read().unwrap()(ConnectionEvent::LoggedOut);
-                        }
-                    }
+                    self.handle_command(command);
                 }
 
                 // Listen for incoming server messages
@@ -174,6 +165,19 @@ impl Connection {
 
     fn is_trying_to_connect(&self) -> bool {
         matches!(self.state, State::Disconnected { .. })
+    }
+
+    fn handle_command(&mut self, command: Command) {
+        match command {
+            Command::Login { url, token } => {
+                self.state = State::Disconnected { url, token };
+                self.event_cb.read().unwrap()(ConnectionEvent::LoggingIn);
+            }
+            Command::Logout => {
+                self.state = State::NoValidInfo;
+                self.event_cb.read().unwrap()(ConnectionEvent::LoggedOut);
+            }
+        }
     }
 
     async fn send(sock: &mut implem::WebSocket, msg: &ClientMessage) -> anyhow::Result<()> {
