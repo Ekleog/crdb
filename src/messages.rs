@@ -92,14 +92,17 @@ pub enum ResponsePart {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum MaybeObject {
     AlreadySubscribed(ObjectId),
-    NotYetSubscribed {
-        object_id: ObjectId,
-        created_at: EventId,
-        type_id: TypeId,
-        creation_snapshot: serde_json::Value,
-        events: BTreeMap<EventId, serde_json::Value>,
-        now_have_all_until: Timestamp,
-    },
+    NotYetSubscribed(ObjectData),
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct ObjectData {
+    pub object_id: ObjectId,
+    pub created_at: EventId,
+    pub type_id: TypeId,
+    pub creation_snapshot: serde_json::Value,
+    pub events: BTreeMap<EventId, serde_json::Value>,
+    pub now_have_all_until: Timestamp,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
