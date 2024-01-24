@@ -1,7 +1,7 @@
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     ids::RequestId,
-    messages::{ClientMessage, Request},
+    messages::{ClientMessage, Request, ServerMessage},
     SessionToken,
 };
 use futures::{channel::mpsc, StreamExt};
@@ -55,6 +55,25 @@ pub enum State {
     },
 }
 
+impl State {
+    async fn next_msg(&mut self) -> Option<anyhow::Result<ServerMessage>> {
+        match self {
+            State::NoValidInfo | State::Disconnected { .. } => None,
+            State::TokenSent { socket, .. } | State::Connected { socket, .. } => {
+                let msg = match implem::next_text(socket).await {
+                    Ok(msg) => msg,
+                    Err(err) => return Some(Err(err)),
+                };
+                let msg = match serde_json::from_str(&msg) {
+                    Ok(msg) => msg,
+                    Err(err) => return Some(Err(err.into())),
+                };
+                Some(Ok(msg))
+            }
+        }
+    }
+}
+
 pub struct Connection {
     state: State,
     commands: mpsc::UnboundedReceiver<Command>,
@@ -87,10 +106,13 @@ impl Connection {
             // TODO(api): regularly send GetTime requests for ping/pong checking
             // TODO(low): ping/pong should probably be eg. 1 minute when user is inactive, and 10s when active
             tokio::select! {
+                // Retry connecting if we're looping there
                 // TODO(low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
                 _reconnect_attempt_interval = tokio::time::sleep(Duration::from_secs(10)),
                     if self.is_trying_to_connect() => (),
+
+                // Listen for any incoming commands (including end-of-run)
                 // Note: StreamExt::next is cancellation-safe on any Stream
                 command = self.commands.next() => {
                     let Some(command) = command else {
@@ -107,8 +129,14 @@ impl Connection {
                         }
                     }
                 }
+
+                // Listen for incoming server messages
+                Some(message) = self.state.next_msg() => {
+                    unimplemented!() // TODO(api)
+                }
             }
 
+            // Attempt connecting if we're in a connection loop
             if let State::Disconnected { url, token } = self.state {
                 let mut socket = match implem::connect(&*url).await {
                     Ok(socket) => socket,

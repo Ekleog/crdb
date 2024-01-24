@@ -1,4 +1,4 @@
-use super::connection::{Command, Connection, ConnectionEvent, State};
+use super::connection::{Command, Connection, ConnectionEvent};
 use crate::{
     db_trait::{DynNewEvent, DynNewObject, DynNewRecreation},
     full_object::FullObject,

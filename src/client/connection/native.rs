@@ -10,3 +10,7 @@ pub async fn connect(_url: &str) -> Result<WebSocket, String> {
 pub async fn send(_sock: &mut WebSocket, _msg: Vec<u8>) -> Result<(), String> {
     unimplemented!() // TODO(sqlite)
 }
+
+pub async fn next_text(_sock: &mut WebSocket) -> anyhow::Result<String> {
+    unimplemented!() // TODO(sqlite)
+}
