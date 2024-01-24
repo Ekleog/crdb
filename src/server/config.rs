@@ -17,7 +17,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         cb: &'a C,
     ) -> impl 'a + CrdbFuture<Output = crate::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
 
-    fn recreate<'a, C: CanDoCallbacks>(
+    fn recreate_no_lock<'a, C: CanDoCallbacks>(
         call_on: &'a PostgresDb<Self>,
         type_id: TypeId,
         object_id: ObjectId,

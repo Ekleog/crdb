@@ -319,11 +319,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 if let Some(time) = no_new_changes_before {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
-                    let did_recreate = Config::recreate_no_lock(&self, type_id, object_id, time, cb)
-                        .await
-                        .wrap_with_context(|| {
-                            format!("recreating {object_id:?} at time {time:?}")
-                        })?;
+                    let did_recreate =
+                        Config::recreate_no_lock(&self, type_id, object_id, time, cb)
+                            .await
+                            .wrap_with_context(|| {
+                                format!("recreating {object_id:?} at time {time:?}")
+                            })?;
                     if did_recreate {
                         reord::point().await;
                         notify_recreation(Update {
