@@ -6,7 +6,6 @@ macro_rules! smoke_test {
         vacuum: $vacuum:expr,
         test_remove: $test_remove:expr,
     ) => {
-        use futures::stream::StreamExt;
         use std::sync::Arc;
         use $crate::{
             crdb_internal::{test_utils::*, Db},
@@ -129,13 +128,7 @@ macro_rules! smoke_test {
         let all_objects = $db
             .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
             .await
-            .unwrap()
-            .collect::<Vec<$crate::Result<_>>>()
-            .await;
-        let all_objects = all_objects
-            .into_iter()
-            .map(|o| o.unwrap())
-            .collect::<Vec<_>>();
+            .unwrap();
         assert_eq!(all_objects.len(), 1);
         $db.recreate::<TestObjectSimple, _>(
             Timestamp::from_ms(EVENT_ID_2.0.timestamp_ms()),
@@ -153,13 +146,7 @@ macro_rules! smoke_test {
             let all_objects = $db
                 .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
                 .await
-                .unwrap()
-                .collect::<Vec<$crate::Result<_>>>()
-                .await;
-            let all_objects = all_objects
-                .into_iter()
-                .map(|o| o.unwrap())
-                .collect::<Vec<_>>();
+                .unwrap();
             assert_eq!(all_objects.len(), 0);
         }
         let data = Arc::new([1u8, 2, 3]) as Arc<[u8]>;

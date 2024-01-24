@@ -1,8 +1,7 @@
 use crate::{
     full_object::FullObject,
     future::{CrdbSend, CrdbSync},
-    BinPtr, CanDoCallbacks, CrdbFuture, CrdbStream, EventId, Object, ObjectId, Query, Timestamp,
-    User,
+    BinPtr, CanDoCallbacks, CrdbFuture, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use std::sync::Arc;
 
@@ -33,9 +32,9 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
     fn query<T: Object>(
         &self,
         user: User,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
+        ignore_until: Option<Timestamp>,
         q: &Query,
-    ) -> impl CrdbFuture<Output = crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>>>;
+    ) -> impl CrdbFuture<Output = crate::Result<Vec<ObjectId>>>;
 
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,

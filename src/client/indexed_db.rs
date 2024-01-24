@@ -6,8 +6,8 @@ use crate::{
     fts,
     full_object::{Change, FullObject},
     object::parse_snapshot_js,
-    BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Timestamp,
-    TypeId, User,
+    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId,
+    User,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -1261,7 +1261,7 @@ impl Db for IndexedDb {
         _user: User,
         _ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<Vec<ObjectId>> {
         q.check()?;
         let type_id_js = T::type_ulid().to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
@@ -1309,18 +1309,17 @@ impl Db for IndexedDb {
                     let snapshot = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot)
                         .wrap_context("deserializing snapshot data as serde_json::Value")?;
                     if q.matches_json(&snapshot) {
-                        objects.push(
-                            cursor
-                                .key()
-                                .ok_or_else(|| {
-                                    crate::Error::Other(anyhow!(
-                                        "cursor had a primary key but no key"
-                                    ))
-                                })?
-                                .dyn_into::<Array>()
-                                .wrap_context("cursor key was not an array")?
-                                .get(2),
-                        );
+                        let object_id_js = cursor
+                            .key()
+                            .ok_or_else(|| {
+                                crate::Error::Other(anyhow!("cursor had a primary key but no key"))
+                            })?
+                            .dyn_into::<Array>()
+                            .wrap_context("cursor key was not an array")?
+                            .get(2);
+                        let object_id = serde_wasm_bindgen::from_value::<ObjectId>(object_id_js)
+                            .wrap_context("deserializing object id")?;
+                        objects.push(object_id);
                     }
                     cursor
                         .advance(1)
@@ -1333,17 +1332,7 @@ impl Db for IndexedDb {
             .wrap_context("finding a first snapshot to answer")?;
 
         // Retrieve them one by one
-        Ok(async_stream::stream! {
-            let type_id_js = T::type_ulid().to_js_string();
-            for object_id_js in objects {
-                let object_id = serde_wasm_bindgen::from_value::<ObjectId>(object_id_js.clone())
-                    .wrap_context("deserializing object id")?;
-                match self.get_impl::<T>(false, object_id, &type_id_js, &object_id_js).await {
-                    Err(crate::Error::ObjectDoesNotExist(_)) => continue,
-                    res => yield res,
-                }
-            }
-        })
+        Ok(objects)
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(

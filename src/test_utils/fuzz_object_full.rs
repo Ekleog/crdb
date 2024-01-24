@@ -134,7 +134,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .query::<TestObjectFull>(*user, None, &q)
                 .await
                 .wrap_context("querying mem");
-            cmp_query_results::<TestObjectFull>(pg, mem).await?;
+            cmp(pg, mem)?;
         }
         Op::Recreate { object, time } => {
             let o = s.object(*object);

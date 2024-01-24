@@ -7,8 +7,8 @@ use crate::{
     messages::{Update, UpdateData},
     object::parse_snapshot,
     query::Bind,
-    BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
-    SessionRef, SessionToken, Timestamp, TypeId, User,
+    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
+    SessionToken, Timestamp, TypeId, User,
 };
 use anyhow::Context;
 use futures::StreamExt;
@@ -1552,9 +1552,9 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
     async fn query<T: Object>(
         &self,
         user: User,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
+        ignore_until: Option<Timestamp>,
         q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<Vec<ObjectId>> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -1581,7 +1581,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             ",
             q.where_clause(4)
         );
-        let min_last_modified = ignore_not_modified_on_server_since
+        let min_last_modified = ignore_until
             .map(|t| t.time_ms_i())
             .transpose()?
             .unwrap_or(0);
@@ -1601,21 +1601,13 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             }
         }
         reord::point().await;
-        let ids = query
+        let res = query
+            .map(|row| ObjectId::from_uuid(row.get(0)))
             .fetch_all(&mut *transaction)
             .await
             .wrap_with_context(|| format!("listing objects matching query {q:?}"))?;
 
-        Ok(async_stream::stream! {
-            for id in ids {
-                let object_id = ObjectId::from_uuid(id.get(0));
-                let object = get_impl::<T>(&mut *transaction, object_id).await;
-                match object {
-                    Err(crate::Error::ObjectDoesNotExist(o)) if o == object_id => panic!("Found {o:?} that matches query, but was unable to get it"),
-                    res => yield res,
-                }
-            }
-        })
+        Ok(res)
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(

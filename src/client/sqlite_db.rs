@@ -4,7 +4,7 @@ use crate::{
     error::ResultExt,
     fts,
     full_object::FullObject,
-    BinPtr, CanDoCallbacks, CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp, User,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -178,11 +178,10 @@ impl Db for SqliteDb {
     async fn query<T: Object>(
         &self,
         user: User,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
+        ignore_until: Option<Timestamp>,
         q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
-        // unimplemented!() // TODO(sqlite): implement
-        Ok(futures::stream::empty())
+    ) -> crate::Result<Vec<ObjectId>> {
+        unimplemented!() // TODO(sqlite): implement
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(

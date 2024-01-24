@@ -198,7 +198,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .query::<TestObjectPerms>(*user, None, &q)
                 .await
                 .wrap_context("querying mem");
-            cmp_query_results::<TestObjectPerms>(pg, mem).await?;
+            cmp(pg, mem)?;
         }
         Op::QueryDelegatePerms { user, q } => {
             let pg = db
@@ -210,7 +210,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .query::<TestObjectDelegatePerms>(*user, None, &q)
                 .await
                 .wrap_context("querying mem");
-            cmp_query_results::<TestObjectDelegatePerms>(pg, mem).await?;
+            cmp(pg, mem)?;
         }
         Op::RecreatePerm { object, time } => {
             let o = s.object(*object);

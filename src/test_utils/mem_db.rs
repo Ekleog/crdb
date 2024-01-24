@@ -203,18 +203,19 @@ impl Db for MemDb {
     async fn query<T: Object>(
         &self,
         user: User,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
+        ignore_until: Option<Timestamp>,
         q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<Vec<ObjectId>> {
         assert!(
-            ignore_not_modified_on_server_since.is_none(),
+            // TODO(test): with the new Db api this should get better
+            ignore_until.is_none(),
             "Time-based tests are currently not implemented"
         );
         q.check()?;
         let q = &q;
         let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
         let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
-        let res = stream::iter(objects.into_iter())
+        stream::iter(objects.into_iter())
             .filter_map(|(_, (t, full_object))| async move {
                 if t != *T::type_ulid() {
                     return None;
@@ -233,11 +234,12 @@ impl Db for MemDb {
                 {
                     return None;
                 }
-                Some(Ok(full_object))
+                Some(Ok(full_object.id()))
             })
-            .collect::<Vec<crate::Result<FullObject>>>()
-            .await;
-        Ok(stream::iter(res.into_iter()))
+            .collect::<Vec<crate::Result<ObjectId>>>()
+            .await
+            .into_iter()
+            .collect::<crate::Result<Vec<ObjectId>>>()
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(

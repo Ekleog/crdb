@@ -5,7 +5,7 @@ use crate::{
     db_trait::Db,
     full_object::FullObject,
     messages::{Update, UpdateData},
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp, User,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::{channel::mpsc, StreamExt};
 use std::{sync::Arc, time::Duration};
@@ -236,10 +236,11 @@ impl ClientDb {
 
     pub async fn query_local<'a, T: Object>(
         &'a self,
-        q: &'a Query,
+        _q: &'a Query,
     ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<FullObject>>> {
         // User is ignored for LocalDb queries
-        self.db.query::<T>(User::from_u128(0), None, q).await
+        //self.db.query::<T>(User::from_u128(0), None, q).await
+        Ok(futures::stream::empty()) // TODO(client): actually implement as soon as the new Db trait design is done
     }
 
     pub async fn query_remote<T: Object>(

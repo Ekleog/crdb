@@ -1,9 +1,8 @@
 use super::{BinariesCache, ObjectCache};
 use crate::{
     db_trait::Db, error::ResultExt, full_object::FullObject, hash_binary, BinPtr, CanDoCallbacks,
-    CrdbStream, EventId, Object, ObjectId, Query, Timestamp, User,
+    EventId, Object, ObjectId, Query, Timestamp, User,
 };
-use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -152,27 +151,14 @@ impl<D: Db> Db for CacheDb<D> {
     async fn query<T: Object>(
         &self,
         user: User,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
+        ignore_until: Option<Timestamp>,
         q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<Vec<ObjectId>> {
         // We cannot use the object cache here, because it is not guaranteed to contain
         // all the queried objects, due to being an LRU cache. So, immediately delegate
         // to the underlying database, which should forward to either PostgreSQL for the
         // server, or IndexedDB/SQLite for the client.
-        Ok(self
-            .db
-            .query::<T>(user, ignore_not_modified_on_server_since, q)
-            .await?
-            .then(|o| async {
-                let o = o?;
-                let mut cache = self.cache.write().await;
-                if let Err(error) = cache.insert::<T>(o.clone()) {
-                    let id = o.id();
-                    tracing::error!(?id, ?error, "failed inserting queried object in cache");
-                    cache.remove(&id);
-                }
-                Ok(o)
-            }))
+        self.db.query::<T>(user, ignore_until, q).await
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
