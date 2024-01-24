@@ -29,7 +29,7 @@ impl ApiDb {
         crate::spawn(
             Connection {
                 commands,
-                state: State::NoValidToken,
+                state: State::NoValidInfo,
                 event_cb: connection_event_cb.clone(),
                 new_events_sender,
                 new_objects_sender,

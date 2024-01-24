@@ -25,12 +25,13 @@ pub enum Command {
 
 pub enum ConnectionEvent {
     LoggingIn,
+    FailedConnecting(String),
     Connected,
     LoggedOut,
 }
 
 pub enum State {
-    NoValidToken,
+    NoValidInfo,
     Disconnected {
         url: Arc<String>,
         token: SessionToken,
@@ -68,7 +69,7 @@ impl Connection {
                             self.event_cb.read().unwrap()(ConnectionEvent::LoggingIn);
                         }
                         Command::Logout => {
-                            self.state = State::NoValidToken;
+                            self.state = State::NoValidInfo;
                             self.event_cb.read().unwrap()(ConnectionEvent::LoggedOut);
                         }
                     }
@@ -76,6 +77,14 @@ impl Connection {
             }
 
             if let State::Disconnected { url, token } = self.state {
+                let socket = match implem::connect(&*url).await {
+                    Ok(socket) => socket,
+                    Err(err) => {
+                        self.event_cb.read().unwrap()(ConnectionEvent::FailedConnecting(err));
+                        self.state = State::NoValidInfo;
+                        continue;
+                    }
+                };
                 unimplemented!() // TODO(api)
             }
         }
