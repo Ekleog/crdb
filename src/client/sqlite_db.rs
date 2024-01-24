@@ -183,6 +183,14 @@ impl Db for SqliteDb {
         unimplemented!() // TODO(sqlite): implement
     }
 
+    async fn get_latest<T: Object>(
+        &self,
+        lock: bool,
+        object_id: ObjectId,
+    ) -> crate::Result<Arc<T>> {
+        unimplemented!() // TODO(sqlite): implement
+    }
+
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object: ObjectId,

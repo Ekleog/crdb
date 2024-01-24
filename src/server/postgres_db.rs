@@ -1611,6 +1611,17 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         get_impl::<T>(&mut *transaction, object_id).await
     }
 
+    async fn get_latest<T: Object>(
+        &self,
+        lock: bool,
+        object_id: ObjectId,
+    ) -> crate::Result<Arc<T>> {
+        // TODO(high): actually implement properly
+        let res = Db::get::<T>(self, lock, object_id).await?;
+        res.last_snapshot::<T>()
+            .wrap_context("retrieving last snapshot")
+    }
+
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,

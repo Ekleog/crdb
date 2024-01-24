@@ -32,6 +32,12 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         ptr: ObjectId,
     ) -> impl CrdbFuture<Output = crate::Result<FullObject>>;
 
+    fn get_latest<T: Object>(
+        &self,
+        lock: bool,
+        object_id: ObjectId,
+    ) -> impl CrdbFuture<Output = crate::Result<Arc<T>>>;
+
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
