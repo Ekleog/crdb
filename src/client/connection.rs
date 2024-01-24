@@ -237,7 +237,10 @@ impl Connection {
                 request,
                 response,
                 last_response,
-            } => unimplemented!(), // TODO(api): implement
+            } => {
+                let _ = (socket, request, response, last_response);
+                unimplemented!() // TODO(api): implement
+            }
         }
     }
 
