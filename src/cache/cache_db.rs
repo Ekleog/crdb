@@ -200,7 +200,10 @@ impl<D: Db> Db for CacheDb<D> {
             "Provided id {binary_id:?} does not match value hash {:?}",
             hash_binary(&*data),
         );
-        self.binaries.write().await.insert(binary_id, data.clone());
+        self.binaries
+            .write()
+            .await
+            .insert(binary_id, Arc::downgrade(&data));
         self.db.create_binary(binary_id, data).await
     }
 
@@ -211,7 +214,10 @@ impl<D: Db> Db for CacheDb<D> {
         let Some(res) = self.db.get_binary(binary_id).await? else {
             return Ok(None);
         };
-        self.binaries.write().await.insert(binary_id, res.clone());
+        self.binaries
+            .write()
+            .await
+            .insert(binary_id, Arc::downgrade(&res));
         Ok(Some(res))
     }
 }
