@@ -34,6 +34,7 @@ pub enum Request {
         only_updated_since: Option<Timestamp>,
         subscribe: bool,
     },
+    GetBinaries(HashSet<BinPtr>),
     Unsubscribe(HashSet<ObjectId>),
     UnsubscribeQuery(Query),
     Upload(Vec<UploadOrBinary>),
@@ -42,7 +43,7 @@ pub enum Request {
 #[derive(serde::Deserialize, serde::Serialize)]
 pub enum UploadOrBinary {
     Upload(Upload),
-    Binary(Arc<Vec<u8>>),
+    Binary, // If set to `Binary`, then the binary is in the websocket frame of type `Binary` just after this one
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -91,6 +92,8 @@ pub enum ResponsePart {
     Sessions(Vec<Session>),
     CurrentTime(Timestamp),
     Objects(Vec<MaybeObject>),
+    // Note: the server's answer to GetBinaries is a Success message, followed by one
+    // websocket frame of type Binary per requested binary.
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
