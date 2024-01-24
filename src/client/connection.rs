@@ -30,8 +30,8 @@ pub enum Command {
 
 pub enum ConnectionEvent {
     LoggingIn,
-    FailedConnecting(String),
-    FailedSendingToken(String),
+    FailedConnecting(anyhow::Error),
+    FailedSendingToken(anyhow::Error),
     Connected,
     LoggedOut,
 }
@@ -152,8 +152,8 @@ impl Connection {
                     request: Request::SetToken(token),
                 };
                 let message =
-                    serde_json::to_vec(&message).expect("failed serializing client message");
-                if let Err(err) = implem::send(&mut socket, message).await {
+                    serde_json::to_string(&message).expect("failed serializing client message");
+                if let Err(err) = implem::send_text(&mut socket, message).await {
                     self.event_cb.read().unwrap()(ConnectionEvent::FailedSendingToken(err));
                     self.state = State::Disconnected { url, token }; // try again next loop
                     continue;

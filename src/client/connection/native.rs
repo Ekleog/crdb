@@ -3,11 +3,11 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 pub type WebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-pub async fn connect(_url: &str) -> Result<WebSocket, String> {
+pub async fn connect(_url: &str) -> anyhow::Result<WebSocket> {
     unimplemented!() // TODO(sqlite)
 }
 
-pub async fn send(_sock: &mut WebSocket, _msg: Vec<u8>) -> Result<(), String> {
+pub async fn send_text(_sock: &mut WebSocket, _msg: String) -> anyhow::Result<()> {
     unimplemented!() // TODO(sqlite)
 }
 
