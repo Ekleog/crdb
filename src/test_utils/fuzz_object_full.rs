@@ -77,7 +77,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             object,
         } => {
             let mut object = object.clone();
-            Arc::make_mut(&mut object).standardize();
+            Arc::make_mut(&mut object).standardize(*id);
             if !object.can_create(USER_ID_NULL, *id, &s.mem_db).await? {
                 return Ok(());
             }

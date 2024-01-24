@@ -47,8 +47,9 @@ pub enum TestEventFull {
 }
 
 impl TestObjectFull {
-    pub fn standardize(&mut self) {
+    pub fn standardize(&mut self, self_id: ObjectId) {
         self.deps.sort_unstable();
+        self.deps.retain(|d| d.to_object_id() > self_id);
     }
 }
 
