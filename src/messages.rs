@@ -100,7 +100,7 @@ pub struct ObjectData {
     pub object_id: ObjectId,
     pub created_at: EventId,
     pub type_id: TypeId,
-    pub creation_snapshot: serde_json::Value,
+    pub creation_snapshot: Option<serde_json::Value>,
     pub events: BTreeMap<EventId, serde_json::Value>,
     pub now_have_all_until: Timestamp,
 }
