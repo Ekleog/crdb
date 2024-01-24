@@ -83,6 +83,10 @@ macro_rules! generate_client {
                 self.db.unsubscribe(object.to_object_id())
             }
 
+            pub fn listen_for_updates(&self) -> crdb::tokio::sync::broadcast::Receiver<crdb::ObjectId> {
+                self.db.listen_for_updates()
+            }
+
             $(crdb::paste! {
                 pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
                     async move {

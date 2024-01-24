@@ -9,13 +9,14 @@ use crate::{
 };
 use futures::{channel::mpsc, StreamExt};
 use std::{sync::Arc, time::Duration};
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
 pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
+    updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
 }
@@ -28,6 +29,7 @@ impl ClientDb {
     ) -> anyhow::Result<ClientDb> {
         C::check_ulids();
         let (api, updates_receiver) = ApiDb::new();
+        let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let api = Arc::new(api);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
@@ -36,15 +38,24 @@ impl ClientDb {
             api,
             db,
             db_bypass,
+            updates_broadcastee,
             vacuum_guard: Arc::new(RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
         };
-        this.setup_watchers::<C>(updates_receiver);
+        this.setup_watchers::<C>(updates_receiver, updates_broadcaster);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
         Ok(this)
     }
 
-    fn setup_watchers<C: ApiConfig>(&self, mut updates_receiver: mpsc::UnboundedReceiver<Update>) {
+    pub fn listen_for_updates(&self) -> broadcast::Receiver<ObjectId> {
+        self.updates_broadcastee.resubscribe()
+    }
+
+    fn setup_watchers<C: ApiConfig>(
+        &self,
+        mut updates_receiver: mpsc::UnboundedReceiver<Update>,
+        updates_broadcaster: broadcast::Sender<ObjectId>,
+    ) {
         // No need for a cancellation token: this task will automatically end as soon as the stream
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
         crate::spawn({
@@ -94,6 +105,9 @@ impl ClientDb {
                                 );
                             }
                         }
+                    }
+                    if let Err(err) = updates_broadcaster.send(object_id) {
+                        tracing::error!(?err, ?object_id, "failed broadcasting update");
                     }
                 }
             }
