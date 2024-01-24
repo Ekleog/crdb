@@ -4,9 +4,6 @@ use crate::{
     BinPtr, CanDoCallbacks, CrdbFuture,
 };
 
-pub(crate) mod query;
-pub use query::{JsonPathItem, Query};
-
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct UploadId(pub i64);
 

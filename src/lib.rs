@@ -9,6 +9,7 @@ mod future;
 mod ids;
 mod messages;
 mod object;
+mod query;
 mod session;
 #[cfg(feature = "_tests")]
 pub mod test_utils;
@@ -16,13 +17,13 @@ pub mod test_utils;
 #[cfg(all(test, not(feature = "_tests")))]
 const _: () = panic!("running tests without the `_tests` feature enabled");
 
-pub use api::{JsonPathItem, Query};
 pub use db_trait::Timestamp;
 pub use dbptr::DbPtr;
 pub use error::{Error, Result, SerializableError};
 pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
 pub use ids::{BinPtr, EventId, ObjectId, TypeId, User};
 pub use object::{CanDoCallbacks, Event, Object};
+pub use query::{JsonPathItem, Query};
 pub use session::{NewSession, Session, SessionRef, SessionToken};
 
 use db_trait::Db;

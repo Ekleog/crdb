@@ -1,11 +1,11 @@
 use super::ServerConfig;
 use crate::{
-    api::query::Bind,
     db_trait::{Db, DynNewRecreation, Timestamp},
     error::ResultExt,
     fts,
     full_object::{Change, FullObject},
     object::parse_snapshot,
+    query::Bind,
     BinPtr, CanDoCallbacks, CrdbStream, DbPtr, Event, EventId, Object, ObjectId, Query, Session,
     SessionRef, SessionToken, TypeId, User,
 };

@@ -1,8 +1,7 @@
 use crate::{
-    api::Query,
     full_object::{DynSized, FullObject},
     future::{CrdbSend, CrdbSync},
-    BinPtr, CanDoCallbacks, CrdbFuture, CrdbStream, EventId, Object, ObjectId, TypeId, User,
+    BinPtr, CanDoCallbacks, CrdbFuture, CrdbStream, EventId, Object, ObjectId, Query, TypeId, User,
 };
 use std::{sync::Arc, time::SystemTime};
 use ulid::Ulid;
