@@ -231,10 +231,7 @@ impl Connection {
             panic!("Called handle_connected_message while not actually connected");
         };
         match message {
-            ServerMessage::Update {
-                updates,
-                now_have_all_until,
-            } => unimplemented!(), // TODO(api): implement
+            ServerMessage::Updates(updates) => unimplemented!(), // TODO(api): implement
             ServerMessage::Response {
                 request,
                 response,

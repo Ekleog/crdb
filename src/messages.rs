@@ -77,10 +77,7 @@ pub enum ServerMessage {
         response: ResponsePart,
         last_response: bool,
     },
-    Update {
-        updates: Vec<Update>,
-        now_have_all_until: Timestamp,
-    },
+    Updates(Vec<Update>),
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
