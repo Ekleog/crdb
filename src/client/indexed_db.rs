@@ -1356,6 +1356,14 @@ impl Db for IndexedDb {
                     }
                     .into());
                 }
+                if creation_meta.snapshot_id > new_created_at {
+                    return Err(crate::Error::EventTooEarly {
+                        event_id: new_created_at,
+                        object_id,
+                        created_at: creation_meta.snapshot_id,
+                    }
+                    .into());
+                }
 
                 // Check if the requested new_created_at is after the current latest snapshot
                 let latest_snapshot_meta_js = latest_type_object

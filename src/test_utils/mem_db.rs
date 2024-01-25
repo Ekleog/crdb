@@ -274,6 +274,13 @@ impl Db for MemDb {
                 real_type_id,
             });
         }
+        if o.created_at() > new_created_at {
+            return Err(crate::Error::EventTooEarly {
+                event_id: new_created_at,
+                object_id,
+                created_at: o.created_at(),
+            });
+        }
         if let Some(e) = this.events.get(&new_created_at) {
             if e.0 != object_id {
                 crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
