@@ -100,7 +100,9 @@ pub struct ObjectData {
     pub object_id: ObjectId,
     pub created_at: EventId,
     pub type_id: TypeId,
-    pub creation_snapshot: Option<serde_json::Value>,
+    // TODO(low): expose some API to make it easy for client writers to notice they're getting snapshots
+    // with versions higher than what their current code version supports, to suggest an upgrade
+    pub creation_snapshot: Option<(i32, serde_json::Value)>,
     pub events: BTreeMap<EventId, serde_json::Value>,
     pub now_have_all_until: Timestamp,
 }

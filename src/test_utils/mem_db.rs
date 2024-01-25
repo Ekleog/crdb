@@ -251,7 +251,6 @@ impl Db for MemDb {
         lock: bool,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
-        // TODO(high): actually implement properly
         let res = self.get::<T>(lock, object_id).await?;
         res.last_snapshot::<T>()
             .wrap_context("retrieving last snapshot")

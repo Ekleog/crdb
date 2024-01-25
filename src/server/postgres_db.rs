@@ -3,15 +3,14 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     fts,
-    full_object::{Change, FullObject},
-    messages::{Update, UpdateData},
+    messages::{ObjectData, Update, UpdateData},
     object::parse_snapshot,
     query::Bind,
     BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
     SessionToken, Timestamp, TypeId, User,
 };
 use anyhow::Context;
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
 use sqlx::Row;
 use std::{
@@ -1551,9 +1550,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
     }
 
-    // TODO(high): decide what to do with this function
-    #[allow(dead_code)]
-    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
+    #[allow(dead_code)] // TODO(api): use to answer get requests, plus filter based on if-modified-since
+    async fn get_all(
+        &self,
+        expected_type_id: TypeId,
+        object_id: ObjectId,
+    ) -> crate::Result<ObjectData> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -1586,7 +1588,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
         };
         let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
-        let expected_type_id = *T::type_ulid();
         if real_type_id != expected_type_id {
             return Err(crate::Error::WrongType {
                 object_id,
@@ -1600,82 +1601,23 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id",
             object_id as ObjectId
         )
-        .fetch_all(&mut *transaction)
+        .map(|r| (EventId::from_uuid(r.event_id), r.data))
+        .fetch(&mut *transaction)
+        .try_collect::<BTreeMap<EventId, serde_json::Value>>()
         .await
         .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
 
-        reord::point().await;
-        let latest_snapshot = sqlx::query!(
-            "
-                    SELECT snapshot_id, snapshot_version, snapshot
-                    FROM snapshots
-                    WHERE object_id = $1
-                    AND type_id = $2
-                    AND is_latest
-                ",
-            object_id as ObjectId,
-            T::type_ulid() as &TypeId,
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
-
-        // Build the FullObject from the parts
-        let creation = Arc::new(
-            parse_snapshot::<T>(
+        Ok(ObjectData {
+            object_id,
+            created_at: EventId::from_uuid(creation_snapshot.snapshot_id),
+            type_id: expected_type_id,
+            creation_snapshot: Some((
                 creation_snapshot.snapshot_version,
                 creation_snapshot.snapshot,
-            )
-            .wrap_with_context(|| {
-                format!(
-                    "parsing snapshot {:?} as type {:?}",
-                    creation_snapshot.snapshot_id,
-                    T::type_ulid()
-                )
-            })?,
-        );
-        if !events.is_empty() {
-            debug_assert!(events[0].event_id > creation_snapshot.snapshot_id);
-            debug_assert!(events[events.len() - 1].event_id == latest_snapshot.snapshot_id);
-        }
-        let mut changes = BTreeMap::new();
-        for e in events.into_iter() {
-            let event_id = EventId::from_uuid(e.event_id);
-            changes.insert(
-                event_id,
-                Change::new(Arc::new(
-                    serde_json::from_value::<T::Event>(e.data).wrap_with_context(|| {
-                        format!("parsing event {event_id:?} as type {:?}", T::type_ulid())
-                    })?,
-                )),
-            );
-        }
-        if let Some(mut c) = changes.last_entry() {
-            c.get_mut().set_snapshot(Arc::new(
-                parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
-                    .wrap_with_context(|| {
-                        format!(
-                            "parsing snapshot {:?} as type {:?}",
-                            latest_snapshot.snapshot_id,
-                            T::type_ulid()
-                        )
-                    })?,
-            ));
-        } else {
-            assert!(
-                creation_snapshot.snapshot_id == latest_snapshot.snapshot_id,
-                "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
-                latest_snapshot.snapshot_id,
-                creation_snapshot.snapshot_id
-            );
-        }
-
-        Ok(FullObject::from_parts(
-            object_id,
-            EventId::from_uuid(creation_snapshot.snapshot_id),
-            creation,
-            changes,
-        ))
+            )),
+            events,
+            now_have_all_until: Timestamp::now(), // TODO(server): this is a lie! implement properly
+        })
     }
 }
 
