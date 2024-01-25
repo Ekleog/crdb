@@ -1,6 +1,5 @@
 use crate::{
-    ids::RequestId,
-    messages::{ClientMessage, Request, ResponsePart, ServerMessage, Update},
+    messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Update},
     SessionToken, Timestamp,
 };
 use anyhow::anyhow;
@@ -94,10 +93,10 @@ impl State {
 
 pub struct Connection {
     state: State,
+    last_request_id: RequestId,
     commands: mpsc::UnboundedReceiver<Command>,
     requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     // TODO(api): make sure not_sent_request always includes requests that were submitted last connection but didn't receive an answer
-    // On that topic, RequestId should maybe become a simple u64? it'd be easier to make sure to always re-submit requests in-order
     // TODO(api): upon reconnecting we should also re-subscribe to all the things we were previously subscribed on
     not_sent_requests: VecDeque<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     pending_requests: HashMap<RequestId, mpsc::UnboundedSender<ResponsePart>>,
@@ -116,11 +115,12 @@ impl Connection {
         update_sender: mpsc::UnboundedSender<Update>,
     ) -> Connection {
         Connection {
+            state: State::NoValidInfo,
+            last_request_id: RequestId(0),
             commands,
             requests,
             not_sent_requests: VecDeque::new(),
             pending_requests: HashMap::new(),
-            state: State::NoValidInfo,
             event_cb,
             update_sender,
             last_ping: Timestamp::now()
@@ -143,7 +143,7 @@ impl Connection {
 
                 // Send the next ping, if it's time to do it
                 Some(_) = OptionFuture::from(self.next_ping.map(tokio::time::sleep_until)), if self.is_connected() => {
-                    let request_id = RequestId::now();
+                    let request_id = self.next_request_id();
                     let _ = self.send_connected(&ClientMessage {
                         request_id,
                         request: Request::GetTime,
@@ -238,7 +238,9 @@ impl Connection {
             }
 
             // Attempt connecting if we're not connected but have connection info
-            if let State::Disconnected { url, token } = self.state {
+            if let State::Disconnected { url, token } = &self.state {
+                let url = url.clone();
+                let token = *token;
                 let mut socket = match implem::connect(&*url).await {
                     Ok(socket) => socket,
                     Err(err) => {
@@ -247,7 +249,7 @@ impl Connection {
                         continue;
                     }
                 };
-                let request_id = RequestId::now();
+                let request_id = self.next_request_id();
                 let message = ClientMessage {
                     request_id,
                     request: Request::SetToken(token),
@@ -283,6 +285,11 @@ impl Connection {
         )
     }
 
+    fn next_request_id(&mut self) -> RequestId {
+        self.last_request_id = RequestId(self.last_request_id.0 + 1);
+        self.last_request_id
+    }
+
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::Login { url, token } => {
@@ -301,7 +308,7 @@ impl Connection {
         sender: mpsc::UnboundedSender<ResponsePart>,
         request: Request,
     ) {
-        let request_id = RequestId::now();
+        let request_id = self.next_request_id();
         let message = ClientMessage {
             request_id,
             request,

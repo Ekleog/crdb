@@ -1,8 +1,12 @@
 use crate::{
-    ids::RequestId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
-    TypeId,
+    BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, TypeId,
 };
 use std::collections::{BTreeMap, HashSet};
+
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
+pub struct RequestId(pub u64);
 
 // TODO(low): review what all the (de)serialized JSON for all the types defined here looks like
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
