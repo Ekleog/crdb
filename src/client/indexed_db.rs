@@ -1375,7 +1375,7 @@ impl Db for IndexedDb {
                     serde_wasm_bindgen::from_value::<SnapshotMeta>(latest_snapshot_meta_js)
                         .wrap_context("deserializing latest snapshot metadata")?;
                 let new_creation_should_be_latest =
-                    latest_snapshot_meta.snapshot_id >= new_created_at;
+                    latest_snapshot_meta.snapshot_id <= new_created_at;
 
                 // Delete all events prior to the new creation snapshot
                 let mut to_delete = object_event

@@ -590,6 +590,27 @@ async fn regression_postgres_handled_numbers_as_one_element_arrays() {
     .await;
 }
 
+#[fuzz_helpers::test]
+async fn regression_indexeddb_recreation_considered_dates_the_other_way_around() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::Create {
+                id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectSimple(vec![221, 218])),
+            },
+            Op::Recreate {
+                object: 0,
+                new_created_at: EVENT_ID_2,
+                data: Arc::new(TestObjectSimple(vec![])),
+            },
+        ]),
+    )
+    .await;
+}
+
 /*
 #[fuzz_helpers::test]
 async fn impl_reproducer() {
