@@ -48,12 +48,6 @@ build-example-basic-client:
 test-example-basic-host NAME='':
     cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p api -p server -p client-native {{NAME}}
 
-fuzz-object-cache ARGS='':
-    cargo bolero test --all-features \
-        cache::object_cache::tests::cache_state_stays_valid \
-        --corpus-dir src/cache/object_cache/__fuzz__/cache__object_cache__tests__cache_state_stays_valid/corpus.nounit \
-        {{ARGS}}
-
 fuzz-pg-basic ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_simple::fuzz \
