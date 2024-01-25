@@ -4,7 +4,6 @@ use crate::{
     cache::CacheDb,
     db_trait::Db,
     error::ResultExt,
-    full_object::FullObject,
     messages::{ObjectData, Update, UpdateData},
     object::parse_snapshot,
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
@@ -204,7 +203,11 @@ impl ClientDb {
     }
 
     /// Returns the latest snapshot for the object described by `data`
-    async fn create_all<T: Object>(&self, lock: bool, data: ObjectData) -> crate::Result<()> {
+    async fn create_all<T: Object>(
+        db: &CacheDb<LocalDb>,
+        lock: bool,
+        data: ObjectData,
+    ) -> crate::Result<()> {
         if data.type_id != *T::type_ulid() {
             return Err(crate::Error::WrongType {
                 object_id: data.object_id,
@@ -217,23 +220,21 @@ impl ClientDb {
             let creation_snapshot = parse_snapshot::<T>(creation_snapshot.0, creation_snapshot.1)
                 .wrap_context("parsing snapshot")?;
 
-            self.db
-                .create::<T, _>(
-                    data.object_id,
-                    data.created_at,
-                    Arc::new(creation_snapshot),
-                    lock,
-                    &*self.db,
-                )
-                .await
-                .wrap_context("creating creation snapshot in local database")?;
+            db.create::<T, _>(
+                data.object_id,
+                data.created_at,
+                Arc::new(creation_snapshot),
+                lock,
+                &*db,
+            )
+            .await
+            .wrap_context("creating creation snapshot in local database")?;
         }
 
         for (event_id, event) in data.events {
             let event = serde_json::from_value::<T::Event>(event).wrap_context("parsing event")?;
 
-            self.db
-                .submit::<T, _>(data.object_id, event_id, Arc::new(event), &*self.db)
+            db.submit::<T, _>(data.object_id, event_id, Arc::new(event), &*db)
                 .await
                 .wrap_context("creating event in local database")?;
         }
@@ -248,7 +249,7 @@ impl ClientDb {
             Err(e) => return Err(e),
         }
         let res = self.api.get_all(object_id).await?;
-        self.create_all::<T>(lock, res).await?;
+        Self::create_all::<T>(&self.db, lock, res).await?;
         Ok(self.db.get_latest::<T>(lock, object_id).await?)
     }
 
@@ -277,25 +278,22 @@ impl ClientDb {
 
     pub async fn query_remote<T: Object>(
         &self,
-        _lock: bool,
-        ignore_not_modified_on_server_since: Option<Timestamp>,
-        q: &Query,
-    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
-        Ok(self
-            .api
-            .query::<T>(ignore_not_modified_on_server_since, q)
-            .await?
-            .then({
-                let db = self.db.clone();
-                move |o| {
-                    let _db = db.clone();
-                    async move {
-                        let o = o?;
-                        // TODO(high): db.create_all::<T, _>(o.clone(), lock, &*db).await?;
-                        Ok(o)
-                    }
+        lock: bool,
+        only_updated_since: Option<Timestamp>,
+        query: &Query,
+    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
+        Ok(self.api.query::<T>(only_updated_since, query).await?.then({
+            let db = self.db.clone();
+            move |data| {
+                let db = db.clone();
+                async move {
+                    let data = data?;
+                    let object_id = data.object_id;
+                    Self::create_all::<T>(&db, lock, data).await?;
+                    Ok(self.db.get_latest::<T>(lock, object_id).await?)
                 }
-            }))
+            }
+        }))
     }
 
     pub async fn recreate<T: Object>(

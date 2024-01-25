@@ -1,6 +1,5 @@
 use super::connection::{Command, Connection, ConnectionEvent};
 use crate::{
-    full_object::FullObject,
     messages::{ObjectData, Update},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
@@ -73,9 +72,9 @@ impl ApiDb {
 
     pub async fn query<T: Object>(
         &self,
-        _ignore_not_modified_on_server_since: Option<Timestamp>,
+        _only_updated_since: Option<Timestamp>,
         _q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<FullObject>>> {
+    ) -> crate::Result<impl CrdbStream<Item = crate::Result<ObjectData>>> {
         // unimplemented!() // TODO(api): implement
         Ok(futures::stream::empty())
     }

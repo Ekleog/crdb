@@ -118,21 +118,14 @@ macro_rules! generate_client {
                 pub fn [< query_ $name _remote >]<'a>(
                     &'a self,
                     lock: bool,
-                    ignore_not_modified_on_server_since: Option<crdb::Timestamp>,
-                    q: &'a crdb::Query,
+                    only_updated_since: Option<crdb::Timestamp>,
+                    query: &'a crdb::Query,
                 ) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
-                    async move {
-                        Ok(self.db.query_remote::<$object>(
-                            lock,
-                            ignore_not_modified_on_server_since,
-                            q,
-                        )
-                        .await?
-                        .then(|o| async move {
-                            o?.last_snapshot()
-                                .wrap_context("recovering the last snapshot of known-type object")
-                        }))
-                    }
+                    self.db.query_remote::<$object>(
+                        lock,
+                        only_updated_since,
+                        query,
+                    )
                 }
             })*
         }
