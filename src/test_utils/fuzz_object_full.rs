@@ -10,7 +10,7 @@ use super::fuzz_helpers::{
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
 use anyhow::Context;
-use std::{ops::Bound, sync::Arc};
+use std::sync::Arc;
 use ulid::Ulid;
 
 #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
@@ -27,7 +27,6 @@ enum Op {
     },
     Get {
         object: usize,
-        at: EventId,
     },
     Query {
         user: User,
@@ -104,25 +103,18 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .await;
             cmp(pg, mem)?;
         }
-        Op::Get { object, at } => {
+        Op::Get { object } => {
             let o = s.object(*object);
-            let pg: crdb::Result<Arc<TestObjectFull>> =
-                match db.get::<TestObjectFull>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            let mem: crdb::Result<Arc<TestObjectFull>> =
-                match s.mem_db.get::<TestObjectFull>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp(pg, mem)?;
+            let db = db
+                .get_latest::<TestObjectFull>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in database"));
+            let mem = s
+                .mem_db
+                .get_latest::<TestObjectFull>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in mem db"));
+            cmp(db, mem)?;
         }
         Op::Query { user, q } => {
             run_query::<TestObjectFull>(&db, &s.mem_db, *user, None, q).await?;

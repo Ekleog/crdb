@@ -78,11 +78,9 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             Vec::<u8>::new(),
-            $db.get::<TestObjectSimple>(false, OBJECT_ID_1)
+            $db.get_latest::<TestObjectSimple>(false, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
-                .last_snapshot::<TestObjectSimple>()
-                .expect("getting last snapshot")
                 .0
         );
         $db.submit::<TestObjectSimple, _>(
@@ -97,11 +95,9 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             Vec::<u8>::new(),
-            $db.get::<TestObjectSimple>(true, OBJECT_ID_1)
+            $db.get_latest::<TestObjectSimple>(true, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
-                .last_snapshot::<TestObjectSimple>()
-                .expect("getting last snapshot")
                 .0
         );
         $db.submit::<TestObjectSimple, _>(
@@ -116,11 +112,9 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             b"baz".to_vec(),
-            $db.get::<TestObjectSimple>(false, OBJECT_ID_1)
+            $db.get_latest::<TestObjectSimple>(false, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
-                .last_snapshot::<TestObjectSimple>()
-                .expect("getting last snapshot")
                 .0
         );
         $vacuum.await.unwrap();

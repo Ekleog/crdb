@@ -9,7 +9,7 @@ use super::fuzz_helpers::{
     },
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
-use std::{ops::Bound, sync::Arc};
+use std::sync::Arc;
 use ulid::Ulid;
 
 #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
@@ -36,11 +36,9 @@ enum Op {
     },
     GetPerm {
         object: usize,
-        at: EventId,
     },
     GetDelegator {
         object: usize,
-        at: EventId,
     },
     QueryPerms {
         user: User,
@@ -144,49 +142,31 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .await;
             cmp(pg, mem)?;
         }
-        Op::GetPerm { object, at } => {
+        Op::GetPerm { object } => {
             let o = s.object(*object);
-            let pg: crdb::Result<Arc<TestObjectPerms>> =
-                match db.get::<TestObjectPerms>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            let mem: crdb::Result<Arc<TestObjectPerms>> =
-                match s.mem_db.get::<TestObjectPerms>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectPerms>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp(pg, mem)?;
-        }
-        Op::GetDelegator { object, at } => {
-            let o = s.object(*object);
-            let pg: crdb::Result<Arc<TestObjectDelegatePerms>> = match db
-                .get::<TestObjectDelegatePerms>(true, o)
+            let db = db
+                .get_latest::<TestObjectPerms>(true, o)
                 .await
-            {
-                Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                Ok(o) => match o.get_snapshot_at::<TestObjectDelegatePerms>(Bound::Included(*at)) {
-                    Ok(o) => Ok(o.1),
-                    Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                },
-            };
-            let mem: crdb::Result<Arc<TestObjectDelegatePerms>> =
-                match s.mem_db.get::<TestObjectDelegatePerms>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
-                    Ok(o) => match o
-                        .get_snapshot_at::<TestObjectDelegatePerms>(Bound::Included(*at))
-                    {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp(pg, mem)?;
+                .wrap_context(&format!("getting {o:?} in database"));
+            let mem = s
+                .mem_db
+                .get_latest::<TestObjectPerms>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in mem db"));
+            cmp(db, mem)?;
+        }
+        Op::GetDelegator { object } => {
+            let o = s.object(*object);
+            let db = db
+                .get_latest::<TestObjectDelegatePerms>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in database"));
+            let mem = s
+                .mem_db
+                .get_latest::<TestObjectDelegatePerms>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in mem db"));
+            cmp(db, mem)?;
         }
         Op::QueryPerms { user, q } => {
             run_query::<TestObjectPerms>(&db, &s.mem_db, *user, None, q).await?;
@@ -255,10 +235,7 @@ async fn regression_get_with_wrong_type_did_not_fail() {
                     Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
                 ))),
             },
-            GetDelegator {
-                object: 0,
-                at: EVENT_ID_MAX,
-            },
+            GetDelegator { object: 0 },
         ]),
     )
     .await;

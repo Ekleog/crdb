@@ -15,11 +15,10 @@ impl<D: Db> private::Sealed for D {}
 
 impl<D: Db> CanDoCallbacks for D {
     async fn get<T: Object>(&self, object_id: DbPtr<T>) -> crate::Result<Arc<T>> {
-        Ok(<D as Db>::get::<T>(&self, false, ObjectId(object_id.id))
+        Ok(self
+            .get_latest::<T>(false, ObjectId(object_id.id))
             .await
-            .wrap_with_context(|| format!("requesting {object_id:?} from database"))?
-            .last_snapshot()
-            .wrap_with_context(|| format!("retrieving last snapshot for {object_id:?}"))?)
+            .wrap_with_context(|| format!("requesting {object_id:?} from database"))?)
     }
 }
 

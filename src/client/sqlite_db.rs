@@ -2,9 +2,7 @@ use crate::{
     api::{UploadId, UploadOrBinPtr},
     db_trait::Db,
     error::ResultExt,
-    fts,
-    full_object::FullObject,
-    BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp,
+    fts, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -176,10 +174,6 @@ impl Db for SqliteDb {
         event: Arc<T::Event>,
         cb: &C,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite): implement
-    }
-
-    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         unimplemented!() // TODO(sqlite): implement
     }
 

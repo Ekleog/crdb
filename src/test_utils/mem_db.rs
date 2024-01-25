@@ -45,6 +45,18 @@ impl MemDb {
         Ok(())
     }
 
+    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
+        match self.0.lock().await.objects.get(&object_id) {
+            None => Err(crate::Error::ObjectDoesNotExist(object_id)),
+            Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id: *T::type_ulid(),
+                real_type_id: *ty,
+            }),
+            Some((_, o)) => Ok(o.clone()),
+        }
+    }
+
     pub async fn query<T: Object>(
         &self,
         user: User,
@@ -234,25 +246,13 @@ impl Db for MemDb {
         }
     }
 
-    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
-        match self.0.lock().await.objects.get(&object_id) {
-            None => Err(crate::Error::ObjectDoesNotExist(object_id)),
-            Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
-                object_id,
-                expected_type_id: *T::type_ulid(),
-                real_type_id: *ty,
-            }),
-            Some((_, o)) => Ok(o.clone()),
-        }
-    }
-
     async fn get_latest<T: Object>(
         &self,
         lock: bool,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         // TODO(high): actually implement properly
-        let res = Db::get::<T>(self, lock, object_id).await?;
+        let res = self.get::<T>(lock, object_id).await?;
         res.last_snapshot::<T>()
             .wrap_context("retrieving last snapshot")
     }

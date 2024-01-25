@@ -1008,6 +1008,13 @@ impl IndexedDb {
             .await
             .unwrap();
     }
+
+    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
+        let object_id_js = object_id.to_js_string();
+        let type_id_js = T::type_ulid().to_js_string();
+        self.get_impl::<T>(lock, object_id, &type_id_js, &object_id_js)
+            .await
+    }
 }
 
 impl Db for IndexedDb {
@@ -1369,20 +1376,13 @@ impl Db for IndexedDb {
             })
     }
 
-    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
-        let object_id_js = object_id.to_js_string();
-        let type_id_js = T::type_ulid().to_js_string();
-        self.get_impl::<T>(lock, object_id, &type_id_js, &object_id_js)
-            .await
-    }
-
     async fn get_latest<T: Object>(
         &self,
         lock: bool,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         // TODO(high): actually implement properly
-        let res = Db::get::<T>(self, lock, object_id).await?;
+        let res = self.get::<T>(lock, object_id).await?;
         res.last_snapshot::<T>()
             .wrap_context("retrieving last snapshot")
     }

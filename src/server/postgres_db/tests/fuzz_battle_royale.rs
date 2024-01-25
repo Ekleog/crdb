@@ -151,21 +151,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .await;
         }
         Op::GetSimple { object, at } => {
-            let o = s
-                .objects
-                .lock()
-                .await
-                .get(*object)
-                .copied()
-                .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg: crate::Result<Arc<TestObjectSimple>> =
-                match db.get::<TestObjectSimple>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
+            // TODO(test): test when there's something actually tested
         }
         Op::QuerySimple { .. } => {
             // TODO(test): when there's something actually tested

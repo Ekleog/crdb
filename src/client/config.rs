@@ -104,10 +104,7 @@ macro_rules! generate_client {
                 }
 
                 pub fn [< get_ $name >](&self, lock: bool, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {
-                    async move {
-                        self.db.get::<$object>(lock, object.to_object_id()).await?.last_snapshot()
-                            .wrap_with_context(|| format!("getting last snapshot of {object:?}"))
-                    }
+                    self.db.get::<$object>(lock, object.to_object_id())
                 }
 
                 pub fn [< query_ $name _local >]<'a>(&'a self, q: &'a crdb::Query) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {

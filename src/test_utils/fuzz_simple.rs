@@ -1,7 +1,6 @@
 use super::fuzz_helpers::{
     self,
     crdb::{
-        self,
         crdb_internal::{
             test_utils::{self, *},
             Db, ResultExt,
@@ -13,7 +12,7 @@ use super::fuzz_helpers::{
 
 use anyhow::Context;
 use rust_decimal::Decimal;
-use std::{ops::Bound, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 use ulid::Ulid;
 
 #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
@@ -30,7 +29,6 @@ enum Op {
     },
     Get {
         object: usize,
-        at: EventId,
     },
     Query {
         user: User,
@@ -98,25 +96,18 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .await;
             cmp(pg, mem)?;
         }
-        Op::Get { object, at } => {
+        Op::Get { object } => {
             let o = s.object(*object);
-            let pg: crdb::Result<Arc<TestObjectSimple>> =
-                match db.get::<TestObjectSimple>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            let mem: crdb::Result<Arc<TestObjectSimple>> =
-                match s.mem_db.get::<TestObjectSimple>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in mem d)b")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
-            cmp(pg, mem)?;
+            let db = db
+                .get_latest::<TestObjectSimple>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in database"));
+            let mem = s
+                .mem_db
+                .get_latest::<TestObjectSimple>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in mem db"));
+            cmp(db, mem)?;
         }
         Op::Query { user, q } => {
             run_query::<TestObjectSimple>(&db, &s.mem_db, *user, None, q).await?;

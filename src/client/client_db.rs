@@ -201,19 +201,15 @@ impl ClientDb {
             .await
     }
 
-    pub async fn get<T: Object>(
-        &self,
-        lock: bool,
-        object_id: ObjectId,
-    ) -> crate::Result<FullObject> {
-        match self.db.get::<T>(lock, object_id).await {
+    pub async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<Arc<T>> {
+        match self.db.get_latest::<T>(lock, object_id).await {
             Ok(r) => return Ok(r),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
         let res = self.api.get::<T>(object_id).await?;
         // TODO(high): self.db.create_all(res)
-        Ok(res)
+        Ok(res.last_snapshot::<T>().unwrap()) // TODO(high): properly define this
     }
 
     pub async fn query_local<'a, T: Object>(

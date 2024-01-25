@@ -1,8 +1,7 @@
 use super::{BinariesCache, ObjectCache};
 use crate::{
-    db_trait::Db,
-    full_object::{DynSized, FullObject},
-    hash_binary, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Timestamp,
+    db_trait::Db, full_object::DynSized, hash_binary, BinPtr, CanDoCallbacks, EventId, Object,
+    ObjectId, Timestamp,
 };
 use anyhow::anyhow;
 use std::{
@@ -64,10 +63,6 @@ impl<D: Db> Db for CacheDb<D> {
         self.db
             .submit::<T, _>(object_id, event_id, event.clone(), cb)
             .await
-    }
-
-    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
-        self.db.get::<T>(lock, object_id).await
     }
 
     async fn get_latest<T: Object>(

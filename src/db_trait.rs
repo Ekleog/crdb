@@ -1,5 +1,4 @@
 use crate::{
-    full_object::FullObject,
     future::{CrdbSend, CrdbSync},
     BinPtr, CanDoCallbacks, CrdbFuture, EventId, Object, ObjectId, Timestamp,
 };
@@ -24,13 +23,6 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         event: Arc<T::Event>,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
-
-    // TODO(high): make into get_latest, only server needs actual get-full behavior
-    fn get<T: Object>(
-        &self,
-        lock: bool,
-        ptr: ObjectId,
-    ) -> impl CrdbFuture<Output = crate::Result<FullObject>>;
 
     fn get_latest<T: Object>(
         &self,

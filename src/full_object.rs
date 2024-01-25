@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO(high): decide what to do with FullObject
+
 use crate::{error::ResultExt, DbPtr, EventId, Object, ObjectId, Timestamp};
 use anyhow::anyhow;
 use std::{

@@ -1550,6 +1550,24 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             );
         }
     }
+
+    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // Atomically perform all the reads here
+        reord::point().await;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .wrap_context("setting transaction as repeatable read")?;
+
+        get_impl::<T>(&mut *transaction, object_id).await
+    }
 }
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
@@ -1593,31 +1611,13 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
-        reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
-        // Atomically perform all the reads here
-        reord::point().await;
-        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-            .execute(&mut *transaction)
-            .await
-            .wrap_context("setting transaction as repeatable read")?;
-
-        get_impl::<T>(&mut *transaction, object_id).await
-    }
-
     async fn get_latest<T: Object>(
         &self,
         lock: bool,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         // TODO(high): actually implement properly
-        let res = Db::get::<T>(self, lock, object_id).await?;
+        let res = self.get::<T>(lock, object_id).await?;
         res.last_snapshot::<T>()
             .wrap_context("retrieving last snapshot")
     }
