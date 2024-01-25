@@ -6,6 +6,7 @@ use crate::{
 use anyhow::anyhow;
 use futures::{channel::mpsc, stream, SinkExt, StreamExt};
 use std::{
+    collections::VecDeque,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -89,6 +90,7 @@ pub struct Connection {
     state: State,
     commands: mpsc::UnboundedReceiver<Command>,
     requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
+    not_sent_requests: VecDeque<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     update_sender: mpsc::UnboundedSender<Update>,
 }
@@ -103,6 +105,7 @@ impl Connection {
         Connection {
             commands,
             requests,
+            not_sent_requests: VecDeque::new(),
             state: State::NoValidInfo,
             event_cb,
             update_sender,
@@ -131,11 +134,13 @@ impl Connection {
 
                 // Listen for incoming requests from the client
                 request = self.requests.next() => {
-                    let Some(request) = request else {
+                    let Some((sender, request)) = request else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
-                    let _ = request;
-                    unimplemented!() // TODO(api)
+                    match self.state {
+                        State::Connected { .. } => self.handle_request(sender, request).await,
+                        _ => self.not_sent_requests.push_back((sender, request)),
+                    }
                 }
 
                 // Listen for incoming server messages
@@ -180,6 +185,16 @@ impl Connection {
                         State::Connected { .. } => {
                             self.handle_connected_message(message).await;
                         }
+                    }
+                }
+            }
+
+            if let State::Connected { .. } = self.state {
+                if !self.not_sent_requests.is_empty() {
+                    let not_sent_requests =
+                        std::mem::replace(&mut self.not_sent_requests, VecDeque::new());
+                    for (sender, request) in not_sent_requests {
+                        self.handle_request(sender, request).await;
                     }
                 }
             }
@@ -229,6 +244,15 @@ impl Connection {
                 self.event_cb.read().unwrap()(ConnectionEvent::LoggedOut);
             }
         }
+    }
+
+    async fn handle_request(
+        &mut self,
+        sender: mpsc::UnboundedSender<ResponsePart>,
+        request: Request,
+    ) {
+        let _ = (sender, request);
+        unimplemented!() // TODO(api)
     }
 
     async fn handle_connected_message(&mut self, message: ServerMessage) {
