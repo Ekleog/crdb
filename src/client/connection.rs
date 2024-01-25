@@ -253,25 +253,16 @@ impl Connection {
         sender: mpsc::UnboundedSender<ResponsePart>,
         request: Request,
     ) {
-        let State::Connected { socket, url, token } = &mut self.state else {
-            panic!("Called handle_request while not connected");
-        };
         let request_id = RequestId::now();
         let message = ClientMessage {
             request_id,
             request,
         };
-        let sending_res = Self::send(socket, &message).await;
-        match sending_res {
+        match self.send_connected(&message).await {
             Ok(()) => {
                 self.pending_requests.insert(request_id, sender);
             }
-            Err(err) => {
-                self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
-                self.state = State::Disconnected {
-                    url: url.clone(),
-                    token: *token,
-                };
+            Err(()) => {
                 self.not_sent_requests.push_front((sender, message.request));
             }
         }
@@ -304,6 +295,24 @@ impl Connection {
                 if last_response {
                     self.pending_requests.remove(&request_id);
                 }
+            }
+        }
+    }
+
+    /// Returns Ok(()) if sending succeeded, and Err(()) if sending failed and triggered a disconnection.
+    async fn send_connected(&mut self, message: &ClientMessage) -> Result<(), ()> {
+        let State::Connected { socket, url, token } = &mut self.state else {
+            panic!("Called handle_request while not connected");
+        };
+        match Self::send(socket, &message).await {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
+                self.state = State::Disconnected {
+                    url: url.clone(),
+                    token: *token,
+                };
+                Err(())
             }
         }
     }
