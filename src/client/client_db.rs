@@ -3,6 +3,7 @@ use crate::{
     api::ApiConfig,
     cache::CacheDb,
     db_trait::Db,
+    error::ResultExt,
     full_object::FullObject,
     messages::{Update, UpdateData},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
@@ -214,11 +215,25 @@ impl ClientDb {
 
     pub async fn query_local<'a, T: Object>(
         &'a self,
-        _q: &'a Query,
-    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<FullObject>>> {
-        // User is ignored for LocalDb queries
-        //self.db.query::<T>(User::from_u128(0), None, q).await
-        Ok(futures::stream::empty()) // TODO(client): actually implement as soon as the new Db trait design is done
+        lock: bool,
+        q: &'a Query,
+    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<Arc<T>>>> {
+        let object_ids = self
+            .db
+            .query::<T>(q)
+            .await
+            .wrap_context("listing objects matching query")?;
+
+        Ok(async_stream::stream! {
+            for object_id in object_ids {
+                match self.get::<T>(lock, object_id).await {
+                    Ok(res) => yield Ok(res),
+                    // Ignore missing objects, they were just vacuumed between listing and getting
+                    Err(crate::Error::ObjectDoesNotExist(id)) if id == object_id => continue,
+                    Err(err) => yield Err(err),
+                }
+            }
+        })
     }
 
     pub async fn query_remote<T: Object>(

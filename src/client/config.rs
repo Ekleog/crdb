@@ -107,15 +107,8 @@ macro_rules! generate_client {
                     self.db.get::<$object>(lock, object.to_object_id())
                 }
 
-                pub fn [< query_ $name _local >]<'a>(&'a self, q: &'a crdb::Query) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
-                    async move {
-                        Ok(self.db.query_local::<$object>(q)
-                            .await?
-                            .then(|o| async move {
-                                o?.last_snapshot()
-                                    .wrap_context("recovering the last snapshot of known-type object")
-                            }))
-                    }
+                pub fn [< query_ $name _local >]<'a>(&'a self, lock: bool, query: &'a crdb::Query) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
+                    self.db.query_local::<$object>(lock, query)
                 }
 
                 // TODO(low): does this user-exposed function really need `ignore_not_modified_on_server_since`?
