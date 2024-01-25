@@ -15,10 +15,6 @@ impl BinariesCache {
         }
     }
 
-    pub fn clear(&mut self) {
-        self.data.retain(|_, v| Weak::strong_count(v) > 0)
-    }
-
     pub fn insert(&mut self, id: BinPtr, value: Weak<[u8]>) {
         self.data.insert(id, value);
     }

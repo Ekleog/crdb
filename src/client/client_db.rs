@@ -165,22 +165,6 @@ impl ClientDb {
         self.vacuum_guard.read().await
     }
 
-    pub async fn clear_cache(&self) {
-        self.db.clear_cache().await
-    }
-
-    pub async fn clear_binaries_cache(&self) {
-        self.db.clear_binaries_cache().await
-    }
-
-    pub async fn clear_objects_cache(&self) {
-        self.db.clear_objects_cache().await
-    }
-
-    pub async fn reduce_size_to(&mut self, size: usize) {
-        self.db.reduce_size_to(size).await
-    }
-
     pub async fn unlock(&self, ptr: ObjectId) -> crate::Result<()> {
         self.db.unlock(ptr).await
     }
@@ -228,9 +212,7 @@ impl ClientDb {
             Err(e) => return Err(e),
         }
         let res = self.api.get::<T>(object_id).await?;
-        self.db
-            .create_all::<T, _>(res.clone(), lock, &*self.db)
-            .await?;
+        // TODO(high): self.db.create_all(res)
         Ok(res)
     }
 
@@ -245,7 +227,7 @@ impl ClientDb {
 
     pub async fn query_remote<T: Object>(
         &self,
-        lock: bool,
+        _lock: bool,
         ignore_not_modified_on_server_since: Option<Timestamp>,
         q: &Query,
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<FullObject>>> {
@@ -256,10 +238,10 @@ impl ClientDb {
             .then({
                 let db = self.db.clone();
                 move |o| {
-                    let db = db.clone();
+                    let _db = db.clone();
                     async move {
                         let o = o?;
-                        db.create_all::<T, _>(o.clone(), lock, &*db).await?;
+                        // TODO(high): db.create_all::<T, _>(o.clone(), lock, &*db).await?;
                         Ok(o)
                     }
                 }

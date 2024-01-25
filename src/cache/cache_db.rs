@@ -1,10 +1,14 @@
 use super::{BinariesCache, ObjectCache};
 use crate::{
-    db_trait::Db, error::ResultExt, full_object::FullObject, hash_binary, BinPtr, CanDoCallbacks,
-    EventId, Object, ObjectId, Timestamp,
+    db_trait::Db,
+    full_object::{DynSized, FullObject},
+    hash_binary, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Timestamp,
 };
-use std::{ops::Deref, sync::Arc};
-use tokio::sync::RwLock;
+use anyhow::anyhow;
+use std::{
+    ops::Deref,
+    sync::{Arc, RwLock},
+};
 
 pub struct CacheDb<D: Db> {
     db: Arc<D>,
@@ -28,81 +32,25 @@ impl<D: Db> CacheDb<D> {
         this
     }
 
-    pub async fn clear_cache(&self) {
-        self.clear_binaries_cache().await;
-        self.clear_objects_cache().await;
-    }
-
-    pub async fn clear_binaries_cache(&self) {
-        self.binaries.write().await.clear();
-    }
-
-    pub async fn clear_objects_cache(&self) {
-        self.cache.write().await.clear();
-    }
-
-    pub async fn reduce_size_to(&self, size: usize) {
-        self.cache.write().await.reduce_size_to(size);
-        self.binaries.write().await.clear();
-        // TODO(low): auto-clear binaries without waiting for a reduce_size_to call
-        // Probably both cache & binaries should be dealt with together by moving the
-        // watermark handling to the CacheDb level
-    }
-
-    #[cfg(feature = "client")]
-    pub async fn create_all<T: Object, C: CanDoCallbacks>(
-        &self,
-        o: FullObject,
-        lock: bool,
-        cb: &C,
-    ) -> crate::Result<()> {
-        let (creation, changes) = o.extract_all_clone();
-        self.create::<T, _>(
-            creation.id,
-            creation.created_at,
-            creation
-                .creation
-                .arc_to_any()
-                .downcast::<T>()
-                .expect("Type provided to `CacheDb::create_all` is wrong"),
-            lock,
-            cb,
-        )
-        .await?;
-        for (event_id, c) in changes.into_iter() {
-            self.submit::<T, _>(
-                creation.id,
-                event_id,
-                c.event
-                    .arc_to_any()
-                    .downcast::<T::Event>()
-                    .expect("Type provided to `CacheDb::create_all` is wrong"),
-                cb,
-            )
-            .await?;
-        }
-        Ok(())
-    }
+    // TODO(low): auto-clear binaries without waiting for a reduce_size_to call
+    // Probably both cache & binaries should be dealt with together by moving the
+    // watermark handling to the CacheDb level. OTOH binaries are already Weak so
+    // it's not a big deal
 }
 
 impl<D: Db> Db for CacheDb<D> {
     async fn create<T: Object, C: CanDoCallbacks>(
         &self,
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         lock: bool,
         cb: &C,
     ) -> crate::Result<()> {
-        // First change db, then the cache, because db can rely on the `get`s from the
-        // cache to compute `users_who_can_read`, and this in turn means that the cache
-        // should never (lock reads or) return not up-to-date information, nor return
-        // information that has not yet been validated by the database.
+        self.cache.write().unwrap().remove(&object_id);
         self.db
-            .create(id, created_at, object.clone(), lock, cb)
-            .await?;
-        self.cache.write().await.create(id, created_at, object)?;
-        Ok(())
+            .create(object_id, created_at, object.clone(), lock, cb)
+            .await
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(
@@ -112,40 +60,14 @@ impl<D: Db> Db for CacheDb<D> {
         event: Arc<T::Event>,
         cb: &C,
     ) -> crate::Result<()> {
-        // First change db, then the cache, because db can rely on the `get`s from the
-        // cache to compute `users_who_can_read`, and this in turn means that the cache
-        // should never (lock reads or) return not up-to-date information, nor return
-        // information that has not yet been validated by the database.
+        self.cache.write().unwrap().remove(&object_id);
         self.db
             .submit::<T, _>(object_id, event_id, event.clone(), cb)
-            .await?;
-        self.cache
-            .write()
             .await
-            .submit::<T>(object_id, event_id, event)?;
-        Ok(())
     }
 
     async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
-        {
-            let cache = self.cache.read().await;
-            if let Some(res) = cache.get(&object_id) {
-                return Ok(res.clone());
-            }
-        }
-        let res = self.db.get::<T>(lock, object_id).await?;
-        debug_assert!(
-            res.id() == object_id,
-            "Got result with id {:?} instead of expected id {object_id:?}",
-            res.id()
-        );
-        {
-            let mut cache = self.cache.write().await;
-            cache
-                .insert::<T>(res.clone())
-                .wrap_with_context(|| format!("inserting object {object_id:?} in the cache"))?;
-        }
-        Ok(res)
+        self.db.get::<T>(lock, object_id).await
     }
 
     async fn get_latest<T: Object>(
@@ -153,10 +75,15 @@ impl<D: Db> Db for CacheDb<D> {
         lock: bool,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
-        // TODO(high): actually implement properly
-        let res = Db::get::<T>(self, lock, object_id).await?;
-        res.last_snapshot::<T>()
-            .wrap_context("retrieving last snapshot")
+        if let Some(res) = self.cache.read().unwrap().get(&object_id) {
+            let res = Arc::downcast(DynSized::arc_to_any(res)).map_err(|_| {
+                crate::Error::Other(anyhow!("requested object with the wrong type"))
+            })?;
+            return Ok(res);
+        }
+        let res = self.db.get_latest::<T>(lock, object_id).await?;
+        self.cache.write().unwrap().set(object_id, res.clone() as _);
+        Ok(res)
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
@@ -165,12 +92,12 @@ impl<D: Db> Db for CacheDb<D> {
         time: Timestamp,
         cb: &C,
     ) -> crate::Result<()> {
-        self.db.recreate::<T, C>(object_id, time, cb).await?;
-        self.cache.write().await.recreate::<T>(object_id, time)
+        self.cache.write().unwrap().remove(&object_id);
+        self.db.recreate::<T, C>(object_id, time, cb).await
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
-        self.cache.write().await.remove(&object_id);
+        self.cache.write().unwrap().remove(&object_id);
         self.db.remove(object_id).await
     }
 
@@ -182,13 +109,13 @@ impl<D: Db> Db for CacheDb<D> {
         );
         self.binaries
             .write()
-            .await
+            .unwrap()
             .insert(binary_id, Arc::downgrade(&data));
         self.db.create_binary(binary_id, data).await
     }
 
     async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
-        if let Some(res) = self.binaries.read().await.get(&binary_id) {
+        if let Some(res) = self.binaries.read().unwrap().get(&binary_id) {
             return Ok(Some(res.clone()));
         }
         let Some(res) = self.db.get_binary(binary_id).await? else {
@@ -196,7 +123,7 @@ impl<D: Db> Db for CacheDb<D> {
         };
         self.binaries
             .write()
-            .await
+            .unwrap()
             .insert(binary_id, Arc::downgrade(&res));
         Ok(Some(res))
     }
