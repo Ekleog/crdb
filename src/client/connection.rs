@@ -96,10 +96,11 @@ pub struct Connection {
     last_request_id: RequestId,
     commands: mpsc::UnboundedReceiver<Command>,
     requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
-    // TODO(api): make sure not_sent_request always includes requests that were submitted last connection but didn't receive an answer
     // TODO(api): upon reconnecting we should also re-subscribe to all the things we were previously subscribed on
-    not_sent_requests: VecDeque<(mpsc::UnboundedSender<ResponsePart>, Request)>,
-    pending_requests: HashMap<RequestId, mpsc::UnboundedSender<ResponsePart>>,
+    not_sent_requests: VecDeque<(RequestId, Arc<Request>, mpsc::UnboundedSender<ResponsePart>)>,
+    // The last `bool` shows whether we already started sending an answer to the Sender. If yes, we need to
+    // kill it with an Error rather than restart it from 0, to avoid duplicate answers.
+    pending_requests: HashMap<RequestId, (Arc<Request>, mpsc::UnboundedSender<ResponsePart>, bool)>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     update_sender: mpsc::UnboundedSender<Update>,
     last_ping: i64, // Milliseconds since unix epoch
@@ -146,7 +147,7 @@ impl Connection {
                     let request_id = self.next_request_id();
                     let _ = self.send_connected(&ClientMessage {
                         request_id,
-                        request: Request::GetTime,
+                        request: Arc::new(Request::GetTime),
                     }).await;
                     self.last_ping = Timestamp::now().time_ms_i().expect("Time is obviously ill-set");
                     self.next_ping = None;
@@ -173,9 +174,10 @@ impl Connection {
                     let Some((sender, request)) = request else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
+                    let request_id = self.next_request_id();
                     match self.state {
-                        State::Connected { .. } => self.handle_request(sender, request).await,
-                        _ => self.not_sent_requests.push_back((sender, request)),
+                        State::Connected { .. } => self.handle_request(request_id, Arc::new(request), sender).await,
+                        _ => self.not_sent_requests.push_back((request_id, Arc::new(request), sender)),
                     }
                 }
 
@@ -231,8 +233,8 @@ impl Connection {
                 if !self.not_sent_requests.is_empty() {
                     let not_sent_requests =
                         std::mem::replace(&mut self.not_sent_requests, VecDeque::new());
-                    for (sender, request) in not_sent_requests {
-                        self.handle_request(sender, request).await;
+                    for (request_id, request, sender) in not_sent_requests {
+                        self.handle_request(request_id, request, sender).await;
                     }
                 }
             }
@@ -252,7 +254,7 @@ impl Connection {
                 let request_id = self.next_request_id();
                 let message = ClientMessage {
                     request_id,
-                    request: Request::SetToken(token),
+                    request: Arc::new(Request::SetToken(token)),
                 };
                 if let Err(err) = Self::send(&mut socket, &message).await {
                     self.event_cb.read().unwrap()(ConnectionEvent::FailedSendingToken(err));
@@ -266,6 +268,22 @@ impl Connection {
                     request_id,
                 };
                 self.next_pong_deadline = Some((request_id, Instant::now() + PONG_DEADLINE));
+                // We're waiting for a reconnection, re-enqueue all pending requests
+                if !self.pending_requests.is_empty() {
+                    for (request_id, (request, sender, already_sent)) in
+                        self.pending_requests.drain()
+                    {
+                        if already_sent {
+                            let _ = sender.unbounded_send(ResponsePart::ConnectionLoss);
+                        } else {
+                            self.not_sent_requests
+                                .push_front((request_id, request, sender));
+                        }
+                    }
+                    self.not_sent_requests
+                        .make_contiguous()
+                        .sort_unstable_by_key(|v| v.0);
+                }
             }
         }
     }
@@ -305,22 +323,17 @@ impl Connection {
 
     async fn handle_request(
         &mut self,
+        request_id: RequestId,
+        request: Arc<Request>,
         sender: mpsc::UnboundedSender<ResponsePart>,
-        request: Request,
     ) {
-        let request_id = self.next_request_id();
         let message = ClientMessage {
             request_id,
-            request,
+            request: request.clone(),
         };
-        match self.send_connected(&message).await {
-            Ok(()) => {
-                self.pending_requests.insert(request_id, sender);
-            }
-            Err(()) => {
-                self.not_sent_requests.push_front((sender, message.request));
-            }
-        }
+        self.send_connected(&message).await;
+        self.pending_requests
+            .insert(request_id, (request, sender, false));
     }
 
     async fn handle_connected_message(&mut self, message: ServerMessage) {
@@ -339,8 +352,10 @@ impl Connection {
                 response,
                 last_response,
             } => {
-                if let Some(sender) = self.pending_requests.get_mut(&request_id) {
+                if let Some((_, sender, already_sent)) = self.pending_requests.get_mut(&request_id)
+                {
                     // Ignore errors when sending, in case the requester did not await on the response future
+                    *already_sent = true;
                     let _ = sender.unbounded_send(response);
                     if last_response {
                         self.pending_requests.remove(&request_id);
@@ -381,20 +396,16 @@ impl Connection {
     }
 
     /// Returns Ok(()) if sending succeeded, and Err(()) if sending failed and triggered a disconnection.
-    async fn send_connected(&mut self, message: &ClientMessage) -> Result<(), ()> {
+    async fn send_connected(&mut self, message: &ClientMessage) {
         let State::Connected { socket, url, token } = &mut self.state else {
             panic!("Called handle_request while not connected");
         };
-        match Self::send(socket, &message).await {
-            Ok(()) => Ok(()),
-            Err(err) => {
-                self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
-                self.state = State::Disconnected {
-                    url: url.clone(),
-                    token: *token,
-                };
-                Err(())
-            }
+        if let Err(err) = Self::send(socket, &message).await {
+            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
+            self.state = State::Disconnected {
+                url: url.clone(),
+                token: *token,
+            };
         }
     }
 

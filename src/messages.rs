@@ -1,7 +1,10 @@
 use crate::{
     BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, TypeId,
 };
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 
 #[derive(
     Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
@@ -12,7 +15,7 @@ pub struct RequestId(pub u64);
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ClientMessage {
     pub request_id: RequestId,
-    pub request: Request,
+    pub request: Arc<Request>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -86,6 +89,7 @@ pub enum ServerMessage {
 pub enum ResponsePart {
     Success,
     Error(crate::SerializableError),
+    ConnectionLoss,
     Sessions(Vec<Session>),
     CurrentTime(Timestamp),
     Objects(Vec<MaybeObject>),
