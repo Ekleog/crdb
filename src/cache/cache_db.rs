@@ -45,11 +45,16 @@ impl<D: Db> Db for CacheDb<D> {
         object: Arc<T>,
         lock: bool,
         cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         self.cache.write().unwrap().remove(&object_id);
-        self.db
+        let res = self
+            .db
             .create(object_id, created_at, object.clone(), lock, cb)
-            .await
+            .await?;
+        if let Some(value) = res.clone() {
+            self.cache.write().unwrap().set(object_id, value);
+        }
+        Ok(res)
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(

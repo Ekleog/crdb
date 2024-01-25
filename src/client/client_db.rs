@@ -182,10 +182,11 @@ impl ClientDb {
         created_at: EventId,
         object: Arc<T>,
     ) -> crate::Result<()> {
-        self.api.create(id, created_at, object.clone()).await?;
         self.db
-            .create(id, created_at, object, true, &*self.db)
-            .await
+            .create(id, created_at, object.clone(), true, &*self.db)
+            .await?;
+        self.api.create(id, created_at, object).await?;
+        Ok(())
     }
 
     pub async fn submit<T: Object>(

@@ -660,7 +660,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         created_at: EventId,
         object: Arc<T>,
         cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -752,7 +752,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 };
             }
 
-            return Ok(());
+            return Ok(None);
         }
 
         // We just inserted. Check that no event existed at this id
@@ -781,7 +781,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
         reord::point().await;
 
-        Ok(())
+        Ok(Some(object))
     }
 
     async fn submit_impl<T: Object, C: CanDoCallbacks>(
@@ -1617,8 +1617,8 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         object: Arc<T>,
         _lock: bool,
         cb: &C,
-    ) -> crate::Result<()> {
-        self.create_impl(object_id, created_at, object, cb).await?;
+    ) -> crate::Result<Option<Arc<T>>> {
+        let res = self.create_impl(object_id, created_at, object, cb).await?;
 
         // Update the reverse-dependencies, now that we have updated the object itself.
         self.update_rdeps(object_id, cb)
@@ -1627,7 +1627,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
                 format!("updating permissions for reverse-dependencies of {object_id:?}")
             })?;
 
-        Ok(())
+        Ok(res)
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(

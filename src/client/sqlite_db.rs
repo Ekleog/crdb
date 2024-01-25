@@ -75,7 +75,7 @@ impl Db for SqliteDb {
         object: Arc<T>,
         lock: bool,
         cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
         let mut t = self
             .db
@@ -133,7 +133,7 @@ impl Db for SqliteDb {
                 return Err(crate::Error::EventAlreadyExists(created_at));
             }
             reord::point().await;
-            return Ok(());
+            return Ok(None);
         }
 
         // We just inserted. Check that no event existed at this id
@@ -164,7 +164,7 @@ impl Db for SqliteDb {
             .await
             .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
         reord::point().await;
-        Ok(())
+        Ok(Some(object))
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(

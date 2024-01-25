@@ -136,7 +136,7 @@ impl Db for MemDb {
         object: Arc<T>,
         _lock: bool, // TODO(test): implement (un)lock semantics for client-side tests
         _cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 
         // First, check for duplicates
@@ -149,7 +149,7 @@ impl Db for MemDb {
             {
                 return Err(crate::Error::ObjectAlreadyExists(object_id));
             }
-            return Ok(());
+            return Ok(None);
         }
         if let Some(_) = this.events.get(&created_at) {
             crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
@@ -176,12 +176,12 @@ impl Db for MemDb {
             object_id,
             (
                 *T::type_ulid(),
-                FullObject::new(object_id, created_at, object),
+                FullObject::new(object_id, created_at, object.clone()),
             ),
         );
         this.events.insert(created_at, (object_id, None));
 
-        Ok(())
+        Ok(Some(object))
     }
 
     async fn submit<T: Object, C: CanDoCallbacks>(

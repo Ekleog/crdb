@@ -5,7 +5,7 @@ use crate::{
 use std::sync::Arc;
 
 pub trait Db: 'static + CrdbSend + CrdbSync {
-    /// TODO(high): Returns the new latest snapshot if it actually changed
+    /// Returns the new latest snapshot if it actually changed
     fn create<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
@@ -13,7 +13,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         object: Arc<T>,
         lock: bool,
         cb: &C,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 
     /// TODO(high): Returns the new latest snapshot if it actually changed
     fn submit<T: Object, C: CanDoCallbacks>(

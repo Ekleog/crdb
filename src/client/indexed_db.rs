@@ -816,7 +816,7 @@ impl Db for IndexedDb {
         object: Arc<T>,
         lock: bool,
         _cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         let new_snapshot_meta = SnapshotMeta {
             snapshot_id: created_at,
             type_id: *T::type_ulid(),
@@ -899,7 +899,7 @@ impl Db for IndexedDb {
                     }
 
                     // The old snapshot and data were the same, we're good to go
-                    return Ok(());
+                    return Ok(None);
                 }
 
                 // The object didn't exist yet, try inserting it
@@ -934,7 +934,7 @@ impl Db for IndexedDb {
                         // Finally, validate the required binaries
                         check_required_binaries(binaries, required_binaries).await?;
 
-                        Ok(())
+                        Ok(Some(object))
                     }
                 }
             })
