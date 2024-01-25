@@ -173,7 +173,7 @@ impl Db for SqliteDb {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite): implement
     }
 

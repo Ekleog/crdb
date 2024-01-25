@@ -190,7 +190,7 @@ impl Db for MemDb {
         event_id: EventId,
         event: Arc<T::Event>,
         _cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
         match this.objects.get(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
@@ -217,7 +217,7 @@ impl Db for MemDb {
                     if *o != object_id || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false) {
                         return Err(crate::Error::EventAlreadyExists(event_id));
                     }
-                    return Ok(());
+                    return Ok(None);
                 }
 
                 // Then, check that the data is correct
@@ -237,8 +237,9 @@ impl Db for MemDb {
 
                 // All is good, we can insert
                 o.apply::<T>(event_id, event.clone())?;
+                let last_snapshot = o.last_snapshot::<T>().unwrap();
                 this.events.insert(event_id, (object_id, Some(event)));
-                Ok(())
+                Ok(Some(last_snapshot))
             }
         }
     }

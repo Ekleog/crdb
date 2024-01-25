@@ -63,11 +63,15 @@ impl<D: Db> Db for CacheDb<D> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> crate::Result<()> {
-        self.cache.write().unwrap().remove(&object_id);
-        self.db
+    ) -> crate::Result<Option<Arc<T>>> {
+        let res = self
+            .db
             .submit::<T, _>(object_id, event_id, event.clone(), cb)
-            .await
+            .await?;
+        if let Some(value) = res.clone() {
+            self.cache.write().unwrap().set(object_id, value);
+        }
+        Ok(res)
     }
 
     async fn get_latest<T: Object>(

@@ -953,7 +953,7 @@ impl Db for IndexedDb {
         event_id: EventId,
         event: Arc<T::Event>,
         _cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         let new_event_meta = EventMeta {
             event_id,
             object_id,
@@ -1067,7 +1067,7 @@ impl Db for IndexedDb {
                         }
 
                         // The old snapshot and data were the same, we're good to go
-                        return Ok(());
+                        return Ok(None);
                     }
                     Err(e) => return Err(e),
                     Ok(_) => (),
@@ -1159,7 +1159,7 @@ impl Db for IndexedDb {
                 check_required_binaries(binaries, event.required_binaries()).await
                     .wrap_with_context(|| format!("checking that all the binaries required by {event_id:?} are already present"))?;
 
-                Ok(())
+                Ok(Some(Arc::new(last_snapshot)))
             })
             .await
             .wrap_with_context(|| {

@@ -790,7 +790,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -879,7 +879,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 return Err(crate::Error::EventAlreadyExists(event_id));
             }
             // Nothing else to do, event was already inserted
-            return Ok(());
+            return Ok(None);
         }
 
         // Clear all snapshots after the event
@@ -1029,7 +1029,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })?;
         reord::point().await;
 
-        Ok(())
+        Ok(Some(Arc::new(object)))
     }
 
     /// This function assumes that the lock on `object_id` is already taken
@@ -1636,8 +1636,9 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> crate::Result<()> {
-        self.submit_impl::<T, C>(object_id, event_id, event, cb)
+    ) -> crate::Result<Option<Arc<T>>> {
+        let res = self
+            .submit_impl::<T, C>(object_id, event_id, event, cb)
             .await?;
 
         // Update all the other objects that depend on this one
@@ -1647,7 +1648,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
                 format!("updating permissions of reverse-dependencies fo {object_id:?}")
             })?;
 
-        Ok(())
+        Ok(res)
     }
 
     async fn get_latest<T: Object>(

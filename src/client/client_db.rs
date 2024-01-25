@@ -195,12 +195,11 @@ impl ClientDb {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<()> {
-        self.api
-            .submit::<T>(object, event_id, event.clone())
-            .await?;
         self.db
-            .submit::<T, _>(object, event_id, event, &*self.db)
-            .await
+            .submit::<T, _>(object, event_id, event.clone(), &*self.db)
+            .await?;
+        self.api.submit::<T>(object, event_id, event).await?;
+        Ok(())
     }
 
     /// Returns the latest snapshot for the object described by `data`

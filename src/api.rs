@@ -88,7 +88,7 @@ macro_rules! generate_api {
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
-                        return db.submit::<$object, _>(object_id, event_id, crdb::Arc::new(event), db).await;
+                        return db.submit::<$object, _>(object_id, event_id, crdb::Arc::new(event), db).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

@@ -15,14 +15,14 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 
-    /// TODO(high): Returns the new latest snapshot if it actually changed
+    /// Returns the new latest snapshot if it actually changed
     fn submit<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         cb: &C,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 
     fn get_latest<T: Object>(
         &self,
