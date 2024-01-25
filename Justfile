@@ -25,6 +25,11 @@ list-todo-types:
     rg 'TODO\(' | grep -v Justfile | sed 's/^.*TODO(//;s/).*$//' | sort -u || true
     rg 'TODO[^(]' | grep -v Justfile || true
 
+clean:
+    pkill postgres || true
+    rm -rf /tmp/crdb-test-pg-* || true
+    rm -rf /tmp/.org.chromium.Chromium.* || true
+
 test-crate NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-crate-client-js NAME) (test-crate-server NAME)
 test-crate-standalone NAME='': (test-crate-api NAME) (test-crate-client-native NAME)
 
