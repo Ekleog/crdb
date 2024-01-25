@@ -398,7 +398,7 @@ impl Connection {
     /// Returns Ok(()) if sending succeeded, and Err(()) if sending failed and triggered a disconnection.
     async fn send_connected(&mut self, message: &ClientMessage) {
         let State::Connected { socket, url, token } = &mut self.state else {
-            panic!("Called handle_request while not connected");
+            panic!("Called send_connected while not connected");
         };
         if let Err(err) = Self::send(socket, &message).await {
             self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
