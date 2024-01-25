@@ -126,6 +126,7 @@ pub enum UpdateData {
         data: serde_json::Value,
     },
     Recreation {
-        time: Timestamp,
+        new_created_at: EventId,
+        data: serde_json::Value,
     },
 }

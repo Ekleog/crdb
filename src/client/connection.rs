@@ -96,7 +96,9 @@ pub struct Connection {
     state: State,
     commands: mpsc::UnboundedReceiver<Command>,
     requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
-    // TODO(api): replace not_sent_request with a proper request for ApiDb to give us all pending requests upon connecting
+    // TODO(api): make sure not_sent_request always includes requests that were submitted last connection but didn't receive an answer
+    // On that topic, RequestId should maybe become a simple u64? it'd be easier to make sure to always re-submit requests in-order
+    // TODO(api): upon reconnecting we should also re-subscribe to all the things we were previously subscribed on
     not_sent_requests: VecDeque<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     pending_requests: HashMap<RequestId, mpsc::UnboundedSender<ResponsePart>>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,

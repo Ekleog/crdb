@@ -2,7 +2,7 @@ use crate::{
     api::{UploadId, UploadOrBinPtr},
     db_trait::Db,
     error::ResultExt,
-    fts, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query, Timestamp,
+    fts, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -187,8 +187,9 @@ impl Db for SqliteDb {
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
-        object: ObjectId,
-        time: Timestamp,
+        object_id: ObjectId,
+        new_created_at: EventId,
+        object: Arc<T>,
         cb: &C,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite): implement

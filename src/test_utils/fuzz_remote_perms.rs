@@ -50,11 +50,13 @@ enum Op {
     },
     RecreatePerm {
         object: usize,
-        time: Timestamp,
+        new_created_at: EventId,
+        data: Arc<TestObjectPerms>,
     },
     RecreateDelegator {
         object: usize,
-        time: Timestamp,
+        new_created_at: EventId,
+        data: Arc<TestObjectDelegatePerms>,
     },
     Remove {
         object: usize,
@@ -65,6 +67,7 @@ enum Op {
 }
 
 struct FuzzState {
+    is_server: bool,
     objects: Vec<ObjectId>,
     mem_db: test_utils::MemDb,
 }
@@ -72,6 +75,7 @@ struct FuzzState {
 impl FuzzState {
     fn new(is_server: bool) -> FuzzState {
         FuzzState {
+            is_server,
             objects: Vec::new(),
             mem_db: test_utils::MemDb::new(is_server),
         }
@@ -174,25 +178,44 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
         Op::QueryDelegatePerms { user, q } => {
             run_query::<TestObjectDelegatePerms>(&db, &s.mem_db, *user, None, q).await?;
         }
-        Op::RecreatePerm { object, time } => {
-            let o = s.object(*object);
-            let pg = db.recreate::<TestObjectPerms, _>(o, *time, db).await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectPerms, _>(o, *time, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+        Op::RecreatePerm {
+            object,
+            new_created_at,
+            data,
+        } => {
+            if !s.is_server {
+                let o = s.object(*object);
+                let pg = db
+                    .recreate::<TestObjectPerms, _>(o, *new_created_at, data.clone(), db)
+                    .await;
+                let mem = s
+                    .mem_db
+                    .recreate::<TestObjectPerms, _>(o, *new_created_at, data.clone(), &s.mem_db)
+                    .await;
+                cmp(pg, mem)?;
+            }
         }
-        Op::RecreateDelegator { object, time } => {
-            let o = s.object(*object);
-            let pg = db
-                .recreate::<TestObjectDelegatePerms, _>(o, *time, db)
-                .await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectDelegatePerms, _>(o, *time, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+        Op::RecreateDelegator {
+            object,
+            new_created_at,
+            data,
+        } => {
+            if !s.is_server {
+                let o = s.object(*object);
+                let pg = db
+                    .recreate::<TestObjectDelegatePerms, _>(o, *new_created_at, data.clone(), db)
+                    .await;
+                let mem = s
+                    .mem_db
+                    .recreate::<TestObjectDelegatePerms, _>(
+                        o,
+                        *new_created_at,
+                        data.clone(),
+                        &s.mem_db,
+                    )
+                    .await;
+                cmp(pg, mem)?;
+            }
         }
         Op::Remove { object } => {
             let _object = object; // TODO(test): implement for non-postgres databases
@@ -348,7 +371,8 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_nothing_to_do() {
             },
             Op::RecreateDelegator {
                 object: 0,
-                time: Timestamp::from_ms(1),
+                new_created_at: EVENT_ID_2,
+                data: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
             },
         ]),
     )
@@ -373,7 +397,8 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_stuff_to_do() {
             },
             Op::RecreateDelegator {
                 object: 0,
-                time: Timestamp::from_ms(1 << 47),
+                new_created_at: EVENT_ID_3,
+                data: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
             },
         ]),
     )

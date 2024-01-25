@@ -36,7 +36,7 @@ impl MemDb {
         EventId::last_id_at(time)?;
         for (ty, o) in this.objects.values() {
             if ty == T::type_ulid() {
-                recreate::<T>(o, time, &mut this.events)?;
+                recreate_at::<T>(o, time, &mut this.events)?;
             }
         }
         Ok(())
@@ -101,7 +101,7 @@ impl MemDb {
     }
 }
 
-fn recreate<T: Object>(
+fn recreate_at<T: Object>(
     o: &FullObject,
     time: Timestamp,
     this_events: &mut HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
@@ -257,23 +257,48 @@ impl Db for MemDb {
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
-        time: Timestamp,
+        new_created_at: EventId,
+        object: Arc<T>,
         _cb: &C,
     ) -> crate::Result<()> {
-        let mut this = self.0.lock().await;
-        let this = &mut *this; // get a real borrow and not a RefMut struct
-        EventId::last_id_at(time)?; // start by checking the timestamp
-        let Some((ty, o)) = this.objects.get(&object_id) else {
+        let this = self.0.lock().await;
+
+        // First, check for duplicates
+        let Some(&(real_type_id, ref o)) = this.objects.get(&object_id) else {
             return Err(crate::Error::ObjectDoesNotExist(object_id));
         };
-        if ty != T::type_ulid() {
+        if real_type_id != *T::type_ulid() {
             return Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
-                real_type_id: *ty,
+                real_type_id,
             });
         }
-        recreate::<T>(o, time, &mut this.events).wrap_context("recreating object")?;
+        if let Some(e) = this.events.get(&new_created_at) {
+            if e.0 != object_id {
+                crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
+                return Err(crate::Error::EventAlreadyExists(new_created_at));
+            }
+        }
+
+        // Then, check that the data is correct
+        crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
+
+        // Then, check for required binaries
+        let required_binaries = object.required_binaries();
+        let mut missing_binaries = Vec::new();
+        for b in required_binaries {
+            if this.binaries.get(&b).is_none() {
+                missing_binaries.push(b);
+            }
+        }
+        if !missing_binaries.is_empty() {
+            return Err(crate::Error::MissingBinaries(missing_binaries));
+        }
+
+        // All good, do the recreation
+        o.recreate_with::<T>(new_created_at, object);
+
         Ok(())
     }
 

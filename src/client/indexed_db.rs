@@ -5,7 +5,7 @@ use crate::{
     error::ResultExt,
     fts,
     object::parse_snapshot_js,
-    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId,
+    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -1286,18 +1286,25 @@ impl Db for IndexedDb {
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
-        time: Timestamp,
+        new_created_at: EventId,
+        mut object: Arc<T>,
         _cb: &C,
     ) -> crate::Result<()> {
         let object_id_js = object_id.to_js_string();
         let type_id_js = T::type_ulid().to_js_string();
-        let max_event_id =
-            EventId::last_id_at(time).wrap_context("figuring last event id at provided time")?;
-        let max_event_id_js = max_event_id.to_js_string();
+        let new_created_at_js = new_created_at.to_js_string();
+        let max_id = EventId::from_u128(u128::MAX).to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
+        let required_binaries = object.required_binaries();
 
         self.db
-            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
+            .transaction(&[
+                "snapshots",
+                "snapshots_meta",
+                "events",
+                "events_meta",
+                "binaries",
+            ])
             .rw()
             .run(move |transaction| async move {
                 let snapshots = transaction
@@ -1312,6 +1319,9 @@ impl Db for IndexedDb {
                 let events_meta = transaction
                     .object_store("events_meta")
                     .wrap_context("retrieving 'events_meta' object store")?;
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving the 'binaries' object store")?;
 
                 let creation_object = snapshots_meta
                     .index("creation_object")
@@ -1327,51 +1337,28 @@ impl Db for IndexedDb {
                     .index("object_event")
                     .wrap_context("retrieving 'object_event' index")?;
 
-                // Find the last event at which to cut-off
-                let new_creation_event_id_js = object_event
-                    .cursor()
-                    .direction(CursorDirection::Prev)
-                    .range(
-                        &**Array::from_iter([&object_id_js, &zero_id])
-                            ..=&**Array::from_iter([&object_id_js, &max_event_id_js]),
-                    )
-                    .wrap_context("limiting cursor to find the latest event before cutoff")?
-                    .open()
+                // Get the current creation snapshot
+                let Some(creation_meta) = creation_object
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
                     .await
-                    .wrap_context("opening cursor on latest event before cutoff")?
-                    .primary_key();
-                let Some(new_creation_event_id_js) = new_creation_event_id_js else {
-                    // Check whether the object exists and is of the right type, to return the proper error if not
-                    if let Some(creation_meta) = creation_object
-                        .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                        .await
-                        .wrap_context("checking whether object exists")?
-                    {
-                        let creation_meta =
-                            serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
-                                .wrap_context("parsing snapshot metadata")?;
-                        // Check the type of the preexisting object is correct
-                        if creation_meta.type_id != *T::type_ulid() {
-                            return Err(crate::Error::WrongType {
-                                object_id,
-                                expected_type_id: *T::type_ulid(),
-                                real_type_id: creation_meta.type_id,
-                            }
-                            .into());
-                        }
-                        // No event before cutoff, nothing to do
-                        return Ok(());
-                    } else {
-                        // Object does not exist, return an error
-                        return Err(crate::Error::ObjectDoesNotExist(object_id).into());
-                    }
+                    .wrap_context("checking creation object")?
+                else {
+                    // Object does not exist, return an error
+                    return Err(crate::Error::ObjectDoesNotExist(object_id).into());
                 };
-                let new_creation_event_id =
-                    serde_wasm_bindgen::from_value::<EventId>(new_creation_event_id_js.clone())
-                        .wrap_context("deserializing event id")?;
+                let creation_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
+                    .wrap_context("parsing snapshot metadata")?;
+                if creation_meta.type_id != *T::type_ulid() {
+                    return Err(crate::Error::WrongType {
+                        object_id,
+                        expected_type_id: *T::type_ulid(),
+                        real_type_id: creation_meta.type_id,
+                    }
+                    .into());
+                }
 
-                // Check if the requested cutoff is the current latest snapshot
-                let Some(latest_snapshot_meta_js) = latest_type_object
+                // Check if the requested new_created_at is after the current latest snapshot
+                let latest_snapshot_meta_js = latest_type_object
                     .get(&Array::from_iter([
                         &JsValue::from(1),
                         &type_id_js,
@@ -1379,109 +1366,49 @@ impl Db for IndexedDb {
                     ]))
                     .await
                     .wrap_context("retrieving latest snapshot")?
-                else {
-                    // No latest snapshot. This is most likely due to the type not being the expected
-                    // one, because we already checked there are some events for this object, but let's
-                    // validate
-                    if let Some(creation_meta) = creation_object
-                        .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                        .await
-                        .wrap_context("checking creation object")?
-                    {
-                        let creation_meta =
-                            serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
-                                .wrap_context("parsing snapshot metadata")?;
-                        // Check the type of the preexisting object is correct
-                        if creation_meta.type_id != *T::type_ulid() {
-                            return Err(crate::Error::WrongType {
-                                object_id,
-                                expected_type_id: *T::type_ulid(),
-                                real_type_id: creation_meta.type_id,
-                            }
-                            .into());
-                        }
-                        return Err(crate::Error::Other(anyhow!("hit unexpected code path: there is an object of the right type but it's not in the latest index")).into());
-                    } else {
-                        // Object does not exist, return an error
-                        return Err(crate::Error::Other(anyhow!("hit unexpected code path: there are events for the object but no creation snapshot")).into());
-                    }
-                };
+                    .ok_or_else(|| {
+                        crate::Error::Other(anyhow!(
+                            "No latest snapshot for an object with a creation snapshot"
+                        ))
+                    })?;
                 let latest_snapshot_meta =
                     serde_wasm_bindgen::from_value::<SnapshotMeta>(latest_snapshot_meta_js)
                         .wrap_context("deserializing latest snapshot metadata")?;
-                let cutoff_is_already_latest =
-                    latest_snapshot_meta.snapshot_id == new_creation_event_id;
-                // TODO(low): we could optimize there by not recomputing the latest snapshot as we already know it
+                let new_creation_should_be_latest =
+                    latest_snapshot_meta.snapshot_id >= new_created_at;
 
-                // Find the creation snapshot
-                let creation_snapshot_meta_js = creation_object
-                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                    .await
-                    .wrap_with_context(|| format!("finding creation snapshot for {object_id:?}"))?
-                    .ok_or_else(|| crate::Error::ObjectDoesNotExist(object_id))?;
-                let creation_snapshot_meta =
-                    serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_snapshot_meta_js)
-                        .wrap_context("deserializing snapshot metadata")?;
-                let creation_snapshot_id_js = creation_snapshot_meta.snapshot_id.to_js_string();
-                let creation_snapshot = snapshots
-                    .get(&creation_snapshot_id_js)
-                    .await
-                    .wrap_with_context(|| {
-                        format!("retrieving creation snapshot data for {object_id:?}")
-                    })?
-                    .ok_or_else(|| {
-                        crate::Error::Other(anyhow!("no creation snapshot data for {object_id:?}"))
-                    })?;
-                let mut object = parse_snapshot_js::<T>(
-                    creation_snapshot_meta.snapshot_version,
-                    creation_snapshot,
-                )
-                .wrap_with_context(|| format!("parsing snapshot data for {object_id:?}"))?;
-
-                // Apply all events until the defined limit, deleting events as we go
-                let mut to_apply = object_event
+                // Delete all events prior to the new creation snapshot
+                let mut to_delete = object_event
                     .cursor()
                     .range(
                         &**Array::from_iter([&object_id_js, &zero_id])
-                            ..=&**Array::from_iter([&object_id_js, &max_event_id_js]),
+                            ..=&**Array::from_iter([&object_id_js, &new_created_at_js]),
                     )
-                    .wrap_context("limiting the range for the events to apply")?
+                    .wrap_context("limiting the range for the events to delete")?
                     .open()
                     .await
-                    .wrap_context("opening cursor of all events to apply")?;
-                while let Some(event_id_js) = to_apply.primary_key() {
-                    let event_js = events
-                        .get(&event_id_js)
-                        .await
-                        .wrap_context("retrieving to-apply event data")?
-                        .ok_or_else(|| {
-                            crate::Error::Other(anyhow!(
-                                "metadata cursor returned an event id that has no data"
-                            ))
-                        })?;
-                    let event = serde_wasm_bindgen::from_value::<T::Event>(event_js)
-                        .wrap_context("deserializing event data")?;
-                    object.apply(DbPtr::from(object_id), &event);
-                    to_apply
-                        .delete()
-                        .await
-                        .wrap_context("deleting applied event metadata")?;
+                    .wrap_context("opening cursor of all events to delete")?;
+                while let Some(event_id_js) = to_delete.primary_key() {
                     events
                         .delete(&event_id_js)
                         .await
-                        .wrap_context("deleting applied event data")?;
-                    to_apply
+                        .wrap_context("deleting event data")?;
+                    to_delete
+                        .delete()
+                        .await
+                        .wrap_context("deleting event metadata")?;
+                    to_delete
                         .advance(1)
                         .await
                         .wrap_context("moving to next to-apply event")?;
                 }
 
-                // Delete all snapshots before the cutoff
+                // Delete all snapshots for the object, we'll recreate creation and latest soon
                 let mut to_delete = object_snapshot
                     .cursor()
                     .range(
                         &**Array::from_iter([&object_id_js, &zero_id])
-                            ..=&**Array::from_iter([&object_id_js, &new_creation_event_id_js]),
+                            ..=&**Array::from_iter([&object_id_js, &max_id]),
                     )
                     .wrap_context("limiting to-delete snapshot range")?
                     .open()
@@ -1506,33 +1433,108 @@ impl Db for IndexedDb {
                 let object_js = serde_wasm_bindgen::to_value(&object)
                     .wrap_context("serializing new creation snapshot")?;
                 snapshots
-                    .add_kv(&new_creation_event_id_js, &object_js)
+                    .add_kv(&new_created_at_js, &object_js)
                     .await
                     .wrap_context("saving new creation snapshot data")?;
 
                 // And the new creation snapshot metadata
-                let new_snapshot_meta = SnapshotMeta {
-                    snapshot_id: new_creation_event_id,
+                let new_creation_snapshot_meta = SnapshotMeta {
+                    snapshot_id: new_created_at,
                     type_id: *T::type_ulid(),
                     object_id,
                     is_creation: Some(1),
-                    is_latest: cutoff_is_already_latest.then(|| 1),
+                    is_latest: new_creation_should_be_latest.then(|| 1),
                     normalizer_version: fts::normalizer_version(),
                     snapshot_version: T::snapshot_version(),
-                    is_locked: creation_snapshot_meta.is_locked,
-                    required_binaries: object.required_binaries(),
+                    is_locked: creation_meta.is_locked,
+                    required_binaries: required_binaries.clone(),
                 };
-                let new_snapshot_meta_js = serde_wasm_bindgen::to_value(&new_snapshot_meta)
-                    .wrap_context("serializing snapshot metadata")?;
+                let new_creation_snapshot_meta_js =
+                    serde_wasm_bindgen::to_value(&new_creation_snapshot_meta)
+                        .wrap_context("serializing snapshot metadata")?;
                 snapshots_meta
-                    .put(&new_snapshot_meta_js)
+                    .put(&new_creation_snapshot_meta_js)
                     .await
                     .wrap_context("saving the new creation snapshot metadata")?;
+
+                // Re-compute the latest snapshot if needed
+                if !new_creation_should_be_latest {
+                    let mut last_applied_event_id = new_created_at;
+                    let mut_object = Arc::make_mut(&mut object);
+                    // Read all the events one by one, applying them to the object
+                    let mut to_apply = object_event
+                        .cursor()
+                        .range(
+                            &**Array::from_iter([&object_id_js, &zero_id])
+                                ..=&**Array::from_iter([&object_id_js, &max_id]),
+                        )
+                        .wrap_context("limiting the range of events to apply")?
+                        .open_key()
+                        .await
+                        .wrap_context("opening the cursor on events to apply")?;
+                    while let Some(event_id_js) = to_apply.primary_key() {
+                        let event_js = events
+                            .get(&event_id_js)
+                            .await
+                            .wrap_context(
+                                "retrieving data for an event for which we have the metadata",
+                            )?
+                            .ok_or_else(|| {
+                                crate::Error::Other(anyhow!(
+                                    "had no event data for an event with known metadata"
+                                ))
+                            })?;
+                        let event_id = serde_wasm_bindgen::from_value::<EventId>(event_id_js)
+                            .wrap_context("deserializing event id")?;
+                        last_applied_event_id = event_id;
+                        let event = serde_wasm_bindgen::from_value::<T::Event>(event_js)
+                            .wrap_context("deserializing event data")?;
+                        mut_object.apply(DbPtr::from(object_id), &event);
+                        to_apply
+                            .advance(1)
+                            .await
+                            .wrap_context("advancing events-to-apply cursor")?;
+                    }
+
+                    // Write the metadata
+                    let new_latest_snapshot_meta = SnapshotMeta {
+                        snapshot_id: last_applied_event_id,
+                        type_id: *T::type_ulid(),
+                        object_id,
+                        is_creation: None,
+                        is_latest: Some(1),
+                        normalizer_version: fts::normalizer_version(),
+                        snapshot_version: T::snapshot_version(),
+                        is_locked: None,
+                        required_binaries: object.required_binaries(),
+                    };
+                    let new_latest_snapshot_meta_js =
+                        serde_wasm_bindgen::to_value(&new_latest_snapshot_meta)
+                            .wrap_context("serializing snapshot metadata")?;
+                    snapshots_meta
+                        .put(&new_latest_snapshot_meta_js)
+                        .await
+                        .wrap_context("saving the new latest snapshot metadata")?;
+
+                    // And the data
+                    let last_applied_event_id_js = last_applied_event_id.to_js_string();
+                    let object_js = serde_wasm_bindgen::to_value(&object)
+                        .wrap_context("serializing new latest snapshot")?;
+                    snapshots
+                        .add_kv(&last_applied_event_id_js, &object_js)
+                        .await
+                        .wrap_context("saving new latest snapshot data")?;
+                }
+
+                // And finally, validate the required binaries
+                check_required_binaries(binaries, required_binaries).await?;
 
                 Ok(())
             })
             .await
-            .wrap_with_context(|| format!("recreating {object_id:?} at {time:?}"))
+            .wrap_with_context(|| {
+                format!("recreating {object_id:?} with new data from {new_created_at:?}")
+            })
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

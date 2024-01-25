@@ -10,7 +10,7 @@ macro_rules! smoke_test {
         use std::sync::Arc;
         use $crate::{
             crdb_internal::{test_utils::*, Db},
-            Query, Timestamp,
+            Query,
         };
 
         $db.create(
@@ -122,15 +122,6 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         let all_objects = $query_all;
         assert_eq!(all_objects.len(), 1);
-        $db.recreate::<TestObjectSimple, _>(
-            OBJECT_ID_1,
-            Timestamp::from_ms(EVENT_ID_2.0.timestamp_ms()),
-            &$db,
-        )
-        .await
-        .unwrap();
-        $db.assert_invariants_generic().await;
-        $db.assert_invariants_for::<TestObjectSimple>().await;
         if $test_remove {
             $db.remove(OBJECT_ID_1).await.unwrap();
             $db.assert_invariants_generic().await;

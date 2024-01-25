@@ -1,6 +1,4 @@
-use crate::{
-    db_trait::Db, messages::Upload, BinPtr, CrdbFuture, EventId, ObjectId, Timestamp, TypeId,
-};
+use crate::{db_trait::Db, messages::Upload, BinPtr, CrdbFuture, EventId, ObjectId, TypeId};
 
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct UploadId(pub i64);
@@ -38,7 +36,8 @@ pub trait ApiConfig: crate::private::Sealed {
         db: &D,
         type_id: TypeId,
         object_id: ObjectId,
-        time: Timestamp,
+        new_created_at: EventId,
+        object: serde_json::Value,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 }
 
@@ -99,11 +98,14 @@ macro_rules! generate_api {
                 db: &D,
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
-                time: crdb::Timestamp,
+                new_created_at: crdb::EventId,
+                object: crdb::serde_json::Value,
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        return db.recreate::<$object, _>(object_id, time, db).await;
+                        let object = crdb::serde_json::from_value::<$object>(object)
+                            .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
+                        return db.recreate::<$object, _>(object_id, new_created_at, crdb::Arc::new(object), db).await;
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

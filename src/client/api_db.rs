@@ -108,14 +108,6 @@ impl ApiDb {
         Ok(futures::stream::empty())
     }
 
-    pub async fn recreate<T: Object>(
-        &self,
-        _object: ObjectId,
-        _time: Timestamp,
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(api): implement
-    }
-
     pub async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<[u8]>) -> crate::Result<()> {
         unimplemented!() // TODO(api): implement
     }

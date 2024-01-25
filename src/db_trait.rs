@@ -1,6 +1,6 @@
 use crate::{
     future::{CrdbSend, CrdbSync},
-    BinPtr, CanDoCallbacks, CrdbFuture, EventId, Object, ObjectId, Timestamp,
+    BinPtr, CanDoCallbacks, CrdbFuture, EventId, Object, ObjectId,
 };
 use std::sync::Arc;
 
@@ -33,7 +33,8 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
-        time: Timestamp,
+        new_created_at: EventId,
+        creation_value: Arc<T>,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    UPDATE snapshots\n                    SET is_creation = TRUE\n                    WHERE snapshot_id = $1\n                    RETURNING snapshot_version, snapshot\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "snapshot_version",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "snapshot",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "7b490c0d83440fbaa8514d22b8d0cb8819ff87585af57043b5b08891320b67a0"
+}

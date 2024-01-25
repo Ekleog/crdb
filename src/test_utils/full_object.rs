@@ -153,6 +153,13 @@ impl FullObject {
         self.data.write().unwrap().recreate_at::<T>(at)
     }
 
+    pub fn recreate_with<T: Object>(&self, event_id: EventId, data: Arc<T>) {
+        self.data
+            .write()
+            .unwrap()
+            .recreate_with::<T>(event_id, data)
+    }
+
     pub fn get_snapshot_at<T: Object>(
         &self,
         mut at: Bound<EventId>,
@@ -250,6 +257,13 @@ impl FullObjectImpl {
         }
 
         Ok(true)
+    }
+
+    pub fn recreate_with<T: Object>(&mut self, new_created_at: EventId, object: Arc<T>) {
+        self.created_at = new_created_at;
+        self.creation = object as _;
+        self.changes = self.changes.split_off(&new_created_at);
+        self.changes.remove(&new_created_at);
     }
 
     pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> crate::Result<()> {

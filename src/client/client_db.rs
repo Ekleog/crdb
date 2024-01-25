@@ -94,9 +94,13 @@ impl ClientDb {
                             // Without this, users would risk unsubscribing from an object, then receiving
                             // an event on this object (as a race condition), and then staying subscribed.
                         }
-                        UpdateData::Recreation { time } => {
+                        UpdateData::Recreation {
+                            new_created_at,
+                            data,
+                        } => {
                             if let Err(err) =
-                                C::recreate(&*local_db, type_id, object_id, time).await
+                                C::recreate(&*local_db, type_id, object_id, new_created_at, data)
+                                    .await
                             {
                                 tracing::error!(
                                     ?err,
@@ -298,14 +302,7 @@ impl ClientDb {
         }))
     }
 
-    pub async fn recreate<T: Object>(
-        &self,
-        object: ObjectId,
-        time: Timestamp,
-    ) -> crate::Result<()> {
-        self.db.recreate::<T, _>(object, time, &*self.db).await?;
-        self.api.recreate::<T>(object, time).await
-    }
+    // TODO(low): should the client be allowed to request a recreation?
 
     pub async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         self.db.create_binary(binary_id, data.clone()).await?;

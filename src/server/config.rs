@@ -1,5 +1,7 @@
 use super::postgres_db::{ComboLock, PostgresDb};
-use crate::{api::ApiConfig, CanDoCallbacks, CrdbFuture, ObjectId, Timestamp, TypeId, User};
+use crate::{
+    api::ApiConfig, CanDoCallbacks, CrdbFuture, EventId, ObjectId, Timestamp, TypeId, User,
+};
 use std::sync::Arc;
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
@@ -23,7 +25,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         object_id: ObjectId,
         time: Timestamp,
         cb: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<bool>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, serde_json::Value)>>>;
 }
 
 #[doc(hidden)]
@@ -70,10 +72,15 @@ macro_rules! generate_server {
                 object_id: crdb::ObjectId,
                 time: crdb::Timestamp,
                 cb: &'a C,
-            ) -> crdb::Result<bool> {
+            ) -> crdb::Result<Option<(crdb::EventId, crdb::serde_json::Value)>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        return call_on.recreate_impl::<$object, C>(object_id, time, cb).await;
+                        let Some((new_created_at, data)) = call_on.recreate_impl::<$object, C>(object_id, time, cb).await? else {
+                            return Ok(None);
+                        };
+                        let data = crdb::serde_json::to_value(data)
+                            .wrap_with_context(|| format!("serializing snapshot for {object_id:?}"))?;
+                        return Ok(Some((new_created_at, data)));
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

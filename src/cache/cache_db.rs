@@ -1,7 +1,6 @@
 use super::{BinariesCache, ObjectCache};
 use crate::{
     db_trait::Db, hash_binary, BinPtr, CanDoCallbacks, DynSized, EventId, Object, ObjectId,
-    Timestamp,
 };
 use anyhow::anyhow;
 use std::{
@@ -93,11 +92,14 @@ impl<D: Db> Db for CacheDb<D> {
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
-        time: Timestamp,
+        new_created_at: EventId,
+        object: Arc<T>,
         cb: &C,
     ) -> crate::Result<()> {
         self.cache.write().unwrap().remove(&object_id);
-        self.db.recreate::<T, C>(object_id, time, cb).await
+        self.db
+            .recreate::<T, C>(object_id, new_created_at, object, cb)
+            .await
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

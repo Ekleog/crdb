@@ -34,7 +34,8 @@ enum Op {
     },
     Recreate {
         object: usize,
-        time: Timestamp,
+        new_created_at: EventId,
+        data: Arc<TestObjectFull>,
     },
     Remove {
         object: usize,
@@ -49,6 +50,7 @@ enum Op {
 }
 
 struct FuzzState {
+    is_server: bool,
     objects: Vec<ObjectId>,
     mem_db: test_utils::MemDb,
 }
@@ -56,6 +58,7 @@ struct FuzzState {
 impl FuzzState {
     fn new(is_server: bool) -> FuzzState {
         FuzzState {
+            is_server,
             objects: Vec::new(),
             mem_db: test_utils::MemDb::new(is_server),
         }
@@ -119,14 +122,22 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
         Op::Query { user, q } => {
             run_query::<TestObjectFull>(&db, &s.mem_db, *user, None, q).await?;
         }
-        Op::Recreate { object, time } => {
-            let o = s.object(*object);
-            let pg = db.recreate::<TestObjectFull, _>(o, *time, db).await;
-            let mem = s
-                .mem_db
-                .recreate::<TestObjectFull, _>(o, *time, &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
+        Op::Recreate {
+            object,
+            new_created_at,
+            data,
+        } => {
+            if !s.is_server {
+                let o = s.object(*object);
+                let pg = db
+                    .recreate::<TestObjectFull, _>(o, *new_created_at, data.clone(), db)
+                    .await;
+                let mem = s
+                    .mem_db
+                    .recreate::<TestObjectFull, _>(o, *new_created_at, data.clone(), &s.mem_db)
+                    .await;
+                cmp(pg, mem)?;
+            }
         }
         Op::Remove { object } => {
             let _object = object; // TODO(test): implement for non-postgres databases

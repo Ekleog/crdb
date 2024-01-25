@@ -318,18 +318,21 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 if let Some(time) = no_new_changes_before {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
-                    let did_recreate =
+                    let recreation_result =
                         Config::recreate_no_lock(&self, type_id, object_id, time, cb)
                             .await
                             .wrap_with_context(|| {
                                 format!("recreating {object_id:?} at time {time:?}")
                             })?;
-                    if did_recreate {
+                    if let Some((new_created_at, data)) = recreation_result {
                         reord::point().await;
                         notify_recreation(Update {
                             type_id,
                             object_id,
-                            data: UpdateData::Recreation { time },
+                            data: UpdateData::Recreation {
+                                new_created_at,
+                                data,
+                            },
                             now_have_all_until: Timestamp::now(), // TODO(server): this is a lie
                         });
                     }
@@ -1040,7 +1043,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object_id: ObjectId,
         time: Timestamp,
         cb: &C,
-    ) -> crate::Result<bool> {
+    ) -> crate::Result<Option<(EventId, Arc<T>)>> {
         if time.time_ms()
             > SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -1084,7 +1087,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
         if EventId::from_uuid(creation_snapshot.snapshot_id) >= time_id {
             // Already created after the requested time
-            return Ok(false);
+            return Ok(None);
         }
 
         // Figure out the cutoff event
@@ -1107,7 +1110,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             format!("recovering the last event for {object_id:?} before cutoff time {time_id:?}")
         })?;
         let cutoff_time = match event {
-            None => return Ok(false), // Nothing to do, there was no event before the cutoff already
+            None => return Ok(None), // Nothing to do, there was no event before the cutoff already
             Some(e) => EventId::from_uuid(e.event_id),
         };
 
@@ -1143,7 +1146,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             })?;
         reord::point().await;
 
-        if EventId::from_uuid(snapshot.snapshot_id) != cutoff_time {
+        let latest_object = if EventId::from_uuid(snapshot.snapshot_id) != cutoff_time {
             // Insert a new snapshot dated at `cutoff_time`
 
             // Apply all the events between latest snapshot (excluded) and asked recreation time (included)
@@ -1188,20 +1191,31 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             )
             .await
             .wrap_with_context(|| format!("writing snapshot {cutoff_time:?} for {object_id:?}"))?;
+            object
         } else {
             // Just update the `cutoff_time` snapshot to record it's the creation snapshot
             reord::maybe_lock().await;
-            sqlx::query("UPDATE snapshots SET is_creation = TRUE WHERE snapshot_id = $1")
-                .bind(cutoff_time)
-                .execute(&mut *transaction)
+            let latest = sqlx::query!(
+                "
+                    UPDATE snapshots
+                    SET is_creation = TRUE
+                    WHERE snapshot_id = $1
+                    RETURNING snapshot_version, snapshot
+                ",
+                cutoff_time as EventId,
+            )
+                .fetch_one(&mut *transaction)
                 .await
                 .wrap_with_context(|| {
                     format!(
-                        "marking snapshot {cutoff_time:?} as the creation one for {object_id:?}"
+                        "marking snapshot {cutoff_time:?} as the creation one for {object_id:?} and retrieving its data"
                     )
                 })?;
+            let object = parse_snapshot::<T>(latest.snapshot_version, latest.snapshot)
+                .wrap_context("deserializing snapshot data")?;
             reord::point().await;
-        }
+            object
+        };
 
         // We now have all the new information. We can delete the events.
         reord::maybe_lock().await;
@@ -1239,7 +1253,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })?;
         reord::point().await;
 
-        Ok(true)
+        Ok(Some((cutoff_time, Arc::new(latest_object))))
     }
 
     pub async fn query<T: Object>(
@@ -1701,19 +1715,11 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
     async fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
-        time: Timestamp,
-        cb: &C,
+        _new_created_at: EventId,
+        _data: Arc<T>,
+        _cb: &C,
     ) -> crate::Result<()> {
-        // Acquire the lock required to recreate the object
-        // This will not create a new event id, and thus does not need a lock besides the object one
-        // In addition, the last snapshot value will not change, which means that no reverse-dependencies
-        // updating needs to happen
-        let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
-        let _lock = self.object_locks.async_lock(object_id).await;
-
-        self.recreate_impl::<T, _>(object_id, time, cb).await?;
-
-        Ok(())
+        panic!("Tried recreating {object_id:?} on the server, but server is supposed to only ever be the one to make recreations!")
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
