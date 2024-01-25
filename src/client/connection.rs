@@ -134,7 +134,6 @@ impl Connection {
                 _reconnect_attempt_interval = tokio::time::sleep(RECONNECT_INTERVAL),
                     if self.is_trying_to_connect() => (),
 
-                // TODO(api): timeout TokenSent state
                 // Send the next ping, if it's time to do it
                 Some(_) = OptionFuture::from(self.next_ping.map(tokio::time::sleep_until)), if self.is_connected() => {
                     let request_id = RequestId::now();
@@ -147,7 +146,7 @@ impl Connection {
                 }
 
                 // Next pong did not come in time, disconnect
-                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| tokio::time::sleep_until(t))), if self.is_connected() => {
+                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| tokio::time::sleep_until(t))), if self.is_connecting() => {
                     self.state = self.state.disconnect();
                     self.next_pong_deadline = None;
                 }
@@ -256,6 +255,7 @@ impl Connection {
                     socket,
                     request_id,
                 };
+                self.next_pong_deadline = Some((request_id, Instant::now() + PONG_DEADLINE));
             }
         }
     }
@@ -266,6 +266,13 @@ impl Connection {
 
     fn is_connected(&self) -> bool {
         matches!(self.state, State::Connected { .. })
+    }
+
+    fn is_connecting(&self) -> bool {
+        matches!(
+            self.state,
+            State::Connected { .. } | State::TokenSent { .. }
+        )
     }
 
     fn handle_command(&mut self, command: Command) {
