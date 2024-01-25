@@ -5,7 +5,8 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     full_object::FullObject,
-    messages::{Update, UpdateData},
+    messages::{ObjectData, Update, UpdateData},
+    object::parse_snapshot,
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::{channel::mpsc, StreamExt};
@@ -202,15 +203,53 @@ impl ClientDb {
             .await
     }
 
+    /// Returns the latest snapshot for the object described by `data`
+    async fn create_all<T: Object>(&self, lock: bool, data: ObjectData) -> crate::Result<()> {
+        if data.type_id != *T::type_ulid() {
+            return Err(crate::Error::WrongType {
+                object_id: data.object_id,
+                expected_type_id: *T::type_ulid(),
+                real_type_id: data.type_id,
+            });
+        }
+
+        if let Some(creation_snapshot) = data.creation_snapshot {
+            let creation_snapshot = parse_snapshot::<T>(creation_snapshot.0, creation_snapshot.1)
+                .wrap_context("parsing snapshot")?;
+
+            self.db
+                .create::<T, _>(
+                    data.object_id,
+                    data.created_at,
+                    Arc::new(creation_snapshot),
+                    lock,
+                    &*self.db,
+                )
+                .await
+                .wrap_context("creating creation snapshot in local database")?;
+        }
+
+        for (event_id, event) in data.events {
+            let event = serde_json::from_value::<T::Event>(event).wrap_context("parsing event")?;
+
+            self.db
+                .submit::<T, _>(data.object_id, event_id, Arc::new(event), &*self.db)
+                .await
+                .wrap_context("creating event in local database")?;
+        }
+
+        Ok(())
+    }
+
     pub async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<Arc<T>> {
         match self.db.get_latest::<T>(lock, object_id).await {
             Ok(r) => return Ok(r),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
-        let res = self.api.get::<T>(object_id).await?;
-        // TODO(high): self.db.create_all(res)
-        Ok(res.last_snapshot::<T>().unwrap()) // TODO(high): properly define this
+        let res = self.api.get_all(object_id).await?;
+        self.create_all::<T>(lock, res).await?;
+        Ok(self.db.get_latest::<T>(lock, object_id).await?)
     }
 
     pub async fn query_local<'a, T: Object>(

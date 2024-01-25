@@ -1,7 +1,8 @@
 use super::connection::{Command, Connection, ConnectionEvent};
 use crate::{
-    full_object::FullObject, messages::Update, BinPtr, CrdbStream, EventId, Object, ObjectId,
-    Query, SessionToken, Timestamp,
+    full_object::FullObject,
+    messages::{ObjectData, Update},
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::channel::mpsc;
 use std::sync::{Arc, RwLock};
@@ -66,7 +67,7 @@ impl ApiDb {
         unimplemented!() // TODO(api): implement
     }
 
-    pub async fn get<T: Object>(&self, _object_id: ObjectId) -> crate::Result<FullObject> {
+    pub async fn get_all(&self, _object_id: ObjectId) -> crate::Result<ObjectData> {
         unimplemented!() // TODO(api): implement
     }
 
