@@ -1551,11 +1551,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     }
 
     #[allow(dead_code)] // TODO(api): use to answer get requests, plus filter based on if-modified-since
-    async fn get_all(
-        &self,
-        expected_type_id: TypeId,
-        object_id: ObjectId,
-    ) -> crate::Result<ObjectData> {
+    async fn get_all(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -1587,14 +1583,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             Some(s) => s,
             None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
         };
-        let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
-        if real_type_id != expected_type_id {
-            return Err(crate::Error::WrongType {
-                object_id,
-                expected_type_id,
-                real_type_id,
-            });
-        }
 
         reord::point().await;
         let events = sqlx::query!(
@@ -1610,7 +1598,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(ObjectData {
             object_id,
             created_at: EventId::from_uuid(creation_snapshot.snapshot_id),
-            type_id: expected_type_id,
+            type_id: TypeId::from_uuid(creation_snapshot.type_id),
             creation_snapshot: Some((
                 creation_snapshot.snapshot_version,
                 creation_snapshot.snapshot,
