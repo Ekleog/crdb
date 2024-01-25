@@ -68,7 +68,7 @@ impl ApiDb {
             None => Ok(()), // Lost connection, we will be unsubscribed anyway
             Some(ResponsePart::Success) => Ok(()),
             Some(ResponsePart::Error(err)) => Err(err.into()),
-            resp => Err(crate::Error::Other(anyhow!(
+            Some(resp) => Err(crate::Error::Other(anyhow!(
                 "Unexpected server response to Unsubscribe request: {resp:?}"
             ))),
         }
