@@ -29,7 +29,7 @@ mod fuzz_helpers {
     };
     use rand::{rngs::StdRng, SeedableRng};
     use std::{
-        future::Future,
+        future::Future,collections::HashSet,
         sync::atomic::{AtomicUsize, Ordering},
     };
 
@@ -129,11 +129,16 @@ mod fuzz_helpers {
         _only_updated_since: Option<Timestamp>,
         query: &Query,
     ) -> anyhow::Result<()> {
-        let pg = db.query::<T>(query).await.wrap_context("querying postgres");
+        let pg = db
+            .query::<T>(query)
+            .await
+            .wrap_context("querying postgres")
+            .map(|r| r.into_iter().collect::<HashSet<_>>());
         let mem = mem_db
             .query::<T>(USER_ID_NULL, None, query)
             .await
-            .wrap_context("querying mem");
+            .wrap_context("querying mem")
+            .map(|r| r.into_iter().collect::<HashSet<_>>());
         cmp(pg, mem)
     }
 

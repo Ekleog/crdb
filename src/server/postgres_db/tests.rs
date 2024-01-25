@@ -83,6 +83,8 @@ impl Drop for TmpDb {
 }
 
 mod fuzz_helpers {
+    use std::collections::HashSet;
+
     use crate::{
         server::{postgres_db::tests::TmpDb, PostgresDb},
         test_utils::{db::ServerConfig, *},
@@ -138,11 +140,12 @@ mod fuzz_helpers {
         let pg = db
             .query::<T>(user, only_updated_since, query)
             .await
-            .wrap_context("querying postgres");
+            .wrap_context("querying postgres")
+            .map(|r| r.into_iter().collect::<HashSet<_>>());
         let mem = mem_db
             .query::<T>(user, only_updated_since, query)
             .await
-            .wrap_context("querying mem");
+            .map(|r| r.into_iter().collect::<HashSet<_>>());
         cmp(pg, mem)
     }
 
