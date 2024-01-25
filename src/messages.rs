@@ -71,7 +71,7 @@ pub enum Upload {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ServerMessage {
     Response {
-        request: RequestId,
+        request_id: RequestId,
         response: ResponsePart,
         last_response: bool,
     },

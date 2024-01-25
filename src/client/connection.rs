@@ -158,20 +158,20 @@ impl Connection {
                         State::NoValidInfo | State::Disconnected { .. } => unreachable!(),
 
                         // We were waiting for an answer to SetToken. Handle it.
-                        State::TokenSent { url, token, socket, request_id } => match message {
+                        State::TokenSent { url, token, socket, request_id: req } => match message {
                             ServerMessage::Response {
-                                request,
+                                request_id,
                                 response: ResponsePart::Success,
                                 last_response: true
-                            } if request == request_id => {
+                            } if req == request_id => {
                                 self.state = State::Connected { url, token, socket };
                                 self.event_cb.read().unwrap()(ConnectionEvent::Connected);
                             }
                             ServerMessage::Response {
-                                request,
+                                request_id,
                                 response: ResponsePart::Error(crate::SerializableError::InvalidToken(tok)),
                                 last_response: true
-                            } if request == request_id && tok == token => {
+                            } if req == request_id && tok == token => {
                                 self.state = State::NoValidInfo;
                                 self.event_cb.read().unwrap()(ConnectionEvent::InvalidToken(token));
                             }
@@ -278,9 +278,6 @@ impl Connection {
     }
 
     async fn handle_connected_message(&mut self, message: ServerMessage) {
-        let State::Connected { socket, .. } = &mut self.state else {
-            panic!("Called handle_connected_message while not actually connected");
-        };
         match message {
             ServerMessage::Updates(updates) => {
                 if let Err(err) = self
@@ -292,12 +289,21 @@ impl Connection {
                 }
             }
             ServerMessage::Response {
-                request,
+                request_id,
                 response,
                 last_response,
             } => {
-                let _ = (socket, request, response, last_response);
-                unimplemented!() // TODO(api): implement
+                let Some(sender) = self.pending_requests.get_mut(&request_id) else {
+                    tracing::warn!(
+                        "Sender gave us a response to {request_id:?} that we do not know of"
+                    );
+                    return;
+                };
+                // Ignore errors when sending, in case the requester did not await on the response future
+                let _ = sender.unbounded_send(response);
+                if last_response {
+                    self.pending_requests.remove(&request_id);
+                }
             }
         }
     }
