@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT snapshot_id, snapshot_version, snapshot\n            FROM snapshots\n            WHERE object_id = $1\n            AND type_id = $2\n            AND is_latest\n        ",
+  "query": "\n                    SELECT snapshot_id, type_id, snapshot_version, snapshot\n                    FROM snapshots\n                    WHERE object_id = $1\n                    AND is_creation\n                ",
   "describe": {
     "columns": [
       {
@@ -10,26 +10,31 @@
       },
       {
         "ordinal": 1,
+        "name": "type_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
         "name": "snapshot_version",
         "type_info": "Int4"
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "snapshot",
         "type_info": "Jsonb"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Uuid"
       ]
     },
     "nullable": [
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "2e23f64ec206634703ff92f35c40102602acea6de936aa55c61db2dc8bbce080"
+  "hash": "78af84bacadfd9cc39e67a91bde3b013926d180f197a904ed790421685e80b45"
 }

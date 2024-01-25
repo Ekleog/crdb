@@ -1566,7 +1566,114 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_context("setting transaction as repeatable read")?;
 
-        get_impl::<T>(&mut *transaction, object_id).await
+        reord::point().await;
+        let creation_snapshot = sqlx::query!(
+            "
+                    SELECT snapshot_id, type_id, snapshot_version, snapshot
+                    FROM snapshots
+                    WHERE object_id = $1
+                    AND is_creation
+                ",
+            object_id as ObjectId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching creation snapshot for object {object_id:?}"))?;
+        let creation_snapshot = match creation_snapshot {
+            Some(s) => s,
+            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
+        };
+        let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
+        let expected_type_id = *T::type_ulid();
+        if real_type_id != expected_type_id {
+            return Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id,
+                real_type_id,
+            });
+        }
+
+        reord::point().await;
+        let events = sqlx::query!(
+            "SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id",
+            object_id as ObjectId
+        )
+        .fetch_all(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
+
+        reord::point().await;
+        let latest_snapshot = sqlx::query!(
+            "
+                    SELECT snapshot_id, snapshot_version, snapshot
+                    FROM snapshots
+                    WHERE object_id = $1
+                    AND type_id = $2
+                    AND is_latest
+                ",
+            object_id as ObjectId,
+            T::type_ulid() as &TypeId,
+        )
+        .fetch_one(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
+
+        // Build the FullObject from the parts
+        let creation = Arc::new(
+            parse_snapshot::<T>(
+                creation_snapshot.snapshot_version,
+                creation_snapshot.snapshot,
+            )
+            .wrap_with_context(|| {
+                format!(
+                    "parsing snapshot {:?} as type {:?}",
+                    creation_snapshot.snapshot_id,
+                    T::type_ulid()
+                )
+            })?,
+        );
+        if !events.is_empty() {
+            debug_assert!(events[0].event_id > creation_snapshot.snapshot_id);
+            debug_assert!(events[events.len() - 1].event_id == latest_snapshot.snapshot_id);
+        }
+        let mut changes = BTreeMap::new();
+        for e in events.into_iter() {
+            let event_id = EventId::from_uuid(e.event_id);
+            changes.insert(
+                event_id,
+                Change::new(Arc::new(
+                    serde_json::from_value::<T::Event>(e.data).wrap_with_context(|| {
+                        format!("parsing event {event_id:?} as type {:?}", T::type_ulid())
+                    })?,
+                )),
+            );
+        }
+        if let Some(mut c) = changes.last_entry() {
+            c.get_mut().set_snapshot(Arc::new(
+                parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
+                    .wrap_with_context(|| {
+                        format!(
+                            "parsing snapshot {:?} as type {:?}",
+                            latest_snapshot.snapshot_id,
+                            T::type_ulid()
+                        )
+                    })?,
+            ));
+        } else {
+            assert!(
+                creation_snapshot.snapshot_id == latest_snapshot.snapshot_id,
+                "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
+                latest_snapshot.snapshot_id,
+                creation_snapshot.snapshot_id
+            );
+        }
+
+        Ok(FullObject::from_parts(
+            object_id,
+            EventId::from_uuid(creation_snapshot.snapshot_id),
+            creation,
+            changes,
+        ))
     }
 }
 
@@ -1694,125 +1801,6 @@ async fn check_required_binaries(
         return Err(crate::Error::MissingBinaries(binaries));
     }
     Ok(())
-}
-
-/// Note: this assumes that `transaction` is set to REPEATABLE READ for consistency, or that `object_id` is locked
-async fn get_impl<T: Object>(
-    transaction: &mut sqlx::PgConnection,
-    object_id: ObjectId,
-) -> crate::Result<FullObject> {
-    const EVENT_ID: usize = 0;
-    const EVENT_DATA: usize = 1;
-
-    reord::point().await;
-    let creation_snapshot = sqlx::query!(
-        "
-            SELECT snapshot_id, type_id, snapshot_version, snapshot
-            FROM snapshots
-            WHERE object_id = $1
-            AND is_creation
-        ",
-        object_id as ObjectId,
-    )
-    .fetch_optional(&mut *transaction)
-    .await
-    .wrap_with_context(|| format!("fetching creation snapshot for object {object_id:?}"))?;
-    let creation_snapshot = match creation_snapshot {
-        Some(s) => s,
-        None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
-    };
-    let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
-    let expected_type_id = *T::type_ulid();
-    if real_type_id != expected_type_id {
-        return Err(crate::Error::WrongType {
-            object_id,
-            expected_type_id,
-            real_type_id,
-        });
-    }
-
-    reord::point().await;
-    let events =
-        sqlx::query("SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id")
-            .bind(object_id)
-            .fetch_all(&mut *transaction)
-            .await
-            .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
-
-    reord::point().await;
-    let latest_snapshot = sqlx::query!(
-        "
-            SELECT snapshot_id, snapshot_version, snapshot
-            FROM snapshots
-            WHERE object_id = $1
-            AND type_id = $2
-            AND is_latest
-        ",
-        object_id as ObjectId,
-        T::type_ulid() as &TypeId,
-    )
-    .fetch_one(&mut *transaction)
-    .await
-    .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
-
-    // Build the FullObject from the parts
-    let creation = Arc::new(
-        parse_snapshot::<T>(
-            creation_snapshot.snapshot_version,
-            creation_snapshot.snapshot,
-        )
-        .wrap_with_context(|| {
-            format!(
-                "parsing snapshot {:?} as type {:?}",
-                creation_snapshot.snapshot_id,
-                T::type_ulid()
-            )
-        })?,
-    );
-    if !events.is_empty() {
-        debug_assert!(events[0].get::<uuid::Uuid, _>(EVENT_ID) > creation_snapshot.snapshot_id);
-        debug_assert!(
-            events[events.len() - 1].get::<uuid::Uuid, _>(EVENT_ID) == latest_snapshot.snapshot_id
-        );
-    }
-    let mut changes = BTreeMap::new();
-    for e in events.into_iter() {
-        let event_id = EventId::from_uuid(e.get(EVENT_ID));
-        changes.insert(
-            event_id,
-            Change::new(Arc::new(
-                serde_json::from_value::<T::Event>(e.get(EVENT_DATA)).wrap_with_context(|| {
-                    format!("parsing event {event_id:?} as type {:?}", T::type_ulid())
-                })?,
-            )),
-        );
-    }
-    if let Some(mut c) = changes.last_entry() {
-        c.get_mut().set_snapshot(Arc::new(
-            parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
-                .wrap_with_context(|| {
-                    format!(
-                        "parsing snapshot {:?} as type {:?}",
-                        latest_snapshot.snapshot_id,
-                        T::type_ulid()
-                    )
-                })?,
-        ));
-    } else {
-        assert!(
-            creation_snapshot.snapshot_id == latest_snapshot.snapshot_id,
-            "got no events but latest_snapshot {:?} != creation_snapshot {:?}",
-            latest_snapshot.snapshot_id,
-            creation_snapshot.snapshot_id
-        );
-    }
-
-    Ok(FullObject::from_parts(
-        object_id,
-        EventId::from_uuid(creation_snapshot.snapshot_id),
-        creation,
-        changes,
-    ))
 }
 
 /// `from` is excluded
