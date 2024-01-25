@@ -9,7 +9,7 @@ use crate::{
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::{channel::mpsc, StreamExt};
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -170,10 +170,12 @@ impl ClientDb {
         self.db.unlock(ptr).await
     }
 
-    pub async fn unsubscribe(&self, ptr: ObjectId) -> crate::Result<()> {
+    pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
         // TODO(client): automatically call `api.unsubscribe` when `vacuum` removes an object
-        self.db.remove(ptr).await?;
-        self.api.unsubscribe(ptr).await
+        for object_id in object_ids.iter() {
+            self.db.remove(*object_id).await?;
+        }
+        self.api.unsubscribe(object_ids).await
     }
 
     pub async fn create<T: Object>(

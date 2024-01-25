@@ -145,6 +145,44 @@ impl From<Error> for SerializableError {
     }
 }
 
+impl From<SerializableError> for Error {
+    fn from(err: SerializableError) -> Error {
+        match err {
+            SerializableError::MissingBinaries(e) => Error::MissingBinaries(e),
+            SerializableError::InvalidTimestamp(e) => Error::InvalidTimestamp(e),
+            SerializableError::ObjectAlreadyExists(e) => Error::ObjectAlreadyExists(e),
+            SerializableError::EventAlreadyExists(e) => Error::EventAlreadyExists(e),
+            SerializableError::ObjectDoesNotExist(e) => Error::ObjectDoesNotExist(e),
+            SerializableError::TypeDoesNotExist(e) => Error::TypeDoesNotExist(e),
+            SerializableError::BinaryHashMismatch(e) => Error::BinaryHashMismatch(e),
+            SerializableError::NullByteInString => Error::NullByteInString,
+            SerializableError::InvalidToken(e) => Error::InvalidToken(e),
+            SerializableError::InvalidNumber => Error::InvalidNumber,
+            SerializableError::EventTooEarly {
+                event_id,
+                object_id,
+                created_at,
+            } => Error::EventTooEarly {
+                event_id,
+                object_id,
+                created_at,
+            },
+            SerializableError::WrongType {
+                object_id,
+                expected_type_id,
+                real_type_id,
+            } => Error::WrongType {
+                object_id,
+                expected_type_id,
+                real_type_id,
+            },
+            SerializableError::InternalServerError => {
+                Error::Other(anyhow!("Internal server error"))
+            }
+        }
+    }
+}
+
 pub trait ResultExt: Sized {
     type Ok;
 
@@ -273,39 +311,7 @@ impl<T> ResultExt for std::result::Result<T, SerializableError> {
     fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
         match self {
             Ok(r) => Ok(r),
-            Err(err) => Err(match err {
-                SerializableError::MissingBinaries(e) => Error::MissingBinaries(e),
-                SerializableError::InvalidTimestamp(e) => Error::InvalidTimestamp(e),
-                SerializableError::ObjectAlreadyExists(e) => Error::ObjectAlreadyExists(e),
-                SerializableError::EventAlreadyExists(e) => Error::EventAlreadyExists(e),
-                SerializableError::ObjectDoesNotExist(e) => Error::ObjectDoesNotExist(e),
-                SerializableError::TypeDoesNotExist(e) => Error::TypeDoesNotExist(e),
-                SerializableError::BinaryHashMismatch(e) => Error::BinaryHashMismatch(e),
-                SerializableError::NullByteInString => Error::NullByteInString,
-                SerializableError::InvalidToken(e) => Error::InvalidToken(e),
-                SerializableError::InvalidNumber => Error::InvalidNumber,
-                SerializableError::EventTooEarly {
-                    event_id,
-                    object_id,
-                    created_at,
-                } => Error::EventTooEarly {
-                    event_id,
-                    object_id,
-                    created_at,
-                },
-                SerializableError::WrongType {
-                    object_id,
-                    expected_type_id,
-                    real_type_id,
-                } => Error::WrongType {
-                    object_id,
-                    expected_type_id,
-                    real_type_id,
-                },
-                SerializableError::InternalServerError => {
-                    Error::Other(anyhow!("Internal server error").context(f()))
-                }
-            }),
+            Err(err) => Err(Error::from(err)).wrap_with_context(f),
         }
     }
 }

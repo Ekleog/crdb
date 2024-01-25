@@ -29,7 +29,8 @@ mod fuzz_helpers {
     };
     use rand::{rngs::StdRng, SeedableRng};
     use std::{
-        future::Future,collections::HashSet,
+        collections::HashSet,
+        future::Future,
         sync::atomic::{AtomicUsize, Ordering},
     };
 

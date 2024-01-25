@@ -88,6 +88,7 @@ impl State {
 pub struct Connection {
     state: State,
     commands: mpsc::UnboundedReceiver<Command>,
+    requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     update_sender: mpsc::UnboundedSender<Update>,
 }
@@ -95,11 +96,13 @@ pub struct Connection {
 impl Connection {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
+        requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
         event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
         update_sender: mpsc::UnboundedSender<Update>,
     ) -> Connection {
         Connection {
             commands,
+            requests,
             state: State::NoValidInfo,
             event_cb,
             update_sender,
@@ -124,6 +127,15 @@ impl Connection {
                         break; // ApiDb was dropped, let's close ourselves
                     };
                     self.handle_command(command);
+                }
+
+                // Listen for incoming requests from the client
+                request = self.requests.next() => {
+                    let Some(request) = request else {
+                        break; // ApiDb was dropped, let's close ourselves
+                    };
+                    let _ = request;
+                    unimplemented!() // TODO(api)
                 }
 
                 // Listen for incoming server messages

@@ -1,13 +1,18 @@
 use super::connection::{Command, Connection, ConnectionEvent};
 use crate::{
-    messages::{ObjectData, Update},
+    messages::{ObjectData, Request, ResponsePart, Update},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
-use futures::channel::mpsc;
-use std::sync::{Arc, RwLock};
+use anyhow::anyhow;
+use futures::{channel::mpsc, StreamExt};
+use std::{
+    collections::HashSet,
+    sync::{Arc, RwLock},
+};
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
+    requests: mpsc::UnboundedSender<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
 }
 
@@ -16,10 +21,20 @@ impl ApiDb {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let (connection, commands) = mpsc::unbounded();
-        crate::spawn(Connection::new(commands, connection_event_cb.clone(), update_sender).run());
+        let (requests, requests_receiver) = mpsc::unbounded();
+        crate::spawn(
+            Connection::new(
+                commands,
+                requests_receiver,
+                connection_event_cb.clone(),
+                update_sender,
+            )
+            .run(),
+        );
         (
             ApiDb {
                 connection,
+                requests,
                 connection_event_cb,
             },
             update_receiver,
@@ -44,8 +59,19 @@ impl ApiDb {
 
     /// Note that this function unsubscribes ALL the streams that have ever been taken for
     /// this object; and purges it from the local database.
-    pub async fn unsubscribe(&self, _ptr: ObjectId) -> crate::Result<()> {
-        unimplemented!() // TODO(api): implement
+    pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
+        let (sender, mut response) = mpsc::unbounded();
+        self.requests
+            .unbounded_send((sender, Request::Unsubscribe(object_ids)))
+            .expect("connection cannot go away before sender does");
+        match response.next().await {
+            None => Ok(()), // Lost connection, we will be unsubscribed anyway
+            Some(ResponsePart::Success) => Ok(()),
+            Some(ResponsePart::Error(err)) => Err(err.into()),
+            resp => Err(crate::Error::Other(anyhow!(
+                "Unexpected server response to Unsubscribe request{resp:?}"
+            ))),
+        }
     }
 
     pub async fn create<T: Object>(

@@ -80,7 +80,9 @@ macro_rules! generate_client {
             }
 
             pub fn unsubscribe<T: crdb::Object>(&self, object: crdb::DbPtr<T>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
-                self.db.unsubscribe(object.to_object_id())
+                let mut set = std::collections::HashSet::new();
+                set.insert(object.to_object_id());
+                self.db.unsubscribe(set)
             }
 
             pub fn listen_for_updates(&self) -> crdb::tokio::sync::broadcast::Receiver<crdb::ObjectId> {
