@@ -57,13 +57,16 @@ impl ApiDb {
             .expect("connection cannot go away before sender does")
     }
 
-    /// Note that this function unsubscribes ALL the streams that have ever been taken for
-    /// this object; and purges it from the local database.
-    pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
-        let (sender, mut response) = mpsc::unbounded();
+    async fn request(&self, request: Request) -> mpsc::UnboundedReceiver<ResponsePart> {
+        let (sender, response) = mpsc::unbounded();
         self.requests
-            .unbounded_send((sender, Request::Unsubscribe(object_ids)))
+            .unbounded_send((sender, request))
             .expect("connection cannot go away before sender does");
+        response
+    }
+
+    pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
+        let mut response = self.request(Request::Unsubscribe(object_ids)).await;
         match response.next().await {
             None => Ok(()), // Lost connection, we will be unsubscribed anyway
             Some(ResponsePart::Success) => Ok(()),
