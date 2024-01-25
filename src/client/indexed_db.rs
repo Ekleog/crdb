@@ -1197,6 +1197,7 @@ impl Db for IndexedDb {
                     .wrap_context("retrieving 'latest_type_object' index")?;
 
                 // Figure out the creation snapshot to validate input
+                // TODO(low): this could do with a simple latest_object index
                 let creation_snapshot_meta_js = creation_object
                     .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
                     .await

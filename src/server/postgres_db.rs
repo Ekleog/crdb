@@ -1551,6 +1551,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
     }
 
+    // TODO(high): decide what to do with this function
+    #[allow(dead_code)]
     async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         reord::point().await;
         let mut transaction = self
@@ -1720,13 +1722,49 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
 
     async fn get_latest<T: Object>(
         &self,
-        lock: bool,
+        _lock: bool,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
-        // TODO(high): actually implement properly
-        let res = self.get::<T>(lock, object_id).await?;
-        res.last_snapshot::<T>()
-            .wrap_context("retrieving last snapshot")
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // First, check the existence and requested type
+        reord::point().await;
+        let latest_snapshot = sqlx::query!(
+            "
+                    SELECT snapshot_id, type_id, snapshot_version, snapshot
+                    FROM snapshots
+                    WHERE object_id = $1
+                    AND is_latest
+                ",
+            object_id as ObjectId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
+        let latest_snapshot = match latest_snapshot {
+            Some(s) => s,
+            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
+        };
+        let real_type_id = TypeId::from_uuid(latest_snapshot.type_id);
+        let expected_type_id = *T::type_ulid();
+        if real_type_id != expected_type_id {
+            return Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id,
+                real_type_id,
+            });
+        }
+
+        // All good, let's parse the snapshot and return
+        reord::point().await;
+        let res = parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
+            .wrap_with_context(|| format!("parsing latest snapshot for {object_id:?}"))?;
+        Ok(Arc::new(res))
     }
 
     async fn recreate<T: Object, C: CanDoCallbacks>(
