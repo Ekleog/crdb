@@ -6,7 +6,7 @@ use crate::{
 use anyhow::anyhow;
 use futures::{channel::mpsc, stream, SinkExt, StreamExt};
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -91,6 +91,7 @@ pub struct Connection {
     commands: mpsc::UnboundedReceiver<Command>,
     requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     not_sent_requests: VecDeque<(mpsc::UnboundedSender<ResponsePart>, Request)>,
+    pending_requests: HashMap<RequestId, mpsc::UnboundedSender<ResponsePart>>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     update_sender: mpsc::UnboundedSender<Update>,
 }
@@ -106,6 +107,7 @@ impl Connection {
             commands,
             requests,
             not_sent_requests: VecDeque::new(),
+            pending_requests: HashMap::new(),
             state: State::NoValidInfo,
             event_cb,
             update_sender,
@@ -251,8 +253,28 @@ impl Connection {
         sender: mpsc::UnboundedSender<ResponsePart>,
         request: Request,
     ) {
-        let _ = (sender, request);
-        unimplemented!() // TODO(api)
+        let State::Connected { socket, url, token } = &mut self.state else {
+            panic!("Called handle_request while not connected");
+        };
+        let request_id = RequestId::now();
+        let message = ClientMessage {
+            request_id,
+            request,
+        };
+        let sending_res = Self::send(socket, &message).await;
+        match sending_res {
+            Ok(()) => {
+                self.pending_requests.insert(request_id, sender);
+            }
+            Err(err) => {
+                self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
+                self.state = State::Disconnected {
+                    url: url.clone(),
+                    token: *token,
+                };
+                self.not_sent_requests.push_front((sender, message.request));
+            }
+        }
     }
 
     async fn handle_connected_message(&mut self, message: ServerMessage) {
