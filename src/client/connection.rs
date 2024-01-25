@@ -1,7 +1,7 @@
 use crate::{
     ids::RequestId,
     messages::{ClientMessage, Request, ResponsePart, ServerMessage, Update},
-    SessionToken,
+    SessionToken, Timestamp,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, stream, SinkExt, StreamExt};
@@ -41,6 +41,7 @@ pub enum ConnectionEvent {
     LostConnection(anyhow::Error),
     InvalidToken(SessionToken),
     Connected,
+    TimeOffset(i64), // Time offset with the server, in milliseconds
     LoggedOut,
 }
 
@@ -100,6 +101,7 @@ pub struct Connection {
     pending_requests: HashMap<RequestId, mpsc::UnboundedSender<ResponsePart>>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     update_sender: mpsc::UnboundedSender<Update>,
+    last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
 }
@@ -119,6 +121,9 @@ impl Connection {
             state: State::NoValidInfo,
             event_cb,
             update_sender,
+            last_ping: Timestamp::now()
+                .time_ms_i()
+                .expect("Time is obviously ill-set"),
             next_ping: None,
             next_pong_deadline: None,
         }
@@ -141,6 +146,7 @@ impl Connection {
                         request_id,
                         request: Request::GetTime,
                     }).await;
+                    self.last_ping = Timestamp::now().time_ms_i().expect("Time is obviously ill-set");
                     self.next_ping = None;
                     self.next_pong_deadline = Some((request_id, Instant::now() + PONG_DEADLINE));
                 }
@@ -331,12 +337,34 @@ impl Connection {
                         self.pending_requests.remove(&request_id);
                     }
                 } else if self.next_pong_deadline.map(|(r, _)| r) == Some(request_id) {
+                    let ResponsePart::CurrentTime(server_time) = response else {
+                        tracing::error!("Server answered GetTime with unexpected {response:?}");
+                        return;
+                    };
+                    let Ok(server_time) = server_time.time_ms_i() else {
+                        tracing::error!("Server answered GetTime with obviously-wrong timestamp {server_time:?}");
+                        return;
+                    };
                     self.next_ping = Some(Instant::now() + PING_INTERVAL);
                     self.next_pong_deadline = None;
-                    // TODO(api): tell the user if the time is too off
+                    // Figure out the time offset with the server, only counting certainly-off times
+                    let now = Timestamp::now()
+                        .time_ms_i()
+                        .expect("Time was obviously wrong");
+                    if server_time.saturating_sub(now) > 0 {
+                        self.event_cb.read().unwrap()(ConnectionEvent::TimeOffset(
+                            server_time.saturating_sub(now),
+                        ));
+                    } else if server_time.saturating_sub(self.last_ping) < 0 {
+                        self.event_cb.read().unwrap()(ConnectionEvent::TimeOffset(
+                            server_time.saturating_sub(self.last_ping),
+                        ));
+                    } else {
+                        self.event_cb.read().unwrap()(ConnectionEvent::TimeOffset(0));
+                    }
                 } else {
                     tracing::warn!(
-                        "Sender gave us a response to {request_id:?} that we do not know of"
+                        "Server gave us a response to {request_id:?} that we do not know of"
                     );
                 }
             }

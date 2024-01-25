@@ -37,7 +37,6 @@ impl Timestamp {
         Timestamp(u64::try_from(v).expect("negative timestamp made its way in the database"))
     }
 
-    #[cfg(feature = "server")]
     pub fn time_ms_i(&self) -> crate::Result<i64> {
         i64::try_from(self.0).map_err(|_| crate::Error::InvalidTimestamp(*self))
     }
