@@ -4,12 +4,13 @@ use crate::{
     SessionToken,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, stream, SinkExt, StreamExt};
+use futures::{channel::mpsc, future::OptionFuture, stream, SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, RwLock},
     time::Duration,
 };
+use tokio::time::Instant;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
@@ -20,6 +21,10 @@ mod wasm;
 use native as implem;
 #[cfg(target_arch = "wasm32")]
 use wasm as implem;
+
+const RECONNECT_INTERVAL: Duration = Duration::from_secs(10);
+const PING_INTERVAL: Duration = Duration::from_secs(10);
+const PONG_DEADLINE: Duration = Duration::from_secs(10);
 
 pub enum Command {
     Login {
@@ -90,10 +95,13 @@ pub struct Connection {
     state: State,
     commands: mpsc::UnboundedReceiver<Command>,
     requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
+    // TODO(api): replace not_sent_request with a proper request for ApiDb to give us all pending requests upon connecting
     not_sent_requests: VecDeque<(mpsc::UnboundedSender<ResponsePart>, Request)>,
     pending_requests: HashMap<RequestId, mpsc::UnboundedSender<ResponsePart>>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     update_sender: mpsc::UnboundedSender<Update>,
+    next_ping: Option<Instant>,
+    next_pong_deadline: Option<(RequestId, Instant)>,
 }
 
 impl Connection {
@@ -111,19 +119,38 @@ impl Connection {
             state: State::NoValidInfo,
             event_cb,
             update_sender,
+            next_ping: None,
+            next_pong_deadline: None,
         }
     }
 
     pub async fn run(mut self) {
         loop {
-            // TODO(api): regularly send GetTime requests for ping/pong checking
             // TODO(low): ping/pong should probably be eg. 1 minute when user is inactive, and 10s when active
             tokio::select! {
                 // Retry connecting if we're looping there
                 // TODO(low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
-                _reconnect_attempt_interval = tokio::time::sleep(Duration::from_secs(10)),
+                _reconnect_attempt_interval = tokio::time::sleep(RECONNECT_INTERVAL),
                     if self.is_trying_to_connect() => (),
+
+                // TODO(api): timeout TokenSent state
+                // Send the next ping, if it's time to do it
+                Some(_) = OptionFuture::from(self.next_ping.map(tokio::time::sleep_until)), if self.is_connected() => {
+                    let request_id = RequestId::now();
+                    let _ = self.send_connected(&ClientMessage {
+                        request_id,
+                        request: Request::GetTime,
+                    }).await;
+                    self.next_ping = None;
+                    self.next_pong_deadline = Some((request_id, Instant::now() + PONG_DEADLINE));
+                }
+
+                // Next pong did not come in time, disconnect
+                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| tokio::time::sleep_until(t))), if self.is_connected() => {
+                    self.state = self.state.disconnect();
+                    self.next_pong_deadline = None;
+                }
 
                 // Listen for any incoming commands (including end-of-run)
                 // Note: StreamExt::next is cancellation-safe on any Stream
@@ -165,6 +192,8 @@ impl Connection {
                                 last_response: true
                             } if req == request_id => {
                                 self.state = State::Connected { url, token, socket };
+                                self.next_ping = Some(Instant::now() + PING_INTERVAL);
+                                self.next_pong_deadline = None;
                                 self.event_cb.read().unwrap()(ConnectionEvent::Connected);
                             }
                             ServerMessage::Response {
@@ -235,6 +264,10 @@ impl Connection {
         matches!(self.state, State::Disconnected { .. })
     }
 
+    fn is_connected(&self) -> bool {
+        matches!(self.state, State::Connected { .. })
+    }
+
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::Login { url, token } => {
@@ -284,16 +317,20 @@ impl Connection {
                 response,
                 last_response,
             } => {
-                let Some(sender) = self.pending_requests.get_mut(&request_id) else {
+                if let Some(sender) = self.pending_requests.get_mut(&request_id) {
+                    // Ignore errors when sending, in case the requester did not await on the response future
+                    let _ = sender.unbounded_send(response);
+                    if last_response {
+                        self.pending_requests.remove(&request_id);
+                    }
+                } else if self.next_pong_deadline.map(|(r, _)| r) == Some(request_id) {
+                    self.next_ping = Some(Instant::now() + PING_INTERVAL);
+                    self.next_pong_deadline = None;
+                    // TODO(api): tell the user if the time is too off
+                } else {
                     tracing::warn!(
                         "Sender gave us a response to {request_id:?} that we do not know of"
                     );
-                    return;
-                };
-                // Ignore errors when sending, in case the requester did not await on the response future
-                let _ = sender.unbounded_send(response);
-                if last_response {
-                    self.pending_requests.remove(&request_id);
                 }
             }
         }
