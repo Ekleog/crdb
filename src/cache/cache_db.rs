@@ -1,7 +1,7 @@
 use super::{BinariesCache, ObjectCache};
 use crate::{
-    db_trait::Db, full_object::DynSized, hash_binary, BinPtr, CanDoCallbacks, EventId, Object,
-    ObjectId, Timestamp,
+    db_trait::Db, hash_binary, BinPtr, CanDoCallbacks, DynSized, EventId, Object, ObjectId,
+    Timestamp,
 };
 use anyhow::anyhow;
 use std::{

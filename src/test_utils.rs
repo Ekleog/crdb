@@ -1,13 +1,11 @@
 #![allow(dead_code, unused_imports)] // test utils can be or not be used but get copy-pasted anyway
 
-use crate::{
-    full_object::{DynSized, FullObject},
-    CrdbStream, Object,
-};
+use crate::{CrdbStream, DynSized, Object};
 use anyhow::Context;
 use futures::StreamExt;
 use std::{any::Any, fmt::Debug, sync::Arc};
 
+mod full_object;
 mod mem_db;
 mod object_delegate_perms;
 mod object_full;
@@ -16,6 +14,7 @@ mod object_simple;
 mod smoke_test;
 mod stubs;
 
+pub use full_object::FullObject;
 pub use mem_db::MemDb;
 pub use object_delegate_perms::{TestEventDelegatePerms, TestObjectDelegatePerms};
 pub use object_full::{TestEventFull, TestObjectFull};

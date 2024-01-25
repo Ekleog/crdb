@@ -1,6 +1,4 @@
-#![allow(dead_code)] // TODO(high): decide what to do with FullObject
-
-use crate::{error::ResultExt, DbPtr, EventId, Object, ObjectId, Timestamp};
+use crate::{error::ResultExt, DbPtr, DynSized, EventId, Object, ObjectId, Timestamp};
 use anyhow::anyhow;
 use std::{
     any::Any,
@@ -11,25 +9,6 @@ use std::{
 
 #[cfg(test)]
 mod tests;
-
-pub trait DynSized: 'static + Any + Send + Sync + deepsize::DeepSizeOf {
-    // TODO(blocked): remove these functions once rust supports trait upcasting:
-    // https://github.com/rust-lang/rust/issues/65991#issuecomment-1869869919
-    // https://github.com/rust-lang/rust/issues/119335
-    fn arc_to_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync>;
-    fn ref_to_any(&self) -> &(dyn Any + Send + Sync);
-    fn deep_size_of(&self) -> usize {
-        <Self as deepsize::DeepSizeOf>::deep_size_of(self)
-    }
-}
-impl<T: 'static + Any + Send + Sync + deepsize::DeepSizeOf> DynSized for T {
-    fn arc_to_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> {
-        self
-    }
-    fn ref_to_any(&self) -> &(dyn Any + Send + Sync) {
-        self
-    }
-}
 
 fn fmt_option_arc(
     v: &Option<Arc<dyn DynSized>>,

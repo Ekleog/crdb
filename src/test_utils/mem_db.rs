@@ -1,10 +1,7 @@
-use super::eq;
+use super::{eq, FullObject};
 use crate::{
-    db_trait::Db,
-    error::ResultExt,
-    full_object::{DynSized, FullObject},
-    BinPtr, CanDoCallbacks, CrdbStream, Event, EventId, Object, ObjectId, Query, Timestamp, TypeId,
-    User,
+    db_trait::Db, error::ResultExt, BinPtr, CanDoCallbacks, CrdbStream, DynSized, Event, EventId,
+    Object, ObjectId, Query, Timestamp, TypeId, User,
 };
 use futures::{stream, Stream, StreamExt};
 use std::{

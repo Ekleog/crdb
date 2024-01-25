@@ -1,4 +1,4 @@
-use crate::{full_object::DynSized, ObjectId, Timestamp};
+use crate::{DynSized, ObjectId, Timestamp};
 use std::{
     collections::HashMap,
     sync::{
