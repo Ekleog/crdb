@@ -92,7 +92,7 @@ impl ApiDb {
     async fn auto_resender_with_binaries<D: Db>(
         request: Arc<Request>,
         requests: mpsc::UnboundedSender<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
-        _binary_getter: Arc<D>,
+        binary_getter: Arc<D>,
     ) -> crate::Result<()> {
         loop {
             // Send the request
@@ -126,13 +126,32 @@ impl ApiDb {
                     )));
                 }
                 ResponsePart::Error(crate::SerializableError::MissingBinaries(
-                    _missing_binaries,
+                    missing_binaries,
                 )) => {
                     // TODO(low): Currently, if the user enqueues 3 objects that all require the same binary at
                     // once, then the server will reject all 3 of them and then the client will upload the binary
                     // 3 times before noticing that it's now all good. Maybe some more global knowledge of what's
                     // being sent would allow to avoid that case?
-                    unimplemented!() // TODO(api)
+
+                    // Send all missing binaries, ignoring the server's answer, then re-enqueue the request
+                    #[allow(unused_variables, unreachable_code)] // TODO(api)
+                    for binary_id in missing_binaries {
+                        let bin = binary_getter
+                            .get_binary(binary_id)
+                            .await?
+                            .ok_or_else(|| crate::Error::MissingBinaries(vec![binary_id]))?;
+                        let bin_request = unimplemented!(); // TODO(api)
+                        let (response_sender, _) = mpsc::unbounded();
+                        if requests
+                            .unbounded_send((response_sender, request.clone()))
+                            .is_err()
+                        {
+                            return Err(crate::Error::Other(anyhow!(
+                                "Connection-handling thread shut down"
+                            )));
+                        }
+                    }
+                    continue; // re-enqueue the request on next loop turn
                 }
                 ResponsePart::Error(crate::SerializableError::ObjectDoesNotExist(_object_id)) => {
                     // We can hit this place if:
