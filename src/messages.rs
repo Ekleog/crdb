@@ -35,7 +35,7 @@ pub enum Request {
     },
     Query {
         query_id: QueryId,
-        query: Query,
+        query: Arc<Query>,
         only_updated_since: Option<Timestamp>,
         subscribe: bool,
     },
@@ -112,11 +112,10 @@ pub enum MaybeObject {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ObjectData {
     pub object_id: ObjectId,
-    pub created_at: EventId,
     pub type_id: TypeId,
     // TODO(low): expose some API to make it easy for client writers to notice they're getting snapshots
     // with versions higher than what their current code version supports, to suggest an upgrade
-    pub creation_snapshot: Option<(i32, serde_json::Value)>,
+    pub creation_snapshot: Option<(EventId, i32, serde_json::Value)>,
     pub events: BTreeMap<EventId, serde_json::Value>,
     pub now_have_all_until: Timestamp,
 }
@@ -132,16 +131,14 @@ pub struct Update {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum UpdateData {
+    // Also used for re-creation events
     Creation {
         created_at: EventId,
+        snapshot_version: i32,
         data: serde_json::Value,
     },
     Event {
         event_id: EventId,
-        data: serde_json::Value,
-    },
-    Recreation {
-        new_created_at: EventId,
         data: serde_json::Value,
     },
 }

@@ -2,8 +2,9 @@ use crate::{
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
+        UpdateData,
     },
-    ObjectId, SessionToken, Timestamp,
+    ObjectId, Query, SessionToken, Timestamp,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, stream, SinkExt, StreamExt};
@@ -99,7 +100,6 @@ pub struct Connection {
     last_request_id: RequestId,
     commands: mpsc::UnboundedReceiver<Command>,
     requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
-    // TODO(api): upon reconnecting we should also re-subscribe to all the things we were previously subscribed on
     not_sent_requests: VecDeque<(RequestId, Arc<Request>, mpsc::UnboundedSender<ResponsePart>)>,
     // The last `bool` shows whether we already started sending an answer to the Sender. If yes, we need to
     // kill it with an Error rather than restart it from 0, to avoid duplicate answers.
@@ -109,8 +109,8 @@ pub struct Connection {
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
-    subscribed_objects: HashMap<ObjectId, Option<Timestamp>>, // TODO(api): actually update that timestamp on each received Update
-    subscribed_queries: HashMap<QueryId, Option<Timestamp>>,
+    subscribed_objects: HashMap<ObjectId, Option<Timestamp>>,
+    subscribed_queries: HashMap<QueryId, (Arc<Query>, Option<Timestamp>)>,
 }
 
 impl Connection {
@@ -211,6 +211,37 @@ impl Connection {
                                 self.next_ping = Some(Instant::now() + PING_INTERVAL);
                                 self.next_pong_deadline = None;
                                 self.event_cb.read().unwrap()(ConnectionEvent::Connected);
+
+                                // Re-subscribe to the previously subscribed queries and objects
+                                let subscribed_queries = self.subscribed_queries.clone(); // TODO(low): we can certainly avoid this clone
+                                for (query_id, (query, have_all_until)) in subscribed_queries {
+                                    let (responses_sender, responses_receiver) = mpsc::unbounded();
+                                    let request_id = self.next_request_id();
+                                    self.handle_request(
+                                        request_id,
+                                        Arc::new(Request::Query {
+                                            query_id,
+                                            query,
+                                            only_updated_since: have_all_until,
+                                            subscribe: true,
+                                        }),
+                                        responses_sender.clone(),
+                                    ).await;
+                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver, Some(query_id)));
+                                }
+                                if !self.subscribed_objects.is_empty() {
+                                    let (responses_sender, responses_receiver) = mpsc::unbounded();
+                                    let request_id = self.next_request_id();
+                                    self.handle_request(
+                                        request_id,
+                                        Arc::new(Request::Get {
+                                            object_ids: self.subscribed_objects.clone(),
+                                            subscribe: true,
+                                        }),
+                                        responses_sender,
+                                    ).await;
+                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver, None));
+                                }
                             }
                             ServerMessage::Response {
                                 request_id,
@@ -344,12 +375,12 @@ impl Connection {
             }
             Request::Query {
                 query_id,
-                query: _,
+                query,
                 only_updated_since,
                 subscribe: true,
             } => {
                 self.subscribed_queries
-                    .insert(*query_id, *only_updated_since);
+                    .insert(*query_id, (query.clone(), *only_updated_since));
             }
             Request::Unsubscribe(object_ids) => {
                 for object_id in object_ids {
@@ -380,7 +411,7 @@ impl Connection {
                     }
                     for (query_id, now_updated) in update.now_have_all_until_for_queries.iter() {
                         if let Some(updated) = self.subscribed_queries.get_mut(&query_id) {
-                            *updated = Some(*now_updated);
+                            updated.1 = Some(*now_updated);
                         }
                     }
                 }
@@ -428,8 +459,11 @@ impl Connection {
                                 now_have_all_until, ..
                             } = &response
                             {
-                                self.subscribed_queries
-                                    .insert(*query_id, *now_have_all_until);
+                                if let Some(subscription_info) =
+                                    self.subscribed_queries.get_mut(query_id)
+                                {
+                                    subscription_info.1 = *now_have_all_until;
+                                }
                             }
                         }
                         _ => (),
@@ -471,6 +505,65 @@ impl Connection {
                 } else {
                     tracing::warn!(
                         "Server gave us a response to {request_id:?} that we do not know of"
+                    );
+                }
+            }
+        }
+    }
+
+    async fn send_responses_as_updates(
+        update_sender: mpsc::UnboundedSender<Update>,
+        mut responses_receiver: mpsc::UnboundedReceiver<ResponsePart>,
+        for_query: Option<QueryId>,
+    ) {
+        // No need to keep track of self.subscribed_*, this will be done before even reaching this point
+        while let Some(response) = responses_receiver.next().await {
+            match response {
+                ResponsePart::ConnectionLoss => (), // too bad, let's empty the feed and try again next reconnection
+                ResponsePart::Error(err) => {
+                    tracing::error!(?err, "got unexpected server error upon re-subscribing");
+                }
+                ResponsePart::Objects {
+                    data,
+                    now_have_all_until,
+                } => {
+                    let last_object = data.len().saturating_sub(1);
+                    for (i, maybe_object) in data.into_iter().enumerate() {
+                        match maybe_object {
+                            MaybeObject::AlreadySubscribed(_) => continue,
+                            MaybeObject::NotYetSubscribed(object) => {
+                                if let Some((created_at, snapshot_version, data)) =
+                                    object.creation_snapshot
+                                {
+                                    let mut now_have_all_until_for_queries = HashMap::new();
+                                    if i == last_object {
+                                        if let (Some(query_id), Some(now_have_all_until)) =
+                                            (for_query, now_have_all_until)
+                                        {
+                                            now_have_all_until_for_queries
+                                                .insert(query_id, now_have_all_until);
+                                        }
+                                    }
+                                    let _ = update_sender.unbounded_send(Update {
+                                        object_id: object.object_id,
+                                        type_id: object.type_id,
+                                        data: UpdateData::Creation {
+                                            created_at,
+                                            snapshot_version,
+                                            data,
+                                        },
+                                        now_have_all_until_for_object: object.now_have_all_until,
+                                        now_have_all_until_for_queries,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                response => {
+                    tracing::error!(
+                        ?response,
+                        "got unexpected server response upon re-subscribing"
                     );
                 }
             }

@@ -67,10 +67,22 @@ impl ClientDb {
                     let type_id = u.type_id;
                     // TODO(client): record `u.now_have_all_until` somewhere
                     match u.data {
-                        UpdateData::Creation { created_at, data } => {
-                            if let Err(err) =
-                                C::create(&*local_db, type_id, object_id, created_at, data, false)
-                                    .await
+                        UpdateData::Creation {
+                            created_at,
+                            snapshot_version,
+                            data,
+                        } => {
+                            // TODO(client): decide how to expose locking all of a query's results, including new objects
+                            if let Err(err) = C::recreate(
+                                &*local_db,
+                                type_id,
+                                object_id,
+                                created_at,
+                                snapshot_version,
+                                data,
+                                false,
+                            )
+                            .await
                             {
                                 tracing::error!(
                                     ?err,
@@ -93,21 +105,6 @@ impl ClientDb {
                             // DO NOT re-fetch object when receiving an event not in cache for it.
                             // Without this, users would risk unsubscribing from an object, then receiving
                             // an event on this object (as a race condition), and then staying subscribed.
-                        }
-                        UpdateData::Recreation {
-                            new_created_at,
-                            data,
-                        } => {
-                            if let Err(err) =
-                                C::recreate(&*local_db, type_id, object_id, new_created_at, data)
-                                    .await
-                            {
-                                tracing::error!(
-                                    ?err,
-                                    ?object_id,
-                                    "failed recreating as per received event in internal db"
-                                );
-                            }
                         }
                     }
                     if let Err(err) = updates_broadcaster.send(object_id) {
@@ -222,13 +219,13 @@ impl ClientDb {
             });
         }
 
-        if let Some(creation_snapshot) = data.creation_snapshot {
-            let creation_snapshot = parse_snapshot::<T>(creation_snapshot.0, creation_snapshot.1)
+        if let Some((created_at, snapshot_version, snapshot_data)) = data.creation_snapshot {
+            let creation_snapshot = parse_snapshot::<T>(snapshot_version, snapshot_data)
                 .wrap_context("parsing snapshot")?;
 
             db.create::<T, _>(
                 data.object_id,
-                data.created_at,
+                created_at,
                 Arc::new(creation_snapshot),
                 lock,
                 &*db,

@@ -25,7 +25,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         object_id: ObjectId,
         time: Timestamp,
         cb: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, serde_json::Value)>>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, i32, serde_json::Value)>>>;
 }
 
 #[doc(hidden)]
@@ -72,7 +72,7 @@ macro_rules! generate_server {
                 object_id: crdb::ObjectId,
                 time: crdb::Timestamp,
                 cb: &'a C,
-            ) -> crdb::Result<Option<(crdb::EventId, crdb::serde_json::Value)>> {
+            ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value)>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let Some((new_created_at, data)) = call_on.recreate_impl::<$object, C>(object_id, time, cb).await? else {
@@ -80,7 +80,7 @@ macro_rules! generate_server {
                         };
                         let data = crdb::serde_json::to_value(data)
                             .wrap_with_context(|| format!("serializing snapshot for {object_id:?}"))?;
-                        return Ok(Some((new_created_at, data)));
+                        return Ok(Some((new_created_at, <$object as crdb::Object>::snapshot_version(), data)));
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

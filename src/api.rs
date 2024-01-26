@@ -15,13 +15,14 @@ pub trait ApiConfig: crate::private::Sealed {
     /// Panics if there are two types with the same ULID configured
     fn check_ulids();
 
-    fn create<D: Db>(
+    fn recreate<D: Db>(
         db: &D,
         type_id: TypeId,
         object_id: ObjectId,
         created_at: EventId,
+        snapshot_version: i32,
         object: serde_json::Value,
-        lock: bool,
+        force_lock: bool,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 
     fn submit<D: Db>(
@@ -30,14 +31,6 @@ pub trait ApiConfig: crate::private::Sealed {
         object_id: ObjectId,
         event_id: EventId,
         event: serde_json::Value,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
-
-    fn recreate<D: Db>(
-        db: &D,
-        type_id: TypeId,
-        object_id: ObjectId,
-        new_created_at: EventId,
-        object: serde_json::Value,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 }
 
@@ -58,19 +51,22 @@ macro_rules! generate_api {
                 }
             }
 
-            async fn create<D: crdb::Db>(
+            async fn recreate<D: crdb::Db>(
                 db: &D,
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
                 created_at: crdb::EventId,
+                snapshot_version: i32,
                 object: crdb::serde_json::Value,
-                lock: bool,
+                force_lock: bool,
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
+                        // TODO(high): actually implement properly, able both to recreate and to create new objects
+                        let _ = snapshot_version;
                         let object = crdb::serde_json::from_value::<$object>(object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        return db.create::<$object, _>(object_id, created_at, crdb::Arc::new(object), lock, db).await.map(|_| ());
+                        return db.create::<$object, _>(object_id, created_at, crdb::Arc::new(object), force_lock, db).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
@@ -88,24 +84,6 @@ macro_rules! generate_api {
                         let event = crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
                         return db.submit::<$object, _>(object_id, event_id, crdb::Arc::new(event), db).await.map(|_| ());
-                    }
-                )*
-                Err(crdb::Error::TypeDoesNotExist(type_id))
-            }
-
-
-            async fn recreate<D: crdb::Db>(
-                db: &D,
-                type_id: crdb::TypeId,
-                object_id: crdb::ObjectId,
-                new_created_at: crdb::EventId,
-                object: crdb::serde_json::Value,
-            ) -> crdb::Result<()> {
-                $(
-                    if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let object = crdb::serde_json::from_value::<$object>(object)
-                            .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        return db.recreate::<$object, _>(object_id, new_created_at, crdb::Arc::new(object), db).await;
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

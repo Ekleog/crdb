@@ -324,13 +324,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                             .wrap_with_context(|| {
                                 format!("recreating {object_id:?} at time {time:?}")
                             })?;
-                    if let Some((new_created_at, data)) = recreation_result {
+                    if let Some((new_created_at, snapshot_version, data)) = recreation_result {
                         reord::point().await;
                         notify_recreation(Update {
                             type_id,
                             object_id,
-                            data: UpdateData::Recreation {
-                                new_created_at,
+                            data: UpdateData::Creation {
+                                created_at: new_created_at,
+                                snapshot_version,
                                 data,
                             },
                             now_have_all_until_for_object: Timestamp::now(), // TODO(server): this is a lie
@@ -1612,9 +1613,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         Ok(ObjectData {
             object_id,
-            created_at: EventId::from_uuid(creation_snapshot.snapshot_id),
             type_id: TypeId::from_uuid(creation_snapshot.type_id),
             creation_snapshot: Some((
+                EventId::from_uuid(creation_snapshot.snapshot_id),
                 creation_snapshot.snapshot_version,
                 creation_snapshot.snapshot,
             )),
