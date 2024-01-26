@@ -13,8 +13,8 @@ use tokio::sync::Mutex;
 struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
     events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
-    // The bool is whether the object is locked
-    objects: HashMap<ObjectId, (TypeId, bool, FullObject)>,
+    // The bool is whether the object is locked, and the set the required_binaries
+    objects: HashMap<ObjectId, (TypeId, bool, HashSet<BinPtr>, FullObject)>,
     binaries: HashMap<BinPtr, Arc<[u8]>>,
     is_server: bool,
 }
@@ -35,9 +35,10 @@ impl MemDb {
         let mut this = self.0.lock().await;
         let this = &mut *this; // disable auto-deref-and-reborrow, get a real mutable borrow
         EventId::last_id_at(time)?;
-        for (ty, _, o) in this.objects.values() {
+        for (ty, _, required_binaries, o) in this.objects.values_mut() {
             if ty == T::type_ulid() {
                 recreate_at::<T>(o, time, &mut this.events)?;
+                *required_binaries = o.required_binaries::<T>();
             }
         }
         Ok(())
@@ -46,12 +47,12 @@ impl MemDb {
     async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
         match self.0.lock().await.objects.get_mut(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
-            Some((ty, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+            Some((ty, _, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
                 real_type_id: *ty,
             }),
-            Some((_, locked, o)) => {
+            Some((_, locked, _, o)) => {
                 *locked |= lock;
                 Ok(o.clone())
             }
@@ -74,7 +75,7 @@ impl MemDb {
         let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
         let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
         stream::iter(objects.into_iter())
-            .filter_map(|(_, (t, _, full_object))| async move {
+            .filter_map(|(_, (t, _, _, full_object))| async move {
                 if t != *T::type_ulid() {
                     return None;
                 }
@@ -101,7 +102,7 @@ impl MemDb {
     }
 
     pub async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
-        if let Some((_, locked, _)) = self.0.lock().await.objects.get_mut(&object_id) {
+        if let Some((_, locked, _, _)) = self.0.lock().await.objects.get_mut(&object_id) {
             *locked = false;
         }
         // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
@@ -109,11 +110,11 @@ impl MemDb {
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
-        self.0
-            .lock()
-            .await
-            .objects
-            .retain(|_, (_, locked, _)| *locked);
+        let mut this = self.0.lock().await;
+        let this = &mut *this; // get a real, splittable borrow
+        this.objects.retain(|_, (_, locked, _, _)| *locked);
+        this.binaries
+            .retain(|b, _| this.objects.values().any(|(_, _, req, _)| req.contains(b)));
         Ok(())
     }
 }
@@ -157,7 +158,7 @@ impl Db for MemDb {
         let mut this = self.0.lock().await;
 
         // First, check for duplicates
-        if let Some((ty, locked, o)) = this.objects.get_mut(&object_id) {
+        if let Some((ty, locked, _, o)) = this.objects.get_mut(&object_id) {
             crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
             let c = o.creation_info();
             if ty != T::type_ulid()
@@ -180,9 +181,9 @@ impl Db for MemDb {
         // Then, check for required binaries
         let required_binaries = object.required_binaries();
         let mut missing_binaries = Vec::new();
-        for b in required_binaries {
-            if this.binaries.get(&b).is_none() {
-                missing_binaries.push(b);
+        for b in required_binaries.iter() {
+            if this.binaries.get(b).is_none() {
+                missing_binaries.push(*b);
             }
         }
         if !missing_binaries.is_empty() {
@@ -195,6 +196,7 @@ impl Db for MemDb {
             (
                 *T::type_ulid(),
                 lock,
+                required_binaries.into_iter().collect(),
                 FullObject::new(object_id, created_at, object.clone()),
             ),
         );
@@ -213,19 +215,19 @@ impl Db for MemDb {
         let mut this = self.0.lock().await;
         match this.objects.get(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
-            Some((ty, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+            Some((ty, _, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
                 real_type_id: *ty,
             }),
-            Some((_, _, o)) if o.creation_info().created_at >= event_id => {
+            Some((_, _, _, o)) if o.creation_info().created_at >= event_id => {
                 Err(crate::Error::EventTooEarly {
                     object_id,
                     event_id,
                     created_at: o.creation_info().created_at,
                 })
             }
-            Some((_, _, o)) => {
+            Some((_, _, _, o)) => {
                 // First, check for duplicates
                 if let Some((o, e)) = this.events.get(&event_id) {
                     crate::check_strings(&serde_json::to_value(&*event).unwrap())?;
@@ -257,6 +259,7 @@ impl Db for MemDb {
                 // All is good, we can insert
                 o.apply::<T>(event_id, event.clone())?;
                 let last_snapshot = o.last_snapshot::<T>().unwrap();
+                this.objects.get_mut(&object_id).unwrap().2 = o.required_binaries::<T>();
                 this.events.insert(event_id, (object_id, Some(event)));
                 Ok(Some(last_snapshot))
             }
@@ -284,7 +287,7 @@ impl Db for MemDb {
         let mut this = self.0.lock().await;
 
         // First, check for preconditions
-        let Some(&(real_type_id, _, ref o)) = this.objects.get(&object_id) else {
+        let Some(&(real_type_id, _, _, ref o)) = this.objects.get(&object_id) else {
             std::mem::drop(this);
             return self
                 .create(object_id, new_created_at, object, force_lock, cb)
@@ -328,8 +331,11 @@ impl Db for MemDb {
 
         // All good, do the recreation
         o.recreate_with::<T>(new_created_at, object);
+        let required_binaries = o.required_binaries::<T>();
         let last_snapshot = o.last_snapshot::<T>().unwrap();
-        this.objects.get_mut(&object_id).unwrap().1 |= force_lock;
+        let this_object = this.objects.get_mut(&object_id).unwrap();
+        this_object.1 |= force_lock;
+        this_object.2 = required_binaries;
 
         Ok(Some(last_snapshot))
     }

@@ -100,3 +100,31 @@ async fn regression_indexeddb_vacuum_was_borken() {
     )
     .await;
 }
+
+#[fuzz_helpers::test]
+async fn regression_memdb_vacuum_did_not_clean_binaries() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateBinary {
+                data: vec![1].into(),
+                fake_id: None,
+            },
+            Op::Vacuum { recreate_at: None },
+            Op::GetBinary { binary_id: 0 },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+#[cfg(disable)]
+async fn impl_reproducer() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        serde_json::from_str(include_str!("../../repro.json")).unwrap(),
+    )
+    .await;
+}

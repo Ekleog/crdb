@@ -1,8 +1,10 @@
-use crate::{error::ResultExt, DbPtr, DynSized, EventId, Object, ObjectId, Timestamp};
+use crate::{
+    error::ResultExt, BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, Timestamp,
+};
 use anyhow::anyhow;
 use std::{
     any::Any,
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     ops::{Bound, RangeBounds},
     sync::{Arc, RwLock},
 };
@@ -160,6 +162,10 @@ impl FullObject {
             .recreate_with::<T>(event_id, data)
     }
 
+    pub fn required_binaries<T: Object>(&self) -> HashSet<BinPtr> {
+        self.data.read().unwrap().required_binaries::<T>()
+    }
+
     pub fn get_snapshot_at<T: Object>(
         &self,
         mut at: Bound<EventId>,
@@ -257,6 +263,30 @@ impl FullObjectImpl {
         }
 
         Ok(true)
+    }
+
+    pub fn required_binaries<T: Object>(&self) -> HashSet<BinPtr> {
+        let mut res = self
+            .creation
+            .clone()
+            .arc_to_any()
+            .downcast::<T>()
+            .unwrap()
+            .required_binaries()
+            .into_iter()
+            .collect::<HashSet<_>>();
+        for c in &self.changes {
+            res.extend(
+                c.1.event
+                    .clone()
+                    .arc_to_any()
+                    .downcast::<T::Event>()
+                    .unwrap()
+                    .required_binaries()
+                    .into_iter(),
+            );
+        }
+        res
     }
 
     pub fn recreate_with<T: Object>(
