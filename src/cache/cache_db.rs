@@ -125,7 +125,7 @@ impl<D: Db> Db for CacheDb<D> {
         self.db.create_binary(binary_id, data).await
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
         if let Some(res) = self.binaries.read().unwrap().get(&binary_id) {
             return Ok(Some(res.clone()));
         }

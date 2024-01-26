@@ -353,7 +353,7 @@ impl Db for MemDb {
         Ok(())
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
         Ok(self.0.lock().await.binaries.get(&binary_id).cloned())
     }
 }

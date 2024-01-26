@@ -53,5 +53,5 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
     fn get_binary(
         &self,
         binary_id: BinPtr,
-    ) -> impl CrdbFuture<Output = anyhow::Result<Option<Arc<[u8]>>>>;
+    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<[u8]>>>>;
 }

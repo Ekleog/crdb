@@ -1698,7 +1698,7 @@ impl Db for IndexedDb {
         res
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
         let ary = self
             .db
             .transaction(&["binaries"])

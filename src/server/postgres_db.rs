@@ -1750,7 +1750,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(())
     }
 
-    async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
         reord::point().await;
         Ok(sqlx::query!(
             "SELECT data FROM binaries WHERE binary_id = $1",
