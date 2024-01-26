@@ -31,6 +31,10 @@ pub enum TestEventPerms {
     Set(User),
 }
 
+impl TestObjectPerms {
+    pub fn standardize(&mut self, _self_id: ObjectId) {}
+}
+
 impl Object for TestObjectPerms {
     type Event = TestEventPerms;
 

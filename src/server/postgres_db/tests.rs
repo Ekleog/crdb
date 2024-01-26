@@ -172,7 +172,7 @@ mod fuzz_helpers {
                     .await?;
                 mem_db.recreate_all::<TestObjectFull>(recreate_at).await?;
                 let db = db
-                    .vacuum(Some(recreate_at), None, db, |r| {
+                    .vacuum(Some(recreate_at), None, db, |_| {
                         // TODO(test): validate that the notified recreations are the same as in memdb
                     })
                     .await;

@@ -179,6 +179,8 @@ macro_rules! make_fuzzer_stuffs {
                             object,
                             mut lock,
                         } => {
+                            let mut object = object.clone();
+                            Arc::make_mut(&mut object).standardize(*object_id);
                             s.add_object(*object_id);
                             lock |= s.is_server;
                             let db = db
@@ -233,6 +235,8 @@ macro_rules! make_fuzzer_stuffs {
                         } => {
                             if !s.is_server {
                                 let object_id = s.object(*object_id);
+                                let mut object = object.clone();
+                                Arc::make_mut(&mut object).standardize(object_id);
                                 let db = db
                                     .recreate::<$object, _>(
                                         object_id,

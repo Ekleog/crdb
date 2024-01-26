@@ -31,6 +31,10 @@ pub enum TestEventDelegatePerms {
     Set(DbPtr<TestObjectPerms>),
 }
 
+impl TestObjectDelegatePerms {
+    pub fn standardize(&mut self, _self_id: ObjectId) {}
+}
+
 impl Object for TestObjectDelegatePerms {
     type Event = TestEventDelegatePerms;
 

@@ -37,6 +37,7 @@ impl TestObjectSimple {
     pub fn new(v: Vec<u8>) -> TestObjectSimple {
         TestObjectSimple(v)
     }
+    pub fn standardize(&mut self, _self_id: ObjectId) {}
     pub fn stub_1() -> TestObjectSimple {
         TestObjectSimple(b"10000001".to_vec())
     }

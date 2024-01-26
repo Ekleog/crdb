@@ -6,7 +6,7 @@ use super::fuzz_helpers::{
         fts::SearchableString,
         make_fuzzer_stuffs,
         test_utils::{self, *},
-        BinPtr, EventId, ObjectId, Query, Timestamp, User,
+        BinPtr, DbPtr, EventId, ObjectId, Query, Timestamp, User,
     },
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
@@ -113,6 +113,39 @@ async fn regression_memdb_vacuum_did_not_clean_binaries() {
             },
             Op::Vacuum { recreate_at: None },
             Op::GetBinary { binary_id: 0 },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+async fn regression_stack_overflow() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![DbPtr::from(OBJECT_ID_2)],
+                    bins: vec![],
+                    users: vec![],
+                }),
+                lock: true,
+            },
+            Op::CreateFull {
+                object_id: OBJECT_ID_2,
+                created_at: EVENT_ID_2,
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![DbPtr::from(OBJECT_ID_2)],
+                    bins: vec![],
+                    users: vec![],
+                }),
+                lock: false,
+            },
         ]),
     )
     .await;
