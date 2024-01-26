@@ -638,6 +638,22 @@ async fn regression_indexeddb_recreation_did_not_fail_upon_back_in_time() {
     .await;
 }
 
+#[fuzz_helpers::test]
+async fn regression_memdb_recreation_of_non_existent_deadlocked() {
+    // tracing_wasm::set_as_global_default();
+    // std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![Op::Recreate {
+            object: 0,
+            new_created_at: EVENT_ID_1,
+            data: Arc::new(TestObjectSimple(vec![])),
+        }]),
+    )
+    .await;
+}
+
 /*
 #[fuzz_helpers::test]
 async fn impl_reproducer() {

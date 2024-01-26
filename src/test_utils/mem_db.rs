@@ -266,6 +266,7 @@ impl Db for MemDb {
 
         // First, check for preconditions
         let Some(&(real_type_id, ref o)) = this.objects.get(&object_id) else {
+            std::mem::drop(this);
             return self
                 .create(object_id, new_created_at, object, force_lock, cb)
                 .await;
