@@ -124,7 +124,7 @@ pub fn cmp<T: Debug + Eq>(
 }
 
 #[macro_export] // used by the client-js.rs integration test
-macro_rules! make_op {
+macro_rules! make_fuzzer_stuffs {
     ( $( ($name:ident, $object:ident, $event:ident), )* ) => { paste::paste! {
         #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
         enum Op {
@@ -271,6 +271,42 @@ macro_rules! make_op {
                 }
                 Ok(())
             }
+        }
+
+        struct FuzzState {
+            is_server: bool,
+            objects: Vec<ObjectId>,
+            mem_db: test_utils::MemDb,
+        }
+
+        impl FuzzState {
+            fn new(is_server: bool) -> FuzzState {
+                FuzzState {
+                    is_server,
+                    objects: Vec::new(),
+                    mem_db: test_utils::MemDb::new(is_server),
+                }
+            }
+
+            fn object(&self, id: usize) -> ObjectId {
+                #[cfg(target_arch = "wasm32")]
+                let id = id % (self.objects.len() + 1); // make valid inputs more likely
+                self.objects.get(id).copied().unwrap_or_else(ObjectId::now)
+            }
+        }
+
+        async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) -> Database {
+            let db = make_db(cluster).await;
+            let mut s = FuzzState::new(*is_server);
+            for (i, op) in ops.iter().enumerate() {
+                op.apply(&db, &mut s)
+                    .await
+                    .with_context(|| format!("applying {i}th op: {op:?}"))
+                    .unwrap();
+                db.assert_invariants_generic().await;
+                db.assert_invariants_for::<TestObjectSimple>().await;
+            }
+            db
         }
     } };
 }
