@@ -500,6 +500,7 @@ impl IndexedDb {
     }
 
     pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        // TODO(test): fuzz upload-queue behavior
         self.db
             .transaction(&["upload_queue_meta"])
             .run(move |transaction| async move {

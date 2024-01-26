@@ -1566,6 +1566,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
     }
 
+    #[cfg(feature = "_tests")]
+    #[allow(dead_code)] // Used by fuzzers
+    async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
+        panic!()
+    }
+
     #[allow(dead_code)] // TODO(api): use to answer get requests, plus filter based on if-modified-since
     async fn get_all(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
         reord::point().await;

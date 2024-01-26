@@ -32,6 +32,7 @@ enum Op {
         object_id: usize,
         lock: bool,
     },
+    // TODO(test): also test GetAll
     Query {
         user: User,
         // TODO(test): figure out a way to test only_updated_since
@@ -44,6 +45,9 @@ enum Op {
         force_lock: bool,
     },
     Remove {
+        object_id: usize,
+    },
+    Unlock {
         object_id: usize,
     },
     Vacuum {
@@ -79,15 +83,16 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             object_id,
             created_at,
             object,
-            lock,
+            mut lock,
         } => {
             s.objects.push(*object_id);
+            lock |= s.is_server;
             let db = db
-                .create(*object_id, *created_at, object.clone(), *lock, db)
+                .create(*object_id, *created_at, object.clone(), lock, db)
                 .await;
             let mem = s
                 .mem_db
-                .create(*object_id, *created_at, object.clone(), *lock, &s.mem_db)
+                .create(*object_id, *created_at, object.clone(), lock, &s.mem_db)
                 .await;
             cmp(db, mem)?;
         }
@@ -106,15 +111,19 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 .await;
             cmp(db, mem)?;
         }
-        Op::GetLatest { object_id, lock } => {
+        Op::GetLatest {
+            object_id,
+            mut lock,
+        } => {
             let object_id = s.object(*object_id);
+            lock |= s.is_server;
             let db = db
-                .get_latest::<TestObjectSimple>(*lock, object_id)
+                .get_latest::<TestObjectSimple>(lock, object_id)
                 .await
                 .wrap_context(&format!("getting {object_id:?} in database"));
             let mem = s
                 .mem_db
-                .get_latest::<TestObjectSimple>(*lock, object_id)
+                .get_latest::<TestObjectSimple>(lock, object_id)
                 .await
                 .wrap_context(&format!("getting {object_id:?} in mem db"));
             cmp(db, mem)?;
@@ -157,6 +166,14 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 let object_id = s.object(*object_id);
                 let db = db.remove(object_id).await;
                 let mem = s.mem_db.remove(object_id).await;
+                cmp(db, mem)?;
+            }
+        }
+        Op::Unlock { object_id } => {
+            if !s.is_server {
+                let object_id = s.object(*object_id);
+                let db = db.unlock(object_id).await;
+                let mem = s.mem_db.unlock(object_id).await;
                 cmp(db, mem)?;
             }
         }
