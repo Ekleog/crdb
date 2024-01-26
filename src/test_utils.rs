@@ -122,3 +122,42 @@ pub fn cmp<T: Debug + Eq>(
     anyhow::ensure!(is_eq, "tested db result != mem result:\n==========\nTested DB:\n{testdb_res:?}\n==========\nMem:\n{mem_res:?}\n==========");
     Ok(())
 }
+
+#[macro_export] // used by the client-js.rs integration test
+macro_rules! generic_op {
+    ($name:ident) => {
+        #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
+        enum $name {
+            Remove { object_id: usize },
+            Unlock { object_id: usize },
+            Vacuum { recreate_at: Option<Timestamp> },
+        }
+
+        impl $name {
+            async fn apply(&self, db: &Database, s: &mut FuzzState) -> anyhow::Result<()> {
+                match self {
+                    Self::Remove { object_id } => {
+                        if !s.is_server {
+                            let object_id = s.object(*object_id);
+                            let db = db.remove(object_id).await;
+                            let mem = s.mem_db.remove(object_id).await;
+                            cmp(db, mem)?;
+                        }
+                    }
+                    Self::Unlock { object_id } => {
+                        if !s.is_server {
+                            let object_id = s.object(*object_id);
+                            let db = db.unlock(object_id).await;
+                            let mem = s.mem_db.unlock(object_id).await;
+                            cmp(db, mem)?;
+                        }
+                    }
+                    Self::Vacuum { recreate_at } => {
+                        run_vacuum(&db, &s.mem_db, *recreate_at).await?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    };
+}

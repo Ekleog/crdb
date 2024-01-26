@@ -5,7 +5,7 @@ use super::fuzz_helpers::{
             test_utils::{self, *},
             Db, ResultExt,
         },
-        EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
+        generic_op, EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
     },
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
@@ -14,6 +14,8 @@ use anyhow::Context;
 use rust_decimal::Decimal;
 use std::{str::FromStr, sync::Arc};
 use ulid::Ulid;
+
+generic_op!(GenericOp);
 
 #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
 enum Op {
@@ -44,15 +46,7 @@ enum Op {
         object: Arc<TestObjectSimple>,
         force_lock: bool,
     },
-    Remove {
-        object_id: usize,
-    },
-    Unlock {
-        object_id: usize,
-    },
-    Vacuum {
-        recreate_at: Option<Timestamp>,
-    },
+    Generic(GenericOp),
 }
 
 struct FuzzState {
@@ -161,25 +155,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                 cmp(db, mem)?;
             }
         }
-        Op::Remove { object_id } => {
-            if !s.is_server {
-                let object_id = s.object(*object_id);
-                let db = db.remove(object_id).await;
-                let mem = s.mem_db.remove(object_id).await;
-                cmp(db, mem)?;
-            }
-        }
-        Op::Unlock { object_id } => {
-            if !s.is_server {
-                let object_id = s.object(*object_id);
-                let db = db.unlock(object_id).await;
-                let mem = s.mem_db.unlock(object_id).await;
-                cmp(db, mem)?;
-            }
-        }
-        Op::Vacuum { recreate_at } => {
-            run_vacuum(&db, &s.mem_db, *recreate_at).await?;
-        }
+        Op::Generic(op) => op.apply(db, s).await?,
     }
     Ok(())
 }
@@ -350,9 +326,9 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
                 event_id: EventId(Ulid::from_string("00001000040000000000000000").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
             },
-            Vacuum {
+            Generic(GenericOp::Vacuum {
                 recreate_at: Some(Timestamp::from_ms(408021893130)),
-            },
+            }),
             Submit {
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
@@ -716,7 +692,11 @@ async fn regression_indexeddb_removal_of_nonexistent_object_had_wrong_error_mess
     // tracing_wasm::set_as_global_default();
     // std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     let cluster = setup();
-    fuzz_impl(&cluster, Arc::new(vec![Op::Remove { object_id: 0 }])).await;
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![Op::Generic(GenericOp::Remove { object_id: 0 })]),
+    )
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -724,7 +704,11 @@ async fn regression_memdb_unlocking_of_nonexistent_object_had_wrong_error_messag
     // tracing_wasm::set_as_global_default();
     // std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     let cluster = setup();
-    fuzz_impl(&cluster, Arc::new(vec![Op::Unlock { object_id: 0 }])).await;
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![Op::Generic(GenericOp::Unlock { object_id: 0 })]),
+    )
+    .await;
 }
 
 #[fuzz_helpers::test]
@@ -739,7 +723,7 @@ async fn regression_memdb_did_not_vacuum_unlocked_objects() {
                 object: Arc::new(TestObjectSimple(vec![1])),
                 lock: false,
             },
-            Op::Vacuum { recreate_at: None },
+            Op::Generic(GenericOp::Vacuum { recreate_at: None }),
             Op::Recreate {
                 object_id: 0,
                 new_created_at: EVENT_ID_1,
