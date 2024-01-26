@@ -195,13 +195,13 @@ impl ClientDb {
         self.db
             .create(id, created_at, object.clone(), true, &*self.db)
             .await?;
-        Ok(self.api.create(
+        self.api.create(
             id,
             created_at,
             object,
             self.db.clone(),
             self.error_sender.clone(),
-        )?)
+        )
     }
 
     pub async fn submit<T: Object>(
@@ -213,13 +213,13 @@ impl ClientDb {
         self.db
             .submit::<T, _>(object, event_id, event.clone(), &*self.db)
             .await?;
-        Ok(self.api.submit::<T, _>(
+        self.api.submit::<T, _>(
             object,
             event_id,
             event,
             self.db.clone(),
             self.error_sender.clone(),
-        ))
+        )
     }
 
     /// Returns the latest snapshot for the object described by `data`

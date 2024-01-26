@@ -70,7 +70,7 @@ pub enum Upload {
         object_id: ObjectId,
         type_id: TypeId,
         event_id: EventId,
-        object: serde_json::Value,
+        event: serde_json::Value,
     },
 }
 

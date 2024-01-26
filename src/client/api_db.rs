@@ -215,13 +215,28 @@ impl ApiDb {
 
     pub fn submit<T: Object, D: Db>(
         &self,
-        _object: ObjectId,
-        _event_id: EventId,
-        _event: Arc<T::Event>,
-        _binary_getter: Arc<D>,
-        _error_sender: mpsc::UnboundedSender<crate::Error>,
-    ) -> oneshot::Receiver<crate::Result<()>> {
-        unimplemented!() // TODO(api): implement
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+        binary_getter: Arc<D>,
+        error_sender: mpsc::UnboundedSender<crate::Error>,
+    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+        let request = Arc::new(Request::Upload(vec![UploadOrBinary::Upload(
+            Upload::Event {
+                object_id,
+                type_id: *T::type_ulid(),
+                event_id,
+                event: serde_json::to_value(event)
+                    .wrap_context("serializing event for sending to api")?,
+            },
+        )]));
+        let (result_sender, result_receiver) = oneshot::channel();
+        crate::spawn(Self::error_catcher(
+            Self::auto_resender_with_binaries(request, self.requests.clone(), binary_getter),
+            result_sender,
+            error_sender,
+        ));
+        Ok(result_receiver)
     }
 
     pub async fn get_all(&self, _object_id: ObjectId) -> crate::Result<ObjectData> {
