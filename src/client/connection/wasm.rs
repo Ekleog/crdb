@@ -1,5 +1,8 @@
 use futures::{SinkExt, StreamExt};
-pub use gloo_net::websocket::{futures::WebSocket, Message};
+use gloo_net::websocket::Message;
+use std::sync::Arc;
+
+pub use gloo_net::websocket::futures::WebSocket;
 
 pub async fn connect(url: &str) -> anyhow::Result<WebSocket> {
     Ok(WebSocket::open(url)?)
@@ -17,4 +20,12 @@ pub async fn next_text(sock: &mut WebSocket) -> anyhow::Result<String> {
         Message::Text(s) => Ok(s),
         Message::Bytes(_) => anyhow::bail!("Got binary websocket message, expected a text one"),
     }
+}
+
+pub async fn send_sidecar(sock: &mut WebSocket, sidecar: &Vec<Arc<[u8]>>) -> anyhow::Result<()> {
+    for bin in sidecar {
+        // TODO(low): have gloo-websocket not require a full copy of the binary
+        sock.send(Message::Bytes((&**bin).to_vec())).await?;
+    }
+    Ok(())
 }

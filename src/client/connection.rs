@@ -407,8 +407,8 @@ impl Connection {
             request_id,
             request: request.request.clone(),
         };
-        // TODO(high): actually send the binaries sidecar
         self.send_connected(&message).await;
+        self.send_connected_sidecar(&request.sidecar).await;
         self.pending_requests
             .insert(request_id, (request, sender, false));
     }
@@ -588,7 +588,19 @@ impl Connection {
         }
     }
 
-    /// Returns Ok(()) if sending succeeded, and Err(()) if sending failed and triggered a disconnection.
+    async fn send_connected_sidecar(&mut self, sidecar: &Vec<Arc<[u8]>>) {
+        let State::Connected { socket, url, token } = &mut self.state else {
+            panic!("Called send_connected while not connected");
+        };
+        if let Err(err) = implem::send_sidecar(socket, sidecar).await {
+            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
+            self.state = State::Disconnected {
+                url: url.clone(),
+                token: *token,
+            };
+        }
+    }
+
     async fn send_connected(&mut self, message: &ClientMessage) {
         let State::Connected { socket, url, token } = &mut self.state else {
             panic!("Called send_connected while not connected");
