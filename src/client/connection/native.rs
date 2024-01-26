@@ -1,3 +1,4 @@
+use super::IncomingMessage;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -12,7 +13,9 @@ pub async fn send_text(_sock: &mut WebSocket, _msg: String) -> anyhow::Result<()
     unimplemented!() // TODO(sqlite)
 }
 
-pub async fn next_text(_sock: &mut WebSocket) -> anyhow::Result<String> {
+pub async fn next(_sock: &mut WebSocket) -> anyhow::Result<IncomingMessage<String>> {
+    let _ = IncomingMessage::Text(());
+    let _ = IncomingMessage::<()>::Binary(Arc::new([]));
     unimplemented!() // TODO(sqlite)
 }
 

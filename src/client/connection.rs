@@ -48,6 +48,11 @@ pub enum ConnectionEvent {
     LoggedOut,
 }
 
+enum IncomingMessage<T> {
+    Text(T),
+    Binary(Arc<[u8]>),
+}
+
 pub enum State {
     NoValidInfo,
     Disconnected {
@@ -79,19 +84,18 @@ impl State {
         }
     }
 
-    async fn next_msg(&mut self) -> Option<anyhow::Result<ServerMessage>> {
+    async fn next_msg(&mut self) -> Option<anyhow::Result<IncomingMessage<ServerMessage>>> {
         match self {
             State::NoValidInfo | State::Disconnected { .. } => None,
             State::TokenSent { socket, .. } | State::Connected { socket, .. } => {
-                let msg = match implem::next_text(socket).await {
-                    Ok(msg) => msg,
-                    Err(err) => return Some(Err(err)),
-                };
-                let msg = match serde_json::from_str(&msg) {
-                    Ok(msg) => msg,
-                    Err(err) => return Some(Err(err.into())),
-                };
-                Some(Ok(msg))
+                match implem::next(socket).await {
+                    Err(err) => Some(Err(err)),
+                    Ok(IncomingMessage::Binary(b)) => Some(Ok(IncomingMessage::Binary(b))),
+                    Ok(IncomingMessage::Text(msg)) => match serde_json::from_str(&msg) {
+                        Ok(msg) => Some(Ok(IncomingMessage::Text(msg))),
+                        Err(err) => Some(Err(err.into())),
+                    },
+                }
             }
         }
     }
@@ -202,7 +206,8 @@ impl Connection {
                         self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
                     }
 
-                    Ok(message) => match self.state {
+                    // We got a new text message.
+                    Ok(IncomingMessage::Text(message)) => match self.state {
                         State::NoValidInfo | State::Disconnected { .. } => unreachable!(),
 
                         // We were waiting for an answer to SetToken. Handle it.
@@ -274,6 +279,11 @@ impl Connection {
                         State::Connected { .. } => {
                             self.handle_connected_message(message).await;
                         }
+                    }
+
+                    // We got a new binary message.
+                    Ok(IncomingMessage::Binary(_message)) => {
+                        unimplemented!() // TODO(high)
                     }
                 }
             }

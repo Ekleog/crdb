@@ -1,3 +1,4 @@
+use super::IncomingMessage;
 use futures::{SinkExt, StreamExt};
 use gloo_net::websocket::Message;
 use std::sync::Arc;
@@ -12,13 +13,13 @@ pub async fn send_text(sock: &mut WebSocket, msg: String) -> anyhow::Result<()> 
     Ok(sock.send(Message::Text(msg)).await?)
 }
 
-pub async fn next_text(sock: &mut WebSocket) -> anyhow::Result<String> {
+pub async fn next(sock: &mut WebSocket) -> anyhow::Result<IncomingMessage<String>> {
     let Some(msg) = sock.next().await else {
         anyhow::bail!("Got websocket end-of-stream, expected a message");
     };
     match msg? {
-        Message::Text(s) => Ok(s),
-        Message::Bytes(_) => anyhow::bail!("Got binary websocket message, expected a text one"),
+        Message::Text(s) => Ok(IncomingMessage::Text(s)),
+        Message::Bytes(b) => Ok(IncomingMessage::Binary(b.into_boxed_slice().into())),
     }
 }
 
