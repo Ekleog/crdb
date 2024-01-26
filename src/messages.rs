@@ -2,7 +2,7 @@ use crate::{
     BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, TypeId,
 };
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -28,8 +28,8 @@ pub enum Request {
     GetTime,
     // TODO(low): add a way to fetch only the new events, when we already have most of one big object?
     Get {
-        object_ids: HashSet<ObjectId>,
-        only_updated_since: Option<Timestamp>,
+        // Map from object to the only_updated_since information we want on it
+        object_ids: HashMap<ObjectId, Option<Timestamp>>,
         subscribe: bool,
     },
     Query {
@@ -92,7 +92,11 @@ pub enum ResponsePart {
     ConnectionLoss,
     Sessions(Vec<Session>),
     CurrentTime(Timestamp),
-    Objects(Vec<MaybeObject>),
+    Objects {
+        data: Vec<MaybeObject>,
+        // Set only in answer to a Query
+        now_have_all_until: Option<Timestamp>,
+    },
     // Note: the server's answer to GetBinaries is a Success message, followed by one
     // websocket frame of type Binary per requested binary.
 }
@@ -120,7 +124,7 @@ pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
-    pub now_have_all_until: Timestamp,
+    pub now_have_all_until: Timestamp, // TODO(api): replace Timestamp here with a more proper ULID?
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

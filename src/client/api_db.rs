@@ -67,6 +67,8 @@ impl ApiDb {
 
     pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
         let mut response = self.request(Request::Unsubscribe(object_ids)).await;
+        // TODO(api): this should maybe not await on the response immediately? we don't want the app to stop making
+        // progress while we're waiting for connection to get a server answer.
         match response.next().await {
             None => Ok(()), // Lost connection, we will be unsubscribed anyway
             Some(ResponsePart::Success) => Ok(()),

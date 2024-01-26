@@ -1,6 +1,6 @@
 use crate::{
     messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Update},
-    SessionToken, Timestamp,
+    ObjectId, SessionToken, Timestamp,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, stream, SinkExt, StreamExt};
@@ -106,6 +106,8 @@ pub struct Connection {
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
+    subscribed_objects: HashMap<ObjectId, Option<Timestamp>>, // TODO(api): actually update that timestamp on each received Update
+    // TODO(api): use QueryId subscribed_queries: HashMap<Query, Timestamp>,
 }
 
 impl Connection {
@@ -129,6 +131,8 @@ impl Connection {
                 .expect("Time is obviously ill-set"),
             next_ping: None,
             next_pong_deadline: None,
+            subscribed_objects: HashMap::new(),
+            // TODO(api) subscribed_queries: HashMap::new(),
         }
     }
 
@@ -327,6 +331,34 @@ impl Connection {
         request: Arc<Request>,
         sender: mpsc::UnboundedSender<ResponsePart>,
     ) {
+        match &*request {
+            Request::Get {
+                object_ids,
+                subscribe,
+            } if *subscribe => {
+                self.subscribed_objects
+                    .extend(object_ids.iter().map(|(id, t)| (*id, *t)));
+            }
+            Request::Query {
+                query,
+                only_updated_since,
+                subscribe,
+            } if *subscribe => {
+                let _ = (query, only_updated_since);
+                // TODO(api) self.subscribed_queries
+                // TODO(api)     .insert(query.clone(), only_updated_since);
+            }
+            Request::Unsubscribe(object_ids) => {
+                for object_id in object_ids {
+                    self.subscribed_objects.remove(object_id);
+                }
+            }
+            Request::UnsubscribeQuery(query) => {
+                let _ = query;
+                // TODO(api) self.subscribed_queries.remove(query);
+            }
+            _ => (),
+        }
         let message = ClientMessage {
             request_id,
             request: request.clone(),
