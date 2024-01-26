@@ -73,6 +73,7 @@ impl ClientDb {
                             data,
                         } => {
                             // TODO(client): decide how to expose locking all of a query's results, including new objects
+                            // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
                             if let Err(err) = C::recreate(
                                 &*local_db,
                                 type_id,
@@ -92,6 +93,7 @@ impl ClientDb {
                             }
                         }
                         UpdateData::Event { event_id, data } => {
+                            // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
                             if let Err(err) =
                                 C::submit(&*local_db, type_id, object_id, event_id, data).await
                             {
@@ -102,6 +104,7 @@ impl ClientDb {
                                     "failed submitting received object to internal db"
                                 );
                             }
+                            // TODO: avoid tracing::error! when below comment holds
                             // DO NOT re-fetch object when receiving an event not in cache for it.
                             // Without this, users would risk unsubscribing from an object, then receiving
                             // an event on this object (as a race condition), and then staying subscribed.
@@ -188,6 +191,7 @@ impl ClientDb {
         self.db
             .create(id, created_at, object.clone(), true, &*self.db)
             .await?;
+        // TODO(client): automatically handle MissingBinaries error by submitting them to server and retrying
         self.api.create(id, created_at, object).await?;
         Ok(())
     }
@@ -201,12 +205,13 @@ impl ClientDb {
         self.db
             .submit::<T, _>(object, event_id, event.clone(), &*self.db)
             .await?;
+        // TODO(client): automatically handle MissingBinaries error by submitting them to server and retrying
         self.api.submit::<T>(object, event_id, event).await?;
         Ok(())
     }
 
     /// Returns the latest snapshot for the object described by `data`
-    async fn create_all<T: Object>(
+    async fn create_all_local<T: Object>(
         db: &CacheDb<LocalDb>,
         lock: bool,
         data: ObjectData,
@@ -252,7 +257,7 @@ impl ClientDb {
             Err(e) => return Err(e),
         }
         let res = self.api.get_all(object_id).await?;
-        Self::create_all::<T>(&self.db, lock, res).await?;
+        Self::create_all_local::<T>(&self.db, lock, res).await?;
         Ok(self.db.get_latest::<T>(lock, object_id).await?)
     }
 
@@ -292,7 +297,7 @@ impl ClientDb {
                 async move {
                     let data = data?;
                     let object_id = data.object_id;
-                    Self::create_all::<T>(&db, lock, data).await?;
+                    Self::create_all_local::<T>(&db, lock, data).await?;
                     Ok(self.db.get_latest::<T>(lock, object_id).await?)
                 }
             }
