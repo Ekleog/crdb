@@ -156,27 +156,30 @@ mod fuzz_helpers {
     ) -> anyhow::Result<()> {
         match recreate_at {
             None => {
-                db.vacuum(None, None, db, |r| {
-                    panic!("got unexpected recreation {r:?}")
-                })
-                .await
-                .unwrap();
+                let db = db
+                    .vacuum(None, None, db, |r| {
+                        panic!("got unexpected recreation {r:?}");
+                    })
+                    .await;
+                let mem = mem_db.vacuum().await;
+                cmp(db, mem)
             }
             Some(recreate_at) => {
-                let mem = (|| async {
-                    mem_db.recreate_all::<TestObjectSimple>(recreate_at).await?;
-                    mem_db.recreate_all::<TestObjectPerms>(recreate_at).await?;
-                    mem_db
-                        .recreate_all::<TestObjectDelegatePerms>(recreate_at)
-                        .await?;
-                    Ok(())
-                })()
-                .await;
-                let pg = db.vacuum(Some(recreate_at), None, db, |_| ()).await;
-                cmp(pg, mem)?;
+                mem_db.recreate_all::<TestObjectSimple>(recreate_at).await?;
+                mem_db.recreate_all::<TestObjectPerms>(recreate_at).await?;
+                mem_db
+                    .recreate_all::<TestObjectDelegatePerms>(recreate_at)
+                    .await?;
+                mem_db.recreate_all::<TestObjectFull>(recreate_at).await?;
+                let db = db
+                    .vacuum(Some(recreate_at), None, db, |r| {
+                        // TODO(test): validate that the notified recreations are the same as in memdb
+                    })
+                    .await;
+                let mem = mem_db.vacuum().await;
+                cmp(db, mem)
             }
         }
-        Ok(())
     }
 }
 
