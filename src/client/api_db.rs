@@ -148,17 +148,19 @@ impl ApiDb {
                     // 3 times before noticing that it's now all good. Maybe some more global knowledge of what's
                     // being sent would allow to avoid that case?
 
-                    // Send all missing binaries, ignoring the server's answer, then re-enqueue the request
-                    #[allow(unused_variables, unreachable_code)] // TODO(api)
+                    // Send all missing binaries, ignoring the server's answer to the binaries, then re-enqueue the request
                     for binary_id in missing_binaries {
                         let bin = binary_getter
                             .get_binary(binary_id)
                             .await?
                             .ok_or_else(|| crate::Error::MissingBinaries(vec![binary_id]))?;
-                        let bin_request = unimplemented!(); // TODO(api)
+                        let bin_request = Arc::new(RequestWithSidecar {
+                            request: Arc::new(Request::Upload(vec![UploadOrBinary::Binary])),
+                            sidecar: vec![bin],
+                        });
                         let (response_sender, _) = mpsc::unbounded();
                         if requests
-                            .unbounded_send((response_sender, request.clone()))
+                            .unbounded_send((response_sender, bin_request))
                             .is_err()
                         {
                             return Err(crate::Error::Other(anyhow!(
