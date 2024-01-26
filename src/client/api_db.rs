@@ -286,7 +286,35 @@ impl ApiDb {
         Ok(futures::stream::empty())
     }
 
-    pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
-        unimplemented!() // TODO(api): implement
+    pub async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
+        let mut binary_ids = HashSet::new();
+        binary_ids.insert(binary_id);
+        let request = Arc::new(Request::GetBinaries(binary_ids));
+        let mut response = self.request(Arc::new(RequestWithSidecar {
+            request,
+            sidecar: Vec::new(),
+        }));
+        match response.next().await {
+            None => Err(crate::Error::Other(anyhow!(
+                "Connection-handling thread went out before ApiDb"
+            ))),
+            Some(mut response) => match response.response {
+                ResponsePart::Error(err) => Err(err.into()),
+                ResponsePart::Binaries(1) => {
+                    if response.sidecar.len() != 1 {
+                        Err(crate::Error::Other(anyhow!(
+                            "Server claimed to send us one binary but actually sent {}",
+                            response.sidecar.len()
+                        )))
+                    } else {
+                        Ok(Some(response.sidecar.pop().unwrap()))
+                    }
+                }
+                _ => Err(crate::Error::Other(anyhow!(
+                    "Unexpected response to get-binary request: {:?}",
+                    response.response
+                ))),
+            },
+        }
     }
 }
