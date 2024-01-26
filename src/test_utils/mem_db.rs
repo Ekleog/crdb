@@ -259,13 +259,16 @@ impl Db for MemDb {
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
-        _cb: &C,
-    ) -> crate::Result<()> {
+        force_lock: bool,
+        cb: &C,
+    ) -> crate::Result<Option<Arc<T>>> {
         let this = self.0.lock().await;
 
-        // First, check for duplicates
+        // First, check for preconditions
         let Some(&(real_type_id, ref o)) = this.objects.get(&object_id) else {
-            return Err(crate::Error::ObjectDoesNotExist(object_id));
+            return self
+                .create(object_id, new_created_at, object, force_lock, cb)
+                .await;
         };
         if real_type_id != *T::type_ulid() {
             return Err(crate::Error::WrongType {
@@ -306,7 +309,7 @@ impl Db for MemDb {
         // All good, do the recreation
         o.recreate_with::<T>(new_created_at, object);
 
-        Ok(())
+        Ok(Some(o.last_snapshot::<T>().unwrap()))
     }
 
     async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {

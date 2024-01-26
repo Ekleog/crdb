@@ -94,12 +94,17 @@ impl<D: Db> Db for CacheDb<D> {
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
+        force_lock: bool,
         cb: &C,
-    ) -> crate::Result<()> {
-        self.cache.write().unwrap().remove(&object_id);
-        self.db
-            .recreate::<T, C>(object_id, new_created_at, object, cb)
-            .await
+    ) -> crate::Result<Option<Arc<T>>> {
+        let res = self
+            .db
+            .recreate::<T, C>(object_id, new_created_at, object, force_lock, cb)
+            .await?;
+        if let Some(res) = res.clone() {
+            self.cache.write().unwrap().set(object_id, res as _);
+        }
+        Ok(res)
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

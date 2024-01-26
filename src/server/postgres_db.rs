@@ -1719,8 +1719,9 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         object_id: ObjectId,
         _new_created_at: EventId,
         _data: Arc<T>,
+        _force_lock: bool,
         _cb: &C,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         panic!("Tried recreating {object_id:?} on the server, but server is supposed to only ever be the one to make recreations!")
     }
 

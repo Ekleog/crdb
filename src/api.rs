@@ -62,11 +62,10 @@ macro_rules! generate_api {
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        // TODO(high): actually implement properly, able both to recreate and to create new objects
                         let _ = snapshot_version;
                         let object = crdb::serde_json::from_value::<$object>(object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        return db.create::<$object, _>(object_id, created_at, crdb::Arc::new(object), force_lock, db).await.map(|_| ());
+                        return db.recreate::<$object, _>(object_id, created_at, crdb::Arc::new(object), force_lock, db).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

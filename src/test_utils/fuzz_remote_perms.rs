@@ -186,11 +186,17 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             if !s.is_server {
                 let o = s.object(*object);
                 let pg = db
-                    .recreate::<TestObjectPerms, _>(o, *new_created_at, data.clone(), db)
+                    .recreate::<TestObjectPerms, _>(o, *new_created_at, data.clone(), false, db)
                     .await;
                 let mem = s
                     .mem_db
-                    .recreate::<TestObjectPerms, _>(o, *new_created_at, data.clone(), &s.mem_db)
+                    .recreate::<TestObjectPerms, _>(
+                        o,
+                        *new_created_at,
+                        data.clone(),
+                        false,
+                        &s.mem_db,
+                    )
                     .await;
                 cmp(pg, mem)?;
             }
@@ -203,7 +209,13 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
             if !s.is_server {
                 let o = s.object(*object);
                 let pg = db
-                    .recreate::<TestObjectDelegatePerms, _>(o, *new_created_at, data.clone(), db)
+                    .recreate::<TestObjectDelegatePerms, _>(
+                        o,
+                        *new_created_at,
+                        data.clone(),
+                        false,
+                        db,
+                    )
                     .await;
                 let mem = s
                     .mem_db
@@ -211,6 +223,7 @@ async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<(
                         o,
                         *new_created_at,
                         data.clone(),
+                        false,
                         &s.mem_db,
                     )
                     .await;

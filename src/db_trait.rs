@@ -30,13 +30,17 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         object_id: ObjectId,
     ) -> impl CrdbFuture<Output = crate::Result<Arc<T>>>;
 
+    /// Either create an object if it did not exist yet, or recreate it
+    ///
+    /// Returns the new latest snapshot if it actually changed.
     fn recreate<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
         new_created_at: EventId,
         creation_value: Arc<T>,
+        force_lock: bool,
         cb: &C,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 
     fn remove(&self, object_id: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
 
