@@ -573,6 +573,34 @@ async fn regression_memdb_did_not_vacuum_unlocked_objects() {
 }
 
 #[fuzz_helpers::test]
+async fn regression_memdb_recreate_did_not_recompute_latest_snapshot_right() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateSimple {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectSimple(vec![231])),
+                lock: true,
+            },
+            Op::SubmitSimple {
+                object_id: 1296584126,
+                event_id: EVENT_ID_3,
+                event: Arc::new(TestEventSimple::Append(vec![111])),
+            },
+            Op::RecreateSimple {
+                object_id: 2039216500,
+                new_created_at: EVENT_ID_2,
+                object: Arc::new(TestObjectSimple(vec![])),
+                force_lock: true,
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
 #[cfg(disable)]
 async fn impl_reproducer() {
     let cluster = setup();

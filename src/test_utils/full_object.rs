@@ -276,6 +276,9 @@ impl FullObjectImpl {
         self.creation = object as _;
         self.changes = self.changes.split_off(&new_created_at);
         self.changes.remove(&new_created_at);
+        for c in self.changes.values_mut() {
+            c.snapshot_after = None;
+        }
         return Some(self.get_snapshot_at(Bound::Unbounded).unwrap().1);
     }
 
