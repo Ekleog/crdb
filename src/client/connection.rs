@@ -1,6 +1,8 @@
 use crate::{
     ids::QueryId,
-    messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Update},
+    messages::{
+        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
+    },
     ObjectId, SessionToken, Timestamp,
 };
 use anyhow::anyhow;
@@ -335,8 +337,8 @@ impl Connection {
         match &*request {
             Request::Get {
                 object_ids,
-                subscribe,
-            } if *subscribe => {
+                subscribe: true,
+            } => {
                 self.subscribed_objects
                     .extend(object_ids.iter().map(|(id, t)| (*id, *t)));
             }
@@ -344,8 +346,8 @@ impl Connection {
                 query_id,
                 query: _,
                 only_updated_since,
-                subscribe,
-            } if *subscribe => {
+                subscribe: true,
+            } => {
                 self.subscribed_queries
                     .insert(*query_id, *only_updated_since);
             }
@@ -371,6 +373,19 @@ impl Connection {
     async fn handle_connected_message(&mut self, message: ServerMessage) {
         match message {
             ServerMessage::Updates(updates) => {
+                // Update our local subscription information
+                for update in updates.iter() {
+                    if let Some(updated) = self.subscribed_objects.get_mut(&update.object_id) {
+                        *updated = Some(update.now_have_all_until_for_object);
+                    }
+                    for (query_id, now_updated) in update.now_have_all_until_for_queries.iter() {
+                        if let Some(updated) = self.subscribed_queries.get_mut(&query_id) {
+                            *updated = Some(*now_updated);
+                        }
+                    }
+                }
+
+                // And send the update
                 if let Err(err) = self
                     .update_sender
                     .send_all(&mut stream::iter(updates).map(Ok))
@@ -384,8 +399,43 @@ impl Connection {
                 response,
                 last_response,
             } => {
-                if let Some((_, sender, already_sent)) = self.pending_requests.get_mut(&request_id)
+                if let Some((request, sender, already_sent)) =
+                    self.pending_requests.get_mut(&request_id)
                 {
+                    // Update our local subscription information
+                    match &**request {
+                        Request::Get {
+                            subscribe: true, ..
+                        } => {
+                            if let ResponsePart::Objects { data, .. } = &response {
+                                for maybe_object in data {
+                                    match maybe_object {
+                                        MaybeObject::AlreadySubscribed(_) => (),
+                                        MaybeObject::NotYetSubscribed(o) => {
+                                            self.subscribed_objects
+                                                .insert(o.object_id, Some(o.now_have_all_until));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Request::Query {
+                            query_id,
+                            subscribe: true,
+                            ..
+                        } => {
+                            if let ResponsePart::Objects {
+                                now_have_all_until, ..
+                            } = &response
+                            {
+                                self.subscribed_queries
+                                    .insert(*query_id, *now_have_all_until);
+                            }
+                        }
+                        _ => (),
+                    }
+
+                    // And send the response
                     // Ignore errors when sending, in case the requester did not await on the response future
                     *already_sent = true;
                     let _ = sender.unbounded_send(response);

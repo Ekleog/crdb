@@ -126,7 +126,7 @@ pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
-    pub now_have_all_until: Timestamp, // TODO(api): replace Timestamp here with a more proper ULID?
+    pub now_have_all_until_for_object: Timestamp, // TODO(api): replace Timestamp here with a more proper ULID?
     pub now_have_all_until_for_queries: HashMap<QueryId, Timestamp>,
 }
 
