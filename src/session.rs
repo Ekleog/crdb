@@ -1,20 +1,10 @@
-use crate::{ids, Timestamp, User};
-use ulid::Ulid;
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct SessionToken(Ulid);
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct SessionRef(Ulid);
-
-ids::impl_for_id!(SessionToken);
-ids::impl_for_id!(SessionRef);
+use crate::{SessionRef, SessionToken, Timestamp, User};
 
 impl SessionToken {
     #[cfg(feature = "server")]
     pub fn new() -> SessionToken {
         use rand::Rng;
-        SessionToken(Ulid::from_bytes(rand::thread_rng().gen()))
+        SessionToken(ulid::Ulid::from_bytes(rand::thread_rng().gen()))
     }
 }
 

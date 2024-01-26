@@ -1,98 +1,23 @@
 use crate::Timestamp;
 use ulid::Ulid;
 
-#[derive(
-    Clone,
-    Copy,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    educe::Educe,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-#[educe(Debug)]
-pub struct ObjectId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
+macro_rules! impl_id {
+    ($type:ident) => {
+        #[derive(
+            Clone,
+            Copy,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            educe::Educe,
+            serde::Deserialize,
+            serde::Serialize,
+        )]
+        #[educe(Debug)]
+        pub struct $type(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
 
-#[derive(
-    Clone,
-    Copy,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    educe::Educe,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-#[educe(Debug)]
-pub struct EventId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-
-#[derive(
-    Clone,
-    Copy,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    educe::Educe,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-#[educe(Debug)]
-pub struct TypeId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-
-#[derive(
-    Clone,
-    Copy,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    educe::Educe,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-#[educe(Debug)]
-pub struct BinPtr(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-
-#[derive(
-    Clone,
-    Copy,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    educe::Educe,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-#[educe(Debug)]
-pub struct QueryId(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-
-#[derive(
-    Clone,
-    Copy,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    educe::Educe,
-    serde::Deserialize,
-    serde::Serialize,
-)]
-#[educe(Debug)]
-pub struct User(#[educe(Debug(method(std::fmt::Display::fmt)))] pub Ulid);
-
-macro_rules! impl_for_id {
-    ($type:ty) => {
         #[allow(dead_code)]
         impl $type {
             pub fn now() -> Self {
@@ -216,11 +141,11 @@ macro_rules! impl_for_id {
     };
 }
 
-pub(crate) use impl_for_id;
-
-impl_for_id!(ObjectId);
-impl_for_id!(EventId);
-impl_for_id!(TypeId);
-impl_for_id!(BinPtr);
-impl_for_id!(QueryId);
-impl_for_id!(User);
+impl_id!(ObjectId);
+impl_id!(EventId);
+impl_id!(TypeId);
+impl_id!(BinPtr);
+impl_id!(QueryId);
+impl_id!(User);
+impl_id!(SessionRef);
+impl_id!(SessionToken);

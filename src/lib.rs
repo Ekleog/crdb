@@ -22,10 +22,10 @@ use std::{any::Any, sync::Arc};
 pub use dbptr::DbPtr;
 pub use error::{Error, Result, SerializableError};
 pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
-pub use ids::{BinPtr, EventId, ObjectId, TypeId, User};
+pub use ids::{BinPtr, EventId, ObjectId, SessionRef, SessionToken, TypeId, User};
 pub use object::{CanDoCallbacks, Event, Object};
 pub use query::{JsonPathItem, Query};
-pub use session::{NewSession, Session, SessionRef, SessionToken};
+pub use session::{NewSession, Session};
 pub use timestamp::Timestamp;
 
 use db_trait::Db;
@@ -75,10 +75,8 @@ pub mod crdb_internal {
         error::ResultExt,
         hash_binary,
         object::{parse_snapshot, CanDoCallbacks},
-        private,
-        session::SessionToken,
-        BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object, ObjectId, Query, Result,
-        Timestamp, TypeId, User,
+        private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object, ObjectId, Query,
+        Result, SessionToken, Timestamp, TypeId, User,
     };
     pub use anyhow;
     pub use futures::{self, future, stream, Stream};
