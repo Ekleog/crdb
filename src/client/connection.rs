@@ -4,7 +4,7 @@ use crate::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
         UpdateData,
     },
-    ObjectId, Query, SessionToken, Timestamp,
+    ObjectId, Query, SessionToken, Timestamp, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, stream, SinkExt, StreamExt};
@@ -109,8 +109,8 @@ pub struct Connection {
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
-    subscribed_objects: HashMap<ObjectId, Option<Timestamp>>,
-    subscribed_queries: HashMap<QueryId, (Arc<Query>, Option<Timestamp>)>,
+    subscribed_objects: HashMap<ObjectId, Option<Updatedness>>,
+    subscribed_queries: HashMap<QueryId, (Arc<Query>, Option<Updatedness>)>,
 }
 
 impl Connection {

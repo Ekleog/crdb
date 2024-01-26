@@ -7,7 +7,7 @@ use crate::{
     object::parse_snapshot,
     query::Bind,
     BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
-    SessionToken, Timestamp, TypeId, User,
+    SessionToken, Timestamp, TypeId, Updatedness, User,
 };
 use anyhow::Context;
 use futures::{StreamExt, TryStreamExt};
@@ -334,7 +334,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                                 snapshot_version,
                                 data,
                             },
-                            now_have_all_until_for_object: Timestamp::now(), // TODO(server): this is a lie
+                            now_have_all_until_for_object: Updatedness::now(), // TODO(server): this is a lie
                             now_have_all_until_for_queries: HashMap::new(),
                         });
                     }
@@ -1626,7 +1626,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 creation_snapshot.snapshot,
             )),
             events,
-            now_have_all_until: Timestamp::now(), // TODO(server): this is a lie! implement properly
+            now_have_all_until: Updatedness::now(), // TODO(server): this is a lie! implement properly
         })
     }
 }

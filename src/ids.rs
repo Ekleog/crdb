@@ -149,3 +149,4 @@ impl_id!(QueryId);
 impl_id!(User);
 impl_id!(SessionRef);
 impl_id!(SessionToken);
+impl_id!(Updatedness);

@@ -22,7 +22,7 @@ use std::{any::Any, sync::Arc};
 pub use dbptr::DbPtr;
 pub use error::{Error, Result, SerializableError};
 pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
-pub use ids::{BinPtr, EventId, ObjectId, SessionRef, SessionToken, TypeId, User};
+pub use ids::{BinPtr, EventId, ObjectId, SessionRef, SessionToken, TypeId, Updatedness, User};
 pub use object::{CanDoCallbacks, Event, Object};
 pub use query::{JsonPathItem, Query};
 pub use session::{NewSession, Session};

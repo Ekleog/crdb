@@ -1,6 +1,6 @@
 use crate::{
     ids::QueryId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
-    TypeId,
+    TypeId, Updatedness,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -30,13 +30,13 @@ pub enum Request {
     // TODO(low): add a way to fetch only the new events, when we already have most of one big object?
     Get {
         // Map from object to the only_updated_since information we want on it
-        object_ids: HashMap<ObjectId, Option<Timestamp>>,
+        object_ids: HashMap<ObjectId, Option<Updatedness>>,
         subscribe: bool,
     },
     Query {
         query_id: QueryId,
         query: Arc<Query>,
-        only_updated_since: Option<Timestamp>,
+        only_updated_since: Option<Updatedness>,
         subscribe: bool,
     },
     GetBinaries(HashSet<BinPtr>),
@@ -97,7 +97,7 @@ pub enum ResponsePart {
     Objects {
         data: Vec<MaybeObject>,
         // Set only in answer to a Query
-        now_have_all_until: Option<Timestamp>,
+        now_have_all_until: Option<Updatedness>,
     },
     // Note: the server's answer to GetBinaries is a Success message, followed by one
     // websocket frame of type Binary per requested binary.
@@ -117,7 +117,7 @@ pub struct ObjectData {
     // with versions higher than what their current code version supports, to suggest an upgrade
     pub creation_snapshot: Option<(EventId, i32, serde_json::Value)>,
     pub events: BTreeMap<EventId, serde_json::Value>,
-    pub now_have_all_until: Timestamp,
+    pub now_have_all_until: Updatedness,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -125,8 +125,8 @@ pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
-    pub now_have_all_until_for_object: Timestamp, // TODO(api): replace Timestamp here with a more proper ULID?
-    pub now_have_all_until_for_queries: HashMap<QueryId, Timestamp>,
+    pub now_have_all_until_for_object: Updatedness,
+    pub now_have_all_until_for_queries: HashMap<QueryId, Updatedness>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
