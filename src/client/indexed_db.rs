@@ -1601,7 +1601,8 @@ impl Db for IndexedDb {
                     .await
                     .wrap_context("retrieving creation snapshot")?;
                 if !object_does_exist {
-                    return Err(crate::Error::ObjectAlreadyExists(object_id).into());
+                    // Object already does not exist, so the removal already succeeded
+                    return Ok(());
                 };
 
                 // We're good to go, delete everything

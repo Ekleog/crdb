@@ -711,6 +711,14 @@ async fn regression_memdb_recreation_of_non_existent_deadlocked() {
     .await;
 }
 
+#[fuzz_helpers::test]
+async fn regression_indexeddb_removal_of_nonexistent_object_had_wrong_error_message() {
+    // tracing_wasm::set_as_global_default();
+    // std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    let cluster = setup();
+    fuzz_impl(&cluster, Arc::new(vec![Op::Remove { object_id: 0 }])).await;
+}
+
 /*
 #[fuzz_helpers::test]
 async fn impl_reproducer() {
