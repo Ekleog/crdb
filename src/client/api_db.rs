@@ -72,6 +72,16 @@ impl ApiDb {
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
+    async fn auto_resender_with_binaries<D: Db>(
+        _request: Arc<Request>,
+        _response_receiver: mpsc::UnboundedReceiver<ResponsePart>,
+        _binary_getter: Arc<D>,
+        _result_sender: oneshot::Sender<crate::Result<()>>,
+        _error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+    ) {
+        unimplemented!() // TODO(api)
+    }
+
     pub fn create<T: Object, D: Db>(
         &self,
         object_id: ObjectId,
@@ -80,18 +90,25 @@ impl ApiDb {
         binary_getter: Arc<D>,
         error_sender: mpsc::UnboundedSender<crate::SerializableError>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
-        let response_receiver =
-            self.request(Arc::new(Request::Upload(vec![UploadOrBinary::Upload(
-                Upload::Object {
-                    object_id,
-                    type_id: *T::type_ulid(),
-                    created_at,
-                    snapshot_version: T::snapshot_version(),
-                    object: serde_json::to_value(object)
-                        .wrap_context("serializing object for sending to api")?,
-                },
-            )])));
+        let request = Arc::new(Request::Upload(vec![UploadOrBinary::Upload(
+            Upload::Object {
+                object_id,
+                type_id: *T::type_ulid(),
+                created_at,
+                snapshot_version: T::snapshot_version(),
+                object: serde_json::to_value(object)
+                    .wrap_context("serializing object for sending to api")?,
+            },
+        )]));
+        let response_receiver = self.request(request.clone());
         let (result_sender, result_receiver) = oneshot::channel();
+        crate::spawn(Self::auto_resender_with_binaries(
+            request,
+            response_receiver,
+            binary_getter,
+            result_sender,
+            error_sender,
+        ));
         Ok(result_receiver)
     }
 
