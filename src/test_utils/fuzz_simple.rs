@@ -18,29 +18,33 @@ use ulid::Ulid;
 #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
 enum Op {
     Create {
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<TestObjectSimple>,
+        lock: bool,
     },
     Submit {
-        object: usize,
+        object_id: usize,
         event_id: EventId,
         event: Arc<TestEventSimple>,
     },
-    Get {
-        object: usize,
+    GetLatest {
+        object_id: usize,
+        lock: bool,
     },
     Query {
         user: User,
+        // TODO(test): figure out a way to test only_updated_since
         q: Query,
     },
     Recreate {
-        object: usize,
+        object_id: usize,
         new_created_at: EventId,
-        data: Arc<TestObjectSimple>,
+        object: Arc<TestObjectSimple>,
+        force_lock: bool,
     },
     Remove {
-        object: usize,
+        object_id: usize,
     },
     Vacuum {
         recreate_at: Option<Timestamp>,
@@ -72,74 +76,89 @@ impl FuzzState {
 async fn apply_op(db: &Database, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Create {
-            id,
+            object_id,
             created_at,
             object,
+            lock,
         } => {
-            s.objects.push(*id);
-            let pg = db.create(*id, *created_at, object.clone(), true, db).await;
+            s.objects.push(*object_id);
+            let db = db
+                .create(*object_id, *created_at, object.clone(), *lock, db)
+                .await;
             let mem = s
                 .mem_db
-                .create(*id, *created_at, object.clone(), true, &s.mem_db)
+                .create(*object_id, *created_at, object.clone(), *lock, &s.mem_db)
                 .await;
-            cmp(pg, mem)?;
+            cmp(db, mem)?;
         }
         Op::Submit {
-            object,
+            object_id,
             event_id,
             event,
         } => {
-            let o = s.object(*object);
-            let pg = db
-                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
-                .await;
-            let mem = s
-                .mem_db
-                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), &s.mem_db)
-                .await;
-            cmp(pg, mem)?;
-        }
-        Op::Get { object } => {
-            let o = s.object(*object);
+            let object_id = s.object(*object_id);
             let db = db
-                .get_latest::<TestObjectSimple>(true, o)
-                .await
-                .wrap_context(&format!("getting {o:?} in database"));
+                .submit::<TestObjectSimple, _>(object_id, *event_id, event.clone(), db)
+                .await;
             let mem = s
                 .mem_db
-                .get_latest::<TestObjectSimple>(true, o)
+                .submit::<TestObjectSimple, _>(object_id, *event_id, event.clone(), &s.mem_db)
+                .await;
+            cmp(db, mem)?;
+        }
+        Op::GetLatest { object_id, lock } => {
+            let object_id = s.object(*object_id);
+            let db = db
+                .get_latest::<TestObjectSimple>(*lock, object_id)
                 .await
-                .wrap_context(&format!("getting {o:?} in mem db"));
+                .wrap_context(&format!("getting {object_id:?} in database"));
+            let mem = s
+                .mem_db
+                .get_latest::<TestObjectSimple>(*lock, object_id)
+                .await
+                .wrap_context(&format!("getting {object_id:?} in mem db"));
             cmp(db, mem)?;
         }
         Op::Query { user, q } => {
             run_query::<TestObjectSimple>(&db, &s.mem_db, *user, None, q).await?;
         }
         Op::Recreate {
-            object,
+            object_id,
             new_created_at,
-            data,
+            object,
+            force_lock,
         } => {
             if !s.is_server {
-                let o = s.object(*object);
-                let pg = db
-                    .recreate::<TestObjectSimple, _>(o, *new_created_at, data.clone(), false, db)
+                let object_id = s.object(*object_id);
+                let db = db
+                    .recreate::<TestObjectSimple, _>(
+                        object_id,
+                        *new_created_at,
+                        object.clone(),
+                        *force_lock,
+                        db,
+                    )
                     .await;
                 let mem = s
                     .mem_db
                     .recreate::<TestObjectSimple, _>(
-                        o,
+                        object_id,
                         *new_created_at,
-                        data.clone(),
-                        false,
+                        object.clone(),
+                        *force_lock,
                         &s.mem_db,
                     )
                     .await;
-                cmp(pg, mem)?;
+                cmp(db, mem)?;
             }
         }
-        Op::Remove { object } => {
-            let _object = object; // TODO(test): implement for non-postgresql databases // HERE
+        Op::Remove { object_id } => {
+            if !s.is_server {
+                let object_id = s.object(*object_id);
+                let db = db.remove(object_id).await;
+                let mem = s.mem_db.remove(object_id).await;
+                cmp(db, mem)?;
+            }
         }
         Op::Vacuum { recreate_at } => {
             run_vacuum(&db, &s.mem_db, *recreate_at).await?;
@@ -172,29 +191,31 @@ async fn regression_events_1342_fails_to_notice_conflict_on_3() {
         &cluster,
         Arc::new(vec![
             Create {
-                id: OBJECT_ID_1,
+                object_id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectSimple(b"123".to_vec())),
+                lock: true,
             },
             Submit {
-                object: 0,
+                object_id: 0,
                 event_id: EVENT_ID_3,
                 event: Arc::new(TestEventSimple::Clear),
             },
             Submit {
-                object: 0,
+                object_id: 0,
                 event_id: EVENT_ID_4,
                 event: Arc::new(TestEventSimple::Clear),
             },
             Submit {
-                object: 0,
+                object_id: 0,
                 event_id: EVENT_ID_2,
                 event: Arc::new(TestEventSimple::Clear),
             },
             Create {
-                id: OBJECT_ID_2,
+                object_id: OBJECT_ID_2,
                 created_at: EVENT_ID_3,
                 object: Arc::new(TestObjectSimple(b"456".to_vec())),
+                lock: true,
             },
         ]),
     )
@@ -208,9 +229,10 @@ async fn regression_proper_error_on_recreate_inexistent() {
     fuzz_impl(
         &cluster,
         Arc::new(vec![Recreate {
-            object: 0,
+            object_id: 0,
             new_created_at: EVENT_ID_NULL,
-            data: Arc::new(TestObjectSimple::stub_1()),
+            object: Arc::new(TestObjectSimple::stub_1()),
+            force_lock: true,
         }]),
     )
     .await;
@@ -224,14 +246,16 @@ async fn regression_wrong_error_on_object_already_exists() {
         &cluster,
         Arc::new(vec![
             Create {
-                id: OBJECT_ID_1,
+                object_id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 2, 0, 252])),
+                lock: true,
             },
             Create {
-                id: OBJECT_ID_1,
+                object_id: OBJECT_ID_1,
                 created_at: EVENT_ID_2,
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+                lock: true,
             },
         ]),
     )
@@ -246,14 +270,16 @@ async fn regression_postgres_did_not_distinguish_between_object_and_event_confli
         &cluster,
         Arc::new(vec![
             Create {
-                id: ObjectId(Ulid::from_string("0001SPAWVKD5QPWQV100000000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("0001SPAWVKD5QPWQV100000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 143, 0, 0, 0, 0, 126, 59])),
+                lock: true,
             },
             Create {
-                id: ObjectId(Ulid::from_string("0058076SBKEDMPYVJZC4000000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("0058076SBKEDMPYVJZC4000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 244, 0, 105, 111, 110, 0])),
+                lock: true,
             },
         ]),
     )
@@ -268,17 +294,19 @@ async fn regression_submit_on_other_snapshot_date_fails() {
         &cluster,
         Arc::new(vec![
             Create {
-                id: ObjectId(Ulid::from_string("0000000000000004PAVG100000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("0000000000000004PAVG100000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 214, 0])),
+                lock: true,
             },
             Create {
-                id: ObjectId(Ulid::from_string("00000000000000000JS8000000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("00000000000000000JS8000000").unwrap()),
                 created_at: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 1, 0])),
+                lock: true,
             },
             Submit {
-                object: 0,
+                object_id: 0,
                 event_id: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
@@ -295,12 +323,13 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
         &cluster,
         Arc::new(vec![
             Create {
-                id: ObjectId(Ulid::from_string("00000A58N21A8JM00000000000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("00000A58N21A8JM00000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![55, 0, 0, 0, 0, 0, 0, 0])),
+                lock: true,
             },
             Submit {
-                object: 0,
+                object_id: 0,
                 event_id: EventId(Ulid::from_string("00001000040000000000000000").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
             },
@@ -308,7 +337,7 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
                 recreate_at: Some(Timestamp::from_ms(408021893130)),
             },
             Submit {
-                object: 0,
+                object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
             },
@@ -325,19 +354,21 @@ async fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conf
         &cluster,
         Arc::new(vec![
             Create {
-                id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 75, 0])),
+                lock: true,
             },
             Submit {
-                object: 0,
+                object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000510002P00000000000").unwrap()),
                 event: Arc::new(TestEventSimple::Append(vec![0, 0, 0, 0, 0, 0, 0, 0])),
             },
             Create {
-                id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000188000NG0000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 1, 0, 0, 4])),
+                lock: true,
             },
         ]),
     )
@@ -473,9 +504,10 @@ async fn regression_cast_error() {
         &cluster,
         Arc::new(vec![
             Op::Create {
-                id: ObjectId(Ulid::from_string("000000000000000000000002G0").unwrap()),
+                object_id: ObjectId(Ulid::from_string("000000000000000000000002G0").unwrap()),
                 created_at: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 4, 6, 75, 182, 0])),
+                lock: true,
             },
             Op::Query {
                 user: User(Ulid::from_string("00000000000000000000000001").unwrap()),
@@ -510,9 +542,10 @@ async fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
         &cluster,
         Arc::new(vec![
             Op::Recreate {
-                object: 0,
+                object_id: 0,
                 new_created_at: EVENT_ID_NULL,
-                data: Arc::new(TestObjectSimple::stub_1()),
+                object: Arc::new(TestObjectSimple::stub_1()),
+                force_lock: true,
             },
             Op::Query {
                 user: USER_ID_NULL,
@@ -555,9 +588,10 @@ async fn regression_postgres_null_led_to_not_being_wrong() {
         &cluster,
         Arc::new(vec![
             Op::Create {
-                id: ObjectId(Ulid::from_string("000002C1800G08000000000000").unwrap()),
+                object_id: ObjectId(Ulid::from_string("000002C1800G08000000000000").unwrap()),
                 created_at: EventId(Ulid::from_string("0000000000200000000002G000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 0, 255, 255, 255, 0, 0])),
+                lock: true,
             },
             Op::Query {
                 user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -580,9 +614,10 @@ async fn regression_postgres_handled_numbers_as_one_element_arrays() {
         &cluster,
         Arc::new(vec![
             Op::Create {
-                id: ObjectId(Ulid::from_string("0000001YR00020000002G002G0").unwrap()),
+                object_id: ObjectId(Ulid::from_string("0000001YR00020000002G002G0").unwrap()),
                 created_at: EventId(Ulid::from_string("0003XA00000G22PB005R1G6000").unwrap()),
                 object: Arc::new(TestObjectSimple(vec![0, 0, 3, 3, 3, 3, 3, 3])),
+                lock: true,
             },
             Op::Query {
                 user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -603,14 +638,16 @@ async fn regression_indexeddb_recreation_considered_dates_the_other_way_around()
         &cluster,
         Arc::new(vec![
             Op::Create {
-                id: OBJECT_ID_1,
+                object_id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectSimple(vec![221, 218])),
+                lock: true,
             },
             Op::Recreate {
-                object: 0,
+                object_id: 0,
                 new_created_at: EVENT_ID_2,
-                data: Arc::new(TestObjectSimple(vec![])),
+                object: Arc::new(TestObjectSimple(vec![])),
+                force_lock: true,
             },
         ]),
     )
@@ -624,14 +661,16 @@ async fn regression_indexeddb_recreation_did_not_fail_upon_back_in_time() {
         &cluster,
         Arc::new(vec![
             Op::Create {
-                id: OBJECT_ID_1,
+                object_id: OBJECT_ID_1,
                 created_at: EVENT_ID_2,
                 object: Arc::new(TestObjectSimple(vec![221, 218])),
+                lock: true,
             },
             Op::Recreate {
-                object: 0,
+                object_id: 0,
                 new_created_at: EVENT_ID_1,
-                data: Arc::new(TestObjectSimple(vec![])),
+                object: Arc::new(TestObjectSimple(vec![])),
+                force_lock: true,
             },
         ]),
     )
@@ -646,9 +685,10 @@ async fn regression_memdb_recreation_of_non_existent_deadlocked() {
     fuzz_impl(
         &cluster,
         Arc::new(vec![Op::Recreate {
-            object: 0,
+            object_id: 0,
             new_created_at: EVENT_ID_1,
-            data: Arc::new(TestObjectSimple(vec![])),
+            object: Arc::new(TestObjectSimple(vec![])),
+            force_lock: true,
         }]),
     )
     .await;
