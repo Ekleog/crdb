@@ -84,6 +84,15 @@ impl State {
         }
     }
 
+    fn no_longer_expecting_binaries(&mut self) {
+        match self {
+            State::NoValidInfo | State::Disconnected { .. } | State::TokenSent { .. } => (),
+            State::Connected {
+                expected_binaries, ..
+            } => *expected_binaries = None,
+        }
+    }
+
     async fn next_msg(&mut self) -> Option<anyhow::Result<IncomingMessage<ServerMessage>>> {
         match self {
             State::NoValidInfo | State::Disconnected { .. } => None,
@@ -289,8 +298,27 @@ impl Connection {
                     }
 
                     // We got a new binary message.
-                    Ok(IncomingMessage::Binary(_message)) => {
-                        unimplemented!() // TODO(high)
+                    Ok(IncomingMessage::Binary(message)) => {
+                        if let State::Connected { expected_binaries: Some((request_id, num_bins)), .. } = &mut self.state {
+                            if let Some((_, sender, already_sent)) = self.pending_requests.get_mut(&request_id) {
+                                *already_sent = true;
+                                let _ = sender.unbounded_send(ResponsePartWithSidecar {
+                                    response: ResponsePart::Binaries(1),
+                                    sidecar: vec![message],
+                                });
+                                *num_bins -= 1;
+                                if *num_bins == 0 {
+                                    self.state.no_longer_expecting_binaries();
+                                }
+                            } else {
+                                tracing::error!(?request_id, "Connection::State.expected_binaries is pointing to a non-existent request");
+                            }
+                        } else {
+                            self.state = self.state.disconnect();
+                            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(
+                                anyhow!("Unexpected server binary frame while not waiting for it")
+                            ));
+                        }
                     }
                 }
             }
@@ -510,7 +538,9 @@ impl Connection {
                         else {
                             panic!("Called send_connected while not connected");
                         };
-                        *expected_binaries = Some((request_id, *num_bins));
+                        if *num_bins > 0 {
+                            *expected_binaries = Some((request_id, *num_bins));
+                        }
                         // Do not send a response part yet! We'll send them one by one as the binaries come in.
                     } else {
                         // Regular response, just send it.
