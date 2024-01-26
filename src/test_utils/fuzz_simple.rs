@@ -602,6 +602,18 @@ async fn regression_memdb_recreate_did_not_recompute_latest_snapshot_right() {
 }
 
 #[fuzz_helpers::test]
+async fn regression_memdb_vacuum_very_late_gave_error_outside_cmp() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![Op::Vacuum {
+            recreate_at: Some(Timestamp::from_ms(17831803561258567669)),
+        }]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
 #[cfg(disable)]
 async fn impl_reproducer() {
     let cluster = setup();

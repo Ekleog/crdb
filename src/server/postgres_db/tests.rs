@@ -165,18 +165,22 @@ mod fuzz_helpers {
                 cmp(db, mem)
             }
             Some(recreate_at) => {
-                mem_db.recreate_all::<TestObjectSimple>(recreate_at).await?;
-                mem_db.recreate_all::<TestObjectPerms>(recreate_at).await?;
-                mem_db
-                    .recreate_all::<TestObjectDelegatePerms>(recreate_at)
-                    .await?;
-                mem_db.recreate_all::<TestObjectFull>(recreate_at).await?;
                 let db = db
                     .vacuum(Some(recreate_at), None, db, |_| {
                         // TODO(test): validate that the notified recreations are the same as in memdb
                     })
                     .await;
-                let mem = mem_db.vacuum().await;
+                let mem = async move {
+                    mem_db.recreate_all::<TestObjectSimple>(recreate_at).await?;
+                    mem_db.recreate_all::<TestObjectPerms>(recreate_at).await?;
+                    mem_db
+                        .recreate_all::<TestObjectDelegatePerms>(recreate_at)
+                        .await?;
+                    mem_db.recreate_all::<TestObjectFull>(recreate_at).await?;
+                    mem_db.vacuum().await?;
+                    Ok(())
+                }
+                .await;
                 cmp(db, mem)
             }
         }
