@@ -196,7 +196,6 @@ impl Connection {
                     }
                 }
 
-                // TODO(high): use expected_binaries to either expect a Text or Binary message
                 // Listen for incoming server messages
                 Some(message) = self.state.next_msg() => match message {
 
@@ -276,8 +275,16 @@ impl Connection {
                         }
 
                         // Main function, must now deal with requests and updates.
-                        State::Connected { .. } => {
+                        State::Connected { expected_binaries: None, .. } => {
                             self.handle_connected_message(message).await;
+                        }
+
+                        // We got a new text message while still expecting a binary message. Protocol violation.
+                        State::Connected { expected_binaries: Some(_), .. } => {
+                            self.state = self.state.disconnect();
+                            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(
+                                anyhow!("Unexpected server message while waiting for binaries: {message:?}")
+                            ));
                         }
                     }
 
