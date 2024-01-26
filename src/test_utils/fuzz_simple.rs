@@ -727,8 +727,32 @@ async fn regression_memdb_unlocking_of_nonexistent_object_had_wrong_error_messag
     fuzz_impl(&cluster, Arc::new(vec![Op::Unlock { object_id: 0 }])).await;
 }
 
-/*
 #[fuzz_helpers::test]
+async fn regression_memdb_did_not_vacuum_unlocked_objects() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::Create {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_2,
+                object: Arc::new(TestObjectSimple(vec![1])),
+                lock: false,
+            },
+            Op::Vacuum { recreate_at: None },
+            Op::Recreate {
+                object_id: 0,
+                new_created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectSimple(vec![2])),
+                force_lock: true,
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+#[cfg(disable)]
 async fn impl_reproducer() {
     let cluster = setup();
     fuzz_impl(
@@ -737,4 +761,3 @@ async fn impl_reproducer() {
     )
     .await;
 }
-*/

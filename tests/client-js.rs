@@ -130,7 +130,7 @@ mod fuzz_helpers {
         _only_updated_since: Option<Timestamp>,
         query: &Query,
     ) -> anyhow::Result<()> {
-        let pg = db
+        let db = db
             .query::<T>(query)
             .await
             .wrap_context("querying postgres")
@@ -140,24 +140,17 @@ mod fuzz_helpers {
             .await
             .wrap_context("querying mem")
             .map(|r| r.into_iter().collect::<HashSet<_>>());
-        cmp(pg, mem)
+        cmp(db, mem)
     }
 
     pub async fn run_vacuum(
         db: &Database,
-        _mem_db: &MemDb,
-        recreate_at: Option<Timestamp>,
+        mem_db: &MemDb,
+        _recreate_at: Option<Timestamp>,
     ) -> anyhow::Result<()> {
-        match recreate_at {
-            None => {
-                db.vacuum().await.unwrap();
-            }
-            Some(_recreate_at) => {
-                // TODO(test): will have some actual stuff to do once (un)lock & co are implemented in MemDb
-                db.vacuum().await.unwrap();
-            }
-        }
-        Ok(())
+        let db = db.vacuum().await;
+        let mem = mem_db.vacuum().await;
+        cmp(db, mem)
     }
 }
 

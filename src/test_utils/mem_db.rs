@@ -107,6 +107,15 @@ impl MemDb {
         // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
         Ok(())
     }
+
+    pub async fn vacuum(&self) -> crate::Result<()> {
+        self.0
+            .lock()
+            .await
+            .objects
+            .retain(|_, (_, locked, _)| *locked);
+        Ok(())
+    }
 }
 
 fn recreate_at<T: Object>(
