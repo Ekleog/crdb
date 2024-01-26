@@ -17,7 +17,7 @@ pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
-    error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+    error_sender: mpsc::UnboundedSender<crate::Error>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
@@ -28,7 +28,7 @@ impl ClientDb {
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
-    ) -> anyhow::Result<(ClientDb, mpsc::UnboundedReceiver<crate::SerializableError>)> {
+    ) -> anyhow::Result<(ClientDb, mpsc::UnboundedReceiver<crate::Error>)> {
         C::check_ulids();
         let (error_sender, error_receiver) = mpsc::unbounded();
         let (api, updates_receiver) = ApiDb::new();

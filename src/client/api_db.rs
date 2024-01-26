@@ -74,11 +74,18 @@ impl ApiDb {
     }
 
     async fn error_catcher(
-        _future: impl Future<Output = crate::Result<()>>,
-        _result_sender: oneshot::Sender<crate::Result<()>>,
-        _error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+        future: impl Future<Output = crate::Result<()>>,
+        result_sender: oneshot::Sender<crate::Result<()>>,
+        error_sender: mpsc::UnboundedSender<crate::Error>,
     ) {
-        unimplemented!() // TODO(api)
+        let res = future.await;
+        if let Err(res) = result_sender.send(res) {
+            // Failed sending to the result sender, send to error sender if required
+            if let Err(err) = res {
+                // If no one is listening on the error receiver, then too bad the user will never know of the error
+                let _ = error_sender.unbounded_send(err);
+            }
+        }
     }
 
     async fn auto_resender_with_binaries<D: Db>(
@@ -95,7 +102,7 @@ impl ApiDb {
         created_at: EventId,
         object: Arc<T>,
         binary_getter: Arc<D>,
-        error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+        error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
         let request = Arc::new(Request::Upload(vec![UploadOrBinary::Upload(
             Upload::Object {
@@ -123,7 +130,7 @@ impl ApiDb {
         _event_id: EventId,
         _event: Arc<T::Event>,
         _binary_getter: Arc<D>,
-        _error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+        _error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> oneshot::Receiver<crate::Result<()>> {
         unimplemented!() // TODO(api): implement
     }
