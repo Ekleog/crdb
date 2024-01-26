@@ -5,7 +5,8 @@ use crate::{
     messages::{ObjectData, Request, ResponsePart, Update, Upload, UploadOrBinary},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
-use futures::channel::mpsc;
+use anyhow::anyhow;
+use futures::{channel::mpsc, StreamExt};
 use std::{
     collections::HashSet,
     future::Future,
@@ -89,11 +90,49 @@ impl ApiDb {
     }
 
     async fn auto_resender_with_binaries<D: Db>(
-        _request: Arc<Request>,
-        mut _response_receiver: mpsc::UnboundedReceiver<ResponsePart>,
+        request: Arc<Request>,
+        requests: mpsc::UnboundedSender<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
         _binary_getter: Arc<D>,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(api)
+        loop {
+            // Send the request
+            let (response_sender, mut response_receiver) = mpsc::unbounded();
+            if requests
+                .unbounded_send((response_sender, request.clone()))
+                .is_err()
+            {
+                return Err(crate::Error::Other(anyhow!(
+                    "Connection-handling thread shut down"
+                )));
+            }
+
+            // Wait for a response
+            let Some(response) = response_receiver.next().await else {
+                // No response, connection thread shut down.
+                return Err(crate::Error::Other(anyhow!(
+                    "Connection-handling thread never returned a response for request"
+                )));
+            };
+
+            // Handle the response
+            match response {
+                ResponsePart::ConnectionLoss => continue, // try again
+                ResponsePart::Success => return Ok(()),
+                ResponsePart::Sessions(_)
+                | ResponsePart::CurrentTime(_)
+                | ResponsePart::Objects { .. } => {
+                    return Err(crate::Error::Other(anyhow!(
+                        "Server broke protocol by answering a creation request with {response:?}"
+                    )));
+                }
+                ResponsePart::Error(crate::SerializableError::MissingBinaries(
+                    _missing_binaries,
+                )) => {
+                    unimplemented!() // TODO(api)
+                }
+                ResponsePart::Error(err) => return Err(err.into()),
+            }
+        }
     }
 
     pub fn create<T: Object, D: Db>(
@@ -114,10 +153,9 @@ impl ApiDb {
                     .wrap_context("serializing object for sending to api")?,
             },
         )]));
-        let response_receiver = self.request(request.clone());
         let (result_sender, result_receiver) = oneshot::channel();
         crate::spawn(Self::error_catcher(
-            Self::auto_resender_with_binaries(request, response_receiver, binary_getter),
+            Self::auto_resender_with_binaries(request, self.requests.clone(), binary_getter),
             result_sender,
             error_sender,
         ));
