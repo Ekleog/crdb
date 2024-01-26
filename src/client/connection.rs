@@ -64,6 +64,8 @@ pub enum State {
         url: Arc<String>,
         token: SessionToken,
         socket: implem::WebSocket,
+        // Currently expecting `usize` more binaries for the request `RequestId`
+        expected_binaries: Option<(RequestId, usize)>,
     },
 }
 
@@ -190,6 +192,7 @@ impl Connection {
                     }
                 }
 
+                // TODO(high): use expected_binaries to either expect a Text or Binary message
                 // Listen for incoming server messages
                 Some(message) = self.state.next_msg() => match message {
 
@@ -209,7 +212,7 @@ impl Connection {
                                 response: ResponsePart::Success,
                                 last_response: true
                             } if req == request_id => {
-                                self.state = State::Connected { url, token, socket };
+                                self.state = State::Connected { url, token, socket, expected_binaries: None };
                                 self.next_ping = Some(Instant::now() + PING_INTERVAL);
                                 self.next_pong_deadline = None;
                                 self.event_cb.read().unwrap()(ConnectionEvent::Connected);
@@ -446,7 +449,7 @@ impl Connection {
                     self.pending_requests.get_mut(&request_id)
                 {
                     // Update our local subscription information and fetch the sidecar
-                    let sidecar = match &*request.request {
+                    match &*request.request {
                         Request::Get {
                             subscribe: true, ..
                         } => {
@@ -461,7 +464,6 @@ impl Connection {
                                     }
                                 }
                             }
-                            Vec::new()
                         }
                         Request::Query {
                             query_id,
@@ -478,20 +480,32 @@ impl Connection {
                                     subscription_info.1 = *now_have_all_until;
                                 }
                             }
-                            Vec::new()
                         }
-                        Request::GetBinaries(_) => {
-                            Vec::new() // TODO(high): actually fetch the sidecar
-                        }
-                        _ => Vec::new(),
+                        _ => (),
                     };
 
                     // And send the response
-                    // Ignore errors when sending, in case the requester did not await on the response future
-                    *already_sent = true;
-                    let _ = sender.unbounded_send(ResponsePartWithSidecar { response, sidecar });
-                    if last_response {
-                        self.pending_requests.remove(&request_id);
+                    if let ResponsePart::Binaries(num_bins) = &response {
+                        // The request was binary retrieval. We should remember that and send the binary frames as they come.
+                        let State::Connected {
+                            expected_binaries, ..
+                        } = &mut self.state
+                        else {
+                            panic!("Called send_connected while not connected");
+                        };
+                        *expected_binaries = Some((request_id, *num_bins));
+                        // Do not send a response part yet! We'll send them one by one as the binaries come in.
+                    } else {
+                        // Regular response, just send it.
+                        // Ignore errors when sending, in case the requester did not await on the response future
+                        *already_sent = true;
+                        let _ = sender.unbounded_send(ResponsePartWithSidecar {
+                            response,
+                            sidecar: Vec::new(),
+                        });
+                        if last_response {
+                            self.pending_requests.remove(&request_id);
+                        }
                     }
                 } else if self.next_pong_deadline.map(|(r, _)| r) == Some(request_id) {
                     let ResponsePart::CurrentTime(server_time) = response else {
@@ -589,7 +603,10 @@ impl Connection {
     }
 
     async fn send_connected_sidecar(&mut self, sidecar: &Vec<Arc<[u8]>>) {
-        let State::Connected { socket, url, token } = &mut self.state else {
+        let State::Connected {
+            socket, url, token, ..
+        } = &mut self.state
+        else {
             panic!("Called send_connected while not connected");
         };
         if let Err(err) = implem::send_sidecar(socket, sidecar).await {
@@ -602,7 +619,10 @@ impl Connection {
     }
 
     async fn send_connected(&mut self, message: &ClientMessage) {
-        let State::Connected { socket, url, token } = &mut self.state else {
+        let State::Connected {
+            socket, url, token, ..
+        } = &mut self.state
+        else {
             panic!("Called send_connected while not connected");
         };
         if let Err(err) = Self::send(socket, &message).await {

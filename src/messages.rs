@@ -111,8 +111,9 @@ pub enum ResponsePart {
         // Set only in answer to a Query
         now_have_all_until: Option<Updatedness>,
     },
-    // Note: the server's answer to GetBinaries is a Success message, followed by one
-    // websocket frame of type Binary per requested binary.
+    Binaries(usize),
+    // Note: the server's answer to GetBinaries is a Binaries(x) message, followed by `x`
+    // websocket frames of type Binary. It can be split into multiple parts.
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
