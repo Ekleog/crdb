@@ -128,7 +128,22 @@ impl ApiDb {
                 ResponsePart::Error(crate::SerializableError::MissingBinaries(
                     _missing_binaries,
                 )) => {
+                    // TODO(low): Currently, if the user enqueues 3 objects that all require the same binary at
+                    // once, then the server will reject all 3 of them and then the client will upload the binary
+                    // 3 times before noticing that it's now all good. Maybe some more global knowledge of what's
+                    // being sent would allow to avoid that case?
                     unimplemented!() // TODO(api)
+                }
+                ResponsePart::Error(crate::SerializableError::ObjectDoesNotExist(_object_id)) => {
+                    // We can hit this place if:
+                    // - an object is submitted with missing-on-server binaries
+                    // - an event is submitted
+                    // - the server replies with missing-binaries, re-enqueuing the object
+                    // - the event then would get an answer of object-does-not-exist
+                    // As such, it is enough to just re-enqueue the event and it will eventually resolve, once the
+                    // object will have been processed. DO NOT enqueue a new request for object creation, that would
+                    // then put the same object twice in the queue. Not a big deal, but pointless effort.
+                    continue; // try again
                 }
                 ResponsePart::Error(err) => return Err(err.into()),
             }
