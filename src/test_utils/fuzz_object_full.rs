@@ -152,7 +152,40 @@ async fn regression_stack_overflow() {
 }
 
 #[fuzz_helpers::test]
-#[cfg(disable)]
+async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![],
+                    bins: vec![],
+                    users: vec![],
+                }),
+                lock: true,
+            },
+            Op::RecreateFull {
+                object_id: 0,
+                new_created_at: EVENT_ID_2,
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from("\0"),
+                    deps: vec![],
+                    bins: vec![],
+                    users: vec![],
+                }),
+                force_lock: true,
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+#[cfg(disabled)]
 async fn impl_reproducer() {
     let cluster = setup();
     fuzz_impl(

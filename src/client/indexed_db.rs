@@ -1382,6 +1382,11 @@ impl Db for IndexedDb {
                     .into());
                 }
 
+                // TODO(low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+                crate::check_strings(
+                    &serde_json::to_value(&*object).wrap_context("serializing to json")?,
+                )?;
+
                 // Check if the requested new_created_at is after the current latest snapshot
                 let latest_snapshot_meta_js = latest_type_object
                     .get(&Array::from_iter([
