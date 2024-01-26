@@ -1,7 +1,8 @@
 use super::connection::{Command, Connection, ConnectionEvent};
 use crate::{
     db_trait::Db,
-    messages::{ObjectData, Request, ResponsePart, Update},
+    error::ResultExt,
+    messages::{ObjectData, Request, ResponsePart, Update, Upload, UploadOrBinary},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::channel::mpsc;
@@ -13,7 +14,7 @@ use tokio::sync::oneshot;
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
-    requests: mpsc::UnboundedSender<(mpsc::UnboundedSender<ResponsePart>, Request)>,
+    requests: mpsc::UnboundedSender<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
 }
 
@@ -58,7 +59,7 @@ impl ApiDb {
             .expect("connection cannot go away before sender does")
     }
 
-    fn request(&self, request: Request) -> mpsc::UnboundedReceiver<ResponsePart> {
+    fn request(&self, request: Arc<Request>) -> mpsc::UnboundedReceiver<ResponsePart> {
         let (sender, response) = mpsc::unbounded();
         self.requests
             .unbounded_send((sender, request))
@@ -67,19 +68,31 @@ impl ApiDb {
     }
 
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {
-        self.request(Request::Unsubscribe(object_ids));
+        self.request(Arc::new(Request::Unsubscribe(object_ids)));
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
     pub fn create<T: Object, D: Db>(
         &self,
-        _id: ObjectId,
-        _created_at: EventId,
-        _object: Arc<T>,
-        _binary_getter: Arc<D>,
-        _error_sender: mpsc::UnboundedSender<crate::SerializableError>,
-    ) -> oneshot::Receiver<crate::Result<()>> {
-        unimplemented!() // TODO(api): implement
+        object_id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+        binary_getter: Arc<D>,
+        error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+        let response_receiver =
+            self.request(Arc::new(Request::Upload(vec![UploadOrBinary::Upload(
+                Upload::Object {
+                    object_id,
+                    type_id: *T::type_ulid(),
+                    created_at,
+                    snapshot_version: T::snapshot_version(),
+                    object: serde_json::to_value(object)
+                        .wrap_context("serializing object for sending to api")?,
+                },
+            )])));
+        let (result_sender, result_receiver) = oneshot::channel();
+        Ok(result_receiver)
     }
 
     pub fn submit<T: Object, D: Db>(

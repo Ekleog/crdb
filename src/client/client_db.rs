@@ -201,7 +201,7 @@ impl ClientDb {
             object,
             self.db.clone(),
             self.error_sender.clone(),
-        ))
+        )?)
     }
 
     pub async fn submit<T: Object>(

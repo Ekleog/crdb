@@ -99,7 +99,7 @@ pub struct Connection {
     state: State,
     last_request_id: RequestId,
     commands: mpsc::UnboundedReceiver<Command>,
-    requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
+    requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
     not_sent_requests: VecDeque<(RequestId, Arc<Request>, mpsc::UnboundedSender<ResponsePart>)>,
     // The last `bool` shows whether we already started sending an answer to the Sender. If yes, we need to
     // kill it with an Error rather than restart it from 0, to avoid duplicate answers.
@@ -116,7 +116,7 @@ pub struct Connection {
 impl Connection {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
-        requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Request)>,
+        requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
         event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
         update_sender: mpsc::UnboundedSender<Update>,
     ) -> Connection {
@@ -183,8 +183,8 @@ impl Connection {
                     };
                     let request_id = self.next_request_id();
                     match self.state {
-                        State::Connected { .. } => self.handle_request(request_id, Arc::new(request), sender).await,
-                        _ => self.not_sent_requests.push_back((request_id, Arc::new(request), sender)),
+                        State::Connected { .. } => self.handle_request(request_id, request, sender).await,
+                        _ => self.not_sent_requests.push_back((request_id, request, sender)),
                     }
                 }
 

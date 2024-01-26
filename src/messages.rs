@@ -57,13 +57,14 @@ pub enum Upload {
         object_id: ObjectId,
         type_id: TypeId,
         created_at: EventId,
-        data: serde_json::Value,
+        snapshot_version: i32,
+        object: serde_json::Value,
     },
     Event {
-        event_id: EventId,
-        type_id: TypeId,
         object_id: ObjectId,
-        data: serde_json::Value,
+        type_id: TypeId,
+        event_id: EventId,
+        object: serde_json::Value,
     },
 }
 
