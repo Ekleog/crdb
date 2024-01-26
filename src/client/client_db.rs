@@ -37,6 +37,7 @@ impl ClientDb {
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = CacheDb::new(db_bypass.clone(), cache_watermark);
         let cancellation_token = CancellationToken::new();
+        // TODO(client): re-subscribe upon bootup to all the objects in database
         let this = ClientDb {
             api,
             db,
@@ -113,6 +114,7 @@ impl ClientDb {
                             // an event on this object (as a race condition), and then staying subscribed.
                         }
                     }
+                    // TODO(client): give out update broadcasters for each individual query the user subscribed to
                     if let Err(err) = updates_broadcaster.send(object_id) {
                         tracing::error!(?err, ?object_id, "failed broadcasting update");
                     }
@@ -268,7 +270,9 @@ impl ClientDb {
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
-        let res = self.api.get_all(object_id).await?;
+        // TODO(client): maybe the user just wants the latest snapshot and doesn't actually care about updates, requiring
+        // a server round-trip for the next time they want it?
+        let res = self.api.get_unknown(true, object_id).await?;
         Self::create_all_local::<T>(&self.db, lock, res).await?;
         Ok(self.db.get_latest::<T>(lock, object_id).await?)
     }

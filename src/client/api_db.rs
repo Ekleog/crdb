@@ -3,15 +3,15 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     messages::{
-        ObjectData, Request, RequestWithSidecar, ResponsePart, ResponsePartWithSidecar, Update,
-        Upload, UploadOrBinary,
+        MaybeObject, ObjectData, Request, RequestWithSidecar, ResponsePart,
+        ResponsePartWithSidecar, Update, Upload, UploadOrBinary,
     },
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, StreamExt};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     future::Future,
     sync::{Arc, RwLock},
 };
@@ -239,8 +239,42 @@ impl ApiDb {
         Ok(result_receiver)
     }
 
-    pub async fn get_all(&self, _object_id: ObjectId) -> crate::Result<ObjectData> {
-        unimplemented!() // TODO(api): implement
+    pub async fn get_unknown(
+        &self,
+        subscribe: bool,
+        object_id: ObjectId,
+    ) -> crate::Result<ObjectData> {
+        let mut object_ids = HashMap::new();
+        object_ids.insert(object_id, None); // We do not know about this object yet, so None
+        let request = Arc::new(Request::Get {
+            object_ids,
+            subscribe,
+        });
+        let mut response = self.request(Arc::new(RequestWithSidecar {
+            request,
+            sidecar: Vec::new(),
+        }));
+        match response.next().await {
+            None => Err(crate::Error::Other(anyhow!(
+                "Connection-handling thread went out before ApiDb"
+            ))),
+            Some(response) => match response.response {
+                ResponsePart::Error(err) => Err(err.into()),
+                ResponsePart::Objects { mut data, .. } if data.len() == 1 => {
+                    // TODO(client): record now_have_all_until somewhere
+                    match data.pop().unwrap() {
+                        MaybeObject::AlreadySubscribed(_) => Err(crate::Error::Other(anyhow!(
+                            "Server unexpectedly told us we already know unknown {object_id:?}"
+                        ))),
+                        MaybeObject::NotYetSubscribed(res) => Ok(res),
+                    }
+                }
+                _ => Err(crate::Error::Other(anyhow!(
+                    "Unexpected response to get request: {:?}",
+                    response.response
+                ))),
+            },
+        }
     }
 
     pub async fn query<T: Object>(
@@ -250,11 +284,6 @@ impl ApiDb {
     ) -> crate::Result<impl CrdbStream<Item = crate::Result<ObjectData>>> {
         // unimplemented!() // TODO(api): implement
         Ok(futures::stream::empty())
-    }
-
-    #[allow(dead_code)] // TODO(api): this will be required by the logic for object resubmission
-    pub async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<[u8]>) -> crate::Result<()> {
-        unimplemented!() // TODO(api): implement
     }
 
     pub async fn get_binary(&self, _binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
