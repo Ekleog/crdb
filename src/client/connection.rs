@@ -1,8 +1,8 @@
 use crate::{
     ids::QueryId,
     messages::{
-        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
-        UpdateData,
+        ClientMessage, MaybeObject, Request, RequestId, RequestWithSidecar, ResponsePart,
+        ResponsePartWithSidecar, ServerMessage, Update, UpdateData,
     },
     ObjectId, Query, SessionToken, Timestamp, Updatedness,
 };
@@ -95,15 +95,17 @@ impl State {
     }
 }
 
+pub type ResponseSender = mpsc::UnboundedSender<ResponsePartWithSidecar>;
+
 pub struct Connection {
     state: State,
     last_request_id: RequestId,
     commands: mpsc::UnboundedReceiver<Command>,
-    requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
-    not_sent_requests: VecDeque<(RequestId, Arc<Request>, mpsc::UnboundedSender<ResponsePart>)>,
+    requests: mpsc::UnboundedReceiver<(ResponseSender, Arc<RequestWithSidecar>)>,
+    not_sent_requests: VecDeque<(RequestId, Arc<RequestWithSidecar>, ResponseSender)>,
     // The last `bool` shows whether we already started sending an answer to the Sender. If yes, we need to
     // kill it with an Error rather than restart it from 0, to avoid duplicate answers.
-    pending_requests: HashMap<RequestId, (Arc<Request>, mpsc::UnboundedSender<ResponsePart>, bool)>,
+    pending_requests: HashMap<RequestId, (Arc<RequestWithSidecar>, ResponseSender, bool)>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
     update_sender: mpsc::UnboundedSender<Update>,
     last_ping: i64, // Milliseconds since unix epoch
@@ -116,7 +118,7 @@ pub struct Connection {
 impl Connection {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
-        requests: mpsc::UnboundedReceiver<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
+        requests: mpsc::UnboundedReceiver<(ResponseSender, Arc<RequestWithSidecar>)>,
         event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
         update_sender: mpsc::UnboundedSender<Update>,
     ) -> Connection {
@@ -219,11 +221,14 @@ impl Connection {
                                     let request_id = self.next_request_id();
                                     self.handle_request(
                                         request_id,
-                                        Arc::new(Request::Query {
-                                            query_id,
-                                            query,
-                                            only_updated_since: have_all_until,
-                                            subscribe: true,
+                                        Arc::new(RequestWithSidecar {
+                                            request: Arc::new(Request::Query {
+                                                query_id,
+                                                query,
+                                                only_updated_since: have_all_until,
+                                                subscribe: true,
+                                            }),
+                                            sidecar: Vec::new(),
                                         }),
                                         responses_sender.clone(),
                                     ).await;
@@ -234,9 +239,12 @@ impl Connection {
                                     let request_id = self.next_request_id();
                                     self.handle_request(
                                         request_id,
-                                        Arc::new(Request::Get {
-                                            object_ids: self.subscribed_objects.clone(),
-                                            subscribe: true,
+                                        Arc::new(RequestWithSidecar {
+                                            request: Arc::new(Request::Get {
+                                                object_ids: self.subscribed_objects.clone(),
+                                                subscribe: true,
+                                            }),
+                                            sidecar: Vec::new(),
                                         }),
                                         responses_sender,
                                     ).await;
@@ -312,7 +320,10 @@ impl Connection {
                         self.pending_requests.drain()
                     {
                         if already_sent {
-                            let _ = sender.unbounded_send(ResponsePart::ConnectionLoss);
+                            let _ = sender.unbounded_send(ResponsePartWithSidecar {
+                                response: ResponsePart::ConnectionLoss,
+                                sidecar: Vec::new(),
+                            });
                         } else {
                             self.not_sent_requests
                                 .push_front((request_id, request, sender));
@@ -362,10 +373,10 @@ impl Connection {
     async fn handle_request(
         &mut self,
         request_id: RequestId,
-        request: Arc<Request>,
-        sender: mpsc::UnboundedSender<ResponsePart>,
+        request: Arc<RequestWithSidecar>,
+        sender: ResponseSender,
     ) {
-        match &*request {
+        match &*request.request {
             Request::Get {
                 object_ids,
                 subscribe: true,
@@ -394,8 +405,9 @@ impl Connection {
         }
         let message = ClientMessage {
             request_id,
-            request: request.clone(),
+            request: request.request.clone(),
         };
+        // TODO(high): actually send the binaries sidecar
         self.send_connected(&message).await;
         self.pending_requests
             .insert(request_id, (request, sender, false));
@@ -433,8 +445,8 @@ impl Connection {
                 if let Some((request, sender, already_sent)) =
                     self.pending_requests.get_mut(&request_id)
                 {
-                    // Update our local subscription information
-                    match &**request {
+                    // Update our local subscription information and fetch the sidecar
+                    let sidecar = match &*request.request {
                         Request::Get {
                             subscribe: true, ..
                         } => {
@@ -449,6 +461,7 @@ impl Connection {
                                     }
                                 }
                             }
+                            Vec::new()
                         }
                         Request::Query {
                             query_id,
@@ -465,14 +478,18 @@ impl Connection {
                                     subscription_info.1 = *now_have_all_until;
                                 }
                             }
+                            Vec::new()
                         }
-                        _ => (),
-                    }
+                        Request::GetBinaries(_) => {
+                            Vec::new() // TODO(high): actually fetch the sidecar
+                        }
+                        _ => Vec::new(),
+                    };
 
                     // And send the response
                     // Ignore errors when sending, in case the requester did not await on the response future
                     *already_sent = true;
-                    let _ = sender.unbounded_send(response);
+                    let _ = sender.unbounded_send(ResponsePartWithSidecar { response, sidecar });
                     if last_response {
                         self.pending_requests.remove(&request_id);
                     }
@@ -513,12 +530,13 @@ impl Connection {
 
     async fn send_responses_as_updates(
         update_sender: mpsc::UnboundedSender<Update>,
-        mut responses_receiver: mpsc::UnboundedReceiver<ResponsePart>,
+        mut responses_receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
         for_query: Option<QueryId>,
     ) {
         // No need to keep track of self.subscribed_*, this will be done before even reaching this point
         while let Some(response) = responses_receiver.next().await {
-            match response {
+            // Ignore the sidecar here. We're not requesting any binaries so there can't be anything anyway
+            match response.response {
                 ResponsePart::ConnectionLoss => (), // too bad, let's empty the feed and try again next reconnection
                 ResponsePart::Error(err) => {
                     tracing::error!(?err, "got unexpected server error upon re-subscribing");

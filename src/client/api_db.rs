@@ -1,8 +1,11 @@
-use super::connection::{Command, Connection, ConnectionEvent};
+use super::connection::{Command, Connection, ConnectionEvent, ResponseSender};
 use crate::{
     db_trait::Db,
     error::ResultExt,
-    messages::{ObjectData, Request, ResponsePart, Update, Upload, UploadOrBinary},
+    messages::{
+        ObjectData, Request, RequestWithSidecar, ResponsePart, ResponsePartWithSidecar, Update,
+        Upload, UploadOrBinary,
+    },
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use anyhow::anyhow;
@@ -16,7 +19,7 @@ use tokio::sync::oneshot;
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
-    requests: mpsc::UnboundedSender<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
+    requests: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
 }
 
@@ -61,7 +64,10 @@ impl ApiDb {
             .expect("connection cannot go away before sender does")
     }
 
-    fn request(&self, request: Arc<Request>) -> mpsc::UnboundedReceiver<ResponsePart> {
+    fn request(
+        &self,
+        request: Arc<RequestWithSidecar>,
+    ) -> mpsc::UnboundedReceiver<ResponsePartWithSidecar> {
         let (sender, response) = mpsc::unbounded();
         self.requests
             .unbounded_send((sender, request))
@@ -70,7 +76,10 @@ impl ApiDb {
     }
 
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {
-        self.request(Arc::new(Request::Unsubscribe(object_ids)));
+        self.request(Arc::new(RequestWithSidecar {
+            request: Arc::new(Request::Unsubscribe(object_ids)),
+            sidecar: Vec::new(),
+        }));
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
@@ -91,9 +100,13 @@ impl ApiDb {
 
     async fn auto_resender_with_binaries<D: Db>(
         request: Arc<Request>,
-        requests: mpsc::UnboundedSender<(mpsc::UnboundedSender<ResponsePart>, Arc<Request>)>,
+        requests: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
         binary_getter: Arc<D>,
     ) -> crate::Result<()> {
+        let request = Arc::new(RequestWithSidecar {
+            request,
+            sidecar: Vec::new(),
+        });
         loop {
             // Send the request
             let (response_sender, mut response_receiver) = mpsc::unbounded();
@@ -113,6 +126,7 @@ impl ApiDb {
                     "Connection-handling thread never returned a response for request"
                 )));
             };
+            let response = response.response; // No sidecar in creation responses
 
             // Handle the response
             match response {

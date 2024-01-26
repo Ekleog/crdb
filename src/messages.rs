@@ -1,3 +1,4 @@
+#![allow(dead_code)] // TODO(api): remove
 use crate::{
     ids::QueryId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
     TypeId, Updatedness,
@@ -17,6 +18,11 @@ pub struct RequestId(pub u64);
 pub struct ClientMessage {
     pub request_id: RequestId,
     pub request: Arc<Request>,
+}
+
+pub struct RequestWithSidecar {
+    pub request: Arc<Request>,
+    pub sidecar: Vec<Arc<[u8]>>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -86,6 +92,11 @@ pub enum ServerMessage {
         last_response: bool,
     },
     Updates(Vec<Update>),
+}
+
+pub struct ResponsePartWithSidecar {
+    pub response: ResponsePart,
+    pub sidecar: Vec<Arc<[u8]>>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
