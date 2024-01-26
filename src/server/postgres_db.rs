@@ -334,6 +334,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                                 data,
                             },
                             now_have_all_until: Timestamp::now(), // TODO(server): this is a lie
+                            now_have_all_until_for_queries: HashMap::new(),
                         });
                     }
                 }

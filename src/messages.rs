@@ -1,5 +1,6 @@
 use crate::{
-    BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, TypeId,
+    ids::QueryId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
+    TypeId,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -33,13 +34,14 @@ pub enum Request {
         subscribe: bool,
     },
     Query {
+        query_id: QueryId,
         query: Query,
         only_updated_since: Option<Timestamp>,
         subscribe: bool,
     },
     GetBinaries(HashSet<BinPtr>),
     Unsubscribe(HashSet<ObjectId>),
-    UnsubscribeQuery(Query),
+    UnsubscribeQuery(QueryId),
     Upload(Vec<UploadOrBinary>),
 }
 
@@ -125,6 +127,7 @@ pub struct Update {
     pub type_id: TypeId,
     pub data: UpdateData,
     pub now_have_all_until: Timestamp, // TODO(api): replace Timestamp here with a more proper ULID?
+    pub now_have_all_until_for_queries: HashMap<QueryId, Timestamp>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

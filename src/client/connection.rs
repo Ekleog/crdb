@@ -1,4 +1,5 @@
 use crate::{
+    ids::QueryId,
     messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Update},
     ObjectId, SessionToken, Timestamp,
 };
@@ -107,7 +108,7 @@ pub struct Connection {
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
     subscribed_objects: HashMap<ObjectId, Option<Timestamp>>, // TODO(api): actually update that timestamp on each received Update
-    // TODO(api): use QueryId subscribed_queries: HashMap<Query, Timestamp>,
+    subscribed_queries: HashMap<QueryId, Option<Timestamp>>,
 }
 
 impl Connection {
@@ -132,7 +133,7 @@ impl Connection {
             next_ping: None,
             next_pong_deadline: None,
             subscribed_objects: HashMap::new(),
-            // TODO(api) subscribed_queries: HashMap::new(),
+            subscribed_queries: HashMap::new(),
         }
     }
 
@@ -340,22 +341,21 @@ impl Connection {
                     .extend(object_ids.iter().map(|(id, t)| (*id, *t)));
             }
             Request::Query {
-                query,
+                query_id,
+                query: _,
                 only_updated_since,
                 subscribe,
             } if *subscribe => {
-                let _ = (query, only_updated_since);
-                // TODO(api) self.subscribed_queries
-                // TODO(api)     .insert(query.clone(), only_updated_since);
+                self.subscribed_queries
+                    .insert(*query_id, *only_updated_since);
             }
             Request::Unsubscribe(object_ids) => {
                 for object_id in object_ids {
                     self.subscribed_objects.remove(object_id);
                 }
             }
-            Request::UnsubscribeQuery(query) => {
-                let _ = query;
-                // TODO(api) self.subscribed_queries.remove(query);
+            Request::UnsubscribeQuery(query_id) => {
+                self.subscribed_queries.remove(query_id);
             }
             _ => (),
         }
