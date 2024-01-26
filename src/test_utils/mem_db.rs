@@ -13,7 +13,8 @@ use tokio::sync::Mutex;
 struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
     events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
-    objects: HashMap<ObjectId, (TypeId, FullObject)>,
+    // The bool is whether the object is locked
+    objects: HashMap<ObjectId, (TypeId, bool, FullObject)>,
     binaries: HashMap<BinPtr, Arc<[u8]>>,
     is_server: bool,
 }
@@ -34,7 +35,7 @@ impl MemDb {
         let mut this = self.0.lock().await;
         let this = &mut *this; // disable auto-deref-and-reborrow, get a real mutable borrow
         EventId::last_id_at(time)?;
-        for (ty, o) in this.objects.values() {
+        for (ty, _, o) in this.objects.values() {
             if ty == T::type_ulid() {
                 recreate_at::<T>(o, time, &mut this.events)?;
             }
@@ -42,15 +43,18 @@ impl MemDb {
         Ok(())
     }
 
-    async fn get<T: Object>(&self, _lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
-        match self.0.lock().await.objects.get(&object_id) {
+    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
+        match self.0.lock().await.objects.get_mut(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
-            Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+            Some((ty, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
                 real_type_id: *ty,
             }),
-            Some((_, o)) => Ok(o.clone()),
+            Some((_, locked, o)) => {
+                *locked |= lock;
+                Ok(o.clone())
+            }
         }
     }
 
@@ -70,7 +74,7 @@ impl MemDb {
         let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
         let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
         stream::iter(objects.into_iter())
-            .filter_map(|(_, (t, full_object))| async move {
+            .filter_map(|(_, (t, _, full_object))| async move {
                 if t != *T::type_ulid() {
                     return None;
                 }
@@ -96,8 +100,13 @@ impl MemDb {
             .collect::<crate::Result<Vec<ObjectId>>>()
     }
 
-    pub async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
-        unimplemented!() // TODO(test)
+    pub async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
+        if let Some((_, locked, _)) = self.0.lock().await.objects.get_mut(&object_id) {
+            *locked = false;
+            Ok(())
+        } else {
+            Err(crate::Error::ObjectDoesNotExist(object_id))
+        }
     }
 }
 
@@ -134,13 +143,13 @@ impl Db for MemDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        _lock: bool, // TODO(test): implement (un)lock semantics for client-side tests
+        lock: bool,
         _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 
         // First, check for duplicates
-        if let Some((ty, o)) = this.objects.get(&object_id) {
+        if let Some((ty, locked, o)) = this.objects.get_mut(&object_id) {
             crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
             let c = o.creation_info();
             if ty != T::type_ulid()
@@ -149,6 +158,7 @@ impl Db for MemDb {
             {
                 return Err(crate::Error::ObjectAlreadyExists(object_id));
             }
+            *locked |= lock;
             return Ok(None);
         }
         if let Some(_) = this.events.get(&created_at) {
@@ -176,6 +186,7 @@ impl Db for MemDb {
             object_id,
             (
                 *T::type_ulid(),
+                lock,
                 FullObject::new(object_id, created_at, object.clone()),
             ),
         );
@@ -194,19 +205,19 @@ impl Db for MemDb {
         let mut this = self.0.lock().await;
         match this.objects.get(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
-            Some((ty, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+            Some((ty, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
                 real_type_id: *ty,
             }),
-            Some((_, o)) if o.creation_info().created_at >= event_id => {
+            Some((_, _, o)) if o.creation_info().created_at >= event_id => {
                 Err(crate::Error::EventTooEarly {
                     object_id,
                     event_id,
                     created_at: o.creation_info().created_at,
                 })
             }
-            Some((_, o)) => {
+            Some((_, _, o)) => {
                 // First, check for duplicates
                 if let Some((o, e)) = this.events.get(&event_id) {
                     crate::check_strings(&serde_json::to_value(&*event).unwrap())?;
@@ -262,10 +273,10 @@ impl Db for MemDb {
         force_lock: bool,
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
-        let this = self.0.lock().await;
+        let mut this = self.0.lock().await;
 
         // First, check for preconditions
-        let Some(&(real_type_id, ref o)) = this.objects.get(&object_id) else {
+        let Some(&(real_type_id, _, ref o)) = this.objects.get(&object_id) else {
             std::mem::drop(this);
             return self
                 .create(object_id, new_created_at, object, force_lock, cb)
@@ -309,12 +320,15 @@ impl Db for MemDb {
 
         // All good, do the recreation
         o.recreate_with::<T>(new_created_at, object);
+        let last_snapshot = o.last_snapshot::<T>().unwrap();
+        this.objects.get_mut(&object_id).unwrap().1 |= force_lock;
 
-        Ok(Some(o.last_snapshot::<T>().unwrap()))
+        Ok(Some(last_snapshot))
     }
 
-    async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {
-        unimplemented!() // TODO(test)
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
+        self.0.lock().await.objects.remove(&object_id);
+        Ok(())
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
