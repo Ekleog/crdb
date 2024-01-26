@@ -7,6 +7,7 @@ use anyhow::anyhow;
 use futures::{channel::mpsc, StreamExt};
 use std::{
     collections::HashSet,
+    future::Future,
     sync::{Arc, RwLock},
 };
 
@@ -84,8 +85,9 @@ impl ApiDb {
         _id: ObjectId,
         _created_at: EventId,
         _object: Arc<T>,
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(api): implement
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
+        // unimplemented!() // TODO(api): implement
+        Ok(futures::future::ready(Ok(())))
     }
 
     pub async fn submit<T: Object>(
@@ -93,8 +95,9 @@ impl ApiDb {
         _object: ObjectId,
         _event_id: EventId,
         _event: Arc<T::Event>,
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(api): implement
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
+        // unimplemented!() // TODO(api): implement
+        Ok(futures::future::ready(Ok(())))
     }
 
     pub async fn get_all(&self, _object_id: ObjectId) -> crate::Result<ObjectData> {
@@ -110,6 +113,7 @@ impl ApiDb {
         Ok(futures::stream::empty())
     }
 
+    #[allow(dead_code)] // TODO(api): this will be required by the logic for object resubmission
     pub async fn create_binary(&self, _binary_id: BinPtr, _data: Arc<[u8]>) -> crate::Result<()> {
         unimplemented!() // TODO(api): implement
     }

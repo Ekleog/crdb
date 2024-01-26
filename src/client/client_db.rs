@@ -9,7 +9,7 @@ use crate::{
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::{channel::mpsc, StreamExt};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, future::Future, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -187,13 +187,12 @@ impl ClientDb {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         self.db
             .create(id, created_at, object.clone(), true, &*self.db)
             .await?;
         // TODO(client): automatically handle MissingBinaries error by submitting them to server and retrying
-        self.api.create(id, created_at, object).await?;
-        Ok(())
+        self.api.create(id, created_at, object).await
     }
 
     pub async fn submit<T: Object>(
@@ -201,13 +200,12 @@ impl ClientDb {
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         self.db
             .submit::<T, _>(object, event_id, event.clone(), &*self.db)
             .await?;
         // TODO(client): automatically handle MissingBinaries error by submitting them to server and retrying
-        self.api.submit::<T>(object, event_id, event).await?;
-        Ok(())
+        self.api.submit::<T>(object, event_id, event).await
     }
 
     /// Returns the latest snapshot for the object described by `data`
@@ -307,8 +305,12 @@ impl ClientDb {
     // TODO(low): should the client be allowed to request a recreation?
 
     pub async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        self.db.create_binary(binary_id, data.clone()).await?;
-        self.api.create_binary(binary_id, data).await
+        self.db.create_binary(binary_id, data.clone()).await
+        // Do not create the binary over the API. We'll try uploading the object that requires it when
+        // that happens, hoping for the binary to already be known by the server. If it is not, then we'll
+        // create the binary there then re-send the object. This avoids spurious binary retransmits, and
+        // needs to be handled anyway because the server could have vacuumed between the create_binary and
+        // the create_object.
     }
 
     pub async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {

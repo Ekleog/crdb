@@ -90,16 +90,23 @@ macro_rules! generate_client {
             }
 
             $(crdb::paste! {
-                pub fn [< create_ $name >](&self, object: crdb::Arc<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<crdb::DbPtr<$object>>> {
+                pub fn [< create_ $name >](
+                    &self,
+                    object: crdb::Arc<$object>,
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, impl crdb::CrdbFuture<Output = crdb::Result<()>>)>> {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();
                         let id = id.expect("Failed to generate ulid for object creation");
-                        self.db.create(crdb::ObjectId(id), crdb::EventId(id), object).await?;
-                        Ok(crdb::DbPtr::from(crdb::ObjectId(id)))
+                        let completion = self.db.create(crdb::ObjectId(id), crdb::EventId(id), object).await?;
+                        Ok((crdb::DbPtr::from(crdb::ObjectId(id)), completion))
                     }
                 }
 
-                pub fn [< submit_to_ $name >](&self, object: crdb::DbPtr<$object>, event: crdb::Arc<<$object as crdb::Object>::Event>) -> impl '_ + crdb::CrdbFuture<Output = Result<(), crdb::Error>> {
+                pub fn [< submit_to_ $name >](
+                    &self,
+                    object: crdb::DbPtr<$object>,
+                    event: crdb::Arc<<$object as crdb::Object>::Event>,
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl crdb::CrdbFuture<Output = crdb::Result<()>>>> {
                     let id = self.ulid.lock().unwrap().generate();
                     let id = id.expect("Failed to generate ulid for event submission");
                     self.db.submit::<$object>(object.to_object_id(), crdb::EventId(id), event)
