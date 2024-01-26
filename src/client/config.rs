@@ -21,8 +21,6 @@ pub struct NewRecreation<T: Object> {
 #[macro_export]
 macro_rules! generate_client {
     ( $api_config:ident | $client_db:ident | $($name:ident : $object:ty),* ) => {
-        // TODO(api): also have a way to force a server round-trip NOW, for eg. permissions change.
-        // This should probably be done by somehow exposing the queue for ApiDb
         pub struct $client_db {
             db: crdb::ClientDb,
             ulid: crdb::Mutex<crdb::ulid::Generator>,
