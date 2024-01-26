@@ -8,6 +8,7 @@ use crate::{
 use futures::channel::mpsc;
 use std::{
     collections::HashSet,
+    future::Future,
     sync::{Arc, RwLock},
 };
 use tokio::sync::oneshot;
@@ -72,13 +73,19 @@ impl ApiDb {
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
-    async fn auto_resender_with_binaries<D: Db>(
-        _request: Arc<Request>,
-        _response_receiver: mpsc::UnboundedReceiver<ResponsePart>,
-        _binary_getter: Arc<D>,
+    async fn error_catcher(
+        _future: impl Future<Output = crate::Result<()>>,
         _result_sender: oneshot::Sender<crate::Result<()>>,
         _error_sender: mpsc::UnboundedSender<crate::SerializableError>,
     ) {
+        unimplemented!() // TODO(api)
+    }
+
+    async fn auto_resender_with_binaries<D: Db>(
+        _request: Arc<Request>,
+        mut _response_receiver: mpsc::UnboundedReceiver<ResponsePart>,
+        _binary_getter: Arc<D>,
+    ) -> crate::Result<()> {
         unimplemented!() // TODO(api)
     }
 
@@ -102,10 +109,8 @@ impl ApiDb {
         )]));
         let response_receiver = self.request(request.clone());
         let (result_sender, result_receiver) = oneshot::channel();
-        crate::spawn(Self::auto_resender_with_binaries(
-            request,
-            response_receiver,
-            binary_getter,
+        crate::spawn(Self::error_catcher(
+            Self::auto_resender_with_binaries(request, response_receiver, binary_getter),
             result_sender,
             error_sender,
         ));
