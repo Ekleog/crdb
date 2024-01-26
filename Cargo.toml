@@ -27,6 +27,7 @@ _tests = [ # internal feature, for use by wasm tests in particular and thus all 
     "arbitrary",
     "arbitrary-json",
     "bolero",
+    "paste",
     "rand",
     "tracing-wasm",
 ]

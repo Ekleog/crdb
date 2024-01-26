@@ -124,19 +124,132 @@ pub fn cmp<T: Debug + Eq>(
 }
 
 #[macro_export] // used by the client-js.rs integration test
-macro_rules! generic_op {
-    ($name:ident) => {
+macro_rules! make_op {
+    ( $( ($name:ident, $object:ident, $event:ident), )* ) => { paste::paste! {
         #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
-        enum $name {
+        enum Op {
+            $(
+                [< Create $name >] {
+                    object_id: ObjectId,
+                    created_at: EventId,
+                    object: Arc<$object>,
+                    lock: bool,
+                },
+                [< Submit $name >] {
+                    object_id: usize,
+                    event_id: EventId,
+                    event: Arc<$event>,
+                },
+                [< GetLatest $name >] {
+                    object_id: usize,
+                    lock: bool,
+                },
+                // TODO(test): also test GetAll
+                [< Query $name >] {
+                    user: User,
+                    // TODO(test): figure out a way to test only_updated_since
+                    q: Query,
+                },
+                [< Recreate $name >] {
+                    object_id: usize,
+                    new_created_at: EventId,
+                    object: Arc<$object>,
+                    force_lock: bool,
+                },
+            )*
             Remove { object_id: usize },
             Unlock { object_id: usize },
             Vacuum { recreate_at: Option<Timestamp> },
         }
 
-        impl $name {
+        impl Op {
             async fn apply(&self, db: &Database, s: &mut FuzzState) -> anyhow::Result<()> {
                 match self {
-                    Self::Remove { object_id } => {
+                    $(
+                        Op::[< Create $name >] {
+                            object_id,
+                            created_at,
+                            object,
+                            mut lock,
+                        } => {
+                            s.objects.push(*object_id);
+                            lock |= s.is_server;
+                            let db = db
+                                .create(*object_id, *created_at, object.clone(), lock, db)
+                                .await;
+                            let mem = s
+                                .mem_db
+                                .create(*object_id, *created_at, object.clone(), lock, &s.mem_db)
+                                .await;
+                            cmp(db, mem)?;
+                        }
+                        Op::[< Submit $name >] {
+                            object_id,
+                            event_id,
+                            event,
+                        } => {
+                            let object_id = s.object(*object_id);
+                            let db = db
+                                .submit::<$object, _>(object_id, *event_id, event.clone(), db)
+                                .await;
+                            let mem = s
+                                .mem_db
+                                .submit::<$object, _>(object_id, *event_id, event.clone(), &s.mem_db)
+                                .await;
+                            cmp(db, mem)?;
+                        }
+                        Op::[< GetLatest $name >] {
+                            object_id,
+                            mut lock,
+                        } => {
+                            let object_id = s.object(*object_id);
+                            lock |= s.is_server;
+                            let db = db
+                                .get_latest::<$object>(lock, object_id)
+                                .await
+                                .wrap_context(&format!("getting {object_id:?} in database"));
+                            let mem = s
+                                .mem_db
+                                .get_latest::<$object>(lock, object_id)
+                                .await
+                                .wrap_context(&format!("getting {object_id:?} in mem db"));
+                            cmp(db, mem)?;
+                        }
+                        Op::[< Query $name >] { user, q } => {
+                            run_query::<$object>(&db, &s.mem_db, *user, None, q).await?;
+                        }
+                        Op::[< Recreate $name >] {
+                            object_id,
+                            new_created_at,
+                            object,
+                            force_lock,
+                        } => {
+                            if !s.is_server {
+                                let object_id = s.object(*object_id);
+                                let db = db
+                                    .recreate::<$object, _>(
+                                        object_id,
+                                        *new_created_at,
+                                        object.clone(),
+                                        *force_lock,
+                                        db,
+                                    )
+                                    .await;
+                                let mem = s
+                                    .mem_db
+                                    .recreate::<$object, _>(
+                                        object_id,
+                                        *new_created_at,
+                                        object.clone(),
+                                        *force_lock,
+                                        &s.mem_db,
+                                    )
+                                    .await;
+                                cmp(db, mem)?;
+                            }
+                        }
+                    )*
+                    Op::Remove { object_id } => {
                         if !s.is_server {
                             let object_id = s.object(*object_id);
                             let db = db.remove(object_id).await;
@@ -144,7 +257,7 @@ macro_rules! generic_op {
                             cmp(db, mem)?;
                         }
                     }
-                    Self::Unlock { object_id } => {
+                    Op::Unlock { object_id } => {
                         if !s.is_server {
                             let object_id = s.object(*object_id);
                             let db = db.unlock(object_id).await;
@@ -152,12 +265,12 @@ macro_rules! generic_op {
                             cmp(db, mem)?;
                         }
                     }
-                    Self::Vacuum { recreate_at } => {
+                    Op::Vacuum { recreate_at } => {
                         run_vacuum(&db, &s.mem_db, *recreate_at).await?;
                     }
                 }
                 Ok(())
             }
         }
-    };
+    } };
 }
