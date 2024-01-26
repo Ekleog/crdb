@@ -1,11 +1,12 @@
 use super::fuzz_helpers::{
     self,
     crdb::{
+        self,
         crdb_internal::{
             test_utils::{self, *},
             Db, ResultExt,
         },
-        make_fuzzer_stuffs, EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
+        make_fuzzer_stuffs, BinPtr, EventId, JsonPathItem, ObjectId, Query, Timestamp, User,
     },
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };

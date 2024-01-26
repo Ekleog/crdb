@@ -157,6 +157,13 @@ macro_rules! make_fuzzer_stuffs {
                     force_lock: bool,
                 },
             )*
+            CreateBinary {
+                data: Arc<[u8]>,
+                fake_id: Option<BinPtr>,
+            },
+            GetBinary {
+                binary_id: usize,
+            },
             Remove { object_id: usize },
             Unlock { object_id: usize },
             Vacuum { recreate_at: Option<Timestamp> },
@@ -172,7 +179,7 @@ macro_rules! make_fuzzer_stuffs {
                             object,
                             mut lock,
                         } => {
-                            s.objects.push(*object_id);
+                            s.add_object(*object_id);
                             lock |= s.is_server;
                             let db = db
                                 .create(*object_id, *created_at, object.clone(), lock, db)
@@ -249,6 +256,26 @@ macro_rules! make_fuzzer_stuffs {
                             }
                         }
                     )*
+                    Op::CreateBinary { data, fake_id } => {
+                        let real_hash = crdb::hash_binary(&data);
+                        s.add_binary(real_hash);
+                        let binary_id = match fake_id {
+                            Some(id) => {
+                                s.add_binary(*id);
+                                *id
+                            }
+                            None => real_hash,
+                        };
+                        let mem = s.mem_db.create_binary(binary_id, data.clone()).await.wrap_context("creating binary");
+                        let pg = db.create_binary(binary_id, data.clone()).await.wrap_context("creating binary");
+                        cmp(pg, mem)?;
+                    }
+                    Op::GetBinary { binary_id } => {
+                        let binary_id = s.binary(*binary_id);
+                        let mem = s.mem_db.get_binary(binary_id).await.wrap_context("getting binary");
+                        let pg = db.get_binary(binary_id).await.wrap_context("getting binary");
+                        cmp(pg, mem)?;
+                    }
                     Op::Remove { object_id } => {
                         if !s.is_server {
                             let object_id = s.object(*object_id);
@@ -275,7 +302,7 @@ macro_rules! make_fuzzer_stuffs {
 
         struct FuzzState {
             is_server: bool,
-            objects: Vec<ObjectId>,
+            ulids: Vec<Ulid>,
             mem_db: test_utils::MemDb,
         }
 
@@ -283,15 +310,29 @@ macro_rules! make_fuzzer_stuffs {
             fn new(is_server: bool) -> FuzzState {
                 FuzzState {
                     is_server,
-                    objects: Vec::new(),
+                    ulids: Vec::new(),
                     mem_db: test_utils::MemDb::new(is_server),
                 }
             }
 
+            fn add_object(&mut self, id: ObjectId) {
+                self.ulids.push(id.0)
+            }
+
+            fn add_binary(&mut self, id: BinPtr) {
+                self.ulids.push(id.0)
+            }
+
             fn object(&self, id: usize) -> ObjectId {
                 #[cfg(target_arch = "wasm32")]
-                let id = id % (self.objects.len() + 1); // make valid inputs more likely
-                self.objects.get(id).copied().unwrap_or_else(ObjectId::now)
+                let id = id % (self.ulids.len() + 1); // make valid inputs more likely
+                self.ulids.get(id).copied().map(ObjectId).unwrap_or_else(ObjectId::now)
+            }
+
+            fn binary(&self, id: usize) -> BinPtr {
+                #[cfg(target_arch = "wasm32")]
+                let id = id % (self.ulids.len() + 1); // make valid inputs more likely
+                self.ulids.get(id).copied().map(BinPtr).unwrap_or_else(BinPtr::now)
             }
         }
 

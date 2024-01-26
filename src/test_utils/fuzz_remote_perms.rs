@@ -4,7 +4,7 @@ use super::fuzz_helpers::{
         self,
         crdb_internal::{
             test_utils::{self, *},
-            Db, DbPtr, EventId, ObjectId, Query, ResultExt, Timestamp, User,
+            BinPtr, Db, DbPtr, EventId, ObjectId, Query, ResultExt, Timestamp, User,
         },
         make_fuzzer_stuffs,
     },
