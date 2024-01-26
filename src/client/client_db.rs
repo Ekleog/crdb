@@ -179,7 +179,8 @@ impl ClientDb {
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
         }
-        self.api.unsubscribe(object_ids).await
+        self.api.unsubscribe(object_ids);
+        Ok(())
     }
 
     pub async fn create<T: Object>(

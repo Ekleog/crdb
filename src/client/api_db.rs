@@ -3,8 +3,7 @@ use crate::{
     messages::{ObjectData, Request, ResponsePart, Update},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
-use anyhow::anyhow;
-use futures::{channel::mpsc, StreamExt};
+use futures::channel::mpsc;
 use std::{
     collections::HashSet,
     future::Future,
@@ -58,7 +57,7 @@ impl ApiDb {
             .expect("connection cannot go away before sender does")
     }
 
-    async fn request(&self, request: Request) -> mpsc::UnboundedReceiver<ResponsePart> {
+    fn request(&self, request: Request) -> mpsc::UnboundedReceiver<ResponsePart> {
         let (sender, response) = mpsc::unbounded();
         self.requests
             .unbounded_send((sender, request))
@@ -66,18 +65,9 @@ impl ApiDb {
         response
     }
 
-    pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
-        let mut response = self.request(Request::Unsubscribe(object_ids)).await;
-        // TODO(api): this should maybe not await on the response immediately? we don't want the app to stop making
-        // progress while we're waiting for connection to get a server answer.
-        match response.next().await {
-            None => Ok(()), // Lost connection, we will be unsubscribed anyway
-            Some(ResponsePart::Success) => Ok(()),
-            Some(ResponsePart::Error(err)) => Err(err.into()),
-            Some(resp) => Err(crate::Error::Other(anyhow!(
-                "Unexpected server response to Unsubscribe request: {resp:?}"
-            ))),
-        }
+    pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {
+        self.request(Request::Unsubscribe(object_ids));
+        // Ignore the response from the server, we don't care enough to wait for it
     }
 
     pub async fn create<T: Object>(
