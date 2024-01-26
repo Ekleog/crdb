@@ -103,10 +103,9 @@ impl MemDb {
     pub async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
         if let Some((_, locked, _)) = self.0.lock().await.objects.get_mut(&object_id) {
             *locked = false;
-            Ok(())
-        } else {
-            Err(crate::Error::ObjectDoesNotExist(object_id))
         }
+        // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
+        Ok(())
     }
 }
 
