@@ -31,12 +31,13 @@ macro_rules! generate_client {
                 local_db: String,
                 cache_watermark: usize,
                 vacuum_schedule: crdb::ClientVacuumSchedule<F>,
-            ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<$client_db>> {
+            ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<($client_db, crdb::mpsc::UnboundedReceiver<crdb::SerializableError>)>> {
                 async move {
-                    Ok($client_db {
-                        db: crdb::ClientDb::new::<$api_config, F>(&local_db, cache_watermark, vacuum_schedule).await?,
+                    let (db, error_receiver) = crdb::ClientDb::new::<$api_config, F>(&local_db, cache_watermark, vacuum_schedule).await?;
+                    Ok(($client_db {
+                        db,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
-                    })
+                    }, error_receiver))
                 }
             }
 
@@ -91,7 +92,7 @@ macro_rules! generate_client {
                 pub fn [< create_ $name >](
                     &self,
                     object: crdb::Arc<$object>,
-                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, impl crdb::CrdbFuture<Output = crdb::Result<()>>)>> {
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, crdb::oneshot::Receiver<crdb::Result<()>>)>> {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();
                         let id = id.expect("Failed to generate ulid for object creation");
@@ -104,7 +105,7 @@ macro_rules! generate_client {
                     &self,
                     object: crdb::DbPtr<$object>,
                     event: crdb::Arc<<$object as crdb::Object>::Event>,
-                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl crdb::CrdbFuture<Output = crdb::Result<()>>>> {
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::oneshot::Receiver<crdb::Result<()>>>> {
                     let id = self.ulid.lock().unwrap().generate();
                     let id = id.expect("Failed to generate ulid for event submission");
                     self.db.submit::<$object>(object.to_object_id(), crdb::EventId(id), event)

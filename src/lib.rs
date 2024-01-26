@@ -76,10 +76,10 @@ pub mod crdb_internal {
         hash_binary,
         object::{parse_snapshot, CanDoCallbacks},
         private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object, ObjectId, Query,
-        Result, SessionToken, Timestamp, TypeId, User,
+        Result, SerializableError, SessionToken, Timestamp, TypeId, User,
     };
     pub use anyhow;
-    pub use futures::{self, future, stream, Stream};
+    pub use futures::{self, channel::mpsc, future, stream, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
     pub use serde_json;
@@ -88,7 +88,7 @@ pub mod crdb_internal {
         ops::Bound,
         sync::{Arc, Mutex},
     };
-    pub use tokio;
+    pub use tokio::{self, sync::oneshot};
     pub use ulid::{self, Ulid};
 }
 

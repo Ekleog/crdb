@@ -9,14 +9,15 @@ use crate::{
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::{channel::mpsc, StreamExt};
-use std::{collections::HashSet, future::Future, sync::Arc, time::Duration};
-use tokio::sync::{broadcast, RwLock};
+use std::{collections::HashSet, sync::Arc, time::Duration};
+use tokio::sync::{broadcast, oneshot, RwLock};
 use tokio_util::sync::CancellationToken;
 
 pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
+    error_sender: mpsc::UnboundedSender<crate::SerializableError>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
@@ -27,8 +28,9 @@ impl ClientDb {
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
-    ) -> anyhow::Result<ClientDb> {
+    ) -> anyhow::Result<(ClientDb, mpsc::UnboundedReceiver<crate::SerializableError>)> {
         C::check_ulids();
+        let (error_sender, error_receiver) = mpsc::unbounded();
         let (api, updates_receiver) = ApiDb::new();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let api = Arc::new(api);
@@ -39,13 +41,14 @@ impl ClientDb {
             api,
             db,
             db_bypass,
+            error_sender,
             updates_broadcastee,
             vacuum_guard: Arc::new(RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
         };
         this.setup_watchers::<C>(updates_receiver, updates_broadcaster);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
-        Ok(this)
+        Ok((this, error_receiver))
     }
 
     pub fn listen_for_updates(&self) -> broadcast::Receiver<ObjectId> {
@@ -188,12 +191,17 @@ impl ClientDb {
         id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
+    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
         self.db
             .create(id, created_at, object.clone(), true, &*self.db)
             .await?;
-        // TODO(client): automatically handle MissingBinaries error by submitting them to server and retrying
-        self.api.create(id, created_at, object).await
+        Ok(self.api.create(
+            id,
+            created_at,
+            object,
+            self.db.clone(),
+            self.error_sender.clone(),
+        ))
     }
 
     pub async fn submit<T: Object>(
@@ -201,12 +209,17 @@ impl ClientDb {
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
+    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
         self.db
             .submit::<T, _>(object, event_id, event.clone(), &*self.db)
             .await?;
-        // TODO(client): automatically handle MissingBinaries error by submitting them to server and retrying
-        self.api.submit::<T>(object, event_id, event).await
+        Ok(self.api.submit::<T, _>(
+            object,
+            event_id,
+            event,
+            self.db.clone(),
+            self.error_sender.clone(),
+        ))
     }
 
     /// Returns the latest snapshot for the object described by `data`

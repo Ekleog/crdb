@@ -1,14 +1,15 @@
 use super::connection::{Command, Connection, ConnectionEvent};
 use crate::{
+    db_trait::Db,
     messages::{ObjectData, Request, ResponsePart, Update},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
 };
 use futures::channel::mpsc;
 use std::{
     collections::HashSet,
-    future::Future,
     sync::{Arc, RwLock},
 };
+use tokio::sync::oneshot;
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
@@ -70,24 +71,26 @@ impl ApiDb {
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
-    pub async fn create<T: Object>(
+    pub fn create<T: Object, D: Db>(
         &self,
         _id: ObjectId,
         _created_at: EventId,
         _object: Arc<T>,
-    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // unimplemented!() // TODO(api): implement
-        Ok(futures::future::ready(Ok(())))
+        _binary_getter: Arc<D>,
+        _error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+    ) -> oneshot::Receiver<crate::Result<()>> {
+        unimplemented!() // TODO(api): implement
     }
 
-    pub async fn submit<T: Object>(
+    pub fn submit<T: Object, D: Db>(
         &self,
         _object: ObjectId,
         _event_id: EventId,
         _event: Arc<T::Event>,
-    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // unimplemented!() // TODO(api): implement
-        Ok(futures::future::ready(Ok(())))
+        _binary_getter: Arc<D>,
+        _error_sender: mpsc::UnboundedSender<crate::SerializableError>,
+    ) -> oneshot::Receiver<crate::Result<()>> {
+        unimplemented!() // TODO(api): implement
     }
 
     pub async fn get_all(&self, _object_id: ObjectId) -> crate::Result<ObjectData> {
