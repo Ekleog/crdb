@@ -1,22 +1,3 @@
-use crate::{DbPtr, EventId, Object, Timestamp};
-use std::sync::Arc;
-
-pub struct NewObject<T: Object> {
-    pub ptr: DbPtr<T>,
-    pub object: Arc<T>,
-}
-
-pub struct NewEvent<T: Object> {
-    pub object: DbPtr<T>,
-    pub id: EventId,
-    pub event: Arc<T::Event>,
-}
-
-pub struct NewRecreation<T: Object> {
-    pub object: DbPtr<T>,
-    pub time: Timestamp,
-}
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generate_client {

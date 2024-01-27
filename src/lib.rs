@@ -36,8 +36,6 @@ use future::{CrdbSend, CrdbSync};
 
 #[cfg(feature = "client")]
 mod client;
-#[cfg(feature = "client")]
-pub use client::{NewEvent, NewObject, NewRecreation};
 #[cfg(not(feature = "client"))]
 mod client {
     #[macro_export]

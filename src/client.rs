@@ -9,7 +9,6 @@ mod sqlite_db;
 
 pub use api_db::ApiDb;
 pub use client_db::{ClientDb, ClientStorageInfo, ClientVacuumSchedule};
-pub use config::{NewEvent, NewObject, NewRecreation};
 pub use connection::ConnectionEvent;
 #[cfg(target_arch = "wasm32")]
 pub use indexed_db::IndexedDb as LocalDb;
