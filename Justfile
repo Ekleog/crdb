@@ -53,13 +53,13 @@ build-example-basic-client:
 test-example-basic-host NAME='':
     cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p api -p server -p client-native {{NAME}}
 
-fuzz-pg-basic ARGS='':
+fuzz-pg-simple ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_simple::fuzz \
         --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_simple__db_keeps_invariants/corpus.nounit \
         {{ARGS}}
 
-fuzz-idb-basic ARGS='':
+fuzz-idb-simple ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
