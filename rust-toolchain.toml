@@ -1,5 +1,5 @@
 [toolchain]
 channel = "nightly-2024-01-13" # TODO(blocked): switch back to a stable release as soon as RPITIT lands
-components = ["rustfmt", "rust-analyzer"]
+components = ["clippy", "rustfmt", "rust-analyzer"]
 targets = ["wasm32-unknown-unknown"]
 profile = "minimal"
