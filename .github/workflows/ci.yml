@@ -18,12 +18,10 @@ jobs:
       - uses: actions/checkout@v4
 
       # Install cargo dependencies
-      - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
+      - uses: taiki-e/install-action@91af8c38814c3998cb755869e5cbeffd3ab0e462
         with:
-          crate: just
-      - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
-        with:
-          crate: cargo-nextest
+          tool: just, cargo-nextest
+      # TODO(low): contribute these to taiki-e/install-action upstream?
       - uses: baptiste0928/cargo-install@21a18ba3bf4a184d1804e8b759930d3471b1c941
         with:
           crate: sqlx-cli
