@@ -32,7 +32,7 @@ jobs:
           crate: wasm-bindgen-cli
 
       # Setup sccache, that'll share build artifacts with all the target directories
-      - uses: mozilla-actions/sccache-action@1e15924c00ed1446db9e44e8f02628488e7258ec
+      - uses: mozilla-actions/sccache-action@2e7f9ec7921547d4b46598398ca573513895d0bd
       - run: |
           echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
           echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
