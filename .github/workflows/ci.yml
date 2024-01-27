@@ -49,3 +49,13 @@ jobs:
 
       # Run the tests
       - run: just test
+
+  just-clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@91af8c38814c3998cb755869e5cbeffd3ab0e462
+        with:
+          tool: just
+      - run: just clippy
