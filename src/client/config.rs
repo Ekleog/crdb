@@ -72,12 +72,13 @@ macro_rules! generate_client {
             $(crdb::paste! {
                 pub fn [< create_ $name >](
                     &self,
+                    importance: crdb::Importance,
                     object: crdb::Arc<$object>,
                 ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, crdb::oneshot::Receiver<crdb::Result<()>>)>> {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();
                         let id = id.expect("Failed to generate ulid for object creation");
-                        let completion = self.db.create(crdb::ObjectId(id), crdb::EventId(id), object).await?;
+                        let completion = self.db.create(importance, crdb::ObjectId(id), crdb::EventId(id), object).await?;
                         Ok((crdb::DbPtr::from(crdb::ObjectId(id)), completion))
                     }
                 }
@@ -92,12 +93,12 @@ macro_rules! generate_client {
                     self.db.submit::<$object>(object.to_object_id(), crdb::EventId(id), event)
                 }
 
-                pub fn [< get_ $name >](&self, lock: bool, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {
-                    self.db.get::<$object>(lock, object.to_object_id())
+                pub fn [< get_ $name >](&self, importance: crdb::Importance, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {
+                    self.db.get::<$object>(importance, object.to_object_id())
                 }
 
-                pub fn [< query_ $name _local >]<'a>(&'a self, lock: bool, query: &'a crdb::Query) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
-                    self.db.query_local::<$object>(lock, query)
+                pub fn [< query_ $name _local >]<'a>(&'a self, importance: crdb::Importance, query: &'a crdb::Query) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
+                    self.db.query_local::<$object>(importance, query)
                 }
 
                 // TODO(low): does this user-exposed function really need `ignore_not_modified_on_server_since`?

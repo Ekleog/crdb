@@ -65,6 +65,7 @@ pub enum Upload {
         created_at: EventId,
         snapshot_version: i32,
         object: serde_json::Value,
+        subscribe: bool,
     },
     Event {
         object_id: ObjectId,

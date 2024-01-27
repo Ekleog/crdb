@@ -193,6 +193,7 @@ impl ApiDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        subscribe: bool,
         binary_getter: Arc<D>,
         error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
@@ -204,6 +205,7 @@ impl ApiDb {
                 snapshot_version: T::snapshot_version(),
                 object: serde_json::to_value(object)
                     .wrap_context("serializing object for sending to api")?,
+                subscribe,
             },
         )]));
         let (result_sender, result_receiver) = oneshot::channel();
@@ -241,7 +243,7 @@ impl ApiDb {
         Ok(result_receiver)
     }
 
-    pub async fn get_unknown(
+    pub async fn fetch_from_api(
         &self,
         subscribe: bool,
         object_id: ObjectId,

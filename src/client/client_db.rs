@@ -191,17 +191,25 @@ impl ClientDb {
 
     pub async fn create<T: Object>(
         &self,
-        id: ObjectId,
+        importance: Importance,
+        object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
         self.db
-            .create(id, created_at, object.clone(), true, &*self.db)
+            .create(
+                object_id,
+                created_at,
+                object.clone(),
+                importance >= Importance::Lock,
+                &*self.db,
+            )
             .await?;
         self.api.create(
-            id,
+            object_id,
             created_at,
             object,
+            importance >= Importance::Subscribe,
             self.db.clone(),
             self.error_sender.clone(),
         )
@@ -226,7 +234,7 @@ impl ClientDb {
     }
 
     /// Returns the latest snapshot for the object described by `data`
-    async fn create_all_local<T: Object>(
+    async fn locally_create_all<T: Object>(
         db: &CacheDb<LocalDb>,
         lock: bool,
         data: ObjectData,
@@ -265,33 +273,42 @@ impl ClientDb {
         Ok(())
     }
 
-    pub async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<Arc<T>> {
-        match self.db.get_latest::<T>(lock, object_id).await {
+    pub async fn get<T: Object>(
+        &self,
+        importance: Importance,
+        object_id: ObjectId,
+    ) -> crate::Result<Arc<T>> {
+        match self
+            .db
+            .get_latest::<T>(importance >= Importance::Lock, object_id)
+            .await
+        {
             Ok(r) => return Ok(r),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
-        // TODO(client): maybe the user just wants the latest snapshot and doesn't actually care about updates, requiring
-        // a server round-trip for the next time they want it?
-        let res = self.api.get_unknown(true, object_id).await?;
-        Self::create_all_local::<T>(&self.db, lock, res).await?;
-        Ok(self.db.get_latest::<T>(lock, object_id).await?)
+        let res = self
+            .api
+            .fetch_from_api(importance >= Importance::Subscribe, object_id)
+            .await?;
+        Self::locally_create_all::<T>(&self.db, importance >= Importance::Lock, res).await?;
+        Ok(self.db.get_latest::<T>(false, object_id).await?) // Already locked just above
     }
 
     pub async fn query_local<'a, T: Object>(
         &'a self,
-        lock: bool,
-        q: &'a Query,
+        importance: Importance,
+        query: &'a Query,
     ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<Arc<T>>>> {
         let object_ids = self
             .db
-            .query::<T>(q)
+            .query::<T>(query)
             .await
             .wrap_context("listing objects matching query")?;
 
         Ok(async_stream::stream! {
             for object_id in object_ids {
-                match self.get::<T>(lock, object_id).await {
+                match self.get::<T>(importance, object_id).await {
                     Ok(res) => yield Ok(res),
                     // Ignore missing objects, they were just vacuumed between listing and getting
                     Err(crate::Error::ObjectDoesNotExist(id)) if id == object_id => continue,
@@ -307,7 +324,6 @@ impl ClientDb {
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
     ) -> impl '_ + CrdbStream<Item = crate::Result<Arc<T>>> {
-        // TODO(client): let user decide whether to subscribe too
         self.api
             .query::<T>(
                 QueryId::now(),
@@ -324,7 +340,7 @@ impl ClientDb {
                         let object_id = match data? {
                             MaybeObject::NotYetSubscribed(data) => {
                                 let object_id = data.object_id;
-                                Self::create_all_local::<T>(&db, lock, data).await?;
+                                Self::locally_create_all::<T>(&db, lock, data).await?;
                                 object_id
                             }
                             MaybeObject::AlreadySubscribed(object_id) => object_id,
