@@ -48,8 +48,8 @@ pub(crate) fn normalize(input: &str) -> String {
                 // TODO(low): think how to make this more international? applying two stemmers is bad(tm)
                 // We should probably be using eg. cld3 to detect the language, and then stem accordingly
                 res.push_str(
-                    &*Stemmer::create(Algorithm::English)
-                        .stem(&*Stemmer::create(Algorithm::French).stem(&buf2)),
+                    &Stemmer::create(Algorithm::English)
+                        .stem(&Stemmer::create(Algorithm::French).stem(&buf2)),
                 );
                 res.push(' ');
             }
@@ -76,6 +76,12 @@ pub struct SearchableString(#[educe(Deref, DerefMut)] pub String);
 impl SearchableString {
     pub fn new() -> SearchableString {
         SearchableString(String::new())
+    }
+}
+
+impl Default for SearchableString {
+    fn default() -> SearchableString {
+        SearchableString::new()
     }
 }
 

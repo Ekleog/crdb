@@ -229,7 +229,7 @@ impl<T> ResultExt for sqlx::Result<T> {
 
     fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
         match self {
-            Err(sqlx::Error::Database(err)) => match err.code().as_ref().map(|c| &**c) {
+            Err(sqlx::Error::Database(err)) => match err.code().as_deref() {
                 Some("22P05" | "22021") => Err(Error::NullByteInString),
                 Some("22P03") => Err(Error::InvalidNumber),
                 _ => Err(Error::Other(

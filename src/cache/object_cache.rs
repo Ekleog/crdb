@@ -64,7 +64,7 @@ impl ObjectCache {
     }
 
     pub fn remove(&mut self, object_id: &ObjectId) {
-        if let Some(previous) = self.objects.remove(&object_id) {
+        if let Some(previous) = self.objects.remove(object_id) {
             self.rm_approx_size(previous.1.deep_size_of());
         }
     }
