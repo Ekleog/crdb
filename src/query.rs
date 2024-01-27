@@ -96,7 +96,7 @@ fn arbitrary_impl<'a>(
 
 impl Query {
     pub fn check(&self) -> crate::Result<()> {
-        Ok(match self {
+        match self {
             Query::All(v) => {
                 for v in v {
                     v.check()?;
@@ -124,7 +124,9 @@ impl Query {
                 Self::check_path(p)?;
                 crate::check_string(s)?;
             }
-        })
+        }
+
+        Ok(())
     }
 
     fn check_value(v: &serde_json::Value) -> crate::Result<()> {
@@ -149,12 +151,10 @@ impl Query {
     }
 
     fn check_path(p: &[JsonPathItem]) -> crate::Result<()> {
-        p.iter()
-            .map(|i| match i {
-                JsonPathItem::Id(_) => Ok(()),
-                JsonPathItem::Key(k) => crate::check_string(k),
-            })
-            .collect()
+        p.iter().try_for_each(|i| match i {
+            JsonPathItem::Id(_) => Ok(()),
+            JsonPathItem::Key(k) => crate::check_string(k),
+        })
     }
 
     pub fn matches<T: serde::Serialize>(&self, v: T) -> serde_json::Result<bool> {
@@ -254,7 +254,7 @@ impl Query {
     }
 
     fn deref<'a>(v: &'a serde_json::Value, path: &[JsonPathItem]) -> Option<&'a serde_json::Value> {
-        match path.get(0) {
+        match path.first() {
             None => Some(v),
             Some(JsonPathItem::Key(k)) => match v.as_object() {
                 None => None,
