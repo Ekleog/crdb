@@ -5,13 +5,13 @@ fmt:
     cd examples/basic && cargo fmt
     rustfmt --edition 2021 src/test_utils/fuzz_*.rs
 
-test NAME='': (test-crate NAME) (test-example-basic NAME)
+test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 
 doc:
     cargo doc --all-features --examples
     cargo doc --features client --examples --target wasm32-unknown-unknown
 
-test-standalone NAME='': (test-crate-standalone NAME) (test-example-basic NAME)
+test-standalone *ARGS: (test-crate-standalone ARGS) (test-example-basic ARGS)
 
 make-test-db:
     dropdb crdb-test || true
@@ -30,28 +30,28 @@ clean:
     rm -rf /tmp/crdb-test-pg-* || true
     rm -rf /tmp/.org.chromium.Chromium.* || true
 
-test-crate NAME='': (test-crate-api NAME) (test-crate-client-native NAME) (test-crate-client-js NAME) (test-crate-server NAME)
-test-crate-standalone NAME='': (test-crate-api NAME) (test-crate-client-native NAME)
+test-crate *ARGS: (test-crate-api ARGS) (test-crate-client-native ARGS) (test-crate-client-js ARGS) (test-crate-server ARGS)
+test-crate-standalone *ARGS: (test-crate-api ARGS) (test-crate-client-native ARGS)
 
-test-crate-api NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --features _tests {{NAME}}
+test-crate-api *ARGS:
+    SQLX_OFFLINE="true" cargo nextest run --features _tests {{ARGS}}
 
-test-crate-client-native NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --features client,_tests {{NAME}}
+test-crate-client-native *ARGS:
+    SQLX_OFFLINE="true" cargo nextest run --features client,_tests {{ARGS}}
 
-test-crate-client-js NAME='':
-    cargo test --features client,_tests --target wasm32-unknown-unknown {{NAME}}
+test-crate-client-js *ARGS:
+    cargo test --features client,_tests --target wasm32-unknown-unknown {{ARGS}}
 
-test-crate-server NAME='':
-    SQLX_OFFLINE="true" cargo nextest run --features server,_tests {{NAME}}
+test-crate-server *ARGS:
+    SQLX_OFFLINE="true" cargo nextest run --features server,_tests {{ARGS}}
 
-test-example-basic NAME='': build-example-basic-client (test-example-basic-host NAME)
+test-example-basic *ARGS: build-example-basic-client (test-example-basic-host ARGS)
 
 build-example-basic-client:
     cd examples/basic && CARGO_TARGET_DIR="target/wasm" RUSTFLAGS="-Zmacro-backtrace" cargo build --target wasm32-unknown-unknown -p client-js
 
-test-example-basic-host NAME='':
-    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p api -p server -p client-native {{NAME}}
+test-example-basic-host *ARGS:
+    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p api -p server -p client-native {{ARGS}}
 
 fuzz-pg-simple ARGS='':
     cargo bolero test --all-features \
