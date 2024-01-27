@@ -123,13 +123,15 @@ macro_rules! generate_client {
                 // Can we not hide it by subscribing not only to individual objects, but to Query's so that crdb
                 // itself could handle that internally? Or maybe even just by fetching all objects that are
                 // readable and were created since the last connection upon login?
-                pub fn [< query_ $name _remote >]<'a>(
-                    &'a self,
+                pub fn [< query_ $name _remote >](
+                    &self,
+                    subscribe: bool,
                     lock: bool,
-                    only_updated_since: Option<crdb::Timestamp>,
-                    query: &'a crdb::Query,
-                ) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
+                    only_updated_since: Option<crdb::Updatedness>, // TODO(client): should not expose this to the user
+                    query: crdb::Arc<crdb::Query>,
+                ) -> impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>> {
                     self.db.query_remote::<$object>(
+                        subscribe,
                         lock,
                         only_updated_since,
                         query,

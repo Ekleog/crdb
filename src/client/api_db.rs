@@ -2,17 +2,19 @@ use super::connection::{Command, Connection, ConnectionEvent, ResponseSender};
 use crate::{
     db_trait::Db,
     error::ResultExt,
+    ids::QueryId,
     messages::{
         MaybeObject, ObjectData, Request, RequestWithSidecar, ResponsePart,
         ResponsePartWithSidecar, Update, Upload, UploadOrBinary,
     },
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, StreamExt};
+use futures::{channel::mpsc, future::Either, stream, StreamExt};
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
+    iter,
     sync::{Arc, RwLock},
 };
 use tokio::sync::oneshot;
@@ -130,7 +132,6 @@ impl ApiDb {
 
             // Handle the response
             match response {
-                ResponsePart::ConnectionLoss => continue, // try again
                 ResponsePart::Success => return Ok(()),
                 ResponsePart::Sessions(_)
                 | ResponsePart::CurrentTime(_)
@@ -181,6 +182,7 @@ impl ApiDb {
                     // then put the same object twice in the queue. Not a big deal, but pointless effort.
                     continue; // try again
                 }
+                ResponsePart::Error(crate::SerializableError::ConnectionLoss) => continue, // try again
                 ResponsePart::Error(err) => return Err(err.into()),
             }
         }
@@ -277,13 +279,35 @@ impl ApiDb {
         }
     }
 
-    pub async fn query<T: Object>(
+    pub fn query<T: Object>(
         &self,
-        _only_updated_since: Option<Timestamp>,
-        _q: &Query,
-    ) -> crate::Result<impl CrdbStream<Item = crate::Result<ObjectData>>> {
-        // unimplemented!() // TODO(api): implement
-        Ok(futures::stream::empty())
+        query_id: QueryId,
+        only_updated_since: Option<Updatedness>,
+        subscribe: bool,
+        query: Arc<Query>,
+    ) -> impl CrdbStream<Item = crate::Result<MaybeObject>> {
+        let request = Arc::new(RequestWithSidecar {
+            request: Arc::new(Request::Query {
+                query_id,
+                query,
+                only_updated_since,
+                subscribe,
+            }),
+            sidecar: Vec::new(),
+        });
+        self.request(request).flat_map(|response| {
+            match response.response {
+                // No sidecar in answer to Request::Query
+                ResponsePart::Error(err) => Either::Left(stream::iter(iter::once(Err(err.into())))),
+                ResponsePart::Objects {
+                    data,
+                    now_have_all_until: _, // TODO(client): record now_have_all_until somewhere
+                } => Either::Right(stream::iter(data.into_iter().map(Ok))),
+                resp => Either::Left(stream::iter(iter::once(Err(crate::Error::Other(anyhow!(
+                    "Server gave unexpected answer to Query request: {resp:?}"
+                )))))),
+            }
+        })
     }
 
     pub async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {

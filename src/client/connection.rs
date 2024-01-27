@@ -369,7 +369,9 @@ impl Connection {
                     {
                         if already_sent {
                             let _ = sender.unbounded_send(ResponsePartWithSidecar {
-                                response: ResponsePart::ConnectionLoss,
+                                response: ResponsePart::Error(
+                                    crate::SerializableError::ConnectionLoss,
+                                ),
                                 sidecar: Vec::new(),
                             });
                         } else {
@@ -598,7 +600,7 @@ impl Connection {
         while let Some(response) = responses_receiver.next().await {
             // Ignore the sidecar here. We're not requesting any binaries so there can't be anything anyway
             match response.response {
-                ResponsePart::ConnectionLoss => (), // too bad, let's empty the feed and try again next reconnection
+                ResponsePart::Error(crate::SerializableError::ConnectionLoss) => (), // too bad, let's empty the feed and try again next reconnection
                 ResponsePart::Error(err) => {
                     tracing::error!(?err, "got unexpected server error upon re-subscribing");
                 }

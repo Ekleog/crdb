@@ -4,9 +4,10 @@ use crate::{
     cache::CacheDb,
     db_trait::Db,
     error::ResultExt,
-    messages::{ObjectData, Update, UpdateData},
+    ids::QueryId,
+    messages::{MaybeObject, ObjectData, Update, UpdateData},
     object::parse_snapshot,
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Timestamp,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
 };
 use futures::{channel::mpsc, StreamExt};
 use std::{collections::HashSet, sync::Arc, time::Duration};
@@ -167,7 +168,7 @@ impl ClientDb {
 
     pub async fn logout(&self) -> anyhow::Result<()> {
         self.api.logout();
-        // TODO(api): flush self.db
+        // TODO(client): flush self.db
         Ok(())
     }
 
@@ -300,24 +301,33 @@ impl ClientDb {
         })
     }
 
-    pub async fn query_remote<T: Object>(
+    pub fn query_remote<T: Object>(
         &self,
+        subscribe: bool, // TODO(client) subscribe/lock is a bit of a mess, should have a 3-state enum Latest/Subscribe/Lock
         lock: bool,
-        only_updated_since: Option<Timestamp>,
-        query: &Query,
-    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
-        Ok(self.api.query::<T>(only_updated_since, query).await?.then({
-            let db = self.db.clone();
-            move |data| {
-                let db = db.clone();
-                async move {
-                    let data = data?;
-                    let object_id = data.object_id;
-                    Self::create_all_local::<T>(&db, lock, data).await?;
-                    Ok(self.db.get_latest::<T>(lock, object_id).await?)
+        only_updated_since: Option<Updatedness>,
+        query: Arc<Query>,
+    ) -> impl '_ + CrdbStream<Item = crate::Result<Arc<T>>> {
+        // TODO(client): let user decide whether to subscribe too
+        self.api
+            .query::<T>(QueryId::now(), only_updated_since, subscribe, query)
+            .then({
+                let db = self.db.clone();
+                move |data| {
+                    let db = db.clone();
+                    async move {
+                        let object_id = match data? {
+                            MaybeObject::NotYetSubscribed(data) => {
+                                let object_id = data.object_id;
+                                Self::create_all_local::<T>(&db, lock, data).await?;
+                                object_id
+                            }
+                            MaybeObject::AlreadySubscribed(object_id) => object_id,
+                        };
+                        self.db.get_latest::<T>(lock, object_id).await
+                    }
                 }
-            }
-        }))
+            })
     }
 
     // TODO(low): should the client be allowed to request a recreation?

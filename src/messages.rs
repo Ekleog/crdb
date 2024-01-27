@@ -103,7 +103,6 @@ pub struct ResponsePartWithSidecar {
 pub enum ResponsePart {
     Success,
     Error(crate::SerializableError),
-    ConnectionLoss,
     Sessions(Vec<Session>),
     CurrentTime(Timestamp),
     Objects {

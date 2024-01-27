@@ -52,6 +52,9 @@ pub enum Error {
         real_type_id: TypeId,
     },
 
+    #[error("Lost connection while request was in progress")]
+    ConnectionLoss,
+
     #[error(transparent)]
     Other(anyhow::Error),
 }
@@ -105,6 +108,9 @@ pub enum SerializableError {
         real_type_id: TypeId,
     },
 
+    #[error("Lost connection while request was in progress")]
+    ConnectionLoss,
+
     #[error("Internal server error")]
     InternalServerError,
 }
@@ -140,6 +146,7 @@ impl From<Error> for SerializableError {
                 expected_type_id,
                 real_type_id,
             },
+            Error::ConnectionLoss => SerializableError::ConnectionLoss,
             Error::Other(_) => SerializableError::InternalServerError,
         }
     }
@@ -176,6 +183,7 @@ impl From<SerializableError> for Error {
                 expected_type_id,
                 real_type_id,
             },
+            SerializableError::ConnectionLoss => Error::ConnectionLoss,
             SerializableError::InternalServerError => {
                 Error::Other(anyhow!("Internal server error"))
             }
