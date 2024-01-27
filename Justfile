@@ -1,11 +1,16 @@
 # export RUST_BACKTRACE := "short"
 
+all *ARGS: fmt (test ARGS) (clippy ARGS)
+
 fmt:
     cargo fmt
     cd examples/basic && cargo fmt
     rustfmt --edition 2021 src/test_utils/fuzz_*.rs
 
 test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
+
+clippy *ARGS:
+    cargo clippy {{ARGS}} -- -D warnings
 
 doc:
     cargo doc --all-features --examples
