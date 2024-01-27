@@ -222,6 +222,7 @@ impl ApiDb {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        subscribe: bool,
         binary_getter: Arc<D>,
         error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
@@ -232,6 +233,7 @@ impl ApiDb {
                 event_id,
                 event: serde_json::to_value(event)
                     .wrap_context("serializing event for sending to api")?,
+                subscribe,
             },
         )]));
         let (result_sender, result_receiver) = oneshot::channel();

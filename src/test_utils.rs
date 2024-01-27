@@ -139,12 +139,14 @@ macro_rules! make_fuzzer_stuffs {
                     object_id: usize,
                     event_id: EventId,
                     event: Arc<$event>,
+                    force_lock: bool,
                 },
                 [< GetLatest $name >] {
                     object_id: usize,
                     lock: bool,
                 },
                 // TODO(test): also test GetAll
+                // TODO(client): introduce get_local, to fetch the answers to query_local that might have been vacuumed since
                 [< Query $name >] {
                     user: User,
                     // TODO(test): figure out a way to test only_updated_since
@@ -196,14 +198,15 @@ macro_rules! make_fuzzer_stuffs {
                             object_id,
                             event_id,
                             event,
+                            force_lock,
                         } => {
                             let object_id = s.object(*object_id);
                             let db = db
-                                .submit::<$object, _>(object_id, *event_id, event.clone(), db)
+                                .submit::<$object, _>(object_id, *event_id, event.clone(), *force_lock, db)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .submit::<$object, _>(object_id, *event_id, event.clone(), &s.mem_db)
+                                .submit::<$object, _>(object_id, *event_id, event.clone(), *force_lock, &s.mem_db)
                                 .await;
                             cmp(db, mem)?;
                         }

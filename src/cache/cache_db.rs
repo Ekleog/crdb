@@ -61,11 +61,12 @@ impl<D: Db> Db for CacheDb<D> {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        force_lock: bool,
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
-            .submit::<T, _>(object_id, event_id, event.clone(), cb)
+            .submit::<T, _>(object_id, event_id, event.clone(), force_lock, cb)
             .await?;
         if let Some(value) = res.clone() {
             self.cache.write().unwrap().set(object_id, value);

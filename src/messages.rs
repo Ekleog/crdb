@@ -72,6 +72,7 @@ pub enum Upload {
         type_id: TypeId,
         event_id: EventId,
         event: serde_json::Value,
+        subscribe: bool,
     },
 }
 

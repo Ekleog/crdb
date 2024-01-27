@@ -31,6 +31,7 @@ pub trait ApiConfig: crate::private::Sealed {
         object_id: ObjectId,
         event_id: EventId,
         event: serde_json::Value,
+        force_lock: bool,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 }
 
@@ -77,12 +78,13 @@ macro_rules! generate_api {
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
                 event: crdb::serde_json::Value,
+                force_lock: bool,
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
-                        return db.submit::<$object, _>(object_id, event_id, crdb::Arc::new(event), db).await.map(|_| ());
+                        return db.submit::<$object, _>(object_id, event_id, crdb::Arc::new(event), force_lock, db).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

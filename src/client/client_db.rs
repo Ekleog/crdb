@@ -98,9 +98,12 @@ impl ClientDb {
                             }
                         }
                         UpdateData::Event { event_id, data } => {
+                            // TODO(client): decide how to expose locking all of a query's results, including objects that start
+                            // matching the query only after the initial run
                             // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
                             if let Err(err) =
-                                C::submit(&*local_db, type_id, object_id, event_id, data).await
+                                C::submit(&*local_db, type_id, object_id, event_id, data, false)
+                                    .await
                             {
                                 tracing::error!(
                                     ?err,
@@ -217,17 +220,25 @@ impl ClientDb {
 
     pub async fn submit<T: Object>(
         &self,
+        importance: Importance,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
         self.db
-            .submit::<T, _>(object, event_id, event.clone(), &*self.db)
+            .submit::<T, _>(
+                object,
+                event_id,
+                event.clone(),
+                importance >= Importance::Lock,
+                &*self.db,
+            )
             .await?;
         self.api.submit::<T, _>(
             object,
             event_id,
             event,
+            importance >= Importance::Subscribe,
             self.db.clone(),
             self.error_sender.clone(),
         )
@@ -260,14 +271,25 @@ impl ClientDb {
             )
             .await
             .wrap_context("creating creation snapshot in local database")?;
+        } else if lock {
+            db.get_latest::<T>(true, data.object_id)
+                .await
+                .wrap_context("locking object as requested")?;
         }
 
         for (event_id, event) in data.events {
             let event = serde_json::from_value::<T::Event>(event).wrap_context("parsing event")?;
 
-            db.submit::<T, _>(data.object_id, event_id, Arc::new(event), &*db)
+            // We already locked the object just above if requested
+            match db
+                .submit::<T, _>(data.object_id, event_id, Arc::new(event), false, &*db)
                 .await
-                .wrap_context("creating event in local database")?;
+            {
+                Ok(_) => (),
+                Err(crate::Error::ObjectDoesNotExist(object_id)) // Vacuumed in-between
+                    if object_id == data.object_id && !lock => (),
+                Err(err) => return Err(err).wrap_context("creating event in local database"),
+            }
         }
 
         Ok(())

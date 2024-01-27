@@ -1657,6 +1657,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        _force_lock: bool,
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self

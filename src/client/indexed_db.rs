@@ -990,6 +990,7 @@ impl Db for IndexedDb {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        force_lock: bool,
         _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let new_event_meta = EventMeta {
@@ -1041,7 +1042,7 @@ impl Db for IndexedDb {
                 else {
                     return Err(crate::Error::ObjectDoesNotExist(object_id).into());
                 };
-                let creation_snapshot =
+                let mut creation_snapshot =
                     serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_snapshot_js)
                         .wrap_with_context(|| {
                             format!("deserializing creation snapshot metadata for {object_id:?}")
@@ -1104,11 +1105,31 @@ impl Db for IndexedDb {
                             return Err(crate::Error::EventAlreadyExists(event_id).into());
                         }
 
-                        // The old snapshot and data were the same, we're good to go
+                        // The old snapshot and data were the same, we just need to lock the object if requested
+                        if force_lock && creation_snapshot.is_locked != Some(1) {
+                            creation_snapshot.is_locked = Some(1);
+                            let creation_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot)
+                                .wrap_context("serializing snapshot metadata")?;
+                            snapshots_meta.put(&creation_snapshot_js)
+                                .await
+                                .wrap_context("locking creation snapshot")?;
+                        }
+
+                        // All done, we're good to go
                         return Ok(None);
                     }
                     Err(e) => return Err(e),
                     Ok(_) => (),
+                }
+
+                // Lock the object if requested to
+                if force_lock && creation_snapshot.is_locked != Some(1) {
+                    creation_snapshot.is_locked = Some(1);
+                    let creation_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot)
+                        .wrap_context("serializing snapshot metadata")?;
+                    snapshots_meta.put(&creation_snapshot_js)
+                        .await
+                        .wrap_context("locking creation snapshot")?;
                 }
 
                 // Insert the event itself

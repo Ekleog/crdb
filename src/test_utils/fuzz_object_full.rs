@@ -79,6 +79,7 @@ async fn regression_postgres_crashed_on_null_byte_in_string() {
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 event: Arc::new(TestEventFull::Rename(String::from("bar\0foo"))),
+                force_lock: true,
             },
         ]),
     )

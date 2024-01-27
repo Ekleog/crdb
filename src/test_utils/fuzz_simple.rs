@@ -39,16 +39,19 @@ async fn regression_events_1342_fails_to_notice_conflict_on_3() {
                 object_id: 0,
                 event_id: EVENT_ID_3,
                 event: Arc::new(TestEventSimple::Clear),
+                force_lock: true,
             },
             SubmitSimple {
                 object_id: 0,
                 event_id: EVENT_ID_4,
                 event: Arc::new(TestEventSimple::Clear),
+                force_lock: true,
             },
             SubmitSimple {
                 object_id: 0,
                 event_id: EVENT_ID_2,
                 event: Arc::new(TestEventSimple::Clear),
+                force_lock: true,
             },
             CreateSimple {
                 object_id: OBJECT_ID_2,
@@ -148,6 +151,7 @@ async fn regression_submit_on_other_snapshot_date_fails() {
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+                force_lock: true,
             },
         ]),
     )
@@ -171,6 +175,7 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("00001000040000000000000000").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
+                force_lock: true,
             },
             Vacuum {
                 recreate_at: Some(Timestamp::from_ms(408021893130)),
@@ -179,6 +184,7 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
                 event: Arc::new(TestEventSimple::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
+                force_lock: true,
             },
         ]),
     )
@@ -202,6 +208,7 @@ async fn regression_object_with_two_snapshots_was_not_detected_as_object_id_conf
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000510002P00000000000").unwrap()),
                 event: Arc::new(TestEventSimple::Append(vec![0, 0, 0, 0, 0, 0, 0, 0])),
+                force_lock: true,
             },
             CreateSimple {
                 object_id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -589,6 +596,7 @@ async fn regression_memdb_recreate_did_not_recompute_latest_snapshot_right() {
                 object_id: 1296584126,
                 event_id: EVENT_ID_3,
                 event: Arc::new(TestEventSimple::Append(vec![111])),
+                force_lock: true,
             },
             Op::RecreateSimple {
                 object_id: 2039216500,

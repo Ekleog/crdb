@@ -21,6 +21,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        force_lock: bool,
         cb: &C,
     ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 

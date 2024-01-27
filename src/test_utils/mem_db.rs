@@ -210,6 +210,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        force_lock: bool,
         _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
@@ -238,6 +239,8 @@ impl Db for MemDb {
                     if *o != object_id || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false) {
                         return Err(crate::Error::EventAlreadyExists(event_id));
                     }
+                    // Just lock the object if requested
+                    this.objects.get_mut(&object_id).unwrap().1 |= force_lock;
                     return Ok(None);
                 }
 
@@ -260,6 +263,7 @@ impl Db for MemDb {
                 o.apply::<T>(event_id, event.clone())?;
                 let last_snapshot = o.last_snapshot::<T>().unwrap();
                 this.objects.get_mut(&object_id).unwrap().2 = o.required_binaries::<T>();
+                this.objects.get_mut(&object_id).unwrap().1 |= force_lock;
                 this.events.insert(event_id, (object_id, Some(event)));
                 Ok(Some(last_snapshot))
             }

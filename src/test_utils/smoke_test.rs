@@ -50,6 +50,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
+            false,
             &$db,
         )
         .await
@@ -60,6 +61,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
+            true,
             &$db,
         )
         .await
@@ -70,6 +72,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Set(b"foo".to_vec())),
+            true,
             &$db,
         )
         .await
@@ -87,6 +90,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_2,
             Arc::new(TestEventSimple::Set(b"bar".to_vec())),
+            false,
             &$db,
         )
         .await
@@ -104,6 +108,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_4,
             Arc::new(TestEventSimple::Set(b"baz".to_vec())),
+            true,
             &$db,
         )
         .await

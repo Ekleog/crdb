@@ -85,12 +85,13 @@ macro_rules! generate_client {
 
                 pub fn [< submit_to_ $name >](
                     &self,
+                    importance: crdb::Importance,
                     object: crdb::DbPtr<$object>,
                     event: crdb::Arc<<$object as crdb::Object>::Event>,
                 ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::oneshot::Receiver<crdb::Result<()>>>> {
                     let id = self.ulid.lock().unwrap().generate();
                     let id = id.expect("Failed to generate ulid for event submission");
-                    self.db.submit::<$object>(object.to_object_id(), crdb::EventId(id), event)
+                    self.db.submit::<$object>(importance, object.to_object_id(), crdb::EventId(id), event)
                 }
 
                 pub fn [< get_ $name >](&self, importance: crdb::Importance, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {

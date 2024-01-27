@@ -112,6 +112,7 @@ async fn regression_submit_wrong_type_ignores_failure() {
                 event: Arc::new(TestEventPerms::Set(User(
                     Ulid::from_string("00000000000000000000000000").unwrap(),
                 ))),
+                force_lock: true,
             },
         ]),
     )
@@ -183,6 +184,7 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_stuff_to_do() {
                 object_id: 0,
                 event_id: EVENT_ID_2,
                 event: Arc::new(TestEventPerms::Set(USER_ID_2)),
+                force_lock: true,
             },
             Op::RecreateDelegator {
                 object_id: 0,
