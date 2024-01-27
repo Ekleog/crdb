@@ -64,6 +64,10 @@ impl SqliteDb {
     pub async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
+
+    pub async fn remove_everything(&self) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite)
+    }
 }
 
 #[allow(unused_variables)] // TODO(sqlite): remove

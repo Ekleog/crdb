@@ -15,6 +15,16 @@ use std::{cell::Cell, collections::HashSet, ops::Bound, sync::Arc};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
+const OBJECT_STORE_LIST: &[&str] = &[
+    "snapshots",
+    "events",
+    "binaries",
+    "upload_queue",
+    "snapshots_meta",
+    "events_meta",
+    "upload_queue_meta",
+];
+
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 struct SnapshotMeta {
     snapshot_id: EventId,
@@ -64,6 +74,7 @@ impl IndexedDb {
             .open(url, VERSION, |evt| async move {
                 let db = evt.database();
 
+                // Note: whenever changing this list, remember to also update OBJECT_STORE_LIST
                 db.build_object_store("snapshots").create()?;
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
@@ -927,6 +938,25 @@ impl IndexedDb {
                 Ok(Some(object))
             }
         }
+    }
+
+    pub async fn remove_everything(&self) -> crate::Result<()> {
+        self.db
+            .transaction(OBJECT_STORE_LIST)
+            .rw()
+            .run(move |transaction| async move {
+                for store in OBJECT_STORE_LIST {
+                    transaction
+                        .object_store(store)
+                        .wrap_with_context(|| format!("retrieving {store:?} object store"))?
+                        .clear()
+                        .await
+                        .wrap_with_context(|| format!("clearing {store:?} object store"))?;
+                }
+                Ok(())
+            })
+            .await
+            .wrap_context("clearing the IndexedDB database")
     }
 }
 

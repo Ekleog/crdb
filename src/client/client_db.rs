@@ -168,7 +168,7 @@ impl ClientDb {
 
     pub async fn logout(&self) -> anyhow::Result<()> {
         self.api.logout();
-        // TODO(client): flush self.db
+        self.db.remove_everything().await?;
         Ok(())
     }
 
