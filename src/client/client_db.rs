@@ -7,7 +7,7 @@ use crate::{
     ids::QueryId,
     messages::{MaybeObject, ObjectData, Update, UpdateData},
     object::parse_snapshot,
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
+    BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, Updatedness,
 };
 use futures::{channel::mpsc, StreamExt};
 use std::{collections::HashSet, sync::Arc, time::Duration};
@@ -303,18 +303,23 @@ impl ClientDb {
 
     pub fn query_remote<T: Object>(
         &self,
-        subscribe: bool, // TODO(client) subscribe/lock is a bit of a mess, should have a 3-state enum Latest/Subscribe/Lock
-        lock: bool,
+        importance: Importance,
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
     ) -> impl '_ + CrdbStream<Item = crate::Result<Arc<T>>> {
         // TODO(client): let user decide whether to subscribe too
         self.api
-            .query::<T>(QueryId::now(), only_updated_since, subscribe, query)
+            .query::<T>(
+                QueryId::now(),
+                only_updated_since,
+                importance >= Importance::Subscribe,
+                query,
+            )
             .then({
                 let db = self.db.clone();
                 move |data| {
                     let db = db.clone();
+                    let lock = importance >= Importance::Lock;
                     async move {
                         let object_id = match data? {
                             MaybeObject::NotYetSubscribed(data) => {

@@ -6,6 +6,7 @@ mod error;
 pub mod fts;
 mod future;
 mod ids;
+mod importance;
 mod messages;
 mod object;
 mod query;
@@ -23,6 +24,7 @@ pub use dbptr::DbPtr;
 pub use error::{Error, Result, SerializableError};
 pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
 pub use ids::{BinPtr, EventId, ObjectId, SessionRef, SessionToken, TypeId, Updatedness, User};
+pub use importance::Importance;
 pub use object::{CanDoCallbacks, Event, Object};
 pub use query::{JsonPathItem, Query};
 pub use session::{NewSession, Session};
@@ -75,8 +77,9 @@ pub mod crdb_internal {
         error::ResultExt,
         hash_binary,
         object::{parse_snapshot, CanDoCallbacks},
-        private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Object, ObjectId, Query,
-        Result, SerializableError, SessionToken, Timestamp, TypeId, Updatedness, User,
+        private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object,
+        ObjectId, Query, Result, SerializableError, SessionToken, Timestamp, TypeId, Updatedness,
+        User,
     };
     pub use anyhow;
     pub use futures::{self, channel::mpsc, future, stream, Stream};

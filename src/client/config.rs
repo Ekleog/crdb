@@ -125,14 +125,12 @@ macro_rules! generate_client {
                 // readable and were created since the last connection upon login?
                 pub fn [< query_ $name _remote >](
                     &self,
-                    subscribe: bool,
-                    lock: bool,
+                    importance: crdb::Importance,
                     only_updated_since: Option<crdb::Updatedness>, // TODO(client): should not expose this to the user
                     query: crdb::Arc<crdb::Query>,
                 ) -> impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>> {
                     self.db.query_remote::<$object>(
-                        subscribe,
-                        lock,
+                        importance,
                         only_updated_since,
                         query,
                     )
