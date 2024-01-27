@@ -12,6 +12,12 @@ test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 clippy *ARGS:
     cargo clippy {{ARGS}} -- -D warnings
 
+udeps *ARGS:
+    cargo udeps
+    cargo udeps --features client
+    cargo udeps --features server
+    cargo udeps --features client --target wasm32-unknown-unknown
+
 doc:
     cargo doc --all-features --examples
     cargo doc --features client --examples --target wasm32-unknown-unknown
