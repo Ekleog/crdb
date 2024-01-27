@@ -38,7 +38,7 @@ macro_rules! impl_id {
             }
 
             #[cfg(not(target_arch = "wasm32"))]
-            pub(crate) fn to_uuid(&self) -> uuid::Uuid {
+            pub(crate) fn to_uuid(self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.0.to_bytes())
             }
 
