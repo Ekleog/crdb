@@ -1,4 +1,4 @@
-#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Importance {
     /// Only care about fetching the latest value once
     Once,
@@ -13,11 +13,11 @@ pub enum Importance {
     Lock,
 }
 
-impl PartialOrd for Importance {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl Ord for Importance {
+    fn cmp(&self, other: &Importance) -> std::cmp::Ordering {
         use std::cmp::Ordering;
 
-        Some(match (self, other) {
+        match (self, other) {
             (Importance::Once, Importance::Once) => Ordering::Equal,
             (Importance::Once, _) => Ordering::Less,
             (Importance::Subscribe, Importance::Once) => Ordering::Greater,
@@ -25,6 +25,12 @@ impl PartialOrd for Importance {
             (Importance::Subscribe, Importance::Lock) => Ordering::Less,
             (Importance::Lock, Importance::Lock) => Ordering::Equal,
             (Importance::Lock, _) => Ordering::Greater,
-        })
+        }
+    }
+}
+
+impl PartialOrd for Importance {
+    fn partial_cmp(&self, other: &Importance) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
