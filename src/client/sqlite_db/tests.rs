@@ -7,7 +7,7 @@ use crate::{
         self, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
         OBJECT_ID_1, OBJECT_ID_2,
     },
-    EventId, ObjectId, Timestamp,
+    EventId, ObjectId, Timestamp, Updatedness,
 };
 use anyhow::Context;
 use std::{fmt::Debug, sync::Arc};
@@ -21,6 +21,7 @@ async fn smoke_test(db: sqlx::SqlitePool) {
         OBJECT_ID_1,
         EVENT_ID_1,
         Arc::new(TestObjectSimple::stub_1()),
+        Some(Updatedness::from_u128(1)),
         true,
     )
     .await

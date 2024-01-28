@@ -24,13 +24,3 @@ fn regression_apply_1324_does_not_type_error() {
     o.apply::<TestObjectSimple>(EVENT_ID_4, Arc::new(TestEventSimple::Set(b"4".to_vec())))
         .unwrap();
 }
-
-#[test]
-fn regression_overflow_in_timestamp() {
-    let o = FullObject::new(
-        OBJECT_ID_1,
-        EVENT_ID_1,
-        Arc::new(TestObjectSimple::stub_1()),
-    );
-    let _ = o.recreate_at::<TestObjectSimple>(Timestamp::from_ms(u64::MAX)); // timestamp is invalid, error out
-}

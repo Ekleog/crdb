@@ -1,6 +1,6 @@
 use super::postgres_db::{ComboLock, PostgresDb};
 use crate::{
-    api::ApiConfig, CanDoCallbacks, CrdbFuture, EventId, ObjectId, Timestamp, TypeId, User,
+    api::ApiConfig, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId, Updatedness, User,
 };
 use std::sync::Arc;
 
@@ -23,7 +23,8 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         call_on: &'a PostgresDb<Self>,
         type_id: TypeId,
         object_id: ObjectId,
-        time: Timestamp,
+        event_id: EventId,
+        updatedness: Updatedness,
         cb: &'a C,
     ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, i32, serde_json::Value)>>>;
 }
@@ -70,12 +71,13 @@ macro_rules! generate_server {
                 call_on: &'a crdb::PostgresDb<Self>,
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
-                time: crdb::Timestamp,
+                event_id: crdb::EventId,
+                updatedness: crdb::Updatedness,
                 cb: &'a C,
             ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value)>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let Some((new_created_at, data)) = call_on.recreate_impl::<$object, C>(object_id, time, cb).await? else {
+                        let Some((new_created_at, data)) = call_on.recreate_impl::<$object, C>(object_id, event_id, updatedness, cb).await? else {
                             return Ok(None);
                         };
                         let data = crdb::serde_json::to_value(data)

@@ -70,7 +70,7 @@ impl ClientDb {
                 while let Some(u) = updates_receiver.next().await {
                     let object_id = u.object_id;
                     let type_id = u.type_id;
-                    // TODO(client): record `u.now_have_all_until` somewhere
+                    // TODO(client): record `u.now_have_all_until_for_queries` somewhere
                     match u.data {
                         UpdateData::Creation {
                             created_at,
@@ -86,6 +86,7 @@ impl ClientDb {
                                 created_at,
                                 snapshot_version,
                                 data,
+                                Some(u.now_have_all_until_for_object),
                                 false,
                             )
                             .await
@@ -101,9 +102,16 @@ impl ClientDb {
                             // TODO(client): decide how to expose locking all of a query's results, including objects that start
                             // matching the query only after the initial run
                             // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
-                            if let Err(err) =
-                                C::submit(&*local_db, type_id, object_id, event_id, data, false)
-                                    .await
+                            if let Err(err) = C::submit(
+                                &*local_db,
+                                type_id,
+                                object_id,
+                                event_id,
+                                data,
+                                Some(u.now_have_all_until_for_object),
+                                false,
+                            )
+                            .await
                             {
                                 tracing::error!(
                                     ?err,
@@ -204,6 +212,7 @@ impl ClientDb {
                 object_id,
                 created_at,
                 object.clone(),
+                None, // Locally-created object, has no updatedness yet
                 importance >= Importance::Lock,
             )
             .await?;
@@ -229,6 +238,7 @@ impl ClientDb {
                 object,
                 event_id,
                 event.clone(),
+                None, // Locally-submitted event, has no updatedness yet
                 importance >= Importance::Lock,
             )
             .await?;
@@ -264,6 +274,7 @@ impl ClientDb {
                 data.object_id,
                 created_at,
                 Arc::new(creation_snapshot),
+                Some(data.now_have_all_until),
                 lock,
             )
             .await
@@ -279,7 +290,7 @@ impl ClientDb {
 
             // We already locked the object just above if requested
             match db
-                .submit::<T>(data.object_id, event_id, Arc::new(event), false)
+                .submit::<T>(data.object_id, event_id, Arc::new(event), Some(data.now_have_all_until), false)
                 .await
             {
                 Ok(_) => (),

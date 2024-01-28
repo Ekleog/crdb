@@ -133,12 +133,14 @@ macro_rules! make_fuzzer_stuffs {
                     object_id: ObjectId,
                     created_at: EventId,
                     object: Arc<$object>,
+                    updatedness: Option<Updatedness>,
                     lock: bool,
                 },
                 [< Submit $name >] {
                     object_id: usize,
                     event_id: EventId,
                     event: Arc<$event>,
+                    updatedness: Option<Updatedness>,
                     force_lock: bool,
                 },
                 [< GetLatest $name >] {
@@ -156,6 +158,7 @@ macro_rules! make_fuzzer_stuffs {
                     object_id: usize,
                     new_created_at: EventId,
                     object: Arc<$object>,
+                    updatedness: Option<Updatedness>,
                     force_lock: bool,
                 },
             )*
@@ -168,7 +171,7 @@ macro_rules! make_fuzzer_stuffs {
             },
             Remove { object_id: usize },
             Unlock { object_id: usize },
-            Vacuum { recreate_at: Option<Timestamp> },
+            Vacuum { recreate_at: Option<EventId> },
         }
 
         impl Op {
@@ -179,18 +182,20 @@ macro_rules! make_fuzzer_stuffs {
                             object_id,
                             created_at,
                             object,
+                            updatedness,
                             mut lock,
                         } => {
+                            let updatedness = s.updatedness(updatedness);
                             let mut object = object.clone();
                             Arc::make_mut(&mut object).standardize(*object_id);
                             s.add_object(*object_id);
                             lock |= s.is_server;
                             let db = db
-                                .create(*object_id, *created_at, object.clone(), lock)
+                                .create(*object_id, *created_at, object.clone(), updatedness, lock)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .create(*object_id, *created_at, object.clone(), lock)
+                                .create(*object_id, *created_at, object.clone(), updatedness, lock)
                                 .await;
                             cmp(db, mem)?;
                         }
@@ -198,15 +203,17 @@ macro_rules! make_fuzzer_stuffs {
                             object_id,
                             event_id,
                             event,
+                            updatedness,
                             force_lock,
                         } => {
+                            let updatedness = s.updatedness(updatedness);
                             let object_id = s.object(*object_id);
                             let db = db
-                                .submit::<$object>(object_id, *event_id, event.clone(), *force_lock)
+                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, *force_lock)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .submit::<$object>(object_id, *event_id, event.clone(), *force_lock)
+                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, *force_lock)
                                 .await;
                             cmp(db, mem)?;
                         }
@@ -234,9 +241,11 @@ macro_rules! make_fuzzer_stuffs {
                             object_id,
                             new_created_at,
                             object,
+                            updatedness,
                             force_lock,
                         } => {
                             if !s.is_server {
+                                let updatedness = s.updatedness(updatedness);
                                 let object_id = s.object(*object_id);
                                 let mut object = object.clone();
                                 Arc::make_mut(&mut object).standardize(object_id);
@@ -245,6 +254,7 @@ macro_rules! make_fuzzer_stuffs {
                                         object_id,
                                         *new_created_at,
                                         object.clone(),
+                                        updatedness,
                                         *force_lock,
                                     )
                                     .await;
@@ -254,6 +264,7 @@ macro_rules! make_fuzzer_stuffs {
                                         object_id,
                                         *new_created_at,
                                         object.clone(),
+                                        updatedness,
                                         *force_lock,
                                     )
                                     .await;
@@ -338,6 +349,14 @@ macro_rules! make_fuzzer_stuffs {
                 #[cfg(target_arch = "wasm32")]
                 let id = id % (self.ulids.len() + 1); // make valid inputs more likely
                 self.ulids.get(id).copied().map(BinPtr).unwrap_or_else(BinPtr::now)
+            }
+
+            fn updatedness(&self, updatedness: &Option<Updatedness>) -> Option<Updatedness> {
+                if self.is_server {
+                    Some(updatedness.clone().unwrap_or(Updatedness::now()))
+                } else {
+                    *updatedness
+                }
             }
         }
 

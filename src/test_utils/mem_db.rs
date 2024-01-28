@@ -1,7 +1,7 @@
 use super::{eq, FullObject};
 use crate::{
     db_trait::Db, error::ResultExt, BinPtr, CanDoCallbacks, CrdbStream, DynSized, Event, EventId,
-    Object, ObjectId, Query, Timestamp, TypeId, User,
+    Object, ObjectId, Query, Timestamp, TypeId, Updatedness, User,
 };
 use futures::{stream, Stream, StreamExt};
 use std::{
@@ -31,13 +31,12 @@ impl MemDb {
         })))
     }
 
-    pub async fn recreate_all<T: Object>(&self, time: Timestamp) -> crate::Result<()> {
+    pub async fn recreate_all<T: Object>(&self, event_id: EventId) -> crate::Result<()> {
         let mut this = self.0.lock().await;
         let this = &mut *this; // disable auto-deref-and-reborrow, get a real mutable borrow
-        EventId::last_id_at(time)?;
         for (ty, _, required_binaries, o) in this.objects.values_mut() {
             if ty == T::type_ulid() {
-                recreate_at::<T>(o, time, &mut this.events)?;
+                recreate_at::<T>(o, event_id, &mut this.events)?;
                 *required_binaries = o.required_binaries::<T>();
             }
         }
@@ -62,7 +61,7 @@ impl MemDb {
     pub async fn query<T: Object>(
         &self,
         user: User,
-        only_updated_since: Option<Timestamp>,
+        only_updated_since: Option<EventId>,
         q: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
         assert!(
@@ -121,7 +120,7 @@ impl MemDb {
 
 fn recreate_at<T: Object>(
     o: &FullObject,
-    time: Timestamp,
+    event_id: EventId,
     this_events: &mut HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
 ) -> crate::Result<()> {
     let mut events_before = o
@@ -130,7 +129,8 @@ fn recreate_at<T: Object>(
         .map(|(e, _)| e)
         .collect::<HashSet<EventId>>();
     events_before.insert(o.created_at());
-    o.recreate_at::<T>(time).wrap_context("recreating object")?;
+    o.recreate_at::<T>(event_id)
+        .wrap_context("recreating object")?;
     let mut events_after = o
         .changes_clone()
         .into_iter()
@@ -152,6 +152,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        _updatedness: Option<Updatedness>, // TODO(test): also test updatedness
         lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
@@ -209,6 +210,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        _updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
@@ -283,6 +285,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
+        _updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
@@ -291,7 +294,7 @@ impl Db for MemDb {
         let Some(&(real_type_id, _, _, ref o)) = this.objects.get(&object_id) else {
             std::mem::drop(this);
             return self
-                .create(object_id, new_created_at, object, force_lock)
+                .create(object_id, new_created_at, object, _updatedness, force_lock)
                 .await;
         };
         if real_type_id != *T::type_ulid() {

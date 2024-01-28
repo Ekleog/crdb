@@ -4,7 +4,7 @@ use super::fuzz_helpers::{
         self,
         crdb_internal::{
             test_utils::{self, *},
-            BinPtr, Db, DbPtr, EventId, ObjectId, Query, ResultExt, Timestamp, User,
+            BinPtr, Db, DbPtr, EventId, ObjectId, Query, ResultExt, Updatedness, User,
         },
         make_fuzzer_stuffs,
     },
@@ -34,6 +34,7 @@ async fn regression_get_with_wrong_type_did_not_fail() {
                 object: Arc::new(TestObjectPerms(User(
                     Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
                 ))),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             GetLatestDelegator {
@@ -58,6 +59,7 @@ async fn regression_changing_remote_objects_did_not_refresh_perms() {
                 object: Arc::new(TestObjectDelegatePerms(
                     DbPtr::from_string("00000000000000000000000000").unwrap(),
                 )),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             CreatePerm {
@@ -66,6 +68,7 @@ async fn regression_changing_remote_objects_did_not_refresh_perms() {
                 object: Arc::new(TestObjectPerms(User(
                     Ulid::from_string("00000002004G0004007G054MJJ").unwrap(),
                 ))),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
         ]),
@@ -85,6 +88,7 @@ async fn regression_self_referencing_object_deadlocks() {
             object: Arc::new(TestObjectDelegatePerms(
                 DbPtr::from_string("00008000000030000000000000").unwrap(),
             )),
+            updatedness: Some(Updatedness::from_u128(1)),
             lock: true,
         }]),
     )
@@ -104,6 +108,7 @@ async fn regression_submit_wrong_type_ignores_failure() {
                 object: Arc::new(TestObjectDelegatePerms(
                     DbPtr::from_string("0000062VK4C5S68QV3DXQ6CAG7").unwrap(),
                 )),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             SubmitPerm {
@@ -112,6 +117,7 @@ async fn regression_submit_wrong_type_ignores_failure() {
                 event: Arc::new(TestEventPerms::Set(User(
                     Ulid::from_string("00000000000000000000000000").unwrap(),
                 ))),
+                updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,
             },
         ]),
@@ -131,6 +137,7 @@ async fn regression_postgres_not_null_was_null() {
                 object: Arc::new(TestObjectPerms(User(
                     Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap(),
                 ))),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             Op::QueryPerm {
@@ -155,12 +162,14 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_nothing_to_do() {
                 object_id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectPerms(USER_ID_1)),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             Op::RecreateDelegator {
                 object_id: 0,
                 new_created_at: EVENT_ID_2,
                 object: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
+                updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,
             },
         ]),
@@ -178,18 +187,21 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_stuff_to_do() {
                 object_id: OBJECT_ID_1,
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectPerms(USER_ID_1)),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             Op::SubmitPerm {
                 object_id: 0,
                 event_id: EVENT_ID_2,
                 event: Arc::new(TestEventPerms::Set(USER_ID_2)),
+                updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,
             },
             Op::RecreateDelegator {
                 object_id: 0,
                 new_created_at: EVENT_ID_3,
                 object: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
+                updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,
             },
         ]),

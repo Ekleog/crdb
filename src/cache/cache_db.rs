@@ -1,5 +1,5 @@
 use super::{BinariesCache, ObjectCache};
-use crate::{db_trait::Db, hash_binary, BinPtr, DynSized, EventId, Object, ObjectId};
+use crate::{db_trait::Db, hash_binary, BinPtr, DynSized, EventId, Object, ObjectId, Updatedness};
 use anyhow::anyhow;
 use std::{
     ops::Deref,
@@ -40,12 +40,13 @@ impl<D: Db> Db for CacheDb<D> {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
         lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         self.cache.write().unwrap().remove(&object_id);
         let res = self
             .db
-            .create(object_id, created_at, object.clone(), lock)
+            .create(object_id, created_at, object.clone(), updatedness, lock)
             .await?;
         if let Some(value) = res.clone() {
             self.cache.write().unwrap().set(object_id, value);
@@ -58,11 +59,12 @@ impl<D: Db> Db for CacheDb<D> {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
-            .submit::<T>(object_id, event_id, event.clone(), force_lock)
+            .submit::<T>(object_id, event_id, event.clone(), updatedness, force_lock)
             .await?;
         if let Some(value) = res.clone() {
             self.cache.write().unwrap().set(object_id, value);
@@ -91,11 +93,12 @@ impl<D: Db> Db for CacheDb<D> {
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
-            .recreate(object_id, new_created_at, object, force_lock)
+            .recreate(object_id, new_created_at, object, updatedness, force_lock)
             .await?;
         if let Some(res) = res.clone() {
             self.cache.write().unwrap().set(object_id, res as _);

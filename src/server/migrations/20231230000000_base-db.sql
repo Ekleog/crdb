@@ -27,7 +27,7 @@ CREATE TABLE snapshots (
     users_who_can_read_depends_on UUID ARRAY, -- List of all the other objects on which `users_who_can_read` depends
     reverse_dependents_to_update UUID ARRAY, -- List of reverse dependents that have not had their permissions updated yet
     required_binaries UUID ARRAY NOT NULL,
-    last_modified BIGINT NOT NULL -- Ms from unix epoch, timestamp at which this snapshot was written on the server (so its last update)
+    last_modified UUID NOT NULL -- `Updatedness` at which this snapshot was written on the server (so, its last update), including vacuum's no-op recreations
 );
 
 CREATE TABLE events (

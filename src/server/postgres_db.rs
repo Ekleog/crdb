@@ -258,7 +258,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     /// `no_new_changes_before` if it is set.
     pub async fn vacuum(
         &self,
-        no_new_changes_before: Option<Timestamp>,
+        no_new_changes_before: Option<EventId>,
         kill_sessions_older_than: Option<Timestamp>,
         notify_recreation: impl Fn(Update),
     ) -> crate::Result<()> {
@@ -296,10 +296,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                             OR reverse_dependents_to_update IS NOT NULL))
                     OR ((NOT is_creation) AND snapshot_id < $1)
                 ",
-                match no_new_changes_before {
-                    Some(t) => EventId::last_id_at(t)?,
-                    None => EventId::from_u128(0),
-                } as EventId
+                no_new_changes_before.unwrap_or_else(|| EventId::from_u128(0)) as EventId
             )
             .fetch(&self.db);
             while let Some(row) = objects.next().await {
@@ -331,14 +328,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .await
                 .wrap_with_context(|| format!("resetting creation snapshot of {object_id:?}"))?;
                 reord::point().await;
-                if let Some(time) = no_new_changes_before {
+                if let Some(event_id) = no_new_changes_before {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
                     let recreation_result =
-                        Config::recreate_no_lock(&self, type_id, object_id, time, &*cache_db)
+                        // TODO(api): should think some more about how the server generates and pushes its `Updatedness`.
+                        Config::recreate_no_lock(&self, type_id, object_id, event_id, Updatedness::now(), &*cache_db)
                             .await
                             .wrap_with_context(|| {
-                                format!("recreating {object_id:?} at time {time:?}")
+                                format!("recreating {object_id:?} at time {event_id:?}")
                             })?;
                     if let Some((new_created_at, snapshot_version, data)) = recreation_result {
                         reord::point().await;
@@ -530,15 +528,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "
                 UPDATE snapshots
                 SET users_who_can_read = $1,
-                    users_who_can_read_depends_on = $2,
-                    last_modified = $3
-                WHERE object_id = $4
+                    users_who_can_read_depends_on = $2
+                WHERE object_id = $3
                 AND is_latest
             ",
         )
         .bind(users_who_can_read)
         .bind(&users_who_can_read_depends_on)
-        .bind(Timestamp::now().time_ms_i()?)
         .bind(object_id)
         .execute(&mut *transaction)
         .await
@@ -624,6 +620,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         is_latest: bool,
         rdeps: Option<&[ObjectId]>,
         object: &T,
+        updatedness: Updatedness,
         cb: &'a C,
     ) -> crate::Result<Vec<ComboLock<'a>>> {
         let (users_who_can_read, users_who_can_read_depends_on, locks) = if is_latest {
@@ -660,7 +657,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(users_who_can_read_depends_on)
         .bind(rdeps)
         .bind(object.required_binaries())
-        .bind(Timestamp::now().time_ms_i()?)
+        .bind(updatedness)
         .execute(&mut *transaction)
         .await;
         reord::point().await;
@@ -680,6 +677,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        updatedness: Updatedness,
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
@@ -722,8 +720,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(&users_who_can_read_depends_on)
                 .bind(&rdeps)
                 .bind(&required_binaries)
-                // TODO(server): this below and similar should be passed in as arguments, so that they can be sent over the websocket
-                .bind(Timestamp::now().time_ms_i()?)
+                .bind(updatedness)
                 .execute(&mut *transaction)
                 .await
                 .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
@@ -810,6 +807,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        updatedness: Updatedness,
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
@@ -973,6 +971,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     None
                 },
                 &object,
+                updatedness,
                 cb,
             )
             .await
@@ -1029,6 +1028,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     true,
                     Some(&rdeps),
                     &object,
+                    updatedness,
                     cb,
                 )
                 .await
@@ -1059,10 +1059,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn recreate_impl<T: Object, C: CanDoCallbacks>(
         &self,
         object_id: ObjectId,
-        time: Timestamp,
+        event_id: EventId,
+        updatedness: Updatedness,
         cb: &C,
     ) -> crate::Result<Option<(EventId, Arc<T>)>> {
-        if time.time_ms()
+        if event_id.0.timestamp_ms()
             > SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map(|t| t.as_millis())
@@ -1070,10 +1071,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 - 1000 * 3600
         {
             tracing::warn!(
-                "Re-creating object {object_id:?} at time {time:?} which is less than an hour old"
+                "Re-creating object {object_id:?} at time {event_id:?} which is less than an hour old"
             );
         }
-        let time_id = EventId::last_id_at(time)?;
 
         reord::point().await;
         let mut transaction = self
@@ -1103,7 +1103,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 real_type_id,
             });
         }
-        if EventId::from_uuid(creation_snapshot.snapshot_id) >= time_id {
+        if EventId::from_uuid(creation_snapshot.snapshot_id) >= event_id {
             // Already created after the requested time
             return Ok(None);
         }
@@ -1115,17 +1115,17 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 SELECT event_id
                 FROM events
                 WHERE object_id = $1
-                AND event_id < $2
+                AND event_id <= $2
                 ORDER BY event_id DESC
                 LIMIT 1
             ",
             object_id as ObjectId,
-            time_id as EventId,
+            event_id as EventId,
         )
         .fetch_optional(&mut *transaction)
         .await
         .wrap_with_context(|| {
-            format!("recovering the last event for {object_id:?} before cutoff time {time_id:?}")
+            format!("recovering the last event for {object_id:?} before cutoff time {event_id:?}")
         })?;
         let cutoff_time = match event {
             None => return Ok(None), // Nothing to do, there was no event before the cutoff already
@@ -1205,6 +1205,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 false,
                 None, // is_latest = false, we don't care about rdeps
                 &object,
+                updatedness,
                 cb,
             )
             .await
@@ -1247,12 +1248,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             })?;
         reord::point().await;
 
-        // Mark the corresponding latest event as updated
+        // Mark the corresponding latest snapshot as updated
         reord::maybe_lock().await;
         let affected = sqlx::query(
             "UPDATE snapshots SET last_modified = $1 WHERE is_latest AND object_id = $2",
         )
-        .bind(Timestamp::now().time_ms_i()?)
+        .bind(updatedness)
         .bind(object_id)
         .execute(&mut *transaction)
         .await
@@ -1277,7 +1278,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn query<T: Object>(
         &self,
         user: User,
-        only_updated_since: Option<Timestamp>,
+        only_updated_since: Option<EventId>,
         q: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
         reord::point().await;
@@ -1301,15 +1302,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 WHERE is_latest
                 AND type_id = $1
                 AND $2 = ANY (users_who_can_read)
-                AND last_modified > $3
+                AND last_modified >= $3
                 AND ({})
             ",
             q.where_clause(4)
         );
         let min_last_modified = only_updated_since
-            .map(|t| t.time_ms_i())
-            .transpose()?
-            .unwrap_or(0);
+            .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
+            .unwrap_or(EventId::from_u128(0));
         reord::point().await;
         let mut query = sqlx::query(&query)
             .persistent(false) // TODO(blocked): remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
@@ -1653,15 +1653,18 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
         _lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let cache_db = self
             .cache_db
             .upgrade()
             .expect("Called PostgresDb::create after CacheDb went away");
+        let updatedness =
+            updatedness.expect("Called PostgresDb::create without specifying updatedness");
 
         let res = self
-            .create_impl(object_id, created_at, object, &*cache_db)
+            .create_impl(object_id, created_at, object, updatedness, &*cache_db)
             .await?;
 
         // Update the reverse-dependencies, now that we have updated the object itself.
@@ -1679,15 +1682,18 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        updatedness: Option<Updatedness>,
         _force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let cache_db = self
             .cache_db
             .upgrade()
             .expect("Called PostgresDb::submit after CacheDb went away");
+        let updatedness =
+            updatedness.expect("Called PostgresDb::create without specifying updatedness");
 
         let res = self
-            .submit_impl(object_id, event_id, event, &*cache_db)
+            .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
             .await?;
 
         // Update all the other objects that depend on this one
@@ -1752,6 +1758,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         object_id: ObjectId,
         _new_created_at: EventId,
         _data: Arc<T>,
+        _updatedness: Option<Updatedness>,
         _force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         panic!("Tried recreating {object_id:?} on the server, but server is supposed to only ever be the one to make recreations!")

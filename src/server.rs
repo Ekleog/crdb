@@ -1,5 +1,6 @@
 use crate::{
-    api::ApiConfig, cache::CacheDb, messages::ServerMessage, ObjectId, SessionToken, Timestamp,
+    api::ApiConfig, cache::CacheDb, messages::ServerMessage, EventId, ObjectId, SessionToken,
+    Timestamp,
 };
 use anyhow::Context;
 use std::{
@@ -10,6 +11,7 @@ use std::{
 };
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
+use ulid::Ulid;
 
 mod config;
 mod postgres_db;
@@ -67,9 +69,12 @@ impl<C: ServerConfig> Server<C> {
                         _ = tokio::time::sleep(sleep_for) => (),
                         _ = cancellation_token.cancelled() => break,
                     }
-                    let no_new_changes_before = vacuum_schedule
-                        .recreate_older_than
-                        .map(|d| Timestamp::from(SystemTime::now() - d));
+                    let no_new_changes_before = vacuum_schedule.recreate_older_than.map(|d| {
+                        EventId(Ulid::from_parts(
+                            Timestamp::from(SystemTime::now() - d).time_ms(),
+                            u128::MAX,
+                        ))
+                    });
                     let kill_sessions_older_than = vacuum_schedule
                         .kill_sessions_older_than
                         .map(|d| Timestamp::from(SystemTime::now() - d));
@@ -114,7 +119,7 @@ impl<C: ServerConfig> Server<C> {
     /// `no_new_changes_before` if it is set.
     pub async fn vacuum(
         &self,
-        no_new_changes_before: Option<Timestamp>,
+        no_new_changes_before: Option<EventId>,
         kill_sessions_older_than: Option<Timestamp>,
     ) -> crate::Result<()> {
         self.postgres_db

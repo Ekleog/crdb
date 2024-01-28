@@ -25,7 +25,7 @@ mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
     use crdb::{
         crdb_internal::{test_utils::*, LocalDb, ResultExt},
-        Object, Query, Timestamp, User,
+        EventId, Object, Query, Timestamp, User,
     };
     use rand::{rngs::StdRng, SeedableRng};
     use std::{
@@ -131,7 +131,7 @@ mod fuzz_helpers {
         db: &Database,
         mem_db: &MemDb,
         _user: User,
-        _only_updated_since: Option<Timestamp>,
+        _only_updated_since: Option<Timestamp>, // TODO(api): this should be EventId
         query: &Query,
     ) -> anyhow::Result<()> {
         let db = db
@@ -150,7 +150,7 @@ mod fuzz_helpers {
     pub async fn run_vacuum(
         db: &Database,
         mem_db: &MemDb,
-        _recreate_at: Option<Timestamp>,
+        _recreate_at: Option<EventId>,
     ) -> anyhow::Result<()> {
         let db = db.vacuum().await;
         let mem = mem_db.vacuum().await;

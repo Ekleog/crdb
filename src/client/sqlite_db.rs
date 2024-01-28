@@ -2,7 +2,7 @@ use crate::{
     api::{UploadId, UploadOrBinPtr},
     db_trait::Db,
     error::ResultExt,
-    fts, BinPtr, EventId, Object, ObjectId, Query,
+    fts, BinPtr, EventId, Object, ObjectId, Query, Updatedness,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -77,6 +77,7 @@ impl Db for SqliteDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
         lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
@@ -95,7 +96,7 @@ impl Db for SqliteDb {
         let object_json = sqlx::types::Json(&object);
         reord::point().await;
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)
@@ -104,6 +105,7 @@ impl Db for SqliteDb {
         .bind(&fts::normalizer_version())
         .bind(snapshot_version)
         .bind(object_json)
+        .bind(updatedness)
         .bind(lock)
         .execute(&mut *t)
         .await
@@ -175,6 +177,7 @@ impl Db for SqliteDb {
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite): implement
@@ -193,6 +196,7 @@ impl Db for SqliteDb {
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite): implement

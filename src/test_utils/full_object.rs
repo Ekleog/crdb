@@ -151,8 +151,8 @@ impl FullObject {
         self.data.write().unwrap().apply::<T>(id, event)
     }
 
-    pub fn recreate_at<T: Object>(&self, at: Timestamp) -> crate::Result<()> {
-        self.data.write().unwrap().recreate_at::<T>(at)
+    pub fn recreate_at<T: Object>(&self, event_id: EventId) -> crate::Result<()> {
+        self.data.write().unwrap().recreate_at::<T>(event_id)
     }
 
     pub fn recreate_with<T: Object>(&self, event_id: EventId, data: Arc<T>) -> Option<Arc<T>> {
@@ -312,9 +312,7 @@ impl FullObjectImpl {
         return Some(self.get_snapshot_at(Bound::Unbounded).unwrap().1);
     }
 
-    pub fn recreate_at<T: Object>(&mut self, at: Timestamp) -> crate::Result<()> {
-        let max_new_created_at = EventId::last_id_at(at)?;
-
+    pub fn recreate_at<T: Object>(&mut self, max_new_created_at: EventId) -> crate::Result<()> {
         // First, check that we're not trying to roll the creation back in time, as this would result
         // in passing invalid input to `get_snapshot_at`.
         if max_new_created_at <= self.created_at {

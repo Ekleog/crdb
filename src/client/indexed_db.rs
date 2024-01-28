@@ -5,7 +5,7 @@ use crate::{
     error::ResultExt,
     fts,
     object::parse_snapshot_js,
-    BinPtr, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId,
+    BinPtr, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -34,6 +34,7 @@ struct SnapshotMeta {
     is_latest: Option<usize>,   // So, use None for "false" and Some(1) for "true"
     normalizer_version: i32,
     snapshot_version: i32,
+    have_all_until: Option<Updatedness>,
     is_locked: Option<usize>, // Only set on creation snapshot, Some(1) if locked and Some(0) if not
     required_binaries: Vec<BinPtr>,
 }
@@ -825,6 +826,7 @@ impl IndexedDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
         lock: bool,
     ) -> Result<Option<Arc<T>>, indexed_db::Error<crate::Error>> {
         let new_snapshot_meta = SnapshotMeta {
@@ -835,6 +837,7 @@ impl IndexedDb {
             is_latest: Some(1),
             normalizer_version: fts::normalizer_version(),
             snapshot_version: T::snapshot_version(),
+            have_all_until: updatedness,
             is_locked: Some(lock as usize),
             required_binaries: object.required_binaries(),
         };
@@ -878,6 +881,7 @@ impl IndexedDb {
                 })?;
             // Ignore a few fields in comparison below
             old_meta.is_latest = Some(1);
+            old_meta.have_all_until = updatedness;
             old_meta.is_locked = Some(lock as usize);
             if old_meta != new_snapshot_meta {
                 return Err(crate::Error::ObjectAlreadyExists(object_id).into());
@@ -966,6 +970,7 @@ impl Db for IndexedDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
         lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
@@ -973,7 +978,14 @@ impl Db for IndexedDb {
             .transaction(&["snapshots", "snapshots_meta", "events", "binaries"])
             .rw()
             .run(move |transaction| {
-                self.create_impl(transaction, object_id, created_at, object, lock)
+                self.create_impl(
+                    transaction,
+                    object_id,
+                    created_at,
+                    object,
+                    updatedness,
+                    lock,
+                )
             })
             .await
             .wrap_with_context(|| format!("running creation transaction for {object_id:?}"));
@@ -989,6 +1001,7 @@ impl Db for IndexedDb {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let new_event_meta = EventMeta {
@@ -1130,6 +1143,33 @@ impl Db for IndexedDb {
                         .wrap_context("locking creation snapshot")?;
                 }
 
+                // Figure out the current `have_all_until` field
+                let latest_snapshot_meta_js = object_snapshot
+                    .cursor()
+                    .range(&**Array::from_iter([&object_id_js, &zero_event_id_js])..=&**Array::from_iter([&object_id_js, &max_event_id_js]))
+                    .wrap_with_context(|| format!("limiting the latest snapshot to recover to those of {object_id:?}"))?
+                    .direction(CursorDirection::Prev)
+                    .open()
+                    .await
+                    .wrap_with_context(|| format!("opening cursor for the latest snapshot of {object_id:?}"))?
+                    .value()
+                    .ok_or_else(|| crate::Error::Other(anyhow!("cannot find a latest snapshot for {object_id:?}")))?;
+                let latest_snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(latest_snapshot_meta_js)
+                    .wrap_with_context(|| format!("deserializing the latest known snapshot for {object_id:?}"))?;
+                let now_have_all_until = match (updatedness, latest_snapshot_meta.have_all_until) {
+                    (None, None) => None,
+                    (Some(u), None) => Some(u),
+                    (None, Some(u)) => Some(u),
+                    (Some(now_have_all_until), Some(had_all_until)) => {
+                        if now_have_all_until < had_all_until {
+                            tracing::warn!("server sent an event with an older updatedness than we already had");
+                            Some(had_all_until)
+                        } else {
+                            Some(now_have_all_until)
+                        }
+                    }
+                };
+
                 // Insert the event itself
                 events.add_kv(&new_event_id_js, &new_event_js).await.wrap_with_context(|| format!("saving {event_id:?} in database"))?;
 
@@ -1150,7 +1190,7 @@ impl Db for IndexedDb {
                     to_clear.advance(1).await.wrap_context("getting next snapshot to delete")?;
                 }
 
-                // Find the last snapshot for the object
+                // Find the last remaining snapshot for the object
                 let last_snapshot_meta_js = object_snapshot
                     .cursor()
                     .range(&**Array::from_iter([&object_id_js, &zero_event_id_js])..=&**Array::from_iter([&object_id_js, &max_event_id_js]))
@@ -1172,7 +1212,7 @@ impl Db for IndexedDb {
                 let mut last_snapshot = parse_snapshot_js::<T>(last_snapshot_meta.snapshot_version, last_snapshot_js)
                     .wrap_with_context(|| format!("deserializing snapshot data {last_snapshot_id:?}"))?;
 
-                // Mark it as non-latest
+                // Mark it as non-latest if needed
                 if last_snapshot_meta.is_latest.is_some() {
                     last_snapshot_meta.is_latest = None;
                     let last_snapshot_meta_js = serde_wasm_bindgen::to_value(&last_snapshot_meta)
@@ -1194,6 +1234,7 @@ impl Db for IndexedDb {
                     is_latest: Some(1),
                     normalizer_version: fts::normalizer_version(),
                     snapshot_version: T::snapshot_version(),
+                    have_all_until: now_have_all_until,
                     is_locked: None,
                     required_binaries: last_snapshot.required_binaries(),
                 };
@@ -1345,6 +1386,7 @@ impl Db for IndexedDb {
         object_id: ObjectId,
         new_created_at: EventId,
         mut object: Arc<T>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let object_id_js = object_id.to_js_string();
@@ -1407,6 +1449,7 @@ impl Db for IndexedDb {
                             object_id,
                             new_created_at,
                             object,
+                            updatedness,
                             force_lock,
                         )
                         .await;
@@ -1524,6 +1567,7 @@ impl Db for IndexedDb {
                     is_latest: new_creation_should_be_latest.then(|| 1),
                     normalizer_version: fts::normalizer_version(),
                     snapshot_version: T::snapshot_version(),
+                    have_all_until: updatedness,
                     is_locked: force_lock.then(|| 1).or(creation_meta.is_locked),
                     required_binaries: required_binaries.clone(),
                 };
@@ -1583,6 +1627,7 @@ impl Db for IndexedDb {
                         is_latest: Some(1),
                         normalizer_version: fts::normalizer_version(),
                         snapshot_version: T::snapshot_version(),
+                        have_all_until: updatedness,
                         is_locked: None,
                         required_binaries: object.required_binaries(),
                     };

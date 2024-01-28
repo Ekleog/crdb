@@ -10,13 +10,20 @@ macro_rules! smoke_test {
         use std::sync::Arc;
         use $crate::{
             crdb_internal::{test_utils::*, Db},
-            Query,
+            Query, Updatedness,
+        };
+
+        let mut updatedness = Updatedness::from_u128(1);
+        let mut next_updatedness = move || {
+            updatedness = Updatedness(updatedness.0.increment().unwrap());
+            Some(updatedness)
         };
 
         $db.create(
             OBJECT_ID_1,
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
+            next_updatedness(),
             true,
         )
         .await
@@ -27,6 +34,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_2,
             Arc::new(TestObjectSimple::stub_2()),
+            next_updatedness(),
             true,
         )
         .await
@@ -37,6 +45,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
+            next_updatedness(),
             true,
         )
         .await
@@ -47,6 +56,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
+            next_updatedness(),
             false,
         )
         .await
@@ -57,6 +67,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
+            next_updatedness(),
             true,
         )
         .await
@@ -67,6 +78,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Set(b"foo".to_vec())),
+            next_updatedness(),
             true,
         )
         .await
@@ -84,6 +96,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_2,
             Arc::new(TestEventSimple::Set(b"bar".to_vec())),
+            next_updatedness(),
             false,
         )
         .await
@@ -101,6 +114,7 @@ macro_rules! smoke_test {
             OBJECT_ID_1,
             EVENT_ID_4,
             Arc::new(TestEventSimple::Set(b"baz".to_vec())),
+            next_updatedness(),
             true,
         )
         .await

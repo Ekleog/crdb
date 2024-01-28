@@ -16,7 +16,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         .expect("connecting to db");
     crate::smoke_test!(
         db: db,
-        vacuum: db.vacuum(Some(EVENT_ID_3.time()), Some(OBJECT_ID_3.time()), |_| ()),
+        vacuum: db.vacuum(Some(EVENT_ID_3), Some(OBJECT_ID_3.time()), |_| ()),
         query_all: db
             .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
             .await
@@ -89,7 +89,7 @@ mod fuzz_helpers {
         cache::CacheDb,
         server::{postgres_db::tests::TmpDb, PostgresDb},
         test_utils::{db::ServerConfig, *},
-        Object, Query, ResultExt, Timestamp, User,
+        EventId, Object, Query, ResultExt, User,
     };
 
     pub use crate as crdb;
@@ -136,7 +136,7 @@ mod fuzz_helpers {
         db: &Database,
         mem_db: &MemDb,
         user: User,
-        only_updated_since: Option<Timestamp>,
+        only_updated_since: Option<EventId>,
         query: &Query,
     ) -> anyhow::Result<()> {
         let pg = db
@@ -154,7 +154,7 @@ mod fuzz_helpers {
     pub async fn run_vacuum(
         db: &Database,
         mem_db: &MemDb,
-        recreate_at: Option<Timestamp>,
+        recreate_at: Option<EventId>,
     ) -> anyhow::Result<()> {
         match recreate_at {
             None => {

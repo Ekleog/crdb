@@ -15,6 +15,10 @@ CREATE TABLE snapshots (
     normalizer_version INTEGER NOT NULL,
     snapshot_version INTEGER NOT NULL,
     snapshot BLOB NOT NULL, -- JSONB
+    -- `Updatedness` of the event that caused this snapshot's creation,
+    -- or of the last `recreate` call.
+    -- Null if no event was ever received from the server for this object.
+    have_all_until BLOB,
     -- Whether we need to keep the object in the database, because the
     -- user explicitly required it. Meaningfully set only on the
     -- is_creation snapshot, values on other snapshots are ignored.

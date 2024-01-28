@@ -6,7 +6,7 @@ use super::fuzz_helpers::{
         fts::SearchableString,
         make_fuzzer_stuffs,
         test_utils::{self, *},
-        BinPtr, DbPtr, EventId, ObjectId, Query, Timestamp, User,
+        BinPtr, DbPtr, EventId, ObjectId, Query, Updatedness, User,
     },
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
@@ -51,6 +51,7 @@ async fn regression_postgres_and_indexeddb_considered_missing_binaries_the_other
                 )],
                 users: vec![],
             }),
+            updatedness: Some(Updatedness::from_u128(1)),
             lock: true,
         }]),
     )
@@ -73,12 +74,14 @@ async fn regression_postgres_crashed_on_null_byte_in_string() {
                     bins: vec![],
                     users: vec![],
                 }),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             SubmitFull {
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 event: Arc::new(TestEventFull::Rename(String::from("bar\0foo"))),
+                updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,
             },
         ]),
@@ -134,6 +137,7 @@ async fn regression_stack_overflow() {
                     bins: vec![],
                     users: vec![],
                 }),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             Op::CreateFull {
@@ -145,6 +149,7 @@ async fn regression_stack_overflow() {
                     bins: vec![],
                     users: vec![],
                 }),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: false,
             },
         ]),
@@ -167,6 +172,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     bins: vec![],
                     users: vec![],
                 }),
+                updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
             },
             Op::RecreateFull {
@@ -178,6 +184,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     bins: vec![],
                     users: vec![],
                 }),
+                updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,
             },
         ]),

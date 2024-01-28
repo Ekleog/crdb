@@ -59,7 +59,7 @@ macro_rules! impl_id {
                 Ok(Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1)))
             }
 
-            pub(crate) fn from_u128(v: u128) -> Self {
+            pub fn from_u128(v: u128) -> Self {
                 Self(Ulid::from_bytes(v.to_be_bytes()))
             }
 

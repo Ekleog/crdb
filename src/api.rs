@@ -1,4 +1,6 @@
-use crate::{db_trait::Db, messages::Upload, BinPtr, CrdbFuture, EventId, ObjectId, TypeId};
+use crate::{
+    db_trait::Db, messages::Upload, BinPtr, CrdbFuture, EventId, ObjectId, TypeId, Updatedness,
+};
 
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct UploadId(pub i64);
@@ -15,6 +17,7 @@ pub trait ApiConfig: crate::private::Sealed {
     /// Panics if there are two types with the same ULID configured
     fn check_ulids();
 
+    #[allow(clippy::too_many_arguments)] // Used only for relaying to a more specific function
     fn recreate<D: Db>(
         db: &D,
         type_id: TypeId,
@@ -22,6 +25,7 @@ pub trait ApiConfig: crate::private::Sealed {
         created_at: EventId,
         snapshot_version: i32,
         object: serde_json::Value,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 
@@ -31,6 +35,7 @@ pub trait ApiConfig: crate::private::Sealed {
         object_id: ObjectId,
         event_id: EventId,
         event: serde_json::Value,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
 }
@@ -59,6 +64,7 @@ macro_rules! generate_api {
                 created_at: crdb::EventId,
                 snapshot_version: i32,
                 object: crdb::serde_json::Value,
+                updatedness: Option<crdb::Updatedness>,
                 force_lock: bool,
             ) -> crdb::Result<()> {
                 $(
@@ -66,7 +72,7 @@ macro_rules! generate_api {
                         let _ = snapshot_version;
                         let object = crdb::serde_json::from_value::<$object>(object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        return db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), force_lock).await.map(|_| ());
+                        return db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), updatedness, force_lock).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
@@ -78,13 +84,14 @@ macro_rules! generate_api {
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
                 event: crdb::serde_json::Value,
+                updatedness: Option<crdb::Updatedness>,
                 force_lock: bool,
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
-                        return db.submit::<$object>(object_id, event_id, crdb::Arc::new(event), force_lock).await.map(|_| ());
+                        return db.submit::<$object>(object_id, event_id, crdb::Arc::new(event), updatedness, force_lock).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
