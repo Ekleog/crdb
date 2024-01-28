@@ -13,10 +13,10 @@ clippy *ARGS:
     cargo clippy {{ARGS}} -- -D warnings
 
 udeps *ARGS:
-    cargo udeps
-    cargo udeps --features client
-    cargo udeps --features server
-    cargo udeps --features client --target wasm32-unknown-unknown
+    SQLX_OFFLINE="true" cargo udeps
+    SQLX_OFFLINE="true" cargo udeps --features client
+    SQLX_OFFLINE="true" cargo udeps --features server
+    SQLX_OFFLINE="true" cargo udeps --features client --target wasm32-unknown-unknown
 
 doc:
     cargo doc --all-features --examples
