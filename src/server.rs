@@ -18,7 +18,7 @@ pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
 pub struct Server<C: ServerConfig> {
-    db: Arc<CacheDb<PostgresDb<C>>>,
+    _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
     postgres_db: Arc<PostgresDb<C>>,
     _cleanup_token: tokio_util::sync::DropGuard,
     // TODO(api): use all the below
@@ -47,8 +47,7 @@ impl<C: ServerConfig> Server<C> {
         <C::ApiConfig as ApiConfig>::check_ulids();
 
         // Connect to the database and setup the cache
-        let postgres_db = Arc::new(postgres_db::PostgresDb::connect(db).await?);
-        let db = CacheDb::new(postgres_db.clone(), cache_watermark);
+        let (postgres_db, cache_db) = postgres_db::PostgresDb::connect(db, cache_watermark).await?;
 
         // Start the upgrading task
         let upgrade_handle = tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
@@ -57,7 +56,6 @@ impl<C: ServerConfig> Server<C> {
         let cancellation_token = CancellationToken::new();
         tokio::task::spawn({
             let postgres_db = postgres_db.clone();
-            let db = db.clone();
             let cancellation_token = cancellation_token.clone();
             async move {
                 for next_time in vacuum_schedule.schedule.upcoming(vacuum_schedule.timezone) {
@@ -79,7 +77,6 @@ impl<C: ServerConfig> Server<C> {
                         .vacuum(
                             no_new_changes_before,
                             kill_sessions_older_than,
-                            &*db,
                             |_| unimplemented!(), // TODO(api)
                         )
                         .await
@@ -92,7 +89,7 @@ impl<C: ServerConfig> Server<C> {
 
         // Finally, return the information
         let this = Server {
-            db,
+            _cache_db: cache_db,
             postgres_db,
             _cleanup_token: cancellation_token.drop_guard(),
             _watchers: HashMap::new(),
@@ -124,7 +121,6 @@ impl<C: ServerConfig> Server<C> {
             .vacuum(
                 no_new_changes_before,
                 kill_sessions_older_than,
-                &*self.db,
                 |_| unimplemented!(), // TODO(api)
             )
             .await

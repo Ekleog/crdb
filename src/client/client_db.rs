@@ -36,7 +36,7 @@ impl ClientDb {
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let api = Arc::new(api);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
-        let db = CacheDb::new(db_bypass.clone(), cache_watermark);
+        let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
         let cancellation_token = CancellationToken::new();
         // TODO(client): re-subscribe upon bootup to all the objects in database
         let this = ClientDb {
@@ -205,7 +205,6 @@ impl ClientDb {
                 created_at,
                 object.clone(),
                 importance >= Importance::Lock,
-                &*self.db,
             )
             .await?;
         self.api.create(
@@ -226,12 +225,11 @@ impl ClientDb {
         event: Arc<T::Event>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
         self.db
-            .submit::<T, _>(
+            .submit::<T>(
                 object,
                 event_id,
                 event.clone(),
                 importance >= Importance::Lock,
-                &*self.db,
             )
             .await?;
         self.api.submit::<T, _>(
@@ -262,12 +260,11 @@ impl ClientDb {
             let creation_snapshot = parse_snapshot::<T>(snapshot_version, snapshot_data)
                 .wrap_context("parsing snapshot")?;
 
-            db.create::<T, _>(
+            db.create::<T>(
                 data.object_id,
                 created_at,
                 Arc::new(creation_snapshot),
                 lock,
-                &*db,
             )
             .await
             .wrap_context("creating creation snapshot in local database")?;
@@ -282,7 +279,7 @@ impl ClientDb {
 
             // We already locked the object just above if requested
             match db
-                .submit::<T, _>(data.object_id, event_id, Arc::new(event), false, &*db)
+                .submit::<T>(data.object_id, event_id, Arc::new(event), false)
                 .await
             {
                 Ok(_) => (),

@@ -38,6 +38,7 @@ mod fuzz_helpers {
     pub use wasm_bindgen_test::wasm_bindgen_test as test;
 
     pub type Database = LocalDb;
+    pub type KeepAlive = ();
     pub type SetupState = ();
 
     pub fn setup() -> ((), bool) {
@@ -46,10 +47,13 @@ mod fuzz_helpers {
 
     pub static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-    pub async fn make_db(_cluster: &()) -> Database {
-        LocalDb::connect(&format!("db{}", COUNTER.fetch_add(1, Ordering::Relaxed)))
-            .await
-            .unwrap()
+    pub async fn make_db(_cluster: &()) -> (Database, KeepAlive) {
+        (
+            LocalDb::connect(&format!("db{}", COUNTER.fetch_add(1, Ordering::Relaxed)))
+                .await
+                .unwrap(),
+            (),
+        )
     }
 
     pub async fn run_with_seed<Fun, Arg, RetFut>(

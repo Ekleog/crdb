@@ -147,13 +147,12 @@ fn recreate_at<T: Object>(
 }
 
 impl Db for MemDb {
-    async fn create<T: Object, C: CanDoCallbacks>(
+    async fn create<T: Object>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         lock: bool,
-        _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 
@@ -205,13 +204,12 @@ impl Db for MemDb {
         Ok(Some(object))
     }
 
-    async fn submit<T: Object, C: CanDoCallbacks>(
+    async fn submit<T: Object>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         force_lock: bool,
-        _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
         match this.objects.get(&object_id) {
@@ -280,13 +278,12 @@ impl Db for MemDb {
             .wrap_context("retrieving last snapshot")
     }
 
-    async fn recreate<T: Object, C: CanDoCallbacks>(
+    async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
         force_lock: bool,
-        cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 
@@ -294,7 +291,7 @@ impl Db for MemDb {
         let Some(&(real_type_id, _, _, ref o)) = this.objects.get(&object_id) else {
             std::mem::drop(this);
             return self
-                .create(object_id, new_created_at, object, force_lock, cb)
+                .create(object_id, new_created_at, object, force_lock)
                 .await;
         };
         if real_type_id != *T::type_ulid() {

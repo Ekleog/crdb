@@ -5,7 +5,7 @@ use crate::{
     error::ResultExt,
     fts,
     object::parse_snapshot_js,
-    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId,
+    BinPtr, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -961,13 +961,12 @@ impl IndexedDb {
 }
 
 impl Db for IndexedDb {
-    async fn create<T: Object, C: CanDoCallbacks>(
+    async fn create<T: Object>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         lock: bool,
-        _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
@@ -985,13 +984,12 @@ impl Db for IndexedDb {
         res
     }
 
-    async fn submit<T: Object, C: CanDoCallbacks>(
+    async fn submit<T: Object>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         force_lock: bool,
-        _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let new_event_meta = EventMeta {
             event_id,
@@ -1342,13 +1340,12 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("retrieving {object_id:?} from IndexedDB"))
     }
 
-    async fn recreate<T: Object, C: CanDoCallbacks>(
+    async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
         new_created_at: EventId,
         mut object: Arc<T>,
         force_lock: bool,
-        _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         let object_id_js = object_id.to_js_string();
         let type_id_js = T::type_ulid().to_js_string();

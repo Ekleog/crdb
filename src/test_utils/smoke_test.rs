@@ -18,7 +18,6 @@ macro_rules! smoke_test {
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
             true,
-            &$db,
         )
         .await
         .expect("creating test object 1 failed");
@@ -29,7 +28,6 @@ macro_rules! smoke_test {
             EVENT_ID_2,
             Arc::new(TestObjectSimple::stub_2()),
             true,
-            &$db,
         )
         .await
         .expect_err("creating duplicate test object 1 spuriously worked");
@@ -40,40 +38,36 @@ macro_rules! smoke_test {
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
             true,
-            &$db,
         )
         .await
         .expect("creating exact copy test object 1 failed");
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
-        $db.submit::<TestObjectSimple, _>(
+        $db.submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
             false,
-            &$db,
         )
         .await
         .expect("clearing object 1 failed");
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
-        $db.submit::<TestObjectSimple, _>(
+        $db.submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
             true,
-            &$db,
         )
         .await
         .expect("submitting duplicate event failed");
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
-        $db.submit::<TestObjectSimple, _>(
+        $db.submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_3,
             Arc::new(TestEventSimple::Set(b"foo".to_vec())),
             true,
-            &$db,
         )
         .await
         .expect_err("submitting duplicate event with different contents worked");
@@ -86,12 +80,11 @@ macro_rules! smoke_test {
                 .expect("getting object 1")
                 .0
         );
-        $db.submit::<TestObjectSimple, _>(
+        $db.submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_2,
             Arc::new(TestEventSimple::Set(b"bar".to_vec())),
             false,
-            &$db,
         )
         .await
         .expect("submitting event failed");
@@ -104,12 +97,11 @@ macro_rules! smoke_test {
                 .expect("getting object 1")
                 .0
         );
-        $db.submit::<TestObjectSimple, _>(
+        $db.submit::<TestObjectSimple>(
             OBJECT_ID_1,
             EVENT_ID_4,
             Arc::new(TestEventSimple::Set(b"baz".to_vec())),
             true,
-            &$db,
         )
         .await
         .expect("submitting event failed");

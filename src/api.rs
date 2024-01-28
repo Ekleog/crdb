@@ -66,7 +66,7 @@ macro_rules! generate_api {
                         let _ = snapshot_version;
                         let object = crdb::serde_json::from_value::<$object>(object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        return db.recreate::<$object, _>(object_id, created_at, crdb::Arc::new(object), force_lock, db).await.map(|_| ());
+                        return db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), force_lock).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
@@ -84,7 +84,7 @@ macro_rules! generate_api {
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
-                        return db.submit::<$object, _>(object_id, event_id, crdb::Arc::new(event), force_lock, db).await.map(|_| ());
+                        return db.submit::<$object>(object_id, event_id, crdb::Arc::new(event), force_lock).await.map(|_| ());
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))

@@ -11,12 +11,12 @@ mod fuzz_sessions;
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
-    let db = PostgresDb::<ServerConfig>::connect(db)
+    let (db, _keepalive) = PostgresDb::<ServerConfig>::connect(db, 0)
         .await
         .expect("connecting to db");
     crate::smoke_test!(
         db: db,
-        vacuum: db.vacuum(Some(EVENT_ID_3.time()), Some(OBJECT_ID_3.time()), &db, |_| ()),
+        vacuum: db.vacuum(Some(EVENT_ID_3.time()), Some(OBJECT_ID_3.time()), |_| ()),
         query_all: db
             .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
             .await
@@ -83,9 +83,10 @@ impl Drop for TmpDb {
 }
 
 mod fuzz_helpers {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, sync::Arc};
 
     use crate::{
+        cache::CacheDb,
         server::{postgres_db::tests::TmpDb, PostgresDb},
         test_utils::{db::ServerConfig, *},
         Object, Query, ResultExt, Timestamp, User,
@@ -94,16 +95,17 @@ mod fuzz_helpers {
     pub use crate as crdb;
     pub use tokio::test;
 
-    pub type Database = PostgresDb<ServerConfig>;
+    pub type Database = Arc<PostgresDb<ServerConfig>>;
+    pub type KeepAlive = Arc<CacheDb<PostgresDb<ServerConfig>>>;
     pub type SetupState = TmpDb;
 
     pub fn setup() -> (TmpDb, bool) {
         (TmpDb::new(), true)
     }
 
-    pub async fn make_db(cluster: &TmpDb) -> Database {
+    pub async fn make_db(cluster: &TmpDb) -> (Database, KeepAlive) {
         let pool = cluster.pool().await;
-        let db = PostgresDb::connect(pool.clone()).await.unwrap();
+        let db = PostgresDb::connect(pool.clone(), 0).await.unwrap();
         sqlx::query(include_str!("./cleanup-db.sql"))
             .execute(&pool)
             .await
@@ -157,7 +159,7 @@ mod fuzz_helpers {
         match recreate_at {
             None => {
                 let db = db
-                    .vacuum(None, None, db, |r| {
+                    .vacuum(None, None, |r| {
                         panic!("got unexpected recreation {r:?}");
                     })
                     .await;
@@ -166,7 +168,7 @@ mod fuzz_helpers {
             }
             Some(recreate_at) => {
                 let db = db
-                    .vacuum(Some(recreate_at), None, db, |_| {
+                    .vacuum(Some(recreate_at), None, |_| {
                         // TODO(test): validate that the notified recreations are the same as in memdb
                     })
                     .await;

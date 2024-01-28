@@ -22,7 +22,6 @@ async fn smoke_test(db: sqlx::SqlitePool) {
         EVENT_ID_1,
         Arc::new(TestObjectSimple::stub_1()),
         true,
-        &db,
     )
     .await
     .expect("creating test object 1 failed");

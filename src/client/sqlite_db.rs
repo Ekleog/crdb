@@ -2,7 +2,7 @@ use crate::{
     api::{UploadId, UploadOrBinPtr},
     db_trait::Db,
     error::ResultExt,
-    fts, BinPtr, CanDoCallbacks, EventId, Object, ObjectId, Query,
+    fts, BinPtr, EventId, Object, ObjectId, Query,
 };
 use anyhow::Context;
 use std::sync::Arc;
@@ -72,13 +72,12 @@ impl SqliteDb {
 
 #[allow(unused_variables)] // TODO(sqlite): remove
 impl Db for SqliteDb {
-    async fn create<T: Object, C: CanDoCallbacks>(
+    async fn create<T: Object>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         lock: bool,
-        cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
         let mut t = self
@@ -171,13 +170,12 @@ impl Db for SqliteDb {
         Ok(Some(object))
     }
 
-    async fn submit<T: Object, C: CanDoCallbacks>(
+    async fn submit<T: Object>(
         &self,
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         force_lock: bool,
-        cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite): implement
     }
@@ -190,13 +188,12 @@ impl Db for SqliteDb {
         unimplemented!() // TODO(sqlite): implement
     }
 
-    async fn recreate<T: Object, C: CanDoCallbacks>(
+    async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
         force_lock: bool,
-        cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite): implement
     }

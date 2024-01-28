@@ -186,11 +186,11 @@ macro_rules! make_fuzzer_stuffs {
                             s.add_object(*object_id);
                             lock |= s.is_server;
                             let db = db
-                                .create(*object_id, *created_at, object.clone(), lock, db)
+                                .create(*object_id, *created_at, object.clone(), lock)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .create(*object_id, *created_at, object.clone(), lock, &s.mem_db)
+                                .create(*object_id, *created_at, object.clone(), lock)
                                 .await;
                             cmp(db, mem)?;
                         }
@@ -202,11 +202,11 @@ macro_rules! make_fuzzer_stuffs {
                         } => {
                             let object_id = s.object(*object_id);
                             let db = db
-                                .submit::<$object, _>(object_id, *event_id, event.clone(), *force_lock, db)
+                                .submit::<$object>(object_id, *event_id, event.clone(), *force_lock)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .submit::<$object, _>(object_id, *event_id, event.clone(), *force_lock, &s.mem_db)
+                                .submit::<$object>(object_id, *event_id, event.clone(), *force_lock)
                                 .await;
                             cmp(db, mem)?;
                         }
@@ -241,22 +241,20 @@ macro_rules! make_fuzzer_stuffs {
                                 let mut object = object.clone();
                                 Arc::make_mut(&mut object).standardize(object_id);
                                 let db = db
-                                    .recreate::<$object, _>(
+                                    .recreate::<$object>(
                                         object_id,
                                         *new_created_at,
                                         object.clone(),
                                         *force_lock,
-                                        db,
                                     )
                                     .await;
                                 let mem = s
                                     .mem_db
-                                    .recreate::<$object, _>(
+                                    .recreate::<$object>(
                                         object_id,
                                         *new_created_at,
                                         object.clone(),
                                         *force_lock,
-                                        &s.mem_db,
                                     )
                                     .await;
                                 cmp(db, mem)?;
@@ -344,7 +342,7 @@ macro_rules! make_fuzzer_stuffs {
         }
 
         async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) -> Database {
-            let db = make_db(cluster).await;
+            let (db, _keepalive) = make_db(cluster).await;
             let mut s = FuzzState::new(*is_server);
             for (i, op) in ops.iter().enumerate() {
                 op.apply(&db, &mut s)

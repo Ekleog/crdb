@@ -1,5 +1,6 @@
 use super::ServerConfig;
 use crate::{
+    cache::CacheDb,
     db_trait::Db,
     error::ResultExt,
     fts,
@@ -16,7 +17,7 @@ use sqlx::Row;
 use std::{
     collections::{hash_map, BTreeMap, HashMap},
     marker::PhantomData,
-    sync::Arc,
+    sync::{Arc, Weak},
     time::SystemTime,
 };
 use tokio::sync::Mutex;
@@ -26,6 +27,7 @@ mod tests;
 
 pub struct PostgresDb<Config: ServerConfig> {
     db: sqlx::PgPool,
+    cache_db: Weak<CacheDb<PostgresDb<Config>>>,
     event_locks: LockPool<EventId>,
     // TODO(low): make into a RwLockPool, which locks the snapshot fields
     // create and submit take a write(), get and update_users_who_can_read
@@ -40,17 +42,27 @@ pub type ComboLock<'a> = (
 );
 
 impl<Config: ServerConfig> PostgresDb<Config> {
-    pub async fn connect(db: sqlx::PgPool) -> anyhow::Result<PostgresDb<Config>> {
+    pub async fn connect(
+        db: sqlx::PgPool,
+        cache_watermark: usize,
+    ) -> anyhow::Result<(Arc<PostgresDb<Config>>, Arc<CacheDb<PostgresDb<Config>>>)> {
         sqlx::migrate!("src/server/migrations")
             .run(&db)
             .await
             .context("running migrations on postgresql database")?;
-        Ok(PostgresDb {
-            db,
-            event_locks: LockPool::new(),
-            object_locks: LockPool::new(),
-            _phantom: PhantomData,
-        })
+        let mut postgres_db = None;
+        let cache_db = Arc::new_cyclic(|cache_db| {
+            let db = Arc::new(PostgresDb {
+                db,
+                cache_db: cache_db.clone(),
+                event_locks: LockPool::new(),
+                object_locks: LockPool::new(),
+                _phantom: PhantomData,
+            });
+            postgres_db = Some(db.clone());
+            CacheDb::new(db, cache_watermark)
+        });
+        Ok((postgres_db.unwrap(), cache_db))
     }
 
     pub async fn login_session(
@@ -244,11 +256,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     ///
     /// After running this, the database will reject any new change that would happen before
     /// `no_new_changes_before` if it is set.
-    pub async fn vacuum<C: CanDoCallbacks>(
+    pub async fn vacuum(
         &self,
         no_new_changes_before: Option<Timestamp>,
         kill_sessions_older_than: Option<Timestamp>,
-        cb: &C,
         notify_recreation: impl Fn(Update),
     ) -> crate::Result<()> {
         // TODO(low): do not vacuum away binaries that have been uploaded less than an hour ago
@@ -264,6 +275,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_context("cleaning up old sessions")?;
         }
+
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::vacuum after CacheDb went away");
 
         {
             // Discard all unrequired snapshots, as well as unused fields of creation snapshots
@@ -319,7 +335,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
                     let recreation_result =
-                        Config::recreate_no_lock(&self, type_id, object_id, time, cb)
+                        Config::recreate_no_lock(&self, type_id, object_id, time, &*cache_db)
                             .await
                             .wrap_with_context(|| {
                                 format!("recreating {object_id:?} at time {time:?}")
@@ -1632,18 +1648,24 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 }
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
-    async fn create<T: Object, C: CanDoCallbacks>(
+    async fn create<T: Object>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         _lock: bool,
-        cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
-        let res = self.create_impl(object_id, created_at, object, cb).await?;
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::create after CacheDb went away");
+
+        let res = self
+            .create_impl(object_id, created_at, object, &*cache_db)
+            .await?;
 
         // Update the reverse-dependencies, now that we have updated the object itself.
-        self.update_rdeps(object_id, cb)
+        self.update_rdeps(object_id, &*cache_db)
             .await
             .wrap_with_context(|| {
                 format!("updating permissions for reverse-dependencies of {object_id:?}")
@@ -1652,20 +1674,24 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(res)
     }
 
-    async fn submit<T: Object, C: CanDoCallbacks>(
+    async fn submit<T: Object>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         _force_lock: bool,
-        cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::submit after CacheDb went away");
+
         let res = self
-            .submit_impl::<T, C>(object_id, event_id, event, cb)
+            .submit_impl(object_id, event_id, event, &*cache_db)
             .await?;
 
         // Update all the other objects that depend on this one
-        self.update_rdeps(object_id, cb)
+        self.update_rdeps(object_id, &*cache_db)
             .await
             .wrap_with_context(|| {
                 format!("updating permissions of reverse-dependencies fo {object_id:?}")
@@ -1721,13 +1747,12 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(Arc::new(res))
     }
 
-    async fn recreate<T: Object, C: CanDoCallbacks>(
+    async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
         _new_created_at: EventId,
         _data: Arc<T>,
         _force_lock: bool,
-        _cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         panic!("Tried recreating {object_id:?} on the server, but server is supposed to only ever be the one to make recreations!")
     }
