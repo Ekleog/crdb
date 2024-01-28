@@ -1,6 +1,6 @@
 # export RUST_BACKTRACE := "short"
 
-all *ARGS: fmt (test ARGS) (clippy ARGS) (udeps ARGS)
+all *ARGS: fmt (test ARGS) clippy udeps
 
 fmt:
     cargo fmt
@@ -9,10 +9,10 @@ fmt:
 
 test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 
-clippy *ARGS:
-    CARGO_TARGET_DIR="target/clippy" cargo clippy {{ARGS}} -- -D warnings
+clippy:
+    CARGO_TARGET_DIR="target/clippy" cargo clippy -- -D warnings
 
-udeps *ARGS:
+udeps:
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features client
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features server
