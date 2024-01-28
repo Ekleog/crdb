@@ -10,13 +10,13 @@ fmt:
 test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 
 clippy *ARGS:
-    cargo clippy {{ARGS}} -- -D warnings
+    CARGO_TARGET_DIR="target/clippy" cargo clippy {{ARGS}} -- -D warnings
 
 udeps *ARGS:
-    SQLX_OFFLINE="true" cargo udeps
-    SQLX_OFFLINE="true" cargo udeps --features client
-    SQLX_OFFLINE="true" cargo udeps --features server
-    SQLX_OFFLINE="true" cargo udeps --features client --target wasm32-unknown-unknown
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features client
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features server
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features client --target wasm32-unknown-unknown
 
 doc:
     cargo doc --all-features --examples
