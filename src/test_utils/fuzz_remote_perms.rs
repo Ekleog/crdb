@@ -142,7 +142,8 @@ async fn regression_postgres_not_null_was_null() {
             },
             Op::QueryPerm {
                 user: User(Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap()),
-                q: Query::Not(Box::new(Query::Eq(
+                only_updated_since: None,
+                query: Query::Not(Box::new(Query::Eq(
                     vec![crdb::JsonPathItem::Key("".to_string())],
                     serde_json::Value::Null,
                 ))),

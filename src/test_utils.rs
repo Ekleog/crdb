@@ -151,8 +151,8 @@ macro_rules! make_fuzzer_stuffs {
                 // TODO(client): introduce get_local, to fetch the answers to query_local that might have been vacuumed since
                 [< Query $name >] {
                     user: User,
-                    // TODO(test): figure out a way to test only_updated_since
-                    q: Query,
+                    only_updated_since: Option<EventId>,
+                    query: Query,
                 },
                 [< Recreate $name >] {
                     object_id: usize,
@@ -234,8 +234,8 @@ macro_rules! make_fuzzer_stuffs {
                                 .wrap_context(&format!("getting {object_id:?} in mem db"));
                             cmp(db, mem)?;
                         }
-                        Op::[< Query $name >] { user, q } => {
-                            run_query::<$object>(&db, &s.mem_db, *user, None, q).await?;
+                        Op::[< Query $name >] { user, only_updated_since, query } => {
+                            run_query::<$object>(&db, &s.mem_db, *user, *only_updated_since, query).await?;
                         }
                         Op::[< Recreate $name >] {
                             object_id,
