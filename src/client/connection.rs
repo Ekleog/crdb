@@ -265,7 +265,7 @@ impl Connection {
                                             }),
                                             sidecar: Vec::new(),
                                         }),
-                                        responses_sender.clone(),
+                                        responses_sender,
                                     ).await;
                                     crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
