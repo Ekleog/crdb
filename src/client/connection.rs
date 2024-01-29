@@ -231,6 +231,25 @@ impl Connection {
                                 self.event_cb.read().unwrap()(ConnectionEvent::Connected);
 
                                 // Re-subscribe to the previously subscribed queries and objects
+                                // Start with subscribed objects, so that we easily tell the server what we already know about them.
+                                // Only then re-subscribe to queries, this way the server can answer AlreadySubscribed whenever relevant.
+                                // TODO(api): make sure we track subscribed_objects properly, after an object newly starts matching a subscribed query.
+                                if !self.subscribed_objects.is_empty() {
+                                    let (responses_sender, responses_receiver) = mpsc::unbounded();
+                                    let request_id = self.next_request_id();
+                                    self.handle_request(
+                                        request_id,
+                                        Arc::new(RequestWithSidecar {
+                                            request: Arc::new(Request::Get {
+                                                object_ids: self.subscribed_objects.clone(),
+                                                subscribe: true,
+                                            }),
+                                            sidecar: Vec::new(),
+                                        }),
+                                        responses_sender,
+                                    ).await;
+                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                }
                                 let subscribed_queries = self.subscribed_queries.clone(); // TODO(low): we can certainly avoid this clone
                                 for (query_id, (query, have_all_until)) in subscribed_queries {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
@@ -247,22 +266,6 @@ impl Connection {
                                             sidecar: Vec::new(),
                                         }),
                                         responses_sender.clone(),
-                                    ).await;
-                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
-                                }
-                                if !self.subscribed_objects.is_empty() {
-                                    let (responses_sender, responses_receiver) = mpsc::unbounded();
-                                    let request_id = self.next_request_id();
-                                    self.handle_request(
-                                        request_id,
-                                        Arc::new(RequestWithSidecar {
-                                            request: Arc::new(Request::Get {
-                                                object_ids: self.subscribed_objects.clone(),
-                                                subscribe: true,
-                                            }),
-                                            sidecar: Vec::new(),
-                                        }),
-                                        responses_sender,
                                     ).await;
                                     crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }

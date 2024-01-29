@@ -141,6 +141,9 @@ pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
+    // TODO(api): This might need to become Option<Updatedness>, to properly handle the case
+    // where an object newly starts matching a Query and thus multiple Updates need to be sent?
+    // Or maybe we should instead have `data` above be a `Vec`?
     pub now_have_all_until: Updatedness,
 }
 
