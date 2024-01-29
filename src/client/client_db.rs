@@ -39,6 +39,7 @@ impl ClientDb {
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
         let cancellation_token = CancellationToken::new();
         // TODO(client): re-subscribe upon bootup to all the objects in database
+        // TODO(client): re-subscribe upon bootup to all the queries in database
         let this = ClientDb {
             api,
             db,
@@ -70,6 +71,7 @@ impl ClientDb {
                 while let Some(u) = updates_receiver.next().await {
                     let object_id = u.object_id;
                     let type_id = u.type_id;
+                    // TODO(client): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
                     match u.data {
                         UpdateData::Creation {
                             created_at,
@@ -119,7 +121,7 @@ impl ClientDb {
                                     "failed submitting received object to internal db"
                                 );
                             }
-                            // TODO: avoid tracing::error! when below comment holds
+                            // TODO(client): avoid tracing::error! when below comment holds
                             // DO NOT re-fetch object when receiving an event not in cache for it.
                             // Without this, users would risk unsubscribing from an object, then receiving
                             // an event on this object (as a race condition), and then staying subscribed.
