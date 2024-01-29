@@ -622,7 +622,6 @@ impl Connection {
                             }
                         }
                     }
-                    // TODO(api): record now_have_all_until if this was in answer to a Query
                     // Note: We do not care about negative updates. Indeed, if an object were to stop matching
                     // and we reconnect, we would still resubscribe to the object anyway, because we automatically
                     // subscribe to (and never automatically unsubscribe from) any objects returned by subscribed
