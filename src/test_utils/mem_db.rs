@@ -78,7 +78,9 @@ impl MemDb {
                     return None;
                 }
                 if let Some(only_updated_since) = only_updated_since {
-                    let last_updated = full_object.last_updated().expect("Query with only_updated_since.is_some() (ie. server) but one object in database had no Updatedness (ie. client)");
+                    let last_updated = full_object
+                        .last_updated()
+                        .expect("Query with only_updated_since.is_some() (ie. server) but one object in database had no Updatedness (ie. client)");
                     if last_updated <= only_updated_since {
                         return None;
                     }

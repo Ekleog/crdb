@@ -384,8 +384,8 @@ impl FullObjectImpl {
             self.creation = snapshot;
             self.changes = self.changes.split_off(&new_created_at);
             self.changes.pop_first();
+            self.bump_last_updated(updatedness);
         }
-        self.bump_last_updated(updatedness);
         Ok(())
     }
 

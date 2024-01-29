@@ -1,4 +1,4 @@
-use crate::{EventId, ObjectId, TypeId, User};
+use crate::{EventId, ObjectId, TypeId, Updatedness, User};
 use ulid::Ulid;
 
 pub const fn ulid(s: &str) -> Ulid {
@@ -37,3 +37,10 @@ pub const USER_ID_2: User = User(ulid("20000000000000000000000020"));
 pub const USER_ID_3: User = User(ulid("20000000000000000000000030"));
 pub const USER_ID_4: User = User(ulid("20000000000000000000000040"));
 pub const USER_ID_5: User = User(ulid("20000000000000000000000050"));
+
+pub const UPDATEDNESS_NULL: Updatedness = Updatedness(ulid("00000000000000000000000000"));
+pub const UPDATEDNESS_1: Updatedness = Updatedness(ulid("50000000000000000000000010"));
+pub const UPDATEDNESS_2: Updatedness = Updatedness(ulid("50000000000000000000000020"));
+pub const UPDATEDNESS_3: Updatedness = Updatedness(ulid("50000000000000000000000030"));
+pub const UPDATEDNESS_4: Updatedness = Updatedness(ulid("50000000000000000000000040"));
+pub const UPDATEDNESS_5: Updatedness = Updatedness(ulid("50000000000000000000000050"));

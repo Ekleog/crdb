@@ -209,3 +209,29 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_stuff_to_do() {
     )
     .await;
 }
+
+#[fuzz_helpers::test]
+async fn regression_memdb_vacuum_updated_updatedness_even_without_any_change() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreatePerm {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                object: Arc::new(TestObjectPerms(USER_ID_1)),
+                updatedness: Some(UPDATEDNESS_1),
+                lock: true,
+            },
+            Op::Vacuum {
+                recreate_at: Some((EVENT_ID_2, UPDATEDNESS_3)),
+            },
+            Op::QueryPerm {
+                user: USER_ID_1,
+                only_updated_since: Some(UPDATEDNESS_2),
+                query: Query::All(vec![]),
+            },
+        ]),
+    )
+    .await;
+}
