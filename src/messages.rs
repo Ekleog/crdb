@@ -109,7 +109,7 @@ pub enum ResponsePart {
     CurrentTime(Timestamp),
     Objects {
         data: Vec<MaybeObject>,
-        // Set only in answer to a Query
+        // Set only in answer to a Query, this is the max of the Updatedness of all objects
         now_have_all_until: Option<Updatedness>,
     },
     Binaries(usize),
@@ -139,8 +139,7 @@ pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
-    pub now_have_all_until_for_object: Updatedness,
-    pub now_have_all_until_for_queries: HashMap<QueryId, Updatedness>,
+    pub now_have_all_until: Updatedness,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

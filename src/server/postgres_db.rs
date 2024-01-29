@@ -354,9 +354,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                                 snapshot_version,
                                 data,
                             },
-                            now_have_all_until_for_object: updatedness,
-                            // No query change could happen here, because the latest snapshot cannot change after a time-based recreation
-                            now_have_all_until_for_queries: HashMap::new(),
+                            now_have_all_until: updatedness,
                         });
                     }
                 }

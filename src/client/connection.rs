@@ -248,7 +248,7 @@ impl Connection {
                                         }),
                                         responses_sender.clone(),
                                     ).await;
-                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver, Some(query_id)));
+                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                                 if !self.subscribed_objects.is_empty() {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
@@ -264,7 +264,7 @@ impl Connection {
                                         }),
                                         responses_sender,
                                     ).await;
-                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver, None));
+                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                             }
                             ServerMessage::Response {
@@ -469,13 +469,9 @@ impl Connection {
                 // Update our local subscription information
                 for update in updates.iter() {
                     if let Some(updated) = self.subscribed_objects.get_mut(&update.object_id) {
-                        *updated = Some(update.now_have_all_until_for_object);
+                        *updated = Some(update.now_have_all_until);
                     }
-                    for (query_id, now_updated) in update.now_have_all_until_for_queries.iter() {
-                        if let Some(updated) = self.subscribed_queries.get_mut(&query_id) {
-                            updated.1 = Some(*now_updated);
-                        }
-                    }
+                    // TODO(client): somehow keep track of now_have_all_until for each subscribed query
                 }
 
                 // And send the update
@@ -594,7 +590,6 @@ impl Connection {
     async fn send_responses_as_updates(
         update_sender: mpsc::UnboundedSender<Update>,
         mut responses_receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
-        for_query: Option<QueryId>,
     ) {
         // No need to keep track of self.subscribed_*, this will be done before even reaching this point
         while let Some(response) = responses_receiver.next().await {
@@ -604,27 +599,14 @@ impl Connection {
                 ResponsePart::Error(err) => {
                     tracing::error!(?err, "got unexpected server error upon re-subscribing");
                 }
-                ResponsePart::Objects {
-                    data,
-                    now_have_all_until,
-                } => {
-                    let last_object = data.len().saturating_sub(1);
-                    for (i, maybe_object) in data.into_iter().enumerate() {
+                ResponsePart::Objects { data, .. } => {
+                    for maybe_object in data.into_iter() {
                         match maybe_object {
                             MaybeObject::AlreadySubscribed(_) => continue,
                             MaybeObject::NotYetSubscribed(object) => {
                                 if let Some((created_at, snapshot_version, data)) =
                                     object.creation_snapshot
                                 {
-                                    let mut now_have_all_until_for_queries = HashMap::new();
-                                    if i == last_object {
-                                        if let (Some(query_id), Some(now_have_all_until)) =
-                                            (for_query, now_have_all_until)
-                                        {
-                                            now_have_all_until_for_queries
-                                                .insert(query_id, now_have_all_until);
-                                        }
-                                    }
                                     let _ = update_sender.unbounded_send(Update {
                                         object_id: object.object_id,
                                         type_id: object.type_id,
@@ -633,9 +615,13 @@ impl Connection {
                                             snapshot_version,
                                             data,
                                         },
-                                        now_have_all_until_for_object: object.now_have_all_until,
-                                        now_have_all_until_for_queries,
+                                        now_have_all_until: object.now_have_all_until,
                                     });
+                                    // TODO(api): also send all the events returned by the server!!
+                                    // TODO(api): think of how to handle negative updates!! eg. if an object
+                                    // stops matching and we reconnect, how should we (know it and) indicate
+                                    // that to the user? For the "know it" it's just "the object is not listed
+                                    // in the answer", but that's non-trivial to handle and propagate properly
                                 }
                             }
                         }

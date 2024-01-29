@@ -70,7 +70,6 @@ impl ClientDb {
                 while let Some(u) = updates_receiver.next().await {
                     let object_id = u.object_id;
                     let type_id = u.type_id;
-                    // TODO(client): record `u.now_have_all_until_for_queries` somewhere
                     match u.data {
                         UpdateData::Creation {
                             created_at,
@@ -86,7 +85,7 @@ impl ClientDb {
                                 created_at,
                                 snapshot_version,
                                 data,
-                                Some(u.now_have_all_until_for_object),
+                                Some(u.now_have_all_until),
                                 false,
                             )
                             .await
@@ -108,7 +107,7 @@ impl ClientDb {
                                 object_id,
                                 event_id,
                                 data,
-                                Some(u.now_have_all_until_for_object),
+                                Some(u.now_have_all_until),
                                 false,
                             )
                             .await
