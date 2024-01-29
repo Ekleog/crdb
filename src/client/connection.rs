@@ -618,14 +618,16 @@ impl Connection {
                                         now_have_all_until: object.now_have_all_until,
                                     });
                                     // TODO(api): also send all the events returned by the server!!
-                                    // TODO(api): think of how to handle negative updates!! eg. if an object
-                                    // stops matching and we reconnect, how should we (know it and) indicate
-                                    // that to the user? For the "know it" it's just "the object is not listed
-                                    // in the answer", but that's non-trivial to handle and propagate properly
                                 }
                             }
                         }
                     }
+                    // TODO(api): record now_have_all_until if this was in answer to a Query
+                    // Note: We do not care about negative updates. Indeed, if an object were to stop matching
+                    // and we reconnect, we would still resubscribe to the object anyway, because we automatically
+                    // subscribe to (and never automatically unsubscribe from) any objects returned by subscribed
+                    // queries. As such, the updates to that object will just keep coming through anyway, and the
+                    // fact that they no longer match the queries should be made obvious at that point.
                 }
                 response => {
                     tracing::error!(
