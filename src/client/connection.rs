@@ -615,9 +615,25 @@ impl Connection {
                                             snapshot_version,
                                             data,
                                         },
-                                        now_have_all_until: object.now_have_all_until,
+                                        now_have_all_until: if object.events.is_empty() {
+                                            object.now_have_all_until
+                                        } else {
+                                            Updatedness::from_u128(0)
+                                        },
                                     });
-                                    // TODO(api): also send all the events returned by the server!!
+                                }
+                                let last_i = object.events.len().saturating_sub(1); // The 0 case is handled above
+                                for (i, (event_id, data)) in object.events.into_iter().enumerate() {
+                                    let _ = update_sender.unbounded_send(Update {
+                                        object_id: object.object_id,
+                                        type_id: object.type_id,
+                                        data: UpdateData::Event { event_id, data },
+                                        now_have_all_until: if i == last_i {
+                                            object.now_have_all_until
+                                        } else {
+                                            Updatedness::from_u128(0)
+                                        },
+                                    });
                                 }
                             }
                         }
