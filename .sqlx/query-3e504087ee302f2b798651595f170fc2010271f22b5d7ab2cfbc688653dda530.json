@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT last_modified FROM snapshots WHERE object_id = $1 AND is_latest",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "last_modified",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3e504087ee302f2b798651595f170fc2010271f22b5d7ab2cfbc688653dda530"
+}

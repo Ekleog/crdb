@@ -354,7 +354,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                                 snapshot_version,
                                 data,
                             },
-                            now_have_all_until_for_object: Updatedness::now(), // TODO(server): this is a lie
+                            now_have_all_until_for_object: updatedness,
+                            // No query change could happen here, because the latest snapshot cannot change after a time-based recreation
                             now_have_all_until_for_queries: HashMap::new(),
                         });
                     }
@@ -1639,6 +1640,16 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .await
         .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
 
+        reord::point().await;
+        let last_modified = sqlx::query!(
+            "SELECT last_modified FROM snapshots WHERE object_id = $1 AND is_latest",
+            object_id as ObjectId
+        )
+        .fetch_one(&mut *transaction)
+        .await
+        .wrap_context("retrieving the last_modified time")?;
+        let last_modified = Updatedness::from_uuid(last_modified.last_modified);
+
         Ok(ObjectData {
             object_id,
             type_id: TypeId::from_uuid(creation_snapshot.type_id),
@@ -1648,7 +1659,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 creation_snapshot.snapshot,
             )),
             events,
-            now_have_all_until: Updatedness::now(), // TODO(server): this is a lie! implement properly
+            now_have_all_until: last_modified,
         })
     }
 }
