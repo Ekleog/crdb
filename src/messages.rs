@@ -109,7 +109,9 @@ pub enum ResponsePart {
     CurrentTime(Timestamp),
     Objects {
         data: Vec<MaybeObject>,
-        // Set only in answer to a Query, this is the max of the Updatedness of all objects
+        // Set only in answer to a Query, this is the max of the Updatedness of all the returned objects.
+        // This is only set in the last ResponsePart of the query request, to make sure if connection cuts
+        // the client will not wrongfully assume having already received everything.
         now_have_all_until: Option<Updatedness>,
     },
     Binaries(usize),
