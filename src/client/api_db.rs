@@ -267,7 +267,7 @@ impl ApiDb {
             Some(response) => match response.response {
                 ResponsePart::Error(err) => Err(err.into()),
                 ResponsePart::Objects { mut data, .. } if data.len() == 1 => {
-                    // TODO(client): record now_have_all_until somewhere
+                    // TODO(client): record now_have_all_until somewhere (for queries)
                     match data.pop().unwrap() {
                         MaybeObject::AlreadySubscribed(_) => Err(crate::Error::Other(anyhow!(
                             "Server unexpectedly told us we already know unknown {object_id:?}"
@@ -305,7 +305,7 @@ impl ApiDb {
                 ResponsePart::Error(err) => Either::Left(stream::iter(iter::once(Err(err.into())))),
                 ResponsePart::Objects {
                     data,
-                    now_have_all_until: _, // TODO(client): record now_have_all_until somewhere
+                    now_have_all_until: _, // TODO(client): record now_have_all_until somewhere (for queries)
                 } => Either::Right(stream::iter(data.into_iter().map(Ok))),
                 resp => Either::Left(stream::iter(iter::once(Err(crate::Error::Other(anyhow!(
                     "Server gave unexpected answer to Query request: {resp:?}"
