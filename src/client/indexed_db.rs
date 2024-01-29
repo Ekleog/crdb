@@ -821,7 +821,6 @@ impl IndexedDb {
     }
 
     async fn create_impl<T: Object>(
-        &self,
         transaction: indexed_db::Transaction<crate::Error>,
         object_id: ObjectId,
         created_at: EventId,
@@ -978,7 +977,7 @@ impl Db for IndexedDb {
             .transaction(&["snapshots", "snapshots_meta", "events", "binaries"])
             .rw()
             .run(move |transaction| {
-                self.create_impl(
+                Self::create_impl(
                     transaction,
                     object_id,
                     created_at,
@@ -1443,8 +1442,7 @@ impl Db for IndexedDb {
                     .wrap_context("checking creation object")?
                 else {
                     // Object does not exist, create it
-                    return self
-                        .create_impl::<T>(
+                    return Self::create_impl::<T>(
                             transaction,
                             object_id,
                             new_created_at,
