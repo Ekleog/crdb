@@ -1,8 +1,10 @@
 use crate::{
-    api::ApiConfig, cache::CacheDb, messages::ServerMessage, EventId, ObjectId, SessionToken,
-    Timestamp, Updatedness,
+    api::ApiConfig,
+    cache::CacheDb,
+    messages::{ServerMessage, Update},
+    EventId, ObjectId, SessionToken, Timestamp, Updatedness,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use multimap::MultiMap;
 use std::{
     collections::{HashMap, HashSet},
@@ -10,7 +12,10 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;
 
@@ -20,9 +25,27 @@ mod postgres_db;
 pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
+struct UpdatednessSlot {
+    updatedness: Updatedness,
+    sender: mpsc::UnboundedSender<Update>,
+}
+
+impl UpdatednessSlot {
+    fn updatedness(&self) -> Updatedness {
+        self.updatedness
+    }
+
+    fn send(&self, update: Update) {
+        if let Err(_) = self.sender.send(update) {
+            tracing::error!("UpdatednessSlot outlived the server!");
+        }
+    }
+}
+
 pub struct Server<C: ServerConfig> {
     _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
     postgres_db: Arc<PostgresDb<C>>,
+    updatedness_requester: mpsc::UnboundedSender<oneshot::Sender<UpdatednessSlot>>,
     _cleanup_token: tokio_util::sync::DropGuard,
     // TODO(api): use all the below
     _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
@@ -55,13 +78,51 @@ impl<C: ServerConfig> Server<C> {
         // Start the upgrading task
         let upgrade_handle = tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
 
+        // Setup the update reorderer task
+        let (updatedness_requester, mut updatedness_request_receiver) =
+            mpsc::unbounded_channel::<oneshot::Sender<UpdatednessSlot>>();
+        let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
+        tokio::task::spawn(async move {
+            // Updatedness request handler
+            let mut generator = ulid::Generator::new();
+            // No cancellation token needed, closing the sender will naturally close this task
+            while let Some(requester) = updatedness_request_receiver.recv().await {
+                // TODO(low): see also https://github.com/dylanhart/ulid-rs/issues/71
+                let updatedness = Updatedness(generator.generate().expect(
+                    "you're either very unlucky, or generated 2**80 updates within one millisecond",
+                ));
+                let (sender, receiver) = mpsc::unbounded_channel();
+                if let Err(_) = update_sender.send(receiver) {
+                    tracing::error!(
+                        "Update reorderer task went away before updatedness request handler task"
+                    );
+                }
+                let slot = UpdatednessSlot {
+                    updatedness,
+                    sender,
+                };
+                let _ = requester.send(slot); // Ignore any failures, they'll free the slot anyway
+            }
+        });
+        tokio::task::spawn(async move {
+            // Actual update reorderer
+            // No cancellation token needed, closing the senders will naturally close this task
+            while let Some(mut update_receiver) = update_receiver.recv().await {
+                while let Some(update) = update_receiver.recv().await {
+                    let _ = update; // TODO(api): actually fan the update out to all subscribed listeners
+                }
+            }
+        });
+
         // Setup the auto-vacuum task
         let cancellation_token = CancellationToken::new();
         tokio::task::spawn({
             let postgres_db = postgres_db.clone();
             let cancellation_token = cancellation_token.clone();
+            let updatedness_requester = updatedness_requester.clone();
             async move {
                 for next_time in vacuum_schedule.schedule.upcoming(vacuum_schedule.timezone) {
+                    // Sleep until the next vacuum
                     let sleep_for = next_time.signed_duration_since(chrono::Utc::now());
                     let sleep_for = sleep_for
                         .to_std()
@@ -70,6 +131,8 @@ impl<C: ServerConfig> Server<C> {
                         _ = tokio::time::sleep(sleep_for) => (),
                         _ = cancellation_token.cancelled() => break,
                     }
+
+                    // Define the parameters
                     let no_new_changes_before = vacuum_schedule.recreate_older_than.map(|d| {
                         EventId(Ulid::from_parts(
                             Timestamp::from(SystemTime::now() - d).time_ms(),
@@ -79,12 +142,28 @@ impl<C: ServerConfig> Server<C> {
                     let kill_sessions_older_than = vacuum_schedule
                         .kill_sessions_older_than
                         .map(|d| Timestamp::from(SystemTime::now() - d));
+
+                    // Retrieve the updatedness slot
+                    let (sender, receiver) = oneshot::channel();
+                    if let Err(_) = updatedness_requester.send(sender) {
+                        tracing::error!(
+                            "Updatedness request handler thread went away before autovacuum thread"
+                        );
+                    }
+                    let Ok(slot) = receiver.await else {
+                        tracing::error!(
+                            "Updatedness request handler thread never answered autovacuum thread"
+                        );
+                        continue;
+                    };
+
+                    // Finally, run the vacuum
                     if let Err(err) = postgres_db
                         .vacuum(
                             no_new_changes_before,
-                            Updatedness::now(), // TODO(api): should think some more about how the server generates and pushes its `Updatedness`.
+                            slot.updatedness(),
                             kill_sessions_older_than,
-                            |_| unimplemented!(), // TODO(api)
+                            |update| slot.send(update),
                         )
                         .await
                     {
@@ -98,6 +177,7 @@ impl<C: ServerConfig> Server<C> {
         let this = Server {
             _cache_db: cache_db,
             postgres_db,
+            updatedness_requester,
             _cleanup_token: cancellation_token.drop_guard(),
             _watchers: HashMap::new(),
             _sessions: MultiMap::new(),
@@ -124,14 +204,28 @@ impl<C: ServerConfig> Server<C> {
         no_new_changes_before: Option<EventId>,
         kill_sessions_older_than: Option<Timestamp>,
     ) -> crate::Result<()> {
+        let slot = self.updatedness_slot().await?;
         self.postgres_db
             .vacuum(
                 no_new_changes_before,
-                Updatedness::now(), // TODO(api): should think some more about how the server generates and pushes its `Updatedness`.
+                slot.updatedness(),
                 kill_sessions_older_than,
-                |_| unimplemented!(), // TODO(api)
+                |update| slot.send(update),
             )
             .await
+    }
+
+    async fn updatedness_slot(&self) -> crate::Result<UpdatednessSlot> {
+        let (sender, receiver) = oneshot::channel();
+        self.updatedness_requester.send(sender).map_err(|_| {
+            crate::Error::Other(anyhow!(
+                "Updatedness request handler thread went away too early"
+            ))
+        })?;
+        let slot = receiver.await.map_err(|_| {
+            crate::Error::Other(anyhow!("Updatedness request handler thread never answered"))
+        })?;
+        Ok(slot)
     }
 }
 
