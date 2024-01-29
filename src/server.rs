@@ -3,6 +3,7 @@ use crate::{
     Timestamp, Updatedness,
 };
 use anyhow::Context;
+use multimap::MultiMap;
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
@@ -25,7 +26,7 @@ pub struct Server<C: ServerConfig> {
     _cleanup_token: tokio_util::sync::DropGuard,
     // TODO(api): use all the below
     _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
-    _sessions: HashMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
+    _sessions: MultiMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -99,7 +100,7 @@ impl<C: ServerConfig> Server<C> {
             postgres_db,
             _cleanup_token: cancellation_token.drop_guard(),
             _watchers: HashMap::new(),
-            _sessions: HashMap::new(),
+            _sessions: MultiMap::new(),
         };
         Ok((this, upgrade_handle))
     }
