@@ -31,12 +31,16 @@ impl MemDb {
         })))
     }
 
-    pub async fn recreate_all<T: Object>(&self, event_id: EventId) -> crate::Result<()> {
+    pub async fn recreate_all<T: Object>(
+        &self,
+        event_id: EventId,
+        updatedness: Option<Updatedness>,
+    ) -> crate::Result<()> {
         let mut this = self.0.lock().await;
         let this = &mut *this; // disable auto-deref-and-reborrow, get a real mutable borrow
         for (ty, _, required_binaries, o) in this.objects.values_mut() {
             if ty == T::type_ulid() {
-                recreate_at::<T>(o, event_id, &mut this.events)?;
+                recreate_at::<T>(o, event_id, updatedness, &mut this.events)?;
                 *required_binaries = o.required_binaries::<T>();
             }
         }
@@ -61,14 +65,9 @@ impl MemDb {
     pub async fn query<T: Object>(
         &self,
         user: User,
-        only_updated_since: Option<EventId>,
+        only_updated_since: Option<Updatedness>,
         q: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
-        assert!(
-            // TODO(test): with the new Db api this should get better
-            only_updated_since.is_none(),
-            "Time-based tests are currently not implemented"
-        );
         q.check()?;
         let q = &q;
         let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
@@ -77,6 +76,12 @@ impl MemDb {
             .filter_map(|(_, (t, _, _, full_object))| async move {
                 if t != *T::type_ulid() {
                     return None;
+                }
+                if let Some(only_updated_since) = only_updated_since {
+                    let last_updated = full_object.last_updated().expect("Query with only_updated_since.is_some() (ie. server) but one object in database had no Updatedness (ie. client)");
+                    if last_updated <= only_updated_since {
+                        return None;
+                    }
                 }
                 let o = full_object
                     .last_snapshot::<T>()
@@ -121,6 +126,7 @@ impl MemDb {
 fn recreate_at<T: Object>(
     o: &FullObject,
     event_id: EventId,
+    updatedness: Option<Updatedness>,
     this_events: &mut HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
 ) -> crate::Result<()> {
     let mut events_before = o
@@ -129,7 +135,7 @@ fn recreate_at<T: Object>(
         .map(|(e, _)| e)
         .collect::<HashSet<EventId>>();
     events_before.insert(o.created_at());
-    o.recreate_at::<T>(event_id)
+    o.recreate_at::<T>(event_id, updatedness)
         .wrap_context("recreating object")?;
     let mut events_after = o
         .changes_clone()
@@ -152,7 +158,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-        _updatedness: Option<Updatedness>, // TODO(test): also test updatedness
+        updatedness: Option<Updatedness>,
         lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
@@ -197,7 +203,7 @@ impl Db for MemDb {
                 *T::type_ulid(),
                 lock,
                 required_binaries.into_iter().collect(),
-                FullObject::new(object_id, created_at, object.clone()),
+                FullObject::new(object_id, updatedness, created_at, object.clone()),
             ),
         );
         this.events.insert(created_at, (object_id, None));
@@ -210,7 +216,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-        _updatedness: Option<Updatedness>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
@@ -260,7 +266,7 @@ impl Db for MemDb {
                 }
 
                 // All is good, we can insert
-                o.apply::<T>(event_id, event.clone())?;
+                o.apply::<T>(event_id, event.clone(), updatedness)?;
                 let last_snapshot = o.last_snapshot::<T>().unwrap();
                 this.objects.get_mut(&object_id).unwrap().2 = o.required_binaries::<T>();
                 this.objects.get_mut(&object_id).unwrap().1 |= force_lock;
@@ -285,7 +291,7 @@ impl Db for MemDb {
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
-        _updatedness: Option<Updatedness>,
+        updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
@@ -294,7 +300,7 @@ impl Db for MemDb {
         let Some(&(real_type_id, _, _, ref o)) = this.objects.get(&object_id) else {
             std::mem::drop(this);
             return self
-                .create(object_id, new_created_at, object, _updatedness, force_lock)
+                .create(object_id, new_created_at, object, updatedness, force_lock)
                 .await;
         };
         if real_type_id != *T::type_ulid() {
@@ -334,7 +340,7 @@ impl Db for MemDb {
         }
 
         // All good, do the recreation
-        o.recreate_with::<T>(new_created_at, object);
+        o.recreate_with::<T>(new_created_at, object, updatedness);
         let required_binaries = o.required_binaries::<T>();
         let last_snapshot = o.last_snapshot::<T>().unwrap();
         let this_object = this.objects.get_mut(&object_id).unwrap();

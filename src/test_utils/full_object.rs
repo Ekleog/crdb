@@ -1,5 +1,6 @@
 use crate::{
     error::ResultExt, BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, Timestamp,
+    Updatedness,
 };
 use anyhow::anyhow;
 use std::{
@@ -48,6 +49,7 @@ impl Change {
 #[educe(Debug)]
 struct FullObjectImpl {
     id: ObjectId,
+    last_updated: Option<Updatedness>,
     created_at: EventId,
     #[educe(Debug(method = std::fmt::Pointer::fmt))]
     creation: Arc<dyn DynSized>,
@@ -66,10 +68,16 @@ pub struct FullObject {
 }
 
 impl FullObject {
-    pub fn new(id: ObjectId, created_at: EventId, creation: Arc<dyn DynSized>) -> FullObject {
+    pub fn new(
+        id: ObjectId,
+        last_updated: Option<Updatedness>,
+        created_at: EventId,
+        creation: Arc<dyn DynSized>,
+    ) -> FullObject {
         FullObject {
             data: Arc::new(RwLock::new(FullObjectImpl {
                 id,
+                last_updated,
                 created_at,
                 creation,
                 changes: BTreeMap::new(),
@@ -79,6 +87,7 @@ impl FullObject {
 
     pub fn from_parts(
         id: ObjectId,
+        last_updated: Option<Updatedness>,
         created_at: EventId,
         creation: Arc<dyn DynSized>,
         changes: BTreeMap<EventId, Change>,
@@ -86,6 +95,7 @@ impl FullObject {
         FullObject {
             data: Arc::new(RwLock::new(FullObjectImpl {
                 id,
+                last_updated,
                 created_at,
                 creation,
                 changes,
@@ -112,6 +122,10 @@ impl FullObject {
 
     pub fn id(&self) -> ObjectId {
         self.data.read().unwrap().id
+    }
+
+    pub fn last_updated(&self) -> Option<Updatedness> {
+        self.data.read().unwrap().last_updated
     }
 
     pub fn creation_info(&self) -> CreationInfo {
@@ -147,19 +161,39 @@ impl FullObject {
         self.data.read().unwrap().deep_size_of()
     }
 
-    pub fn apply<T: Object>(&self, id: EventId, event: Arc<T::Event>) -> crate::Result<bool> {
-        self.data.write().unwrap().apply::<T>(id, event)
-    }
-
-    pub fn recreate_at<T: Object>(&self, event_id: EventId) -> crate::Result<()> {
-        self.data.write().unwrap().recreate_at::<T>(event_id)
-    }
-
-    pub fn recreate_with<T: Object>(&self, event_id: EventId, data: Arc<T>) -> Option<Arc<T>> {
+    pub fn apply<T: Object>(
+        &self,
+        id: EventId,
+        event: Arc<T::Event>,
+        updatedness: Option<Updatedness>,
+    ) -> crate::Result<bool> {
         self.data
             .write()
             .unwrap()
-            .recreate_with::<T>(event_id, data)
+            .apply::<T>(id, event, updatedness)
+    }
+
+    pub fn recreate_at<T: Object>(
+        &self,
+        event_id: EventId,
+        updatedness: Option<Updatedness>,
+    ) -> crate::Result<()> {
+        self.data
+            .write()
+            .unwrap()
+            .recreate_at::<T>(event_id, updatedness)
+    }
+
+    pub fn recreate_with<T: Object>(
+        &self,
+        event_id: EventId,
+        data: Arc<T>,
+        updatedness: Option<Updatedness>,
+    ) -> Option<Arc<T>> {
+        self.data
+            .write()
+            .unwrap()
+            .recreate_with::<T>(event_id, data, updatedness)
     }
 
     pub fn required_binaries<T: Object>(&self) -> HashSet<BinPtr> {
@@ -216,6 +250,7 @@ impl FullObjectImpl {
         &mut self,
         event_id: EventId,
         event: Arc<T::Event>,
+        updatedness: Option<Updatedness>,
     ) -> crate::Result<bool> {
         if event_id <= self.created_at {
             return Err(crate::Error::EventTooEarly {
@@ -262,7 +297,18 @@ impl FullObjectImpl {
             c.1.snapshot_after = None;
         }
 
+        self.bump_last_updated(updatedness);
+
         Ok(true)
+    }
+
+    fn bump_last_updated(&mut self, updatedness: Option<Updatedness>) {
+        self.last_updated = match (self.last_updated, updatedness) {
+            (None, None) => None,
+            (None, Some(u)) => Some(u),
+            (Some(u), None) => Some(u),
+            (Some(a), Some(b)) => Some(std::cmp::max(a, b)),
+        };
     }
 
     pub fn required_binaries<T: Object>(&self) -> HashSet<BinPtr> {
@@ -293,6 +339,7 @@ impl FullObjectImpl {
         &mut self,
         new_created_at: EventId,
         object: Arc<T>,
+        updatedness: Option<Updatedness>,
     ) -> Option<Arc<T>> {
         if self.created_at == new_created_at
             && DynSized::ref_to_any(&*self.creation)
@@ -309,10 +356,15 @@ impl FullObjectImpl {
         for c in self.changes.values_mut() {
             c.snapshot_after = None;
         }
+        self.bump_last_updated(updatedness);
         return Some(self.get_snapshot_at(Bound::Unbounded).unwrap().1);
     }
 
-    pub fn recreate_at<T: Object>(&mut self, max_new_created_at: EventId) -> crate::Result<()> {
+    pub fn recreate_at<T: Object>(
+        &mut self,
+        max_new_created_at: EventId,
+        updatedness: Option<Updatedness>,
+    ) -> crate::Result<()> {
         // First, check that we're not trying to roll the creation back in time, as this would result
         // in passing invalid input to `get_snapshot_at`.
         if max_new_created_at <= self.created_at {
@@ -333,6 +385,7 @@ impl FullObjectImpl {
             self.changes = self.changes.split_off(&new_created_at);
             self.changes.pop_first();
         }
+        self.bump_last_updated(updatedness);
         Ok(())
     }
 

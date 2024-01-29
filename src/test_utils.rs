@@ -151,7 +151,7 @@ macro_rules! make_fuzzer_stuffs {
                 // TODO(client): introduce get_local, to fetch the answers to query_local that might have been vacuumed since
                 [< Query $name >] {
                     user: User,
-                    only_updated_since: Option<EventId>,
+                    only_updated_since: Option<Updatedness>,
                     query: Query,
                 },
                 [< Recreate $name >] {
@@ -171,7 +171,7 @@ macro_rules! make_fuzzer_stuffs {
             },
             Remove { object_id: usize },
             Unlock { object_id: usize },
-            Vacuum { recreate_at: Option<EventId> },
+            Vacuum { recreate_at: Option<(EventId, Updatedness)> },
         }
 
         impl Op {

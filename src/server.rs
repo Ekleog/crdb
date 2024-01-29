@@ -1,6 +1,6 @@
 use crate::{
     api::ApiConfig, cache::CacheDb, messages::ServerMessage, EventId, ObjectId, SessionToken,
-    Timestamp,
+    Timestamp, Updatedness,
 };
 use anyhow::Context;
 use std::{
@@ -81,6 +81,7 @@ impl<C: ServerConfig> Server<C> {
                     if let Err(err) = postgres_db
                         .vacuum(
                             no_new_changes_before,
+                            Updatedness::now(), // TODO(api): should think some more about how the server generates and pushes its `Updatedness`.
                             kill_sessions_older_than,
                             |_| unimplemented!(), // TODO(api)
                         )
@@ -125,6 +126,7 @@ impl<C: ServerConfig> Server<C> {
         self.postgres_db
             .vacuum(
                 no_new_changes_before,
+                Updatedness::now(), // TODO(api): should think some more about how the server generates and pushes its `Updatedness`.
                 kill_sessions_older_than,
                 |_| unimplemented!(), // TODO(api)
             )

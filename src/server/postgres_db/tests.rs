@@ -16,7 +16,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         .expect("connecting to db");
     crate::smoke_test!(
         db: db,
-        vacuum: db.vacuum(Some(EVENT_ID_3), Some(OBJECT_ID_3.time()), |_| ()),
+        vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(OBJECT_ID_3.time()), |_| ()),
         query_all: db
             .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
             .await
@@ -89,7 +89,7 @@ mod fuzz_helpers {
         cache::CacheDb,
         server::{postgres_db::tests::TmpDb, PostgresDb},
         test_utils::{db::ServerConfig, *},
-        EventId, Object, Query, ResultExt, User,
+        EventId, Object, Query, ResultExt, Updatedness, User,
     };
 
     pub use crate as crdb;
@@ -136,7 +136,7 @@ mod fuzz_helpers {
         db: &Database,
         mem_db: &MemDb,
         user: User,
-        only_updated_since: Option<EventId>,
+        only_updated_since: Option<Updatedness>,
         query: &Query,
     ) -> anyhow::Result<()> {
         let pg = db
@@ -154,31 +154,37 @@ mod fuzz_helpers {
     pub async fn run_vacuum(
         db: &Database,
         mem_db: &MemDb,
-        recreate_at: Option<EventId>,
+        recreate_at: Option<(EventId, Updatedness)>,
     ) -> anyhow::Result<()> {
         match recreate_at {
             None => {
                 let db = db
-                    .vacuum(None, None, |r| {
+                    .vacuum(None, Updatedness::now(), None, |r| {
                         panic!("got unexpected recreation {r:?}");
                     })
                     .await;
                 let mem = mem_db.vacuum().await;
                 cmp(db, mem)
             }
-            Some(recreate_at) => {
+            Some((recreate_at, updatedness)) => {
                 let db = db
-                    .vacuum(Some(recreate_at), None, |_| {
+                    .vacuum(Some(recreate_at), updatedness, None, |_| {
                         // TODO(test): validate that the notified recreations are the same as in memdb
                     })
                     .await;
                 let mem = async move {
-                    mem_db.recreate_all::<TestObjectSimple>(recreate_at).await?;
-                    mem_db.recreate_all::<TestObjectPerms>(recreate_at).await?;
                     mem_db
-                        .recreate_all::<TestObjectDelegatePerms>(recreate_at)
+                        .recreate_all::<TestObjectSimple>(recreate_at, Some(updatedness))
                         .await?;
-                    mem_db.recreate_all::<TestObjectFull>(recreate_at).await?;
+                    mem_db
+                        .recreate_all::<TestObjectPerms>(recreate_at, Some(updatedness))
+                        .await?;
+                    mem_db
+                        .recreate_all::<TestObjectDelegatePerms>(recreate_at, Some(updatedness))
+                        .await?;
+                    mem_db
+                        .recreate_all::<TestObjectFull>(recreate_at, Some(updatedness))
+                        .await?;
                     mem_db.vacuum().await?;
                     Ok(())
                 }

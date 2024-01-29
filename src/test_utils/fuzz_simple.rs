@@ -206,8 +206,9 @@ async fn regression_vacuum_did_not_actually_recreate_objects() {
                 force_lock: true,
             },
             Vacuum {
-                recreate_at: Some(EventId(
-                    Ulid::from_string("00001000040000000000001000").unwrap(),
+                recreate_at: Some((
+                    EventId(Ulid::from_string("00001000040000000000001000").unwrap()),
+                    make_updatedness().unwrap(),
                 )),
             },
             SubmitSimple {
@@ -685,7 +686,23 @@ async fn regression_memdb_vacuum_very_late_gave_error_outside_cmp() {
     fuzz_impl(
         &cluster,
         Arc::new(vec![Op::Vacuum {
-            recreate_at: Some(EventId::from_u128(u128::MAX)),
+            recreate_at: Some((EventId::from_u128(u128::MAX), Updatedness::from_u128(0))),
+        }]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+async fn regression_memdb_had_not_implemented_timestamps() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![Op::QuerySimple {
+            user: User(Ulid::from_string("39DNJNMVVECM3GFZR00278W04E").unwrap()),
+            only_updated_since: Some(Updatedness(
+                Ulid::from_string("00000000000000000000000000").unwrap(),
+            )),
+            query: Query::Eq(vec![], serde_json::Value::Null),
         }]),
     )
     .await;

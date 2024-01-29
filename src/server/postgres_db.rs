@@ -259,6 +259,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn vacuum(
         &self,
         no_new_changes_before: Option<EventId>,
+        updatedness: Updatedness,
         kill_sessions_older_than: Option<Timestamp>,
         notify_recreation: impl Fn(Update),
     ) -> crate::Result<()> {
@@ -331,13 +332,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 if let Some(event_id) = no_new_changes_before {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
-                    let recreation_result =
-                        // TODO(api): should think some more about how the server generates and pushes its `Updatedness`.
-                        Config::recreate_no_lock(&self, type_id, object_id, event_id, Updatedness::now(), &*cache_db)
-                            .await
-                            .wrap_with_context(|| {
-                                format!("recreating {object_id:?} at time {event_id:?}")
-                            })?;
+                    let recreation_result = Config::recreate_no_lock(
+                        &self,
+                        type_id,
+                        object_id,
+                        event_id,
+                        updatedness,
+                        &*cache_db,
+                    )
+                    .await
+                    .wrap_with_context(|| {
+                        format!("recreating {object_id:?} at time {event_id:?}")
+                    })?;
                     if let Some((new_created_at, snapshot_version, data)) = recreation_result {
                         reord::point().await;
                         notify_recreation(Update {
@@ -1278,7 +1284,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn query<T: Object>(
         &self,
         user: User,
-        only_updated_since: Option<EventId>,
+        only_updated_since: Option<Updatedness>,
         q: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
         reord::point().await;
