@@ -2,10 +2,10 @@ use crate::{
     api::ApiConfig, cache::CacheDb, messages::Updates, EventId, SessionRef, Timestamp, Updatedness,
     User,
 };
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
+use axum::extract::ws::WebSocket;
 use std::{
     collections::HashMap,
-    net::SocketAddr,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
@@ -184,14 +184,8 @@ impl<C: ServerConfig> Server<C> {
         Ok((this, upgrade_handle))
     }
 
-    // TODO(api): replace with a function that just takes in a websocket io stream
-    pub async fn serve(&self, addr: &SocketAddr) -> anyhow::Result<()> {
-        let listener = tokio::net::TcpListener::bind(addr)
-            .await
-            .with_context(|| format!("binding to {addr:?}"))?;
-        axum::serve(listener, axum::Router::new())
-            .await
-            .context("serving axum webserver")
+    pub async fn answer(&self, _socket: WebSocket) {
+        unimplemented!() // TODO(api)
     }
 
     /// Cleans up and optimizes up the database
