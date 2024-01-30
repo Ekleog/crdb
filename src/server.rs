@@ -228,27 +228,24 @@ impl<C: ServerConfig> Server<C> {
             .wrap_context("deserializing client message")?;
         match &*msg.request {
             Request::SetToken(token) => {
-                Self::send_res(
-                    &mut conn.socket,
-                    msg.request_id,
-                    self.postgres_db
-                        .resume_session(*token)
-                        .await
-                        .map(|session| {
-                            let (updates_sender, updates_receiver) = mpsc::unbounded_channel();
-                            self.sessions
-                                .lock()
-                                .unwrap()
-                                .entry(session.user_id)
-                                .or_insert_with(HashMap::new)
-                                .entry(session.session_ref)
-                                .or_insert_with(Vec::new)
-                                .push(updates_sender);
-                            conn.updates_receiver = Some(updates_receiver);
-                            ResponsePart::Success
-                        }),
-                )
-                .await?;
+                let res = self
+                    .postgres_db
+                    .resume_session(*token)
+                    .await
+                    .map(|session| {
+                        let (updates_sender, updates_receiver) = mpsc::unbounded_channel();
+                        self.sessions
+                            .lock()
+                            .unwrap()
+                            .entry(session.user_id)
+                            .or_insert_with(HashMap::new)
+                            .entry(session.session_ref)
+                            .or_insert_with(Vec::new)
+                            .push(updates_sender);
+                        conn.updates_receiver = Some(updates_receiver);
+                        ResponsePart::Success
+                    });
+                Self::send_res(&mut conn.socket, msg.request_id, res).await?;
             }
             _ => {
                 unimplemented!() // TODO(api)
