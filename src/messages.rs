@@ -44,6 +44,8 @@ pub enum Request {
         only_updated_since: Option<Updatedness>,
         subscribe: bool,
     },
+    // TODO(api): introduce GetLatest for when the client really just wants a latest snapshot once,
+    // without caring about it actually being a CRDT
     GetBinaries(HashSet<BinPtr>),
     Unsubscribe(HashSet<ObjectId>),
     UnsubscribeQuery(QueryId),

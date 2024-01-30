@@ -1600,7 +1600,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     #[allow(dead_code)] // TODO(api): use to answer get requests
     async fn get_all(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
-        // TODO(low): take as parameter if-modified-since, and only return the things that are more recent than that
+        // TODO(server): take as parameter if-modified-since, and only return the things that are more recent than that
         reord::point().await;
         let mut transaction = self
             .db

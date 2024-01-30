@@ -301,6 +301,9 @@ impl<C: ServerConfig> Server<C> {
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
+            // TODO(api): when implementing Get, make sure to:
+            // 1. subscribe the user to the object ids, to not miss events between the initial fetch and the subscription
+            // 2. make sure not to return early to the `answer` loop! (and document why). This avoids Updates being sent too early
             _ => {
                 unimplemented!() // TODO(api)
             }
