@@ -233,7 +233,6 @@ impl Connection {
                                 // Re-subscribe to the previously subscribed queries and objects
                                 // Start with subscribed objects, so that we easily tell the server what we already know about them.
                                 // Only then re-subscribe to queries, this way the server can answer AlreadySubscribed whenever relevant.
-                                // TODO(api): make sure we track subscribed_objects properly, after an object newly starts matching a subscribed query.
                                 if !self.subscribed_objects.is_empty() {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
@@ -475,6 +474,7 @@ impl Connection {
                         *updated = Some(updates.now_have_all_until);
                     }
                     // TODO(client): somehow keep track of now_have_all_until for each subscribed query
+                    // TODO(client): make sure we track subscribed_objects properly, after an object newly starts matching a subscribed query.
                 }
 
                 // And send the update
