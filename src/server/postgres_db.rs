@@ -139,11 +139,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(())
     }
 
-    pub async fn list_sessions(&self, user: User) -> anyhow::Result<Vec<Session>> {
+    pub async fn list_sessions(&self, user: User) -> crate::Result<Vec<Session>> {
         let rows = sqlx::query!("SELECT * FROM sessions WHERE user_id = $1", user as User)
             .fetch_all(&self.db)
             .await
-            .with_context(|| format!("listing sessions for {user:?}"))?;
+            .wrap_with_context(|| format!("listing sessions for {user:?}"))?;
         let sessions = rows
             .into_iter()
             .map(|r| Session {

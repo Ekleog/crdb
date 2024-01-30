@@ -253,6 +253,7 @@ impl<C: ServerConfig> Server<C> {
                     });
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
+            // TODO(client): expose RenameSession & co to end-user
             Request::RenameSession(name) => {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
@@ -268,6 +269,17 @@ impl<C: ServerConfig> Server<C> {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
                     Some(sess) => Ok(ResponsePart::Sessions(vec![sess.session.clone()])),
+                };
+                Self::send_res(&mut conn.socket, msg.request_id, res).await
+            }
+            Request::ListSessions => {
+                let res = match &conn.session {
+                    None => Err(crate::Error::ProtocolViolation),
+                    Some(sess) => self
+                        .postgres_db
+                        .list_sessions(sess.session.user_id)
+                        .await
+                        .map(ResponsePart::Sessions),
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
