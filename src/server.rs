@@ -21,15 +21,17 @@ mod postgres_db;
 pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
+// Each update is both the list of updates itself, and the new latest snapshot
+// for query matching, available if the latest snapshot actually changed
+type UpdatesWithSnap = (Updates, Option<serde_json::Value>);
+
 pub struct Server<C: ServerConfig> {
     _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
     postgres_db: Arc<PostgresDb<C>>,
     updatedness_requester:
-        mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<Updates>)>>,
+        mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesWithSnap>)>>,
     _cleanup_token: tokio_util::sync::DropGuard,
-    // For each ongoing session, a way to push updates. Each update is both the list of updates itself, and
-    // the new latest snapshot for query matching, available if the latest snapshot actually changed
-    _sessions: MultiMap<SessionRef, mpsc::UnboundedSender<(Updates, Option<serde_json::Value>)>>, // TODO(api): use
+    _sessions: MultiMap<SessionRef, mpsc::UnboundedSender<UpdatesWithSnap>>, // TODO(api): use
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -59,8 +61,9 @@ impl<C: ServerConfig> Server<C> {
         let upgrade_handle = tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
 
         // Setup the update reorderer task
-        let (updatedness_requester, mut updatedness_request_receiver) =
-            mpsc::unbounded_channel::<oneshot::Sender<(Updatedness, oneshot::Sender<Updates>)>>();
+        let (updatedness_requester, mut updatedness_request_receiver) = mpsc::unbounded_channel::<
+            oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesWithSnap>)>,
+        >();
         let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
         tokio::task::spawn(async move {
             // Updatedness request handler
@@ -147,10 +150,14 @@ impl<C: ServerConfig> Server<C> {
                     {
                         tracing::error!(?err, "scheduled vacuum failed");
                     }
-                    if let Err(_) = slot.send(Updates {
-                        data: updates,
-                        now_have_all_until: updatedness,
-                    }) {
+                    // Vacuum cannot change any latest snapshot
+                    if let Err(_) = slot.send((
+                        Updates {
+                            data: updates,
+                            now_have_all_until: updatedness,
+                        },
+                        None,
+                    )) {
                         tracing::error!("Update reorderer went away before autovacuum");
                     }
                 }
@@ -198,16 +205,22 @@ impl<C: ServerConfig> Server<C> {
                 |update| updates.push(update),
             )
             .await;
-        if let Err(_) = slot.send(Updates {
-            data: updates,
-            now_have_all_until: updatedness,
-        }) {
+        // Vacuum cannot change any latest snapshot
+        if let Err(_) = slot.send((
+            Updates {
+                data: updates,
+                now_have_all_until: updatedness,
+            },
+            None,
+        )) {
             tracing::error!("Update reorderer went away before server");
         }
         res
     }
 
-    async fn updatedness_slot(&self) -> crate::Result<(Updatedness, oneshot::Sender<Updates>)> {
+    async fn updatedness_slot(
+        &self,
+    ) -> crate::Result<(Updatedness, oneshot::Sender<UpdatesWithSnap>)> {
         let (sender, receiver) = oneshot::channel();
         self.updatedness_requester.send(sender).map_err(|_| {
             crate::Error::Other(anyhow!(
