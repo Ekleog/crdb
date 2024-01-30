@@ -265,7 +265,7 @@ async fn regression_any_query_crashed_postgres() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::All(vec![]),
+            query: Arc::new(Query::All(vec![])),
         }]),
     )
     .await;
@@ -279,7 +279,7 @@ async fn regression_postgres_bignumeric_comparison_with_json_needs_cast() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::Lt(vec![], Decimal::from_str("0").unwrap()),
+            query: Arc::new(Query::Lt(vec![], Decimal::from_str("0").unwrap())),
         }]),
     )
     .await;
@@ -293,10 +293,10 @@ async fn regression_keyed_comparison_was_still_wrong_syntax() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::Ge(
+            query: Arc::new(Query::Ge(
                 vec![JsonPathItem::Key(String::new())],
                 Decimal::from_str("0").unwrap(),
-            ),
+            )),
         }]),
     )
     .await;
@@ -310,10 +310,10 @@ async fn regression_too_big_decimal_failed_postgres() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::Ge(
+            query: Arc::new(Query::Ge(
                 vec![JsonPathItem::Key(String::new())],
                 Decimal::from_str(&format!("0.{:030000}1", 0)).unwrap(),
-            ),
+            )),
         }]),
     )
     .await;
@@ -327,10 +327,10 @@ async fn regression_postgresql_syntax_for_equality() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::Eq(
+            query: Arc::new(Query::Eq(
                 vec![JsonPathItem::Key(String::new())],
                 serde_json::Value::Null,
-            ),
+            )),
         }]),
     )
     .await;
@@ -344,10 +344,10 @@ async fn regression_checked_add_signed_for_u64_cannot_go_below_zero() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::Le(
+            query: Arc::new(Query::Le(
                 vec![],
                 Decimal::from_str(&format!("0.{:0228}1", 0)).unwrap(),
-            ),
+            )),
         }]),
     )
     .await;
@@ -361,10 +361,10 @@ async fn regression_way_too_big_decimal_caused_problems() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::Le(
+            query: Arc::new(Query::Le(
                 vec![],
                 Decimal::from_str(&format!("0.{:057859}1", 0)).unwrap(),
-            ),
+            )),
         }]),
     )
     .await;
@@ -378,10 +378,10 @@ async fn regression_strings_are_in_keys_too() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("00000020000G10000000006000").unwrap()),
             only_updated_since: None,
-            query: Query::Le(
+            query: Arc::new(Query::Le(
                 vec![JsonPathItem::Key(String::from("\0"))],
                 Decimal::from_str("0").unwrap(),
-            ),
+            )),
         }]),
     )
     .await;
@@ -403,7 +403,7 @@ async fn regression_cast_error() {
             Op::QuerySimple {
                 user: User(Ulid::from_string("00000000000000000000000001").unwrap()),
                 only_updated_since: None,
-                query: Query::Le(vec![], Decimal::from_str("0").unwrap()),
+                query: Arc::new(Query::Le(vec![], Decimal::from_str("0").unwrap())),
             },
         ]),
     )
@@ -418,10 +418,10 @@ async fn regression_sql_injection_in_path_key() {
         Arc::new(vec![Op::QuerySimple {
             user: User(Ulid::from_string("030C1G60R30C1G60R30C1G60R3").unwrap()),
             only_updated_since: None,
-            query: Query::Eq(
+            query: Arc::new(Query::Eq(
                 vec![JsonPathItem::Key(String::from("'a"))],
                 serde_json::Value::Null,
-            ),
+            )),
         }]),
     )
     .await;
@@ -444,36 +444,36 @@ async fn regression_sqlx_had_a_bug_with_prepared_queries_of_different_types() {
             Op::QuerySimple {
                 user: USER_ID_NULL,
                 only_updated_since: None,
-                query: Query::Eq(
+                query: Arc::new(Query::Eq(
                     vec![
                         JsonPathItem::Key(String::from("a")),
                         JsonPathItem::Key(String::from("a")),
                     ],
                     serde_json::Value::Null,
-                ),
+                )),
             },
             Op::QuerySimple {
                 user: USER_ID_NULL,
                 only_updated_since: None,
-                query: Query::Eq(vec![], serde_json::Value::Null),
+                query: Arc::new(Query::Eq(vec![], serde_json::Value::Null)),
             },
             Op::QuerySimple {
                 user: USER_ID_NULL,
                 only_updated_since: None,
-                query: Query::Eq(vec![], serde_json::Value::Null),
+                query: Arc::new(Query::Eq(vec![], serde_json::Value::Null)),
             },
             Op::QuerySimple {
                 user: USER_ID_NULL,
                 only_updated_since: None,
-                query: Query::Eq(vec![], serde_json::Value::Null),
+                query: Arc::new(Query::Eq(vec![], serde_json::Value::Null)),
             },
             Op::QuerySimple {
                 user: USER_ID_NULL,
                 only_updated_since: None,
-                query: Query::Eq(
+                query: Arc::new(Query::Eq(
                     vec![JsonPathItem::Id(1), JsonPathItem::Key(String::from("a"))],
                     serde_json::Value::Null,
-                ),
+                )),
             },
         ]),
     )
@@ -496,7 +496,10 @@ async fn regression_postgres_null_led_to_not_being_wrong() {
             Op::QuerySimple {
                 user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
                 only_updated_since: None,
-                query: Query::Not(Box::new(Query::ContainsStr(vec![], String::new()))),
+                query: Arc::new(Query::Not(Box::new(Query::ContainsStr(
+                    vec![],
+                    String::new(),
+                )))),
             },
         ]),
     )
@@ -524,10 +527,10 @@ async fn regression_postgres_handled_numbers_as_one_element_arrays() {
             Op::QuerySimple {
                 user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
                 only_updated_since: None,
-                query: Query::Lt(
+                query: Arc::new(Query::Lt(
                     vec![JsonPathItem::Id(-1), JsonPathItem::Id(-1)],
                     Decimal::from(158),
-                ),
+                )),
             },
         ]),
     )
@@ -702,7 +705,7 @@ async fn regression_memdb_had_not_implemented_timestamps() {
             only_updated_since: Some(Updatedness(
                 Ulid::from_string("00000000000000000000000000").unwrap(),
             )),
-            query: Query::Eq(vec![], serde_json::Value::Null),
+            query: Arc::new(Query::Eq(vec![], serde_json::Value::Null)),
         }]),
     )
     .await;

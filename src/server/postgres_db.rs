@@ -1284,7 +1284,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         &self,
         user: User,
         only_updated_since: Option<Updatedness>,
-        q: &Query,
+        query: Arc<Query>,
     ) -> crate::Result<Vec<ObjectId>> {
         reord::point().await;
         let mut transaction = self
@@ -1300,7 +1300,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_context("setting transaction as repeatable read")?;
 
-        let query = format!(
+        let query_sql = format!(
             "
                 SELECT object_id
                 FROM snapshots
@@ -1310,32 +1310,32 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 AND last_modified >= $3
                 AND ({})
             ",
-            q.where_clause(4)
+            query.where_clause(4)
         );
         let min_last_modified = only_updated_since
             .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
             .unwrap_or(EventId::from_u128(0));
         reord::point().await;
-        let mut query = sqlx::query(&query)
+        let mut query_sql = sqlx::query(&query_sql)
             .persistent(false) // TODO(blocked): remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
             .bind(T::type_ulid())
             .bind(user)
             .bind(min_last_modified);
-        for b in q.binds()? {
+        for b in query.binds()? {
             match b {
-                Bind::Json(v) => query = query.bind(v),
-                Bind::Str(v) => query = query.bind(v),
-                Bind::String(v) => query = query.bind(v),
-                Bind::Decimal(v) => query = query.bind(v),
-                Bind::I32(v) => query = query.bind(v),
+                Bind::Json(v) => query_sql = query_sql.bind(v),
+                Bind::Str(v) => query_sql = query_sql.bind(v),
+                Bind::String(v) => query_sql = query_sql.bind(v),
+                Bind::Decimal(v) => query_sql = query_sql.bind(v),
+                Bind::I32(v) => query_sql = query_sql.bind(v),
             }
         }
         reord::point().await;
-        let res = query
+        let res = query_sql
             .map(|row| ObjectId::from_uuid(row.get(0)))
             .fetch_all(&mut *transaction)
             .await
-            .wrap_with_context(|| format!("listing objects matching query {q:?}"))?;
+            .wrap_with_context(|| format!("listing objects matching query {query:?}"))?;
 
         Ok(res)
     }

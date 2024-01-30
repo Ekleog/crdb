@@ -143,10 +143,10 @@ async fn regression_postgres_not_null_was_null() {
             Op::QueryPerm {
                 user: User(Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap()),
                 only_updated_since: None,
-                query: Query::Not(Box::new(Query::Eq(
+                query: Arc::new(Query::Not(Box::new(Query::Eq(
                     vec![crdb::JsonPathItem::Key("".to_string())],
                     serde_json::Value::Null,
-                ))),
+                )))),
             },
         ]),
     )
@@ -229,7 +229,7 @@ async fn regression_memdb_vacuum_updated_updatedness_even_without_any_change() {
             Op::QueryPerm {
                 user: USER_ID_1,
                 only_updated_since: Some(UPDATEDNESS_2),
-                query: Query::All(vec![]),
+                query: Arc::new(Query::All(vec![])),
             },
         ]),
     )

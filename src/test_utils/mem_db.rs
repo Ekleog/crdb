@@ -66,10 +66,9 @@ impl MemDb {
         &self,
         user: User,
         only_updated_since: Option<Updatedness>,
-        q: &Query,
+        query: &Query,
     ) -> crate::Result<Vec<ObjectId>> {
-        q.check()?;
-        let q = &q;
+        query.check()?;
         let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
         let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
         stream::iter(objects.into_iter())
@@ -95,7 +94,7 @@ impl MemDb {
                         .unwrap()
                         .iter()
                         .any(|u| *u == user))
-                    || !q.matches(&*o).unwrap()
+                    || !query.matches(&*o).unwrap()
                 {
                     return None;
                 }

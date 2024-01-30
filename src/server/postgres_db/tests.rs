@@ -18,7 +18,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         db: db,
         vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(OBJECT_ID_3.time()), |_| ()),
         query_all: db
-            .query::<TestObjectSimple>(USER_ID_NULL, None, &Query::All(vec![]))
+            .query::<TestObjectSimple>(USER_ID_NULL, None, Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
         test_remove: false,
@@ -137,15 +137,15 @@ mod fuzz_helpers {
         mem_db: &MemDb,
         user: User,
         only_updated_since: Option<Updatedness>,
-        query: &Query,
+        query: &Arc<Query>,
     ) -> anyhow::Result<()> {
         let pg = db
-            .query::<T>(user, only_updated_since, query)
+            .query::<T>(user, only_updated_since, query.clone())
             .await
             .wrap_context("querying postgres")
             .map(|r| r.into_iter().collect::<HashSet<_>>());
         let mem = mem_db
-            .query::<T>(user, only_updated_since, query)
+            .query::<T>(user, only_updated_since, &query)
             .await
             .map(|r| r.into_iter().collect::<HashSet<_>>());
         cmp(pg, mem)

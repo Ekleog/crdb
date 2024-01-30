@@ -326,11 +326,11 @@ impl ClientDb {
         Ok(self.db.get_latest::<T>(false, object_id).await?) // Already locked just above
     }
 
-    pub async fn query_local<'a, T: Object>(
-        &'a self,
+    pub async fn query_local<T: Object>(
+        &self,
         importance: Importance,
-        query: &'a Query,
-    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<Arc<T>>>> {
+        query: Arc<Query>,
+    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
         let object_ids = self
             .db
             .query::<T>(query)

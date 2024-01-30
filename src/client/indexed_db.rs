@@ -234,8 +234,8 @@ impl IndexedDb {
         })
     }
 
-    pub async fn query<T: Object>(&self, q: &Query) -> crate::Result<Vec<ObjectId>> {
-        q.check()?;
+    pub async fn query<T: Object>(&self, query: Arc<Query>) -> crate::Result<Vec<ObjectId>> {
+        query.check()?;
         let type_id_js = T::type_ulid().to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
         let max_id = EventId::from_u128(u128::MAX).to_js_string();
@@ -281,7 +281,7 @@ impl IndexedDb {
                         })?;
                     let snapshot = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot)
                         .wrap_context("deserializing snapshot data as serde_json::Value")?;
-                    if q.matches_json(&snapshot) {
+                    if query.matches_json(&snapshot) {
                         let object_id_js = cursor
                             .key()
                             .ok_or_else(|| {
@@ -1443,14 +1443,14 @@ impl Db for IndexedDb {
                 else {
                     // Object does not exist, create it
                     return Self::create_impl::<T>(
-                            transaction,
-                            object_id,
-                            new_created_at,
-                            object,
-                            updatedness,
-                            force_lock,
-                        )
-                        .await;
+                        transaction,
+                        object_id,
+                        new_created_at,
+                        object,
+                        updatedness,
+                        force_lock,
+                    )
+                    .await;
                 };
                 let creation_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(creation_meta)
                     .wrap_context("parsing snapshot metadata")?;

@@ -14,7 +14,7 @@ async fn smoke_test() {
         db: db,
         vacuum: db.vacuum(),
         query_all: db
-            .query::<TestObjectSimple>(&Query::All(vec![]))
+            .query::<TestObjectSimple>(Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
         test_remove: true,
@@ -31,7 +31,10 @@ mod fuzz_helpers {
     use std::{
         collections::HashSet,
         future::Future,
-        sync::atomic::{AtomicUsize, Ordering},
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
     };
 
     pub use crdb;
@@ -132,15 +135,15 @@ mod fuzz_helpers {
         mem_db: &MemDb,
         _user: User,
         _only_updated_since: Option<Updatedness>,
-        query: &Query,
+        query: &Arc<Query>,
     ) -> anyhow::Result<()> {
         let db = db
-            .query::<T>(query)
+            .query::<T>(query.clone())
             .await
             .wrap_context("querying postgres")
             .map(|r| r.into_iter().collect::<HashSet<_>>());
         let mem = mem_db
-            .query::<T>(USER_ID_NULL, None, query)
+            .query::<T>(USER_ID_NULL, None, &query)
             .await
             .wrap_context("querying mem")
             .map(|r| r.into_iter().collect::<HashSet<_>>());

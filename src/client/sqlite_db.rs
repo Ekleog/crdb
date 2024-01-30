@@ -33,7 +33,7 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite)
     }
 
-    pub async fn query<T: Object>(&self, _q: &Query) -> crate::Result<Vec<ObjectId>> {
+    pub async fn query<T: Object>(&self, _query: Arc<Query>) -> crate::Result<Vec<ObjectId>> {
         unimplemented!() // TODO(sqlite): implement
     }
 

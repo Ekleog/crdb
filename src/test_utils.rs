@@ -152,7 +152,7 @@ macro_rules! make_fuzzer_stuffs {
                 [< Query $name >] {
                     user: User,
                     only_updated_since: Option<Updatedness>,
-                    query: Query,
+                    query: Arc<Query>,
                 },
                 [< Recreate $name >] {
                     object_id: usize,
