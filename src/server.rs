@@ -1,6 +1,9 @@
 use crate::{
-    api::ApiConfig, cache::CacheDb, messages::Updates, EventId, SessionRef, Timestamp, Updatedness,
-    User,
+    api::ApiConfig,
+    cache::CacheDb,
+    crdb_internal::ResultExt,
+    messages::{ClientMessage, Request, ResponsePart, ServerMessage, Updates},
+    EventId, SessionRef, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -191,13 +194,16 @@ impl<C: ServerConfig> Server<C> {
                 msg = socket.next() => match msg {
                     None => break, // End-of-stream
                     Some(Err(err)) => {
-                        tracing::error!(?err, "received an error while waiting for message on websocket");
+                        tracing::warn!(?err, "received an error while waiting for message on websocket");
                         break;
                     }
                     Some(Ok(ws::Message::Ping(_) | ws::Message::Pong(_))) => continue, // Auto-handled by axum, ignore
                     Some(Ok(ws::Message::Close(_))) => break, // End-of-stream
-                    Some(Ok(ws::Message::Text(_msg))) => {
-                        unimplemented!() // TODO(api)
+                    Some(Ok(ws::Message::Text(msg))) => {
+                        if let Err(err) = self.handle_client_message(&mut socket, &msg).await {
+                            tracing::warn!(?err, ?msg, "client message violated protocol");
+                            break;
+                        }
                     }
                     Some(Ok(ws::Message::Binary(_msg))) => {
                         unimplemented!() // TODO(api)
@@ -205,6 +211,41 @@ impl<C: ServerConfig> Server<C> {
                 }
             }
         }
+    }
+
+    async fn handle_client_message(&self, socket: &mut WebSocket, msg: &str) -> crate::Result<()> {
+        let msg = serde_json::from_str::<ClientMessage>(msg)
+            .wrap_context("deserializing client message")?;
+        match &*msg.request {
+            Request::SetToken(token) => match self.postgres_db.resume_session(*token).await {
+                Err(err) => {
+                    Self::send(
+                        socket,
+                        &ServerMessage::Response {
+                            request_id: msg.request_id,
+                            last_response: true,
+                            response: ResponsePart::Error(err.into()),
+                        },
+                    )
+                    .await?;
+                }
+                Ok(_session) => {
+                    // TODO(api)
+                }
+            },
+            _ => {
+                unimplemented!() // TODO(api)
+            }
+        }
+        Ok(())
+    }
+
+    async fn send(socket: &mut WebSocket, msg: &ServerMessage) -> crate::Result<()> {
+        let msg = serde_json::to_string(msg).wrap_context("serializing server message")?;
+        socket
+            .send(ws::Message::Text(msg))
+            .await
+            .wrap_context("sending response to client")
     }
 
     /// Cleans up and optimizes up the database

@@ -147,7 +147,10 @@ impl From<Error> for SerializableError {
                 real_type_id,
             },
             Error::ConnectionLoss => SerializableError::ConnectionLoss,
-            Error::Other(_) => SerializableError::InternalServerError,
+            Error::Other(err) => {
+                tracing::error!(?err, "returning internal server error to client");
+                SerializableError::InternalServerError
+            }
         }
     }
 }
@@ -296,6 +299,18 @@ impl<T> ResultExt for std::result::Result<T, indexed_db::Error<crate::Error>> {
     fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
         match self {
             Err(indexed_db::Error::User(e)) => Err(e).wrap_with_context(f),
+            Err(e) => Err(Error::Other(anyhow::Error::from(e).context(f()))),
+            Ok(r) => Ok(r),
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl<T> ResultExt for std::result::Result<T, axum::Error> {
+    type Ok = T;
+
+    fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
+        match self {
             Err(e) => Err(Error::Other(anyhow::Error::from(e).context(f()))),
             Ok(r) => Ok(r),
         }
