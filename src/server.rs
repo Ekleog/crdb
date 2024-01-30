@@ -3,7 +3,7 @@ use crate::{
     cache::CacheDb,
     crdb_internal::ResultExt,
     messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Updates},
-    EventId, SessionRef, SessionToken, Timestamp, Updatedness, User,
+    EventId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -246,6 +246,7 @@ impl<C: ServerConfig> Server<C> {
                             .push(updates_sender);
                         conn.session = Some(SessionInfo {
                             token: *token,
+                            session,
                             updates_receiver,
                         });
                         ResponsePart::Success
@@ -260,6 +261,13 @@ impl<C: ServerConfig> Server<C> {
                         .rename_session(sess.token, &name)
                         .await
                         .map(|()| ResponsePart::Success),
+                };
+                Self::send_res(&mut conn.socket, msg.request_id, res).await
+            }
+            Request::CurrentSession => {
+                let res = match &conn.session {
+                    None => Err(crate::Error::ProtocolViolation),
+                    Some(sess) => Ok(ResponsePart::Sessions(vec![sess.session.clone()])),
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
@@ -412,5 +420,6 @@ struct ConnectionState {
 
 struct SessionInfo {
     token: SessionToken,
+    session: Session,
     updates_receiver: mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
 }
