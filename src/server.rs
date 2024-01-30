@@ -2,7 +2,7 @@ use crate::{
     api::ApiConfig,
     cache::CacheDb,
     crdb_internal::ResultExt,
-    messages::{ClientMessage, Request, ResponsePart, ServerMessage, Updates},
+    messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Updates},
     EventId, SessionRef, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
@@ -227,45 +227,54 @@ impl<C: ServerConfig> Server<C> {
         let msg = serde_json::from_str::<ClientMessage>(msg)
             .wrap_context("deserializing client message")?;
         match &*msg.request {
-            Request::SetToken(token) => match self.postgres_db.resume_session(*token).await {
-                Err(err) => {
-                    Self::send(
-                        &mut conn.socket,
-                        &ServerMessage::Response {
-                            request_id: msg.request_id,
-                            last_response: true,
-                            response: ResponsePart::Error(err.into()),
-                        },
-                    )
-                    .await?;
-                }
-                Ok(session) => {
-                    let (updates_sender, updates_receiver) = mpsc::unbounded_channel();
-                    self.sessions
-                        .lock()
-                        .unwrap()
-                        .entry(session.user_id)
-                        .or_insert_with(HashMap::new)
-                        .entry(session.session_ref)
-                        .or_insert_with(Vec::new)
-                        .push(updates_sender);
-                    conn.updates_receiver = Some(updates_receiver);
-                    Self::send(
-                        &mut conn.socket,
-                        &ServerMessage::Response {
-                            request_id: msg.request_id,
-                            last_response: true,
-                            response: ResponsePart::Success,
-                        },
-                    )
-                    .await?;
-                }
-            },
+            Request::SetToken(token) => {
+                Self::send_res(
+                    &mut conn.socket,
+                    msg.request_id,
+                    self.postgres_db
+                        .resume_session(*token)
+                        .await
+                        .map(|session| {
+                            let (updates_sender, updates_receiver) = mpsc::unbounded_channel();
+                            self.sessions
+                                .lock()
+                                .unwrap()
+                                .entry(session.user_id)
+                                .or_insert_with(HashMap::new)
+                                .entry(session.session_ref)
+                                .or_insert_with(Vec::new)
+                                .push(updates_sender);
+                            conn.updates_receiver = Some(updates_receiver);
+                            ResponsePart::Success
+                        }),
+                )
+                .await?;
+            }
             _ => {
                 unimplemented!() // TODO(api)
             }
         }
         Ok(())
+    }
+
+    async fn send_res(
+        socket: &mut WebSocket,
+        request_id: RequestId,
+        res: crate::Result<ResponsePart>,
+    ) -> crate::Result<()> {
+        let response = match res {
+            Ok(res) => res,
+            Err(err) => ResponsePart::Error(err.into()),
+        };
+        Self::send(
+            socket,
+            &ServerMessage::Response {
+                request_id,
+                response,
+                last_response: true,
+            },
+        )
+        .await
     }
 
     async fn send(socket: &mut WebSocket, msg: &ServerMessage) -> crate::Result<()> {
