@@ -1,13 +1,10 @@
 use crate::{
-    api::ApiConfig,
-    cache::CacheDb,
-    messages::{ServerMessage, Updates},
-    EventId, ObjectId, SessionToken, Timestamp, Updatedness,
+    api::ApiConfig, cache::CacheDb, messages::Updates, EventId, SessionToken, Timestamp,
+    Updatedness,
 };
 use anyhow::{anyhow, Context};
 use multimap::MultiMap;
 use std::{
-    collections::{HashMap, HashSet},
     net::SocketAddr,
     sync::Arc,
     time::{Duration, SystemTime},
@@ -31,9 +28,8 @@ pub struct Server<C: ServerConfig> {
     updatedness_requester:
         mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<Updates>)>>,
     _cleanup_token: tokio_util::sync::DropGuard,
-    // TODO(api): use all the below
-    _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
-    _sessions: MultiMap<SessionToken, mpsc::UnboundedSender<ServerMessage>>,
+    // TODO(api): use the below
+    _sessions: MultiMap<SessionToken, mpsc::UnboundedSender<Updates>>, // TODO(api): should also send last_snapshot for query matching
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -167,7 +163,6 @@ impl<C: ServerConfig> Server<C> {
             postgres_db,
             updatedness_requester,
             _cleanup_token: cancellation_token.drop_guard(),
-            _watchers: HashMap::new(),
             _sessions: MultiMap::new(),
         };
         Ok((this, upgrade_handle))
