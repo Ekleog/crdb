@@ -15,7 +15,7 @@ enum Op {
     MarkActive(usize, Timestamp),
     Rename(usize, String),
     ListSessions(usize),
-    Disconnect { user: usize, session: usize },
+    Disconnect(usize),
 }
 
 struct FuzzState {
@@ -132,19 +132,23 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .collect::<HashSet<_>>();
             anyhow::ensure!(pg == s.sessions_for(user));
         }
-        Op::Disconnect { user, session } => {
-            let user = s.user_for(*user);
-            match s.tokens.get(*session) {
-                None => db.disconnect_session(user, SessionRef::now()).await?,
-                Some(token) => match s.sessions.get(token) {
-                    None => db.disconnect_session(user, SessionRef::now()).await?,
-                    Some(session) => {
-                        db.disconnect_session(user, session.session_ref).await?;
-                        s.sessions.remove(token);
-                    }
-                },
+        Op::Disconnect(session) => match s.tokens.get(*session) {
+            None => {
+                db.disconnect_session(User::now(), SessionRef::now())
+                    .await?
             }
-        }
+            Some(token) => match s.sessions.get(token) {
+                None => {
+                    db.disconnect_session(User::now(), SessionRef::now())
+                        .await?
+                }
+                Some(session) => {
+                    db.disconnect_session(session.user_id, session.session_ref)
+                        .await?;
+                    s.sessions.remove(token);
+                }
+            },
+        },
     }
     Ok(())
 }
@@ -219,11 +223,26 @@ fn regression_disconnect_was_ignored() {
                 session_name: String::new(),
                 expiration_time: Some(Timestamp::from_ms(0)),
             }),
-            Disconnect {
-                user: 0,
-                session: 0,
-            },
+            Disconnect(0),
             MarkActive(0, Timestamp::from_ms(0)),
         ],
     )
+}
+
+#[test]
+fn regression_memdb_ignored_disconnect_user_param() {
+    use Op::*;
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![
+            Login(NewSession {
+                user_id: USER_ID_1,
+                session_name: String::from("foo"),
+                expiration_time: Some(Timestamp::from_ms(1)),
+            }),
+            Disconnect(0),
+            ListSessions(0),
+        ],
+    );
 }
