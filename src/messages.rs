@@ -161,5 +161,5 @@ pub enum UpdateData {
         event_id: EventId,
         data: serde_json::Value,
     },
-    // TODO(api): Add `LostReadRights` variant for when an event makes a user lose read rights on that object.
+    LostReadRights,
 }

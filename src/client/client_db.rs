@@ -127,6 +127,15 @@ impl ClientDb {
                                 // Without this, users would risk unsubscribing from an object, then receiving
                                 // an event on this object (as a race condition), and then staying subscribed.
                             }
+                            UpdateData::LostReadRights => {
+                                if let Err(err) = local_db.remove(object_id).await {
+                                    tracing::error!(
+                                        ?err,
+                                        ?object_id,
+                                        "failed removing object for which we lost read rights"
+                                    );
+                                }
+                            }
                         }
                         // TODO(client): give out update broadcasters for each individual query the user subscribed to
                         if let Err(err) = updates_broadcaster.send(object_id) {
@@ -210,6 +219,7 @@ impl ClientDb {
         created_at: EventId,
         object: Arc<T>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+        // TODO(client): validate permissions to create the object, to fail early
         self.db
             .create(
                 object_id,
@@ -236,6 +246,7 @@ impl ClientDb {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+        // TODO(client): validate permissions to submit the event, to fail early
         self.db
             .submit::<T>(
                 object,
