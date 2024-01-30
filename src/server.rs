@@ -39,7 +39,7 @@ pub struct Server<C: ServerConfig> {
     >,
     _cleanup_token: tokio_util::sync::DropGuard,
     sessions:
-        Arc<Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>>, // TODO(api): use
+        Arc<Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>>,
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -291,6 +291,13 @@ impl<C: ServerConfig> Server<C> {
                         .disconnect_session(sess.session.user_id, *session_ref)
                         .await
                         .map(|()| ResponsePart::Success),
+                };
+                Self::send_res(&mut conn.socket, msg.request_id, res).await
+            }
+            Request::GetTime => {
+                let res = match &conn.session {
+                    None => Err(crate::Error::ProtocolViolation),
+                    Some(_) => Ok(ResponsePart::CurrentTime(Timestamp::now())),
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
