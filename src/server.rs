@@ -3,7 +3,7 @@ use crate::{
     cache::CacheDb,
     crdb_internal::ResultExt,
     messages::{ClientMessage, Request, ResponsePart, ServerMessage, Updates},
-    EventId, SessionRef, Timestamp, Updatedness, User,
+    EventId, Session, SessionRef, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -188,10 +188,14 @@ impl<C: ServerConfig> Server<C> {
         Ok((this, upgrade_handle))
     }
 
-    pub async fn answer(&self, mut socket: WebSocket) {
+    pub async fn answer(&self, socket: WebSocket) {
+        let mut conn = ConnectionState {
+            socket,
+            session: None,
+        };
         loop {
             tokio::select! {
-                msg = socket.next() => match msg {
+                msg = conn.socket.next() => match msg {
                     None => break, // End-of-stream
                     Some(Err(err)) => {
                         tracing::warn!(?err, "received an error while waiting for message on websocket");
@@ -200,7 +204,7 @@ impl<C: ServerConfig> Server<C> {
                     Some(Ok(ws::Message::Ping(_) | ws::Message::Pong(_))) => continue, // Auto-handled by axum, ignore
                     Some(Ok(ws::Message::Close(_))) => break, // End-of-stream
                     Some(Ok(ws::Message::Text(msg))) => {
-                        if let Err(err) = self.handle_client_message(&mut socket, &msg).await {
+                        if let Err(err) = self.handle_client_message(&mut conn, &msg).await {
                             tracing::warn!(?err, ?msg, "client message violated protocol");
                             break;
                         }
@@ -213,14 +217,18 @@ impl<C: ServerConfig> Server<C> {
         }
     }
 
-    async fn handle_client_message(&self, socket: &mut WebSocket, msg: &str) -> crate::Result<()> {
+    async fn handle_client_message(
+        &self,
+        conn: &mut ConnectionState,
+        msg: &str,
+    ) -> crate::Result<()> {
         let msg = serde_json::from_str::<ClientMessage>(msg)
             .wrap_context("deserializing client message")?;
         match &*msg.request {
             Request::SetToken(token) => match self.postgres_db.resume_session(*token).await {
                 Err(err) => {
                     Self::send(
-                        socket,
+                        &mut conn.socket,
                         &ServerMessage::Response {
                             request_id: msg.request_id,
                             last_response: true,
@@ -229,8 +237,18 @@ impl<C: ServerConfig> Server<C> {
                     )
                     .await?;
                 }
-                Ok(_session) => {
-                    // TODO(api)
+                Ok(session) => {
+                    conn.session = Some(session);
+                    Self::send(
+                        &mut conn.socket,
+                        &ServerMessage::Response {
+                            request_id: msg.request_id,
+                            last_response: true,
+                            response: ResponsePart::Success,
+                        },
+                    )
+                    .await?;
+                    // TODO(api): make sure to subscribe to updates
                 }
             },
             _ => {
@@ -354,4 +372,9 @@ impl<Tz: chrono::TimeZone> ServerVacuumSchedule<Tz> {
         self.kill_sessions_older_than = Some(age);
         self
     }
+}
+
+struct ConnectionState {
+    socket: WebSocket,
+    session: Option<Session>,
 }
