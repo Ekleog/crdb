@@ -55,6 +55,9 @@ pub enum Error {
     #[error("Lost connection while request was in progress")]
     ConnectionLoss,
 
+    #[error("Client violated the protocol")]
+    ProtocolViolation,
+
     #[error(transparent)]
     Other(anyhow::Error),
 }
@@ -111,6 +114,9 @@ pub enum SerializableError {
     #[error("Lost connection while request was in progress")]
     ConnectionLoss,
 
+    #[error("Client violated the protocol")]
+    ProtocolViolation,
+
     #[error("Internal server error")]
     InternalServerError,
 }
@@ -147,6 +153,7 @@ impl From<Error> for SerializableError {
                 real_type_id,
             },
             Error::ConnectionLoss => SerializableError::ConnectionLoss,
+            Error::ProtocolViolation => SerializableError::ProtocolViolation,
             Error::Other(err) => {
                 tracing::error!(?err, "returning internal server error to client");
                 SerializableError::InternalServerError
@@ -187,6 +194,7 @@ impl From<SerializableError> for Error {
                 real_type_id,
             },
             SerializableError::ConnectionLoss => Error::ConnectionLoss,
+            SerializableError::ProtocolViolation => Error::ProtocolViolation,
             SerializableError::InternalServerError => {
                 Error::Other(anyhow!("Internal server error"))
             }

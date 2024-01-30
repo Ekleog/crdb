@@ -3,7 +3,7 @@ use crate::{
     cache::CacheDb,
     crdb_internal::ResultExt,
     messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Updates},
-    EventId, SessionRef, Timestamp, Updatedness, User,
+    EventId, SessionRef, SessionToken, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -191,7 +191,7 @@ impl<C: ServerConfig> Server<C> {
     pub async fn answer(&self, socket: WebSocket) {
         let mut conn = ConnectionState {
             socket,
-            updates_receiver: None,
+            session: None,
         };
         loop {
             tokio::select! {
@@ -242,16 +242,29 @@ impl<C: ServerConfig> Server<C> {
                             .entry(session.session_ref)
                             .or_insert_with(Vec::new)
                             .push(updates_sender);
-                        conn.updates_receiver = Some(updates_receiver);
+                        conn.session = Some(SessionInfo {
+                            token: *token,
+                            updates_receiver,
+                        });
                         ResponsePart::Success
                     });
-                Self::send_res(&mut conn.socket, msg.request_id, res).await?;
+                Self::send_res(&mut conn.socket, msg.request_id, res).await
+            }
+            Request::RenameSession(name) => {
+                let res = match &conn.session {
+                    None => Err(crate::Error::ProtocolViolation),
+                    Some(sess) => self
+                        .postgres_db
+                        .rename_session(sess.token, &name)
+                        .await
+                        .map(|()| ResponsePart::Success),
+                };
+                Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
             _ => {
                 unimplemented!() // TODO(api)
             }
         }
-        Ok(())
     }
 
     async fn send_res(
@@ -392,6 +405,10 @@ impl<Tz: chrono::TimeZone> ServerVacuumSchedule<Tz> {
 
 struct ConnectionState {
     socket: WebSocket,
-    updates_receiver:
-        Option<mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>>,
+    session: Option<SessionInfo>,
+}
+
+struct SessionInfo {
+    token: SessionToken,
+    updates_receiver: mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
 }
