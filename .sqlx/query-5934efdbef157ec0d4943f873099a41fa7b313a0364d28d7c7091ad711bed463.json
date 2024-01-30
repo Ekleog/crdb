@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                    SELECT snapshot_id, type_id, snapshot_version, snapshot\n                    FROM snapshots\n                    WHERE object_id = $1\n                    AND is_creation\n                ",
+  "query": "\n                SELECT snapshot_id, type_id, snapshot_version, snapshot\n                FROM snapshots\n                WHERE object_id = $1\n                AND is_creation\n            ",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       false
     ]
   },
-  "hash": "78af84bacadfd9cc39e67a91bde3b013926d180f197a904ed790421685e80b45"
+  "hash": "5934efdbef157ec0d4943f873099a41fa7b313a0364d28d7c7091ad711bed463"
 }

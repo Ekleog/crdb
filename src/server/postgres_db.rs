@@ -1598,8 +1598,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         panic!()
     }
 
-    #[allow(dead_code)] // TODO(api): use to answer get requests, plus filter based on if-modified-since
+    #[allow(dead_code)] // TODO(api): use to answer get requests
     async fn get_all(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
+        // TODO(low): take as parameter if-modified-since, and only return the things that are more recent than that
         reord::point().await;
         let mut transaction = self
             .db
@@ -1617,11 +1618,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         reord::point().await;
         let creation_snapshot = sqlx::query!(
             "
-                    SELECT snapshot_id, type_id, snapshot_version, snapshot
-                    FROM snapshots
-                    WHERE object_id = $1
-                    AND is_creation
-                ",
+                SELECT snapshot_id, type_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_creation
+            ",
             object_id as ObjectId,
         )
         .fetch_optional(&mut *transaction)

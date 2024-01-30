@@ -368,6 +368,8 @@ impl ClientDb {
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
     ) -> impl '_ + CrdbStream<Item = crate::Result<Arc<T>>> {
+        // TODO(client): first make sure to wait until the current upload queue is empty, so that
+        // any newly-created object/event makes its way through to the server before querying
         self.api
             .query::<T>(
                 QueryId::now(),

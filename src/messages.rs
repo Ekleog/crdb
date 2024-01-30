@@ -33,7 +33,6 @@ pub enum Request {
     ListSessions,
     DisconnectSession(SessionRef),
     GetTime,
-    // TODO(low): add a way to fetch only the new events, when we already have most of one big object?
     Get {
         // Map from object to the only_updated_since information we want on it
         object_ids: HashMap<ObjectId, Option<Updatedness>>,
