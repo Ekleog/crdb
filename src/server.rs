@@ -1,6 +1,5 @@
 use crate::{
-    api::ApiConfig, cache::CacheDb, messages::Updates, EventId, SessionToken, Timestamp,
-    Updatedness,
+    api::ApiConfig, cache::CacheDb, messages::Updates, EventId, SessionRef, Timestamp, Updatedness,
 };
 use anyhow::{anyhow, Context};
 use multimap::MultiMap;
@@ -28,8 +27,9 @@ pub struct Server<C: ServerConfig> {
     updatedness_requester:
         mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<Updates>)>>,
     _cleanup_token: tokio_util::sync::DropGuard,
-    // TODO(api): use the below
-    _sessions: MultiMap<SessionToken, mpsc::UnboundedSender<Updates>>, // TODO(api): should also send last_snapshot for query matching
+    // For each ongoing session, a way to push updates. Each update is both the list of updates itself, and
+    // the new latest snapshot for query matching, available if the latest snapshot actually changed
+    _sessions: MultiMap<SessionRef, mpsc::UnboundedSender<(Updates, Option<serde_json::Value>)>>, // TODO(api): use
 }
 
 impl<C: ServerConfig> Server<C> {
