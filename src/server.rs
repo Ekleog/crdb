@@ -1,5 +1,6 @@
 use crate::{
     api::ApiConfig, cache::CacheDb, messages::Updates, EventId, SessionRef, Timestamp, Updatedness,
+    User,
 };
 use anyhow::{anyhow, Context};
 use std::{
@@ -22,8 +23,9 @@ pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
 // Each update is both the list of updates itself, and the new latest snapshot
-// for query matching, available if the latest snapshot actually changed
-type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>)>;
+// for query matching, available if the latest snapshot actually changed. Also,
+// the list of users allowed to read this object.
+type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>, Vec<User>)>;
 
 pub struct Server<C: ServerConfig> {
     _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
@@ -31,7 +33,8 @@ pub struct Server<C: ServerConfig> {
     updatedness_requester:
         mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesWithSnap>)>>,
     _cleanup_token: tokio_util::sync::DropGuard,
-    _sessions: Arc<Mutex<HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>, // TODO(api): use
+    _sessions:
+        Arc<Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>>, // TODO(api): use
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -84,8 +87,8 @@ impl<C: ServerConfig> Server<C> {
             }
         });
         let sessions = Arc::new(Mutex::new(HashMap::<
-            SessionRef,
-            Vec<mpsc::UnboundedSender<UpdatesWithSnap>>,
+            User,
+            HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>,
         >::new()));
         tokio::task::spawn({
             let sessions = sessions.clone();
@@ -95,10 +98,15 @@ impl<C: ServerConfig> Server<C> {
                 while let Some(update_receiver) = update_receiver.recv().await {
                     // Ignore the case where the slot sender was dropped
                     if let Ok(updates) = update_receiver.await {
-                        for (_, senders) in sessions.lock().unwrap().iter_mut() {
-                            // Discard all senders that return an error
-                            senders.retain(|sender| sender.send(updates.clone()).is_ok());
-                            // TODO(low): remove the entry from `senders` altogether if it's empty
+                        let mut sessions = sessions.lock().unwrap();
+                        for user in updates.2.iter() {
+                            if let Some(sessions) = sessions.get_mut(user) {
+                                for senders in sessions.values_mut() {
+                                    // Discard all senders that return an error
+                                    senders.retain(|sender| sender.send(updates.clone()).is_ok());
+                                    // TODO(low): remove the entry from the hashmap altogether if it becomes empty
+                                }
+                            }
                         }
                     }
                 }
@@ -149,27 +157,16 @@ impl<C: ServerConfig> Server<C> {
                     };
 
                     // Finally, run the vacuum
-                    let mut updates = Vec::new();
-                    if let Err(err) = postgres_db
-                        .vacuum(
-                            no_new_changes_before,
-                            updatedness,
-                            kill_sessions_older_than,
-                            |update| updates.push(update),
-                        )
-                        .await
+                    if let Err(err) = Self::run_vacuum(
+                        &postgres_db,
+                        no_new_changes_before,
+                        updatedness,
+                        kill_sessions_older_than,
+                        slot,
+                    )
+                    .await
                     {
                         tracing::error!(?err, "scheduled vacuum failed");
-                    }
-                    // Vacuum cannot change any latest snapshot
-                    if let Err(_) = slot.send(Arc::new((
-                        Updates {
-                            data: updates,
-                            now_have_all_until: updatedness,
-                        },
-                        None,
-                    ))) {
-                        tracing::error!("Update reorderer went away before autovacuum");
                     }
                 }
             }
@@ -206,9 +203,25 @@ impl<C: ServerConfig> Server<C> {
         kill_sessions_older_than: Option<Timestamp>,
     ) -> crate::Result<()> {
         let (updatedness, slot) = self.updatedness_slot().await?;
+        Self::run_vacuum(
+            &self.postgres_db,
+            no_new_changes_before,
+            updatedness,
+            kill_sessions_older_than,
+            slot,
+        )
+        .await
+    }
+
+    async fn run_vacuum(
+        postgres_db: &PostgresDb<C>,
+        no_new_changes_before: Option<EventId>,
+        updatedness: Updatedness,
+        kill_sessions_older_than: Option<Timestamp>,
+        slot: oneshot::Sender<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
+    ) -> crate::Result<()> {
         let mut updates = Vec::new();
-        let res = self
-            .postgres_db
+        let res = postgres_db
             .vacuum(
                 no_new_changes_before,
                 updatedness,
@@ -223,6 +236,7 @@ impl<C: ServerConfig> Server<C> {
                 now_have_all_until: updatedness,
             },
             None,
+            unimplemented!(), // TODO(high): think about that!
         ))) {
             tracing::error!("Update reorderer went away before server");
         }
