@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
-use futures::StreamExt;
+use futures::{future::OptionFuture, StreamExt};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -212,9 +212,11 @@ impl<C: ServerConfig> Server<C> {
                     Some(Ok(ws::Message::Binary(_msg))) => {
                         unimplemented!() // TODO(api)
                     }
-                }
+                },
 
-                // TODO(api): also listen on conn.updates_receiver
+                Some(_msg) = OptionFuture::from(conn.session.as_mut().map(|s| s.updates_receiver.recv())) => {
+                    unimplemented!() // TODO(api)
+                },
             }
         }
     }
