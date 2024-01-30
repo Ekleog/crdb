@@ -5,7 +5,7 @@ use crate::{
     ids::QueryId,
     messages::{
         MaybeObject, ObjectData, Request, RequestWithSidecar, ResponsePart,
-        ResponsePartWithSidecar, Update, Upload, UploadOrBinary,
+        ResponsePartWithSidecar, Updates, Upload, UploadOrBinary,
     },
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
 };
@@ -26,7 +26,7 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub fn new() -> (ApiDb, mpsc::UnboundedReceiver<Update>) {
+    pub fn new() -> (ApiDb, mpsc::UnboundedReceiver<Updates>) {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let (connection, commands) = mpsc::unbounded();

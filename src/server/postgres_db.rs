@@ -261,7 +261,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
         kill_sessions_older_than: Option<Timestamp>,
-        notify_recreation: impl Fn(Update),
+        mut notify_recreation: impl FnMut(Update),
     ) -> crate::Result<()> {
         // TODO(low): do not vacuum away binaries that have been uploaded less than an hour ago
         // TODO(low): also keep an "upload time" field on events, and allow fetching just the new events for an object
@@ -354,7 +354,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                                 snapshot_version,
                                 data,
                             },
-                            now_have_all_until: updatedness,
                         });
                     }
                 }

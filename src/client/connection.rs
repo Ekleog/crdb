@@ -2,12 +2,12 @@ use crate::{
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, Request, RequestId, RequestWithSidecar, ResponsePart,
-        ResponsePartWithSidecar, ServerMessage, Update, UpdateData,
+        ResponsePartWithSidecar, ServerMessage, Update, UpdateData, Updates,
     },
     ObjectId, Query, SessionToken, Timestamp, Updatedness,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, future::OptionFuture, stream, SinkExt, StreamExt};
+use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, RwLock},
@@ -122,7 +122,7 @@ pub struct Connection {
     // kill it with an Error rather than restart it from 0, to avoid duplicate answers.
     pending_requests: HashMap<RequestId, (Arc<RequestWithSidecar>, ResponseSender, bool)>,
     event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
-    update_sender: mpsc::UnboundedSender<Update>,
+    update_sender: mpsc::UnboundedSender<Updates>,
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
@@ -135,7 +135,7 @@ impl Connection {
         commands: mpsc::UnboundedReceiver<Command>,
         requests: mpsc::UnboundedReceiver<(ResponseSender, Arc<RequestWithSidecar>)>,
         event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
-        update_sender: mpsc::UnboundedSender<Update>,
+        update_sender: mpsc::UnboundedSender<Updates>,
     ) -> Connection {
         Connection {
             state: State::NoValidInfo,
@@ -470,19 +470,15 @@ impl Connection {
         match message {
             ServerMessage::Updates(updates) => {
                 // Update our local subscription information
-                for update in updates.iter() {
+                for update in updates.data.iter() {
                     if let Some(updated) = self.subscribed_objects.get_mut(&update.object_id) {
-                        *updated = Some(update.now_have_all_until);
+                        *updated = Some(updates.now_have_all_until);
                     }
                     // TODO(client): somehow keep track of now_have_all_until for each subscribed query
                 }
 
                 // And send the update
-                if let Err(err) = self
-                    .update_sender
-                    .send_all(&mut stream::iter(updates).map(Ok))
-                    .await
-                {
+                if let Err(err) = self.update_sender.send(updates).await {
                     tracing::error!(?err, "failed sending updates");
                 }
             }
@@ -591,7 +587,7 @@ impl Connection {
     }
 
     async fn send_responses_as_updates(
-        update_sender: mpsc::UnboundedSender<Update>,
+        update_sender: mpsc::UnboundedSender<Updates>,
         mut responses_receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
     ) {
         // No need to keep track of self.subscribed_*, this will be done before even reaching this point
@@ -607,10 +603,14 @@ impl Connection {
                         match maybe_object {
                             MaybeObject::AlreadySubscribed(_) => continue,
                             MaybeObject::NotYetSubscribed(object) => {
+                                let mut updates = Vec::with_capacity(
+                                    object.events.len()
+                                        + object.creation_snapshot.is_some() as usize,
+                                );
                                 if let Some((created_at, snapshot_version, data)) =
                                     object.creation_snapshot
                                 {
-                                    let _ = update_sender.unbounded_send(Update {
+                                    updates.push(Update {
                                         object_id: object.object_id,
                                         type_id: object.type_id,
                                         data: UpdateData::Creation {
@@ -618,26 +618,19 @@ impl Connection {
                                             snapshot_version,
                                             data,
                                         },
-                                        now_have_all_until: if object.events.is_empty() {
-                                            object.now_have_all_until
-                                        } else {
-                                            Updatedness::from_u128(0)
-                                        },
                                     });
                                 }
-                                let last_i = object.events.len().saturating_sub(1); // The 0 case is handled above
-                                for (i, (event_id, data)) in object.events.into_iter().enumerate() {
-                                    let _ = update_sender.unbounded_send(Update {
+                                for (event_id, data) in object.events.into_iter() {
+                                    updates.push(Update {
                                         object_id: object.object_id,
                                         type_id: object.type_id,
                                         data: UpdateData::Event { event_id, data },
-                                        now_have_all_until: if i == last_i {
-                                            object.now_have_all_until
-                                        } else {
-                                            Updatedness::from_u128(0)
-                                        },
                                     });
                                 }
+                                let _ = update_sender.unbounded_send(Updates {
+                                    data: updates,
+                                    now_have_all_until: object.now_have_all_until,
+                                });
                             }
                         }
                     }

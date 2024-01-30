@@ -1,7 +1,7 @@
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
-    messages::{ServerMessage, Update},
+    messages::{ServerMessage, Updates},
     EventId, ObjectId, SessionToken, Timestamp, Updatedness,
 };
 use anyhow::{anyhow, Context};
@@ -25,27 +25,11 @@ mod postgres_db;
 pub use self::postgres_db::{ComboLock, PostgresDb};
 pub use config::ServerConfig;
 
-struct UpdatednessSlot {
-    updatedness: Updatedness,
-    sender: mpsc::UnboundedSender<Update>,
-}
-
-impl UpdatednessSlot {
-    fn updatedness(&self) -> Updatedness {
-        self.updatedness
-    }
-
-    fn send(&self, update: Update) {
-        if let Err(_) = self.sender.send(update) {
-            tracing::error!("UpdatednessSlot outlived the server!");
-        }
-    }
-}
-
 pub struct Server<C: ServerConfig> {
     _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
     postgres_db: Arc<PostgresDb<C>>,
-    updatedness_requester: mpsc::UnboundedSender<oneshot::Sender<UpdatednessSlot>>,
+    updatedness_requester:
+        mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<Updates>)>>,
     _cleanup_token: tokio_util::sync::DropGuard,
     // TODO(api): use all the below
     _watchers: HashMap<ObjectId, HashSet<SessionToken>>,
@@ -80,7 +64,7 @@ impl<C: ServerConfig> Server<C> {
 
         // Setup the update reorderer task
         let (updatedness_requester, mut updatedness_request_receiver) =
-            mpsc::unbounded_channel::<oneshot::Sender<UpdatednessSlot>>();
+            mpsc::unbounded_channel::<oneshot::Sender<(Updatedness, oneshot::Sender<Updates>)>>();
         let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
         tokio::task::spawn(async move {
             // Updatedness request handler
@@ -91,25 +75,22 @@ impl<C: ServerConfig> Server<C> {
                 let updatedness = Updatedness(generator.generate().expect(
                     "you're either very unlucky, or generated 2**80 updates within one millisecond",
                 ));
-                let (sender, receiver) = mpsc::unbounded_channel();
+                let (sender, receiver) = oneshot::channel();
                 if let Err(_) = update_sender.send(receiver) {
                     tracing::error!(
                         "Update reorderer task went away before updatedness request handler task"
                     );
                 }
-                let slot = UpdatednessSlot {
-                    updatedness,
-                    sender,
-                };
-                let _ = requester.send(slot); // Ignore any failures, they'll free the slot anyway
+                let _ = requester.send((updatedness, sender)); // Ignore any failures, they'll free the slot anyway
             }
         });
         tokio::task::spawn(async move {
             // Actual update reorderer
             // No cancellation token needed, closing the senders will naturally close this task
-            while let Some(mut update_receiver) = update_receiver.recv().await {
-                while let Some(update) = update_receiver.recv().await {
-                    let _ = update; // TODO(api): actually fan the update out to all subscribed listeners
+            while let Some(update_receiver) = update_receiver.recv().await {
+                // Ignore the case where the slot sender was dropped
+                if let Ok(updates) = update_receiver.await {
+                    let _ = updates; // TODO(api): actually fan the update out to all subscribed listeners
                 }
             }
         });
@@ -150,7 +131,7 @@ impl<C: ServerConfig> Server<C> {
                             "Updatedness request handler thread went away before autovacuum thread"
                         );
                     }
-                    let Ok(slot) = receiver.await else {
+                    let Ok((updatedness, slot)) = receiver.await else {
                         tracing::error!(
                             "Updatedness request handler thread never answered autovacuum thread"
                         );
@@ -158,16 +139,23 @@ impl<C: ServerConfig> Server<C> {
                     };
 
                     // Finally, run the vacuum
+                    let mut updates = Vec::new();
                     if let Err(err) = postgres_db
                         .vacuum(
                             no_new_changes_before,
-                            slot.updatedness(),
+                            updatedness,
                             kill_sessions_older_than,
-                            |update| slot.send(update),
+                            |update| updates.push(update),
                         )
                         .await
                     {
                         tracing::error!(?err, "scheduled vacuum failed");
+                    }
+                    if let Err(_) = slot.send(Updates {
+                        data: updates,
+                        now_have_all_until: updatedness,
+                    }) {
+                        tracing::error!("Update reorderer went away before autovacuum");
                     }
                 }
             }
@@ -204,18 +192,27 @@ impl<C: ServerConfig> Server<C> {
         no_new_changes_before: Option<EventId>,
         kill_sessions_older_than: Option<Timestamp>,
     ) -> crate::Result<()> {
-        let slot = self.updatedness_slot().await?;
-        self.postgres_db
+        let (updatedness, slot) = self.updatedness_slot().await?;
+        let mut updates = Vec::new();
+        let res = self
+            .postgres_db
             .vacuum(
                 no_new_changes_before,
-                slot.updatedness(),
+                updatedness,
                 kill_sessions_older_than,
-                |update| slot.send(update),
+                |update| updates.push(update),
             )
-            .await
+            .await;
+        if let Err(_) = slot.send(Updates {
+            data: updates,
+            now_have_all_until: updatedness,
+        }) {
+            tracing::error!("Update reorderer went away before server");
+        }
+        res
     }
 
-    async fn updatedness_slot(&self) -> crate::Result<UpdatednessSlot> {
+    async fn updatedness_slot(&self) -> crate::Result<(Updatedness, oneshot::Sender<Updates>)> {
         let (sender, receiver) = oneshot::channel();
         self.updatedness_requester.send(sender).map_err(|_| {
             crate::Error::Other(anyhow!(

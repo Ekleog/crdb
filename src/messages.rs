@@ -93,7 +93,13 @@ pub enum ServerMessage {
         response: ResponsePart,
         last_response: bool,
     },
-    Updates(Vec<Update>),
+    Updates(Updates),
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct Updates {
+    pub data: Vec<Update>,
+    pub now_have_all_until: Updatedness,
 }
 
 pub struct ResponsePartWithSidecar {
@@ -141,10 +147,6 @@ pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
-    // TODO(api): This might need to become Option<Updatedness>, to properly handle the case
-    // where an object newly starts matching a Query and thus multiple Updates need to be sent?
-    // Or maybe we should instead have `data` above be a `Vec`?
-    pub now_have_all_until: Updatedness,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -159,4 +161,5 @@ pub enum UpdateData {
         event_id: EventId,
         data: serde_json::Value,
     },
+    // TODO(api): Add `LostReadRights` variant for when an event makes a user lose read rights on that object.
 }

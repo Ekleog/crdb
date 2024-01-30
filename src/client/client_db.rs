@@ -5,7 +5,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{MaybeObject, ObjectData, Update, UpdateData},
+    messages::{MaybeObject, ObjectData, UpdateData, Updates},
     object::parse_snapshot,
     BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, Updatedness,
 };
@@ -60,7 +60,7 @@ impl ClientDb {
 
     fn setup_watchers<C: ApiConfig>(
         &self,
-        mut updates_receiver: mpsc::UnboundedReceiver<Update>,
+        mut updates_receiver: mpsc::UnboundedReceiver<Updates>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         // No need for a cancellation token: this task will automatically end as soon as the stream
@@ -68,68 +68,70 @@ impl ClientDb {
         crate::spawn({
             let local_db = self.db.clone();
             async move {
-                while let Some(u) = updates_receiver.next().await {
-                    let object_id = u.object_id;
-                    let type_id = u.type_id;
-                    // TODO(client): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
-                    match u.data {
-                        UpdateData::Creation {
-                            created_at,
-                            snapshot_version,
-                            data,
-                        } => {
-                            // TODO(client): decide how to expose locking all of a query's results, including new objects
-                            // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
-                            if let Err(err) = C::recreate(
-                                &*local_db,
-                                type_id,
-                                object_id,
+                while let Some(updates) = updates_receiver.next().await {
+                    for u in updates.data {
+                        let object_id = u.object_id;
+                        let type_id = u.type_id;
+                        // TODO(client): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
+                        match u.data {
+                            UpdateData::Creation {
                                 created_at,
                                 snapshot_version,
                                 data,
-                                Some(u.now_have_all_until),
-                                false,
-                            )
-                            .await
-                            {
-                                tracing::error!(
-                                    ?err,
-                                    ?object_id,
-                                    "failed creating received object in internal db"
-                                );
+                            } => {
+                                // TODO(client): decide how to expose locking all of a query's results, including new objects
+                                // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
+                                if let Err(err) = C::recreate(
+                                    &*local_db,
+                                    type_id,
+                                    object_id,
+                                    created_at,
+                                    snapshot_version,
+                                    data,
+                                    Some(updates.now_have_all_until),
+                                    false,
+                                )
+                                .await
+                                {
+                                    tracing::error!(
+                                        ?err,
+                                        ?object_id,
+                                        "failed creating received object in internal db"
+                                    );
+                                }
+                            }
+                            UpdateData::Event { event_id, data } => {
+                                // TODO(client): decide how to expose locking all of a query's results, including objects that start
+                                // matching the query only after the initial run
+                                // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
+                                if let Err(err) = C::submit(
+                                    &*local_db,
+                                    type_id,
+                                    object_id,
+                                    event_id,
+                                    data,
+                                    Some(updates.now_have_all_until),
+                                    false,
+                                )
+                                .await
+                                {
+                                    tracing::error!(
+                                        ?err,
+                                        ?object_id,
+                                        ?event_id,
+                                        "failed submitting received object to internal db"
+                                    );
+                                }
+                                // TODO(client): avoid tracing::error! when below comment holds
+                                // DO NOT re-fetch object when receiving an event not in cache for it.
+                                // Without this, users would risk unsubscribing from an object, then receiving
+                                // an event on this object (as a race condition), and then staying subscribed.
                             }
                         }
-                        UpdateData::Event { event_id, data } => {
-                            // TODO(client): decide how to expose locking all of a query's results, including objects that start
-                            // matching the query only after the initial run
-                            // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
-                            if let Err(err) = C::submit(
-                                &*local_db,
-                                type_id,
-                                object_id,
-                                event_id,
-                                data,
-                                Some(u.now_have_all_until),
-                                false,
-                            )
-                            .await
-                            {
-                                tracing::error!(
-                                    ?err,
-                                    ?object_id,
-                                    ?event_id,
-                                    "failed submitting received object to internal db"
-                                );
-                            }
-                            // TODO(client): avoid tracing::error! when below comment holds
-                            // DO NOT re-fetch object when receiving an event not in cache for it.
-                            // Without this, users would risk unsubscribing from an object, then receiving
-                            // an event on this object (as a race condition), and then staying subscribed.
+                        // TODO(client): give out update broadcasters for each individual query the user subscribed to
+                        if let Err(err) = updates_broadcaster.send(object_id) {
+                            tracing::error!(?err, ?object_id, "failed broadcasting update");
                         }
-                    }
-                    // TODO(client): give out update broadcasters for each individual query the user subscribed to
-                    if let Err(err) = updates_broadcaster.send(object_id) {
-                        tracing::error!(?err, ?object_id, "failed broadcasting update");
                     }
                 }
             }
