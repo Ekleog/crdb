@@ -15,7 +15,7 @@ enum Op {
     MarkActive(usize, Timestamp),
     Rename(usize, String),
     ListSessions(usize),
-    Disconnect(usize),
+    Disconnect { user: usize, session: usize },
 }
 
 struct FuzzState {
@@ -132,16 +132,19 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 .collect::<HashSet<_>>();
             anyhow::ensure!(pg == s.sessions_for(user));
         }
-        Op::Disconnect(session) => match s.tokens.get(*session) {
-            None => db.disconnect_session(SessionRef::now()).await?,
-            Some(token) => match s.sessions.get(token) {
-                None => db.disconnect_session(SessionRef::now()).await?,
-                Some(session) => {
-                    db.disconnect_session(session.session_ref).await?;
-                    s.sessions.remove(token);
-                }
-            },
-        },
+        Op::Disconnect { user, session } => {
+            let user = s.user_for(*user);
+            match s.tokens.get(*session) {
+                None => db.disconnect_session(user, SessionRef::now()).await?,
+                Some(token) => match s.sessions.get(token) {
+                    None => db.disconnect_session(user, SessionRef::now()).await?,
+                    Some(session) => {
+                        db.disconnect_session(user, session.session_ref).await?;
+                        s.sessions.remove(token);
+                    }
+                },
+            }
+        }
     }
     Ok(())
 }
@@ -216,7 +219,10 @@ fn regression_disconnect_was_ignored() {
                 session_name: String::new(),
                 expiration_time: Some(Timestamp::from_ms(0)),
             }),
-            Disconnect(0),
+            Disconnect {
+                user: 0,
+                session: 0,
+            },
             MarkActive(0, Timestamp::from_ms(0)),
         ],
     )

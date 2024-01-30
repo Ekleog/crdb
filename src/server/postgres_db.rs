@@ -158,12 +158,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(sessions)
     }
 
-    pub async fn disconnect_session(&self, session: SessionRef) -> anyhow::Result<()> {
-        sqlx::query("DELETE FROM sessions WHERE session_ref = $1")
+    pub async fn disconnect_session(&self, user: User, session: SessionRef) -> crate::Result<()> {
+        sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND session_ref = $2")
+            .bind(user)
             .bind(session)
             .execute(&self.db)
             .await
-            .with_context(|| format!("disconnecting session {session:?}"))?;
+            .wrap_with_context(|| format!("disconnecting session {session:?}"))?;
         // If nothing to delete it's fine, the session was probably already disconnected
         Ok(())
     }
