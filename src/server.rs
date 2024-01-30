@@ -3,7 +3,7 @@ use crate::{
     cache::CacheDb,
     crdb_internal::ResultExt,
     messages::{ClientMessage, Request, ResponsePart, ServerMessage, Updates},
-    EventId, Session, SessionRef, Timestamp, Updatedness, User,
+    EventId, SessionRef, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -38,7 +38,7 @@ pub struct Server<C: ServerConfig> {
         oneshot::Sender<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)>,
     >,
     _cleanup_token: tokio_util::sync::DropGuard,
-    _sessions:
+    sessions:
         Arc<Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>>, // TODO(api): use
 }
 
@@ -183,7 +183,7 @@ impl<C: ServerConfig> Server<C> {
             postgres_db,
             updatedness_requester,
             _cleanup_token: cancellation_token.drop_guard(),
-            _sessions: sessions,
+            sessions,
         };
         Ok((this, upgrade_handle))
     }
@@ -191,7 +191,7 @@ impl<C: ServerConfig> Server<C> {
     pub async fn answer(&self, socket: WebSocket) {
         let mut conn = ConnectionState {
             socket,
-            session: None,
+            updates_receiver: None,
         };
         loop {
             tokio::select! {
@@ -213,6 +213,8 @@ impl<C: ServerConfig> Server<C> {
                         unimplemented!() // TODO(api)
                     }
                 }
+
+                // TODO(api): also listen on conn.updates_receiver
             }
         }
     }
@@ -238,7 +240,16 @@ impl<C: ServerConfig> Server<C> {
                     .await?;
                 }
                 Ok(session) => {
-                    conn.session = Some(session);
+                    let (updates_sender, updates_receiver) = mpsc::unbounded_channel();
+                    self.sessions
+                        .lock()
+                        .unwrap()
+                        .entry(session.user_id)
+                        .or_insert_with(HashMap::new)
+                        .entry(session.session_ref)
+                        .or_insert_with(Vec::new)
+                        .push(updates_sender);
+                    conn.updates_receiver = Some(updates_receiver);
                     Self::send(
                         &mut conn.socket,
                         &ServerMessage::Response {
@@ -248,7 +259,6 @@ impl<C: ServerConfig> Server<C> {
                         },
                     )
                     .await?;
-                    // TODO(api): make sure to subscribe to updates
                 }
             },
             _ => {
@@ -376,5 +386,6 @@ impl<Tz: chrono::TimeZone> ServerVacuumSchedule<Tz> {
 
 struct ConnectionState {
     socket: WebSocket,
-    session: Option<Session>,
+    updates_receiver:
+        Option<mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>>,
 }
