@@ -3,7 +3,8 @@ use crate::{
     User,
 };
 use anyhow::anyhow;
-use axum::extract::ws::WebSocket;
+use axum::extract::ws::{self, WebSocket};
+use futures::StreamExt;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -184,8 +185,26 @@ impl<C: ServerConfig> Server<C> {
         Ok((this, upgrade_handle))
     }
 
-    pub async fn answer(&self, _socket: WebSocket) {
-        unimplemented!() // TODO(api)
+    pub async fn answer(&self, mut socket: WebSocket) {
+        loop {
+            tokio::select! {
+                msg = socket.next() => match msg {
+                    None => break, // End-of-stream
+                    Some(Err(err)) => {
+                        tracing::error!(?err, "received an error while waiting for message on websocket");
+                        break;
+                    }
+                    Some(Ok(ws::Message::Ping(_) | ws::Message::Pong(_))) => continue, // Auto-handled by axum, ignore
+                    Some(Ok(ws::Message::Close(_))) => break, // End-of-stream
+                    Some(Ok(ws::Message::Text(_msg))) => {
+                        unimplemented!() // TODO(api)
+                    }
+                    Some(Ok(ws::Message::Binary(_msg))) => {
+                        unimplemented!() // TODO(api)
+                    }
+                }
+            }
+        }
     }
 
     /// Cleans up and optimizes up the database
