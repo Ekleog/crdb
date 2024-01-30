@@ -142,14 +142,14 @@ pub struct ObjectData {
     pub now_have_all_until: Updatedness,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub enum UpdateData {
     // Also used for re-creation events
     Creation {

@@ -261,7 +261,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
         kill_sessions_older_than: Option<Timestamp>,
-        mut notify_recreation: impl FnMut(Update),
+        mut notify_recreation: impl FnMut(Update, Vec<User>),
     ) -> crate::Result<()> {
         // TODO(low): do not vacuum away binaries that have been uploaded less than an hour ago
         // TODO(low): also keep an "upload time" field on events, and allow fetching just the new events for an object
@@ -344,17 +344,22 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     .wrap_with_context(|| {
                         format!("recreating {object_id:?} at time {event_id:?}")
                     })?;
-                    if let Some((new_created_at, snapshot_version, data)) = recreation_result {
+                    if let Some((new_created_at, snapshot_version, data, users_who_can_read)) =
+                        recreation_result
+                    {
                         reord::point().await;
-                        notify_recreation(Update {
-                            type_id,
-                            object_id,
-                            data: UpdateData::Creation {
-                                created_at: new_created_at,
-                                snapshot_version,
-                                data,
+                        notify_recreation(
+                            Update {
+                                type_id,
+                                object_id,
+                                data: UpdateData::Creation {
+                                    created_at: new_created_at,
+                                    snapshot_version,
+                                    data,
+                                },
                             },
-                        });
+                            users_who_can_read,
+                        );
                     }
                 }
             }

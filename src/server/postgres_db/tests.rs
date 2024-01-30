@@ -16,7 +16,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         .expect("connecting to db");
     crate::smoke_test!(
         db: db,
-        vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(OBJECT_ID_3.time()), |_| ()),
+        vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(OBJECT_ID_3.time()), |_, _| ()),
         query_all: db
             .query::<TestObjectSimple>(USER_ID_NULL, None, Arc::new(Query::All(vec![])))
             .await
@@ -159,7 +159,7 @@ mod fuzz_helpers {
         match recreate_at {
             None => {
                 let db = db
-                    .vacuum(None, Updatedness::now(), None, |r| {
+                    .vacuum(None, Updatedness::now(), None, |r, _| {
                         panic!("got unexpected recreation {r:?}");
                     })
                     .await;
@@ -168,7 +168,7 @@ mod fuzz_helpers {
             }
             Some((recreate_at, updatedness)) => {
                 let db = db
-                    .vacuum(Some(recreate_at), updatedness, None, |_| {
+                    .vacuum(Some(recreate_at), updatedness, None, |_, _| {
                         // TODO(test): validate that the notified recreations are the same as in memdb
                     })
                     .await;

@@ -30,8 +30,9 @@ type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>, Vec<User>)>;
 pub struct Server<C: ServerConfig> {
     _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
     postgres_db: Arc<PostgresDb<C>>,
-    updatedness_requester:
-        mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesWithSnap>)>>,
+    updatedness_requester: mpsc::UnboundedSender<
+        oneshot::Sender<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)>,
+    >,
     _cleanup_token: tokio_util::sync::DropGuard,
     _sessions:
         Arc<Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>>, // TODO(api): use
@@ -65,7 +66,7 @@ impl<C: ServerConfig> Server<C> {
 
         // Setup the update reorderer task
         let (updatedness_requester, mut updatedness_request_receiver) = mpsc::unbounded_channel::<
-            oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesWithSnap>)>,
+            oneshot::Sender<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)>,
         >();
         let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
         tokio::task::spawn(async move {
@@ -77,7 +78,7 @@ impl<C: ServerConfig> Server<C> {
                 let updatedness = Updatedness(generator.generate().expect(
                     "you're either very unlucky, or generated 2**80 updates within one millisecond",
                 ));
-                let (sender, receiver) = oneshot::channel();
+                let (sender, receiver) = mpsc::unbounded_channel();
                 if let Err(_) = update_sender.send(receiver) {
                     tracing::error!(
                         "Update reorderer task went away before updatedness request handler task"
@@ -95,9 +96,9 @@ impl<C: ServerConfig> Server<C> {
             async move {
                 // Actual update reorderer
                 // No cancellation token needed, closing the senders will naturally close this task
-                while let Some(update_receiver) = update_receiver.recv().await {
+                while let Some(mut update_receiver) = update_receiver.recv().await {
                     // Ignore the case where the slot sender was dropped
-                    if let Ok(updates) = update_receiver.await {
+                    while let Some(updates) = update_receiver.recv().await {
                         let mut sessions = sessions.lock().unwrap();
                         for user in updates.2.iter() {
                             if let Some(sessions) = sessions.get_mut(user) {
@@ -218,34 +219,48 @@ impl<C: ServerConfig> Server<C> {
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
         kill_sessions_older_than: Option<Timestamp>,
-        slot: oneshot::Sender<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
+        slot: mpsc::UnboundedSender<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
     ) -> crate::Result<()> {
-        let mut updates = Vec::new();
+        // Perform the vacuum, collecting all updates
+        let mut updates = HashMap::new();
         let res = postgres_db
             .vacuum(
                 no_new_changes_before,
                 updatedness,
                 kill_sessions_older_than,
-                |update| updates.push(update),
+                |update, users_who_can_read| {
+                    for u in users_who_can_read {
+                        updates
+                            .entry(u)
+                            .or_insert_with(Vec::new)
+                            .push(update.clone());
+                    }
+                },
             )
             .await;
-        // Vacuum cannot change any latest snapshot
-        if let Err(_) = slot.send(Arc::new((
-            Updates {
-                data: updates,
-                now_have_all_until: updatedness,
-            },
-            None,
-            unimplemented!(), // TODO(high): think about that!
-        ))) {
-            tracing::error!("Update reorderer went away before server");
+
+        // Submit the updates
+        for (user, updates) in updates {
+            // Vacuum cannot change any latest snapshot
+            if let Err(_) = slot.send(Arc::new((
+                Updates {
+                    data: updates,
+                    now_have_all_until: updatedness,
+                },
+                None,
+                vec![user],
+            ))) {
+                tracing::error!("Update reorderer went away before server");
+            }
         }
+
+        // And return the result
         res
     }
 
     async fn updatedness_slot(
         &self,
-    ) -> crate::Result<(Updatedness, oneshot::Sender<UpdatesWithSnap>)> {
+    ) -> crate::Result<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)> {
         let (sender, receiver) = oneshot::channel();
         self.updatedness_requester.send(sender).map_err(|_| {
             crate::Error::Other(anyhow!(

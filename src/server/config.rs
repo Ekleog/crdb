@@ -1,6 +1,7 @@
 use super::postgres_db::{ComboLock, PostgresDb};
 use crate::{
-    api::ApiConfig, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId, Updatedness, User,
+    api::ApiConfig, db_trait::Db, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId,
+    Updatedness, User,
 };
 use std::sync::Arc;
 
@@ -19,14 +20,14 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         cb: &'a C,
     ) -> impl 'a + CrdbFuture<Output = crate::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
 
-    fn recreate_no_lock<'a, C: CanDoCallbacks>(
+    fn recreate_no_lock<'a, C: Db>(
         call_on: &'a PostgresDb<Self>,
         type_id: TypeId,
         object_id: ObjectId,
         event_id: EventId,
         updatedness: Updatedness,
         cb: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, i32, serde_json::Value)>>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, i32, serde_json::Value, Vec<User>)>>>;
 }
 
 #[doc(hidden)]
@@ -67,22 +68,29 @@ macro_rules! generate_server {
                 Err(crdb::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn recreate_no_lock<'a, C: crdb::CanDoCallbacks>(
+            async fn recreate_no_lock<'a, C: crdb::Db>(
                 call_on: &'a crdb::PostgresDb<Self>,
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
                 updatedness: crdb::Updatedness,
                 cb: &'a C,
-            ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value)>> {
+            ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value, Vec<crdb::User>)>> {
+                use crdb::Object;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let Some((new_created_at, data)) = call_on.recreate_impl::<$object, C>(object_id, event_id, updatedness, cb).await? else {
                             return Ok(None);
                         };
+                        let users_who_can_read = cb.get_latest::<$object>(false, object_id)
+                            .await
+                            .wrap_context("retrieving latest snapshot after recreation")?
+                            .users_who_can_read(cb)
+                            .await
+                            .wrap_context("figuring out list of users who can read after recreation")?;
                         let data = crdb::serde_json::to_value(data)
                             .wrap_with_context(|| format!("serializing snapshot for {object_id:?}"))?;
-                        return Ok(Some((new_created_at, <$object as crdb::Object>::snapshot_version(), data)));
+                        return Ok(Some((new_created_at, <$object as crdb::Object>::snapshot_version(), data, users_who_can_read)));
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
