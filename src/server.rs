@@ -2,10 +2,10 @@ use crate::{
     api::ApiConfig, cache::CacheDb, messages::Updates, EventId, SessionRef, Timestamp, Updatedness,
 };
 use anyhow::{anyhow, Context};
-use multimap::MultiMap;
 use std::{
+    collections::HashMap,
     net::SocketAddr,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 use tokio::{
@@ -23,7 +23,7 @@ pub use config::ServerConfig;
 
 // Each update is both the list of updates itself, and the new latest snapshot
 // for query matching, available if the latest snapshot actually changed
-type UpdatesWithSnap = (Updates, Option<serde_json::Value>);
+type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>)>;
 
 pub struct Server<C: ServerConfig> {
     _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
@@ -31,7 +31,7 @@ pub struct Server<C: ServerConfig> {
     updatedness_requester:
         mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesWithSnap>)>>,
     _cleanup_token: tokio_util::sync::DropGuard,
-    _sessions: MultiMap<SessionRef, mpsc::UnboundedSender<UpdatesWithSnap>>, // TODO(api): use
+    _sessions: Arc<Mutex<HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>, // TODO(api): use
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -83,13 +83,24 @@ impl<C: ServerConfig> Server<C> {
                 let _ = requester.send((updatedness, sender)); // Ignore any failures, they'll free the slot anyway
             }
         });
-        tokio::task::spawn(async move {
-            // Actual update reorderer
-            // No cancellation token needed, closing the senders will naturally close this task
-            while let Some(update_receiver) = update_receiver.recv().await {
-                // Ignore the case where the slot sender was dropped
-                if let Ok(updates) = update_receiver.await {
-                    let _ = updates; // TODO(api): actually fan the update out to all subscribed listeners
+        let sessions = Arc::new(Mutex::new(HashMap::<
+            SessionRef,
+            Vec<mpsc::UnboundedSender<UpdatesWithSnap>>,
+        >::new()));
+        tokio::task::spawn({
+            let sessions = sessions.clone();
+            async move {
+                // Actual update reorderer
+                // No cancellation token needed, closing the senders will naturally close this task
+                while let Some(update_receiver) = update_receiver.recv().await {
+                    // Ignore the case where the slot sender was dropped
+                    if let Ok(updates) = update_receiver.await {
+                        for (_, senders) in sessions.lock().unwrap().iter_mut() {
+                            // Discard all senders that return an error
+                            senders.retain(|sender| sender.send(updates.clone()).is_ok());
+                            // TODO(low): remove the entry from `senders` altogether if it's empty
+                        }
+                    }
                 }
             }
         });
@@ -151,13 +162,13 @@ impl<C: ServerConfig> Server<C> {
                         tracing::error!(?err, "scheduled vacuum failed");
                     }
                     // Vacuum cannot change any latest snapshot
-                    if let Err(_) = slot.send((
+                    if let Err(_) = slot.send(Arc::new((
                         Updates {
                             data: updates,
                             now_have_all_until: updatedness,
                         },
                         None,
-                    )) {
+                    ))) {
                         tracing::error!("Update reorderer went away before autovacuum");
                     }
                 }
@@ -170,7 +181,7 @@ impl<C: ServerConfig> Server<C> {
             postgres_db,
             updatedness_requester,
             _cleanup_token: cancellation_token.drop_guard(),
-            _sessions: MultiMap::new(),
+            _sessions: sessions,
         };
         Ok((this, upgrade_handle))
     }
@@ -206,13 +217,13 @@ impl<C: ServerConfig> Server<C> {
             )
             .await;
         // Vacuum cannot change any latest snapshot
-        if let Err(_) = slot.send((
+        if let Err(_) = slot.send(Arc::new((
             Updates {
                 data: updates,
                 now_have_all_until: updatedness,
             },
             None,
-        )) {
+        ))) {
             tracing::error!("Update reorderer went away before server");
         }
         res
