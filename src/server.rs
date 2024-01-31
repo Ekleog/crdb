@@ -5,15 +5,15 @@ use crate::{
     messages::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
     },
-    EventId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
+    EventId, ObjectId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
 use futures::{future::OptionFuture, stream, StreamExt};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     future::Future,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::{Duration, SystemTime},
 };
 use tokio::{
@@ -195,6 +195,7 @@ impl<C: ServerConfig> Server<C> {
         let mut conn = ConnectionState {
             socket,
             session: None,
+            subscribed_objects: Arc::new(RwLock::new(HashSet::new())),
         };
         loop {
             tokio::select! {
@@ -311,14 +312,22 @@ impl<C: ServerConfig> Server<C> {
                 object_ids,
                 subscribe: _,
             } => {
-                // TODO(api): subscribe to the objects before querying them
+                let subscribed_objects = conn.subscribed_objects.clone();
                 let objects = object_ids
                     .iter()
                     // TODO(server): use _updatedness as get_all parameter when possible
-                    .map(|(object_id, _updatedness)| async move {
-                        let object = self.postgres_db.get_all(*object_id).await?;
-                        // TODO(api): return AlreadySubscribed if possible
-                        Ok(MaybeObject::NotYetSubscribed(object))
+                    .map(|(object_id, _updatedness)| {
+                        let subscribed_objects = subscribed_objects.clone();
+                        async move {
+                            if subscribed_objects.read().unwrap().contains(object_id) {
+                                Ok(MaybeObject::AlreadySubscribed(*object_id))
+                            } else {
+                                // Subscribe BEFORE getting the object. This makes sure no updates are lost.
+                                subscribed_objects.write().unwrap().insert(*object_id);
+                                let object = self.postgres_db.get_all(*object_id).await?;
+                                Ok(MaybeObject::NotYetSubscribed(object))
+                            }
+                        }
                     });
                 self.send_objects(conn, msg.request_id, objects).await
             }
@@ -334,7 +343,7 @@ impl<C: ServerConfig> Server<C> {
         request_id: RequestId,
         objects: impl Iterator<Item = impl Future<Output = crate::Result<MaybeObject>>>,
     ) -> crate::Result<()> {
-        let mut objects = stream::iter(objects).buffer_unordered(10); // TODO(low): is 10 a good number?
+        let mut objects = stream::iter(objects).buffer_unordered(16); // TODO(low): is 16 a good number?
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
         // Send all the objects to the client, batching them by messages of a reasonable size, to both allow for better
@@ -514,6 +523,7 @@ impl<Tz: chrono::TimeZone> ServerVacuumSchedule<Tz> {
 struct ConnectionState {
     socket: WebSocket,
     session: Option<SessionInfo>,
+    subscribed_objects: Arc<RwLock<HashSet<ObjectId>>>,
 }
 
 struct SessionInfo {
