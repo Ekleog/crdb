@@ -40,6 +40,7 @@ pub enum Request {
     },
     Query {
         query_id: QueryId,
+        type_id: TypeId,
         query: Arc<Query>,
         only_updated_since: Option<Updatedness>,
         subscribe: bool,

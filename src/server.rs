@@ -2,10 +2,11 @@ use crate::{
     api::ApiConfig,
     cache::CacheDb,
     crdb_internal::ResultExt,
+    ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
     },
-    EventId, ObjectId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
+    EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -194,7 +195,6 @@ impl<C: ServerConfig> Server<C> {
         let mut conn = ConnectionState {
             socket,
             session: None,
-            subscribed_objects: Arc::new(RwLock::new(HashSet::new())),
         };
         loop {
             tokio::select! {
@@ -253,6 +253,8 @@ impl<C: ServerConfig> Server<C> {
                         conn.session = Some(SessionInfo {
                             token: *token,
                             session,
+                            subscribed_objects: Arc::new(RwLock::new(HashSet::new())),
+                            subscribed_queries: Arc::new(RwLock::new(HashMap::new())),
                             updates_receiver,
                         });
                         ResponsePart::Success
@@ -309,12 +311,52 @@ impl<C: ServerConfig> Server<C> {
             }
             Request::Get {
                 object_ids,
-                subscribe: _,
+                subscribe,
             } => {
                 self.send_objects(
                     conn,
                     msg.request_id,
+                    *subscribe,
                     object_ids.iter().map(|(o, u)| (*o, *u)),
+                )
+                .await
+            }
+            Request::Query {
+                query_id,
+                type_id,
+                query,
+                only_updated_since,
+                subscribe,
+            } => {
+                let sess = conn
+                    .session
+                    .as_ref()
+                    .ok_or(crate::Error::ProtocolViolation)?;
+                if *subscribe {
+                    // Subscribe BEFORE running the query. This makes sure no updates are lost.
+                    // We must then not return to the update-sending loop until all the responses are sent.
+                    sess.subscribed_queries
+                        .write()
+                        .unwrap()
+                        .insert(*query_id, query.clone());
+                }
+                let object_ids = self
+                    .postgres_db
+                    .query(
+                        sess.session.user_id,
+                        *type_id,
+                        *only_updated_since,
+                        query.clone(),
+                    )
+                    .await
+                    .wrap_context("listing objects matching query")?;
+                // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
+                // So, setting `None` here is the right thing to do.
+                self.send_objects(
+                    conn,
+                    msg.request_id,
+                    *subscribe,
+                    object_ids.into_iter().map(|o| (o, None)),
                 )
                 .await
             }
@@ -328,9 +370,14 @@ impl<C: ServerConfig> Server<C> {
         &self,
         conn: &mut ConnectionState,
         request_id: RequestId,
+        subscribe: bool,
         objects: impl Iterator<Item = (ObjectId, Option<Updatedness>)>,
     ) -> crate::Result<()> {
-        let subscribed_objects = conn.subscribed_objects.clone();
+        let sess = conn
+            .session
+            .as_ref()
+            .ok_or(crate::Error::ProtocolViolation)?;
+        let subscribed_objects = sess.subscribed_objects.clone();
         let objects = objects.map(|(object_id, _updatedness)| {
             // TODO(server): use _updatedness as get_all parameter when possible
             let subscribed_objects = subscribed_objects.clone();
@@ -338,8 +385,11 @@ impl<C: ServerConfig> Server<C> {
                 if subscribed_objects.read().unwrap().contains(&object_id) {
                     Ok(MaybeObject::AlreadySubscribed(object_id))
                 } else {
-                    // Subscribe BEFORE getting the object. This makes sure no updates are lost.
-                    subscribed_objects.write().unwrap().insert(object_id);
+                    if subscribe {
+                        // Subscribe BEFORE getting the object. This makes sure no updates are lost.
+                        // We must then not return to the update-sending loop until all the responses are sent.
+                        subscribed_objects.write().unwrap().insert(object_id);
+                    }
                     let object = self.postgres_db.get_all(object_id).await?;
                     Ok(MaybeObject::NotYetSubscribed(object))
                 }
@@ -525,12 +575,13 @@ impl<Tz: chrono::TimeZone> ServerVacuumSchedule<Tz> {
 struct ConnectionState {
     socket: WebSocket,
     session: Option<SessionInfo>,
-    subscribed_objects: Arc<RwLock<HashSet<ObjectId>>>,
 }
 
 struct SessionInfo {
     token: SessionToken,
     session: Session,
+    subscribed_objects: Arc<RwLock<HashSet<ObjectId>>>,
+    subscribed_queries: Arc<RwLock<HashMap<QueryId, Arc<Query>>>>,
     updates_receiver: mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
 }
 

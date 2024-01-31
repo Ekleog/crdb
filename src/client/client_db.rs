@@ -39,6 +39,7 @@ impl ClientDb {
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
         let cancellation_token = CancellationToken::new();
         // TODO(client): re-subscribe upon bootup to all the objects in database
+        // (note that ObjectDoesNotExist means that our user lost read access to the object while offline)
         // TODO(client): re-subscribe upon bootup to all the queries in database
         let this = ClientDb {
             api,

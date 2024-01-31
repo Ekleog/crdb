@@ -1,5 +1,5 @@
 use super::PostgresDb;
-use crate::test_utils::db::ServerConfig;
+use crate::{test_utils::db::ServerConfig, Object};
 
 // TODO(test): re-enable these tests after making them actually test things
 // mod fuzz_battle_royale;
@@ -18,7 +18,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         db: db,
         vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(OBJECT_ID_3.time()), |_, _| ()),
         query_all: db
-            .query::<TestObjectSimple>(USER_ID_NULL, None, Arc::new(Query::All(vec![])))
+            .query(USER_ID_NULL, *TestObjectSimple::type_ulid(), None, Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
         test_remove: false,
@@ -140,7 +140,7 @@ mod fuzz_helpers {
         query: &Arc<Query>,
     ) -> anyhow::Result<()> {
         let pg = db
-            .query::<T>(user, only_updated_since, query.clone())
+            .query(user, *T::type_ulid(), only_updated_since, query.clone())
             .await
             .wrap_context("querying postgres")
             .map(|r| r.into_iter().collect::<HashSet<_>>());

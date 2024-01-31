@@ -4,7 +4,7 @@ use crate::{
         ClientMessage, MaybeObject, Request, RequestId, RequestWithSidecar, ResponsePart,
         ResponsePartWithSidecar, ServerMessage, Update, UpdateData, Updates,
     },
-    ObjectId, Query, SessionToken, Timestamp, Updatedness,
+    ObjectId, Query, SessionToken, Timestamp, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
@@ -127,7 +127,7 @@ pub struct Connection {
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
     subscribed_objects: HashMap<ObjectId, Option<Updatedness>>,
-    subscribed_queries: HashMap<QueryId, (Arc<Query>, Option<Updatedness>)>,
+    subscribed_queries: HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>,
 }
 
 impl Connection {
@@ -252,7 +252,7 @@ impl Connection {
                                     crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                                 let subscribed_queries = self.subscribed_queries.clone(); // TODO(low): we can certainly avoid this clone
-                                for (query_id, (query, have_all_until)) in subscribed_queries {
+                                for (query_id, (query, type_id, have_all_until)) in subscribed_queries {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
                                     self.handle_request(
@@ -260,6 +260,7 @@ impl Connection {
                                         Arc::new(RequestWithSidecar {
                                             request: Arc::new(Request::Query {
                                                 query_id,
+                                                type_id,
                                                 query,
                                                 only_updated_since: have_all_until,
                                                 subscribe: true,
@@ -440,12 +441,13 @@ impl Connection {
             }
             Request::Query {
                 query_id,
+                type_id,
                 query,
                 only_updated_since,
                 subscribe: true,
             } => {
                 self.subscribed_queries
-                    .insert(*query_id, (query.clone(), *only_updated_since));
+                    .insert(*query_id, (query.clone(), *type_id, *only_updated_since));
             }
             Request::Unsubscribe(object_ids) => {
                 for object_id in object_ids {
@@ -521,7 +523,7 @@ impl Connection {
                                 if let Some(subscription_info) =
                                     self.subscribed_queries.get_mut(query_id)
                                 {
-                                    subscription_info.1 = *now_have_all_until;
+                                    subscription_info.2 = *now_have_all_until;
                                 }
                             }
                         }

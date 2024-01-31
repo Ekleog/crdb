@@ -293,6 +293,7 @@ impl ApiDb {
         let request = Arc::new(RequestWithSidecar {
             request: Arc::new(Request::Query {
                 query_id,
+                type_id: *T::type_ulid(),
                 query,
                 only_updated_since,
                 subscribe,

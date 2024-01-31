@@ -1285,9 +1285,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(Some((cutoff_time, Arc::new(latest_object))))
     }
 
-    pub async fn query<T: Object>(
+    pub async fn query(
         &self,
         user: User,
+        type_id: TypeId,
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
     ) -> crate::Result<Vec<ObjectId>> {
@@ -1323,7 +1324,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         reord::point().await;
         let mut query_sql = sqlx::query(&query_sql)
             .persistent(false) // TODO(blocked): remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
-            .bind(T::type_ulid())
+            .bind(type_id)
             .bind(user)
             .bind(min_last_modified);
         for b in query.binds()? {
