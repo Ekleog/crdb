@@ -121,9 +121,15 @@ pub enum ResponsePart {
         // Set only in answer to a Query, this is the max of the Updatedness of all the returned objects.
         // This is only set in the last ResponsePart of the query request, to make sure if connection cuts
         // the client will not wrongfully assume having already received everything.
+        // TODO(low): Server would have better perf if this were actually the max updatedness it's guaranteed
+        // to have answered. This way, clients would ask queries with a higher only_updated_since, and thus
+        // postgresql would be able to filter more lines faster.
         now_have_all_until: Option<Updatedness>,
     },
-    Snapshots(Vec<MaybeSnapshot>),
+    Snapshots {
+        data: Vec<MaybeSnapshot>,
+        now_have_all_until: Option<Updatedness>,
+    },
     Binaries(usize),
     // Note: the server's answer to GetBinaries is a Binaries(x) message, followed by `x`
     // websocket frames of type Binary. It can be split into multiple parts.

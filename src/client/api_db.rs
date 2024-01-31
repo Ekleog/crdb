@@ -137,7 +137,7 @@ impl ApiDb {
                 | ResponsePart::CurrentTime(_)
                 | ResponsePart::Objects { .. }
                 | ResponsePart::Binaries(_)
-                | ResponsePart::Snapshots(_) => {
+                | ResponsePart::Snapshots { .. } => {
                     return Err(crate::Error::Other(anyhow!(
                         "Server broke protocol by answering a creation request with {response:?}"
                     )));
