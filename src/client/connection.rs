@@ -233,6 +233,8 @@ impl Connection {
                                 // Re-subscribe to the previously subscribed queries and objects
                                 // Start with subscribed objects, so that we easily tell the server what we already know about them.
                                 // Only then re-subscribe to queries, this way the server can answer AlreadySubscribed whenever relevant.
+                                // TODO(client): stop tracking any subscription information here, and instead just re-ask the LocalDb for
+                                // what to re-subscribe on upon reconnection?
                                 if !self.subscribed_objects.is_empty() {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
