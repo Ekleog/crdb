@@ -4,13 +4,17 @@ use crate::{
     crdb_internal::ResultExt,
     ids::QueryId,
     messages::{
-        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
+        ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
+        Updates,
     },
     EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
-use futures::{future::OptionFuture, pin_mut, stream, StreamExt};
+use futures::{
+    future::{self, Either, OptionFuture},
+    pin_mut, stream, StreamExt,
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex, RwLock},
@@ -354,6 +358,10 @@ impl<C: ServerConfig> Server<C> {
                 )
                 .await
             }
+            Request::GetLatest(object_ids) => {
+                self.send_snapshots(conn, msg.request_id, false, object_ids.iter().copied())
+                    .await
+            }
             _ => {
                 unimplemented!() // TODO(api)
             }
@@ -432,7 +440,84 @@ impl<C: ServerConfig> Server<C> {
             request_id,
             Ok(ResponsePart::Objects {
                 data: current_data,
-                now_have_all_until: None,
+                now_have_all_until: None, // TODO(api): give real number here for Query answers
+            }),
+        )
+        .await
+    }
+
+    async fn send_snapshots(
+        &self,
+        conn: &mut ConnectionState,
+        request_id: RequestId,
+        ignore_non_existing: bool,
+        objects: impl Iterator<Item = ObjectId>,
+    ) -> crate::Result<()> {
+        let sess = conn
+            .session
+            .as_ref()
+            .ok_or(crate::Error::ProtocolViolation)?;
+        let user = sess.session.user_id;
+        let snapshots = objects.map(|object_id| {
+            if sess.subscribed_objects.read().unwrap().contains(&object_id) {
+                Either::Left(future::ready(Ok(MaybeSnapshot::AlreadySubscribed(
+                    object_id,
+                ))))
+            } else {
+                Either::Right(async move {
+                    let snapshot = self
+                        .postgres_db
+                        .get_latest_snapshot(user, object_id)
+                        .await?;
+                    Ok(MaybeSnapshot::NotSubscribed(snapshot))
+                })
+            }
+        });
+        let snapshots = stream::iter(snapshots)
+            .buffer_unordered(16) // TODO(low): is 16 a good number?
+            .filter_map(|res| async move {
+                match res {
+                    Ok(object) => Some(Ok(object)),
+                    Err(crate::Error::ObjectDoesNotExist(_)) if ignore_non_existing => None, // User lost read access to object between query and read
+                    Err(err) => Some(Err(err)),
+                }
+            });
+        pin_mut!(snapshots);
+        let mut size_of_message = 0;
+        let mut current_data = Vec::new();
+        // Send all the snapshots to the client, batching them by messages of a reasonable size, to both allow for better
+        // resumption after a connection loss, while not sending one message per mini-object.
+        while let Some(snapshot) = snapshots.next().await {
+            if size_of_message >= 1024 * 1024 {
+                // TODO(low): is 1MiB a good number?
+                let data = std::mem::replace(&mut current_data, Vec::new());
+                size_of_message = 0;
+                Self::send(
+                    &mut conn.socket,
+                    &ServerMessage::Response {
+                        request_id,
+                        response: ResponsePart::Snapshots {
+                            data,
+                            now_have_all_until: None,
+                        },
+                        last_response: false,
+                    },
+                )
+                .await?;
+            }
+            let snapshot = match snapshot {
+                Ok(snapshot) => snapshot,
+                Err(err) => return Self::send_res(&mut conn.socket, request_id, Err(err)).await,
+            };
+            size_of_message += size_as_json(&snapshot)?;
+            current_data.push(snapshot);
+        }
+        Self::send_res(
+            &mut conn.socket,
+            request_id,
+            Ok(ResponsePart::Snapshots {
+                data: current_data,
+                now_have_all_until: None, // TODO(api): give real number here for Query answers
             }),
         )
         .await

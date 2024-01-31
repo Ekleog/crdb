@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                    SELECT snapshot_id, type_id, snapshot_version, snapshot\n                    FROM snapshots\n                    WHERE object_id = $1\n                    AND is_latest\n                ",
+  "query": "\n                SELECT snapshot_id, type_id, snapshot_version, snapshot\n                FROM snapshots\n                WHERE object_id = $1\n                AND is_latest\n            ",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       false
     ]
   },
-  "hash": "987393638e6a6a6ba797f0ad00f44322b558bc199f1eb1d9bbeaab6dde9441d0"
+  "hash": "4965d12b4c6ea2f57805831bd39d74b19812317285b69db3dc45e87d02fda8ad"
 }

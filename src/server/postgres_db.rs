@@ -4,7 +4,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     fts,
-    messages::{ObjectData, Update, UpdateData},
+    messages::{ObjectData, SnapshotData, Update, UpdateData},
     object::parse_snapshot,
     query::Bind,
     BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
@@ -1684,6 +1684,46 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             now_have_all_until: last_modified,
         })
     }
+
+    pub async fn get_latest_snapshot(
+        &self,
+        user: User,
+        object_id: ObjectId,
+    ) -> crate::Result<SnapshotData> {
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // First, check the existence and requested type
+        reord::point().await;
+        let latest_snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, type_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_latest
+                AND $2 = ANY (users_who_can_read)
+            ",
+            object_id as ObjectId,
+            user as User,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
+        let latest_snapshot = match latest_snapshot {
+            Some(s) => s,
+            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
+        };
+        Ok(SnapshotData {
+            object_id,
+            type_id: TypeId::from_uuid(latest_snapshot.type_id),
+            snapshot_version: latest_snapshot.snapshot_version,
+            snapshot: latest_snapshot.snapshot,
+        })
+    }
 }
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
@@ -1761,11 +1801,11 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         reord::point().await;
         let latest_snapshot = sqlx::query!(
             "
-                    SELECT snapshot_id, type_id, snapshot_version, snapshot
-                    FROM snapshots
-                    WHERE object_id = $1
-                    AND is_latest
-                ",
+                SELECT snapshot_id, type_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_latest
+            ",
             object_id as ObjectId,
         )
         .fetch_optional(&mut *transaction)
