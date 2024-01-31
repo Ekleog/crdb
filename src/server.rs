@@ -336,6 +336,8 @@ impl<C: ServerConfig> Server<C> {
         .buffer_unordered(10); // TODO(low): is 10 a good number?
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
+        // Send all the objects to the client, batching them by messages of a reasonable size, to both allow for better
+        // resumption after a connection loss, while not sending one message per mini-object.
         while let Some(object) = objects.next().await {
             if size_of_message >= 1024 * 1024 {
                 // TODO(low): is 1MiB a good number?
