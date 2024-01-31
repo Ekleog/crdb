@@ -5,13 +5,14 @@ use crate::{
     messages::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
     },
-    EventId, ObjectId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
+    EventId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
 use futures::{future::OptionFuture, stream, StreamExt};
 use std::{
     collections::HashMap,
+    future::Future,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
@@ -308,10 +309,18 @@ impl<C: ServerConfig> Server<C> {
             }
             Request::Get {
                 object_ids,
-                subscribe,
+                subscribe: _,
             } => {
-                self.send_objects(conn, msg.request_id, object_ids, *subscribe)
-                    .await
+                // TODO(api): subscribe to the objects before querying them
+                let objects = object_ids
+                    .iter()
+                    // TODO(server): use _updatedness as get_all parameter when possible
+                    .map(|(object_id, _updatedness)| async move {
+                        let object = self.postgres_db.get_all(*object_id).await?;
+                        // TODO(api): return AlreadySubscribed if possible
+                        Ok(MaybeObject::NotYetSubscribed(object))
+                    });
+                self.send_objects(conn, msg.request_id, objects).await
             }
             _ => {
                 unimplemented!() // TODO(api)
@@ -323,17 +332,9 @@ impl<C: ServerConfig> Server<C> {
         &self,
         conn: &mut ConnectionState,
         request_id: RequestId,
-        object_ids: &HashMap<ObjectId, Option<Updatedness>>,
-        _subscribe: bool,
+        objects: impl Iterator<Item = impl Future<Output = crate::Result<MaybeObject>>>,
     ) -> crate::Result<()> {
-        // TODO(api): subscribe to the objects before querying them
-        let mut objects = stream::iter(
-            object_ids
-                .iter()
-                // TODO(server): use _updatedness as get_all parameter when possible
-                .map(|(object_id, _updatedness)| self.postgres_db.get_all(*object_id)),
-        )
-        .buffer_unordered(10); // TODO(low): is 10 a good number?
+        let mut objects = stream::iter(objects).buffer_unordered(10); // TODO(low): is 10 a good number?
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
         // Send all the objects to the client, batching them by messages of a reasonable size, to both allow for better
@@ -360,10 +361,8 @@ impl<C: ServerConfig> Server<C> {
                 Ok(object) => object,
                 Err(err) => return Self::send_res(&mut conn.socket, request_id, Err(err)).await,
             };
-            // TODO(server): return AlreadySubscribed if possible
-            let data = MaybeObject::NotYetSubscribed(object);
-            size_of_message += size_as_json(&data)?;
-            current_data.push(data);
+            size_of_message += size_as_json(&object)?;
+            current_data.push(object);
         }
         Self::send_res(
             &mut conn.socket,
