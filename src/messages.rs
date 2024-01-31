@@ -27,6 +27,7 @@ pub struct RequestWithSidecar {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Request {
+    // TODO(client): make sure all these request types are properly exposed to the user.
     SetToken(SessionToken),
     RenameSession(String),
     CurrentSession,
@@ -49,6 +50,9 @@ pub enum Request {
     // without caring about it actually being a CRDT. Or maybe this should just be Get/Query without
     // `subscribe`? Or maybe, even better, Get/Query should lose their subscribe parameter and it
     // should be replaced with a GetLatest/QueryLatest other variant here?
+    // TODO(low): Think about whether to use postgres_db or cache_db for answering *Latest queries.
+    // Using cache_db means clobbering the cache with stuff useless for computing users_who_can_read,
+    // but can also mean faster QueryRemote(Importance::Latest) queries
     GetBinaries(HashSet<BinPtr>),
     Unsubscribe(HashSet<ObjectId>),
     UnsubscribeQuery(QueryId),
