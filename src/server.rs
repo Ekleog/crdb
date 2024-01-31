@@ -395,6 +395,19 @@ impl<C: ServerConfig> Server<C> {
                 self.send_binaries(conn, msg.request_id, binary_ids.iter().copied())
                     .await
             }
+            Request::Unsubscribe(object_ids) => {
+                let mut subscribed_objects = conn
+                    .session
+                    .as_ref()
+                    .ok_or(crate::Error::ProtocolViolation)?
+                    .subscribed_objects
+                    .write()
+                    .unwrap();
+                for id in object_ids {
+                    subscribed_objects.remove(id);
+                }
+                Ok(())
+            }
             _ => {
                 unimplemented!() // TODO(api)
             }
