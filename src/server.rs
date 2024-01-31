@@ -309,38 +309,31 @@ impl<C: ServerConfig> Server<C> {
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
-            Request::Get {
-                object_ids,
-                subscribe,
-            } => {
+            Request::GetSubscribe(object_ids) => {
                 self.send_objects(
                     conn,
                     msg.request_id,
-                    *subscribe,
                     false,
                     object_ids.iter().map(|(o, u)| (*o, *u)),
                 )
                 .await
             }
-            Request::Query {
+            Request::QuerySubscribe {
                 query_id,
                 type_id,
                 query,
                 only_updated_since,
-                subscribe,
             } => {
                 let sess = conn
                     .session
                     .as_ref()
                     .ok_or(crate::Error::ProtocolViolation)?;
-                if *subscribe {
-                    // Subscribe BEFORE running the query. This makes sure no updates are lost.
-                    // We must then not return to the update-sending loop until all the responses are sent.
-                    sess.subscribed_queries
-                        .write()
-                        .unwrap()
-                        .insert(*query_id, query.clone());
-                }
+                // Subscribe BEFORE running the query. This makes sure no updates are lost.
+                // We must then not return to the update-sending loop until all the responses are sent.
+                sess.subscribed_queries
+                    .write()
+                    .unwrap()
+                    .insert(*query_id, query.clone());
                 let object_ids = self
                     .postgres_db
                     .query(
@@ -356,7 +349,6 @@ impl<C: ServerConfig> Server<C> {
                 self.send_objects(
                     conn,
                     msg.request_id,
-                    *subscribe,
                     true,
                     object_ids.into_iter().map(|o| (o, None)),
                 )
@@ -372,7 +364,6 @@ impl<C: ServerConfig> Server<C> {
         &self,
         conn: &mut ConnectionState,
         request_id: RequestId,
-        subscribe: bool,
         ignore_non_existing: bool,
         objects: impl Iterator<Item = (ObjectId, Option<Updatedness>)>,
     ) -> crate::Result<()> {
@@ -389,11 +380,9 @@ impl<C: ServerConfig> Server<C> {
                 if subscribed_objects.read().unwrap().contains(&object_id) {
                     Ok(MaybeObject::AlreadySubscribed(object_id))
                 } else {
-                    if subscribe {
-                        // Subscribe BEFORE getting the object. This makes sure no updates are lost.
-                        // We must then not return to the update-sending loop until all the responses are sent.
-                        subscribed_objects.write().unwrap().insert(object_id);
-                    }
+                    // Subscribe BEFORE getting the object. This makes sure no updates are lost.
+                    // We must then not return to the update-sending loop until all the responses are sent.
+                    subscribed_objects.write().unwrap().insert(object_id);
                     let object = self.postgres_db.get_all(user, object_id).await?;
                     Ok(MaybeObject::NotYetSubscribed(object))
                 }

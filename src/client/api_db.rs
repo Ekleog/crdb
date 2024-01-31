@@ -136,7 +136,8 @@ impl ApiDb {
                 ResponsePart::Sessions(_)
                 | ResponsePart::CurrentTime(_)
                 | ResponsePart::Objects { .. }
-                | ResponsePart::Binaries(_) => {
+                | ResponsePart::Binaries(_)
+                | ResponsePart::Snapshots(_) => {
                     return Err(crate::Error::Other(anyhow!(
                         "Server broke protocol by answering a creation request with {response:?}"
                     )));
@@ -245,17 +246,14 @@ impl ApiDb {
         Ok(result_receiver)
     }
 
-    pub async fn fetch_from_api(
-        &self,
-        subscribe: bool,
-        object_id: ObjectId,
-    ) -> crate::Result<ObjectData> {
+    // TODO(low): Think about whether to use postgres_db or cache_db for answering *Latest queries.
+    // Using cache_db means clobbering the cache with stuff useless for computing users_who_can_read,
+    // but can also mean faster QueryRemote(Importance::Latest) queries
+
+    pub async fn get_subscribe(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
         let mut object_ids = HashMap::new();
         object_ids.insert(object_id, None); // We do not know about this object yet, so None
-        let request = Arc::new(Request::Get {
-            object_ids,
-            subscribe,
-        });
+        let request = Arc::new(Request::GetSubscribe(object_ids));
         let mut response = self.request(Arc::new(RequestWithSidecar {
             request,
             sidecar: Vec::new(),
@@ -283,20 +281,18 @@ impl ApiDb {
         }
     }
 
-    pub fn query<T: Object>(
+    pub fn query_subscribe<T: Object>(
         &self,
         query_id: QueryId,
         only_updated_since: Option<Updatedness>,
-        subscribe: bool,
         query: Arc<Query>,
     ) -> impl CrdbStream<Item = crate::Result<MaybeObject>> {
         let request = Arc::new(RequestWithSidecar {
-            request: Arc::new(Request::Query {
+            request: Arc::new(Request::QuerySubscribe {
                 query_id,
                 type_id: *T::type_ulid(),
                 query,
                 only_updated_since,
-                subscribe,
             }),
             sidecar: Vec::new(),
         });

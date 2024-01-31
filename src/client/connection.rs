@@ -241,10 +241,7 @@ impl Connection {
                                     self.handle_request(
                                         request_id,
                                         Arc::new(RequestWithSidecar {
-                                            request: Arc::new(Request::Get {
-                                                object_ids: self.subscribed_objects.clone(),
-                                                subscribe: true,
-                                            }),
+                                            request: Arc::new(Request::GetSubscribe(self.subscribed_objects.clone())),
                                             sidecar: Vec::new(),
                                         }),
                                         responses_sender,
@@ -258,12 +255,11 @@ impl Connection {
                                     self.handle_request(
                                         request_id,
                                         Arc::new(RequestWithSidecar {
-                                            request: Arc::new(Request::Query {
+                                            request: Arc::new(Request::QuerySubscribe {
                                                 query_id,
                                                 type_id,
                                                 query,
                                                 only_updated_since: have_all_until,
-                                                subscribe: true,
                                             }),
                                             sidecar: Vec::new(),
                                         }),
@@ -432,19 +428,15 @@ impl Connection {
         sender: ResponseSender,
     ) {
         match &*request.request {
-            Request::Get {
-                object_ids,
-                subscribe: true,
-            } => {
+            Request::GetSubscribe(object_ids) => {
                 self.subscribed_objects
                     .extend(object_ids.iter().map(|(id, t)| (*id, *t)));
             }
-            Request::Query {
+            Request::QuerySubscribe {
                 query_id,
                 type_id,
                 query,
                 only_updated_since,
-                subscribe: true,
             } => {
                 self.subscribed_queries
                     .insert(*query_id, (query.clone(), *type_id, *only_updated_since));
@@ -496,9 +488,7 @@ impl Connection {
                 {
                     // Update our local subscription information and fetch the sidecar
                     match &*request.request {
-                        Request::Get {
-                            subscribe: true, ..
-                        } => {
+                        Request::GetSubscribe(_) => {
                             if let ResponsePart::Objects { data, .. } = &response {
                                 for maybe_object in data {
                                     match maybe_object {
@@ -511,11 +501,7 @@ impl Connection {
                                 }
                             }
                         }
-                        Request::Query {
-                            query_id,
-                            subscribe: true,
-                            ..
-                        } => {
+                        Request::QuerySubscribe { query_id, .. } => {
                             if let ResponsePart::Objects {
                                 now_have_all_until, ..
                             } = &response

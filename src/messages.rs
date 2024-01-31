@@ -34,25 +34,20 @@ pub enum Request {
     ListSessions,
     DisconnectSession(SessionRef),
     GetTime,
-    Get {
-        // Map from object to the only_updated_since information we want on it
-        object_ids: HashMap<ObjectId, Option<Updatedness>>,
-        subscribe: bool,
-    },
-    Query {
+    // Map from object to the only_updated_since information we want on it
+    GetSubscribe(HashMap<ObjectId, Option<Updatedness>>),
+    QuerySubscribe {
         query_id: QueryId,
         type_id: TypeId,
         query: Arc<Query>,
         only_updated_since: Option<Updatedness>,
-        subscribe: bool,
     },
-    // TODO(api): Introduce GetLatest for when the client really just wants a latest snapshot once,
-    // without caring about it actually being a CRDT. Or maybe this should just be Get/Query without
-    // `subscribe`? Or maybe, even better, Get/Query should lose their subscribe parameter and it
-    // should be replaced with a GetLatest/QueryLatest other variant here?
-    // TODO(low): Think about whether to use postgres_db or cache_db for answering *Latest queries.
-    // Using cache_db means clobbering the cache with stuff useless for computing users_who_can_read,
-    // but can also mean faster QueryRemote(Importance::Latest) queries
+    GetLatest(HashSet<ObjectId>),
+    QueryLatest {
+        type_id: TypeId,
+        query: Arc<Query>,
+        only_updated_since: Option<Updatedness>,
+    },
     GetBinaries(HashSet<BinPtr>),
     Unsubscribe(HashSet<ObjectId>),
     UnsubscribeQuery(QueryId),
@@ -128,6 +123,7 @@ pub enum ResponsePart {
         // the client will not wrongfully assume having already received everything.
         now_have_all_until: Option<Updatedness>,
     },
+    Snapshots(Vec<MaybeSnapshot>),
     Binaries(usize),
     // Note: the server's answer to GetBinaries is a Binaries(x) message, followed by `x`
     // websocket frames of type Binary. It can be split into multiple parts.
@@ -148,6 +144,20 @@ pub struct ObjectData {
     pub creation_snapshot: Option<(EventId, i32, serde_json::Value)>,
     pub events: BTreeMap<EventId, serde_json::Value>,
     pub now_have_all_until: Updatedness,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum MaybeSnapshot {
+    AlreadySubscribed(ObjectId),
+    NotSubscribed(SnapshotData),
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct SnapshotData {
+    pub object_id: ObjectId,
+    pub type_id: TypeId,
+    pub snapshot_version: i32,
+    pub snapshot: serde_json::Value,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]

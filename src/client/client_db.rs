@@ -332,12 +332,13 @@ impl ClientDb {
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
-        let res = self
-            .api
-            .fetch_from_api(importance >= Importance::Subscribe, object_id)
-            .await?;
-        Self::locally_create_all::<T>(&self.db, importance >= Importance::Lock, res).await?;
-        Ok(self.db.get_latest::<T>(false, object_id).await?) // Already locked just above
+        if importance >= Importance::Subscribe {
+            let res = self.api.get_subscribe(object_id).await?;
+            Self::locally_create_all::<T>(&self.db, importance >= Importance::Lock, res).await?;
+            Ok(self.db.get_latest::<T>(false, object_id).await?) // Already locked just above
+        } else {
+            unimplemented!() // TODO(client): GetLatest
+        }
     }
 
     pub async fn query_local<T: Object>(
@@ -369,33 +370,32 @@ impl ClientDb {
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
     ) -> impl '_ + CrdbStream<Item = crate::Result<Arc<T>>> {
-        // TODO(client): first make sure to wait until the current upload queue is empty, so that
-        // any newly-created object/event makes its way through to the server before querying
-        self.api
-            .query::<T>(
-                QueryId::now(),
-                only_updated_since,
-                importance >= Importance::Subscribe,
-                query,
-            )
-            .then({
-                let db = self.db.clone();
-                move |data| {
-                    let db = db.clone();
-                    let lock = importance >= Importance::Lock;
-                    async move {
-                        let object_id = match data? {
-                            MaybeObject::NotYetSubscribed(data) => {
-                                let object_id = data.object_id;
-                                Self::locally_create_all::<T>(&db, lock, data).await?;
-                                object_id
-                            }
-                            MaybeObject::AlreadySubscribed(object_id) => object_id,
-                        };
-                        self.db.get_latest::<T>(lock, object_id).await
+        if importance >= Importance::Subscribe {
+            // TODO(client): first make sure to wait until the current upload queue is empty, so that
+            // any newly-created object/event makes its way through to the server before querying
+            self.api
+                .query_subscribe::<T>(QueryId::now(), only_updated_since, query)
+                .then({
+                    let db = self.db.clone();
+                    move |data| {
+                        let db = db.clone();
+                        let lock = importance >= Importance::Lock;
+                        async move {
+                            let object_id = match data? {
+                                MaybeObject::NotYetSubscribed(data) => {
+                                    let object_id = data.object_id;
+                                    Self::locally_create_all::<T>(&db, lock, data).await?;
+                                    object_id
+                                }
+                                MaybeObject::AlreadySubscribed(object_id) => object_id,
+                            };
+                            self.db.get_latest::<T>(lock, object_id).await
+                        }
                     }
-                }
-            })
+                })
+        } else {
+            unimplemented!() // TODO(client): FetchLatest
+        }
     }
 
     // TODO(low): should the client be allowed to request a recreation?

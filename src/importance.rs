@@ -1,7 +1,7 @@
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Importance {
     /// Only care about fetching the latest value once
-    Once,
+    Latest,
 
     /// Will want to re-use the value a few times, without a server round-trip each time
     ///
@@ -18,9 +18,9 @@ impl Ord for Importance {
         use std::cmp::Ordering;
 
         match (self, other) {
-            (Importance::Once, Importance::Once) => Ordering::Equal,
-            (Importance::Once, _) => Ordering::Less,
-            (Importance::Subscribe, Importance::Once) => Ordering::Greater,
+            (Importance::Latest, Importance::Latest) => Ordering::Equal,
+            (Importance::Latest, _) => Ordering::Less,
+            (Importance::Subscribe, Importance::Latest) => Ordering::Greater,
             (Importance::Subscribe, Importance::Subscribe) => Ordering::Equal,
             (Importance::Subscribe, Importance::Lock) => Ordering::Less,
             (Importance::Lock, Importance::Lock) => Ordering::Equal,
