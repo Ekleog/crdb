@@ -12,7 +12,6 @@ use axum::extract::ws::{self, WebSocket};
 use futures::{future::OptionFuture, stream, StreamExt};
 use std::{
     collections::{HashMap, HashSet},
-    future::Future,
     sync::{Arc, Mutex, RwLock},
     time::{Duration, SystemTime},
 };
@@ -312,24 +311,12 @@ impl<C: ServerConfig> Server<C> {
                 object_ids,
                 subscribe: _,
             } => {
-                let subscribed_objects = conn.subscribed_objects.clone();
-                let objects = object_ids
-                    .iter()
-                    // TODO(server): use _updatedness as get_all parameter when possible
-                    .map(|(object_id, _updatedness)| {
-                        let subscribed_objects = subscribed_objects.clone();
-                        async move {
-                            if subscribed_objects.read().unwrap().contains(object_id) {
-                                Ok(MaybeObject::AlreadySubscribed(*object_id))
-                            } else {
-                                // Subscribe BEFORE getting the object. This makes sure no updates are lost.
-                                subscribed_objects.write().unwrap().insert(*object_id);
-                                let object = self.postgres_db.get_all(*object_id).await?;
-                                Ok(MaybeObject::NotYetSubscribed(object))
-                            }
-                        }
-                    });
-                self.send_objects(conn, msg.request_id, objects).await
+                self.send_objects(
+                    conn,
+                    msg.request_id,
+                    object_ids.iter().map(|(o, u)| (*o, *u)),
+                )
+                .await
             }
             _ => {
                 unimplemented!() // TODO(api)
@@ -341,8 +328,23 @@ impl<C: ServerConfig> Server<C> {
         &self,
         conn: &mut ConnectionState,
         request_id: RequestId,
-        objects: impl Iterator<Item = impl Future<Output = crate::Result<MaybeObject>>>,
+        objects: impl Iterator<Item = (ObjectId, Option<Updatedness>)>,
     ) -> crate::Result<()> {
+        let subscribed_objects = conn.subscribed_objects.clone();
+        let objects = objects.map(|(object_id, _updatedness)| {
+            // TODO(server): use _updatedness as get_all parameter when possible
+            let subscribed_objects = subscribed_objects.clone();
+            async move {
+                if subscribed_objects.read().unwrap().contains(&object_id) {
+                    Ok(MaybeObject::AlreadySubscribed(object_id))
+                } else {
+                    // Subscribe BEFORE getting the object. This makes sure no updates are lost.
+                    subscribed_objects.write().unwrap().insert(object_id);
+                    let object = self.postgres_db.get_all(object_id).await?;
+                    Ok(MaybeObject::NotYetSubscribed(object))
+                }
+            }
+        });
         let mut objects = stream::iter(objects).buffer_unordered(16); // TODO(low): is 16 a good number?
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
