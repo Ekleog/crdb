@@ -246,10 +246,6 @@ impl ApiDb {
         Ok(result_receiver)
     }
 
-    // TODO(low): Think about whether to use postgres_db or cache_db for answering *Latest queries.
-    // Using cache_db means clobbering the cache with stuff useless for computing users_who_can_read,
-    // but can also mean faster QueryRemote(Importance::Latest) queries
-
     pub async fn get_subscribe(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
         let mut object_ids = HashMap::new();
         object_ids.insert(object_id, None); // We do not know about this object yet, so None

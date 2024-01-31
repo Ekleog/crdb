@@ -1,19 +1,19 @@
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
-    crdb_internal::ResultExt,
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
         Updates,
     },
-    EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
+    BinPtr, Db, EventId, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, Timestamp,
+    Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
 use futures::{
     future::{self, Either, OptionFuture},
-    pin_mut, stream, StreamExt,
+    pin_mut, stream, FutureExt, StreamExt,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -39,7 +39,7 @@ pub use config::ServerConfig;
 type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>, Vec<User>)>;
 
 pub struct Server<C: ServerConfig> {
-    _cache_db: Arc<CacheDb<PostgresDb<C>>>, // TODO(api): use this to implement the server
+    cache_db: Arc<CacheDb<PostgresDb<C>>>,
     postgres_db: Arc<PostgresDb<C>>,
     updatedness_requester: mpsc::UnboundedSender<
         oneshot::Sender<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)>,
@@ -186,7 +186,7 @@ impl<C: ServerConfig> Server<C> {
 
         // Finally, return the information
         let this = Server {
-            _cache_db: cache_db,
+            cache_db,
             postgres_db,
             updatedness_requester,
             _cleanup_token: cancellation_token.drop_guard(),
@@ -386,6 +386,15 @@ impl<C: ServerConfig> Server<C> {
                 self.send_snapshots(conn, msg.request_id, true, object_ids.into_iter())
                     .await
             }
+            Request::GetBinaries(binary_ids) => {
+                // Just avoid unauthed binary gets
+                let _ = conn
+                    .session
+                    .as_ref()
+                    .ok_or(crate::Error::ProtocolViolation)?;
+                self.send_binaries(conn, msg.request_id, binary_ids.iter().copied())
+                    .await
+            }
             _ => {
                 unimplemented!() // TODO(api)
             }
@@ -475,20 +484,23 @@ impl<C: ServerConfig> Server<C> {
         conn: &mut ConnectionState,
         request_id: RequestId,
         ignore_non_existing: bool,
-        objects: impl Iterator<Item = ObjectId>,
+        object_ids: impl Iterator<Item = ObjectId>,
     ) -> crate::Result<()> {
         let sess = conn
             .session
             .as_ref()
             .ok_or(crate::Error::ProtocolViolation)?;
         let user = sess.session.user_id;
-        let snapshots = objects.map(|object_id| {
+        let snapshots = object_ids.map(|object_id| {
             if sess.subscribed_objects.read().unwrap().contains(&object_id) {
                 Either::Left(future::ready(Ok(MaybeSnapshot::AlreadySubscribed(
                     object_id,
                 ))))
             } else {
                 Either::Right(async move {
+                    // TODO(low): Think about whether to use postgres_db or cache_db for answering *Latest queries.
+                    // Using cache_db means clobbering the cache with stuff useless for computing users_who_can_read,
+                    // but can also mean faster QueryRemote(Importance::Latest) queries
                     let snapshot = self
                         .postgres_db
                         .get_latest_snapshot(user, object_id)
@@ -545,6 +557,85 @@ impl<C: ServerConfig> Server<C> {
             }),
         )
         .await
+    }
+
+    async fn send_binaries(
+        &self,
+        conn: &mut ConnectionState,
+        request_id: RequestId,
+        binaries: impl Iterator<Item = BinPtr>,
+    ) -> crate::Result<()> {
+        let binaries = binaries.map(|binary_id| {
+            self.cache_db
+                .get_binary(binary_id)
+                .map(move |r| (binary_id, r))
+        });
+        let binaries = stream::iter(binaries).buffer_unordered(16); // TODO(low): is 16 a good number?
+        pin_mut!(binaries);
+        let mut size_of_message = 0;
+        let mut current_data = Vec::new();
+        // Send all the binaries to the client, trying to avoid having too many ResponsePart::Binaries messages while still sending as
+        // many binaries as possible before any potential error (in particular missing-binary).
+        while let Some((binary_id, binary)) = binaries.next().await {
+            if size_of_message >= 1024 * 1024 {
+                // TODO(low): is 1MiB a good number?
+                size_of_message = 0;
+                Self::send_binaries_msg(
+                    &mut conn.socket,
+                    request_id,
+                    false,
+                    current_data.drain(..),
+                )
+                .await?;
+            }
+            let binary = match binary {
+                Ok(Some(binary)) => Ok(binary),
+                Ok(None) => Err(crate::Error::MissingBinaries(vec![binary_id])),
+                Err(err) => Err(err),
+            };
+            let binary = match binary {
+                Ok(binary) => binary,
+                Err(err) => {
+                    if !current_data.is_empty() {
+                        Self::send_binaries_msg(
+                            &mut conn.socket,
+                            request_id,
+                            false,
+                            current_data.drain(..),
+                        )
+                        .await?;
+                    }
+                    return Self::send_res(&mut conn.socket, request_id, Err(err)).await;
+                }
+            };
+            size_of_message += binary.len();
+            current_data.push(binary);
+        }
+        Self::send_binaries_msg(&mut conn.socket, request_id, true, current_data.drain(..)).await
+    }
+
+    async fn send_binaries_msg(
+        socket: &mut WebSocket,
+        request_id: RequestId,
+        last_response: bool,
+        bins: impl ExactSizeIterator<Item = Arc<[u8]>>,
+    ) -> crate::Result<()> {
+        Self::send(
+            socket,
+            &ServerMessage::Response {
+                request_id,
+                last_response,
+                response: ResponsePart::Binaries(bins.len()),
+            },
+        )
+        .await?;
+        for bin in bins {
+            socket
+                .send(ws::Message::Binary(bin.to_vec()))
+                .await
+                .wrap_context("sending binary to client")?
+        }
+        Ok(())
     }
 
     async fn send_res(
