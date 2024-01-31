@@ -2,12 +2,14 @@ use crate::{
     api::ApiConfig,
     cache::CacheDb,
     crdb_internal::ResultExt,
-    messages::{ClientMessage, Request, RequestId, ResponsePart, ServerMessage, Updates},
-    EventId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
+    messages::{
+        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
+    },
+    EventId, ObjectId, Session, SessionRef, SessionToken, Timestamp, Updatedness, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
-use futures::{future::OptionFuture, StreamExt};
+use futures::{future::OptionFuture, stream, StreamExt};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -304,13 +306,72 @@ impl<C: ServerConfig> Server<C> {
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
-            // TODO(api): when implementing Get, make sure to:
-            // 1. subscribe the user to the object ids, to not miss events between the initial fetch and the subscription
-            // 2. make sure not to return early to the `answer` loop! (and document why). This avoids Updates being sent too early
+            Request::Get {
+                object_ids,
+                subscribe,
+            } => {
+                self.send_objects(conn, msg.request_id, object_ids, *subscribe)
+                    .await
+            }
             _ => {
                 unimplemented!() // TODO(api)
             }
         }
+    }
+
+    async fn send_objects(
+        &self,
+        conn: &mut ConnectionState,
+        request_id: RequestId,
+        object_ids: &HashMap<ObjectId, Option<Updatedness>>,
+        _subscribe: bool,
+    ) -> crate::Result<()> {
+        // TODO(api): subscribe to the objects before querying them
+        let mut objects = stream::iter(
+            object_ids
+                .iter()
+                // TODO(server): use _updatedness as get_all parameter when possible
+                .map(|(object_id, _updatedness)| self.postgres_db.get_all(*object_id)),
+        )
+        .buffer_unordered(10); // TODO(low): is 10 a good number?
+        let mut size_of_message = 0;
+        let mut current_data = Vec::new();
+        while let Some(object) = objects.next().await {
+            if size_of_message >= 1024 * 1024 {
+                // TODO(low): is 1MiB a good number?
+                let data = std::mem::replace(&mut current_data, Vec::new());
+                size_of_message = 0;
+                Self::send(
+                    &mut conn.socket,
+                    &ServerMessage::Response {
+                        request_id,
+                        response: ResponsePart::Objects {
+                            data,
+                            now_have_all_until: None,
+                        },
+                        last_response: false,
+                    },
+                )
+                .await?;
+            }
+            let object = match object {
+                Ok(object) => object,
+                Err(err) => return Self::send_res(&mut conn.socket, request_id, Err(err)).await,
+            };
+            // TODO(server): return AlreadySubscribed if possible
+            let data = MaybeObject::NotYetSubscribed(object);
+            size_of_message += size_as_json(&data)?;
+            current_data.push(data);
+        }
+        Self::send_res(
+            &mut conn.socket,
+            request_id,
+            Ok(ResponsePart::Objects {
+                data: current_data,
+                now_have_all_until: None,
+            }),
+        )
+        .await
     }
 
     async fn send_res(
@@ -458,4 +519,22 @@ struct SessionInfo {
     token: SessionToken,
     session: Session,
     updates_receiver: mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
+}
+
+fn size_as_json<T: serde::Serialize>(value: &T) -> crate::Result<usize> {
+    struct Size(usize);
+    impl std::io::Write for Size {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len();
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut size = Size(0);
+    serde_json::to_writer(&mut size, value)
+        .wrap_context("figuring out the serialized size of value")?;
+    Ok(size.0)
 }

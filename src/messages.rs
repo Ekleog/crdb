@@ -44,8 +44,10 @@ pub enum Request {
         only_updated_since: Option<Updatedness>,
         subscribe: bool,
     },
-    // TODO(api): introduce GetLatest for when the client really just wants a latest snapshot once,
-    // without caring about it actually being a CRDT
+    // TODO(api): Introduce GetLatest for when the client really just wants a latest snapshot once,
+    // without caring about it actually being a CRDT. Or maybe this should just be Get/Query without
+    // `subscribe`? Or maybe, even better, Get/Query should lose their subscribe parameter and it
+    // should be replaced with a GetLatest/QueryLatest other variant here?
     GetBinaries(HashSet<BinPtr>),
     Unsubscribe(HashSet<ObjectId>),
     UnsubscribeQuery(QueryId),
