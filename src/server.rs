@@ -362,6 +362,30 @@ impl<C: ServerConfig> Server<C> {
                 self.send_snapshots(conn, msg.request_id, false, object_ids.iter().copied())
                     .await
             }
+            Request::QueryLatest {
+                type_id,
+                query,
+                only_updated_since,
+            } => {
+                let sess = conn
+                    .session
+                    .as_ref()
+                    .ok_or(crate::Error::ProtocolViolation)?;
+                let object_ids = self
+                    .postgres_db
+                    .query(
+                        sess.session.user_id,
+                        *type_id,
+                        *only_updated_since,
+                        query.clone(),
+                    )
+                    .await
+                    .wrap_context("listing objects matching query")?;
+                // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
+                // So, setting `None` here is the right thing to do.
+                self.send_snapshots(conn, msg.request_id, true, object_ids.into_iter())
+                    .await
+            }
             _ => {
                 unimplemented!() // TODO(api)
             }
