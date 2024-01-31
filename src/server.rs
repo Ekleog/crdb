@@ -408,6 +408,16 @@ impl<C: ServerConfig> Server<C> {
                 }
                 Ok(())
             }
+            Request::UnsubscribeQuery(query_id) => {
+                conn.session
+                    .as_ref()
+                    .ok_or(crate::Error::ProtocolViolation)?
+                    .subscribed_queries
+                    .write()
+                    .unwrap()
+                    .remove(query_id);
+                Ok(())
+            }
             _ => {
                 unimplemented!() // TODO(api)
             }
