@@ -228,6 +228,9 @@ impl<C: ServerConfig> Server<C> {
     ) -> crate::Result<()> {
         let msg = serde_json::from_str::<ClientMessage>(msg)
             .wrap_context("deserializing client message")?;
+        // TODO(low): We could parallelize requests here, and not just pipeline them. However, we need to be
+        // careful about not sending updates about subscribed objects before the objects themselves, so it is
+        // nontrivial. Do this only after thinking well about what could happen.
         match &*msg.request {
             Request::SetToken(token) => {
                 let res = self
