@@ -10,7 +10,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
-use futures::{future::OptionFuture, stream, StreamExt};
+use futures::{future::OptionFuture, pin_mut, stream, StreamExt};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex, RwLock},
@@ -317,6 +317,7 @@ impl<C: ServerConfig> Server<C> {
                     conn,
                     msg.request_id,
                     *subscribe,
+                    false,
                     object_ids.iter().map(|(o, u)| (*o, *u)),
                 )
                 .await
@@ -356,6 +357,7 @@ impl<C: ServerConfig> Server<C> {
                     conn,
                     msg.request_id,
                     *subscribe,
+                    true,
                     object_ids.into_iter().map(|o| (o, None)),
                 )
                 .await
@@ -371,6 +373,7 @@ impl<C: ServerConfig> Server<C> {
         conn: &mut ConnectionState,
         request_id: RequestId,
         subscribe: bool,
+        ignore_non_existing: bool,
         objects: impl Iterator<Item = (ObjectId, Option<Updatedness>)>,
     ) -> crate::Result<()> {
         let sess = conn
@@ -396,7 +399,16 @@ impl<C: ServerConfig> Server<C> {
                 }
             }
         });
-        let mut objects = stream::iter(objects).buffer_unordered(16); // TODO(low): is 16 a good number?
+        let objects = stream::iter(objects)
+            .buffer_unordered(16) // TODO(low): is 16 a good number?
+            .filter_map(|res| async move {
+                match res {
+                    Ok(object) => Some(Ok(object)),
+                    Err(crate::Error::ObjectDoesNotExist(_)) if ignore_non_existing => None, // User lost read access to object between query and read
+                    Err(err) => Some(Err(err)),
+                }
+            });
+        pin_mut!(objects);
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
         // Send all the objects to the client, batching them by messages of a reasonable size, to both allow for better
