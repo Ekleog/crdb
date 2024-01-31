@@ -1599,7 +1599,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         panic!()
     }
 
-    pub async fn get_all(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
+    // TODO(test): introduce in server-side fuzzer
+    pub async fn get_all(&self, user: User, object_id: ObjectId) -> crate::Result<ObjectData> {
         // TODO(server): take as parameter if-modified-since, and only return the things that are more recent than that
         reord::point().await;
         let mut transaction = self
@@ -1615,6 +1616,27 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .await
             .wrap_context("setting transaction as repeatable read")?;
 
+        // Check that our user has permissions to read the object
+        reord::point().await;
+        let can_read = sqlx::query!(
+            "
+                SELECT snapshot_id
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_latest
+                AND $2 = ANY (users_who_can_read)
+            ",
+            object_id as ObjectId,
+            user as User,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("checking whether {user:?} can read {object_id:?}"))?
+        .is_some();
+        if !can_read {
+            return Err(crate::Error::ObjectDoesNotExist(object_id));
+        }
+
         reord::point().await;
         let creation_snapshot = sqlx::query!(
             "
@@ -1625,13 +1647,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             ",
             object_id as ObjectId,
         )
-        .fetch_optional(&mut *transaction)
+        .fetch_one(&mut *transaction)
         .await
         .wrap_with_context(|| format!("fetching creation snapshot for object {object_id:?}"))?;
-        let creation_snapshot = match creation_snapshot {
-            Some(s) => s,
-            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
-        };
 
         reord::point().await;
         let events = sqlx::query!(

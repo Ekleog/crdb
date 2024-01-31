@@ -377,6 +377,7 @@ impl<C: ServerConfig> Server<C> {
             .session
             .as_ref()
             .ok_or(crate::Error::ProtocolViolation)?;
+        let user = sess.session.user_id;
         let subscribed_objects = sess.subscribed_objects.clone();
         let objects = objects.map(|(object_id, _updatedness)| {
             // TODO(server): use _updatedness as get_all parameter when possible
@@ -390,7 +391,7 @@ impl<C: ServerConfig> Server<C> {
                         // We must then not return to the update-sending loop until all the responses are sent.
                         subscribed_objects.write().unwrap().insert(object_id);
                     }
-                    let object = self.postgres_db.get_all(object_id).await?;
+                    let object = self.postgres_db.get_all(user, object_id).await?;
                     Ok(MaybeObject::NotYetSubscribed(object))
                 }
             }
