@@ -240,8 +240,27 @@ impl<C: ServerConfig> Server<C> {
                     }
                 },
 
-                Some(_msg) = OptionFuture::from(conn.session.as_mut().map(|s| s.updates_receiver.recv())) => {
-                    unimplemented!() // TODO(api)
+                Some(update) = OptionFuture::from(conn.session.as_mut().map(|s| s.updates_receiver.recv())) => {
+                    let Some(update) = update else {
+                        tracing::error!("Update receiver broke before connection went down");
+                        break;
+                    };
+                    let sess = conn.session.as_ref().unwrap();
+                    // TODO(low): batch updates across messages if there are lots of pending updates?
+                    let mut data = Vec::new();
+                    for u in &update.updates.data {
+                        if sess.is_subscribed_to(u.object_id, &update.new_last_snapshot) {
+                            data.push(u.clone());
+                        }
+                    }
+                    let send_res = Self::send(&mut conn.socket, &ServerMessage::Updates(Updates {
+                        data,
+                        now_have_all_until: Updatedness::from_u128(0), // TODO(api): implement properly
+                    })).await;
+                    if let Err(err) = send_res {
+                        tracing::warn!(?err, "failed sending update to client");
+                        break;
+                    }
                 },
             }
         }
@@ -940,6 +959,27 @@ struct SessionInfo {
     subscribed_objects: Arc<RwLock<HashSet<ObjectId>>>,
     subscribed_queries: Arc<RwLock<HashMap<QueryId, Arc<Query>>>>,
     updates_receiver: mpsc::UnboundedReceiver<Arc<UpdatesWithSnap>>,
+}
+
+impl SessionInfo {
+    fn is_subscribed_to(
+        &self,
+        object_id: ObjectId,
+        new_last_snapshot: &Option<serde_json::Value>,
+    ) -> bool {
+        if self.subscribed_objects.read().unwrap().contains(&object_id) {
+            return true;
+        }
+        if let Some(new_last_snapshot) = new_last_snapshot {
+            for query in self.subscribed_queries.read().unwrap().values() {
+                if query.matches_json(new_last_snapshot) {
+                    self.subscribed_objects.write().unwrap().insert(object_id);
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 fn size_as_json<T: serde::Serialize>(value: &T) -> crate::Result<usize> {

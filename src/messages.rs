@@ -97,6 +97,7 @@ pub enum ServerMessage {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Updates {
     pub data: Vec<Update>,
+    // This is the updatedness for all the currently subscribed queries
     pub now_have_all_until: Updatedness,
 }
 
