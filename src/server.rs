@@ -358,7 +358,7 @@ impl<C: ServerConfig> Server<C> {
                 self.send_objects(
                     conn,
                     msg.request_id,
-                    false,
+                    None,
                     object_ids.iter().map(|(o, u)| (*o, *u)),
                 )
                 .await
@@ -391,16 +391,17 @@ impl<C: ServerConfig> Server<C> {
                     .wrap_context("listing objects matching query")?;
                 // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
                 // So, setting `None` here is the right thing to do.
+                // TODO(api): set the proper query updatedness here
                 self.send_objects(
                     conn,
                     msg.request_id,
-                    true,
+                    Some(Updatedness::now()),
                     object_ids.into_iter().map(|o| (o, None)),
                 )
                 .await
             }
             Request::GetLatest(object_ids) => {
-                self.send_snapshots(conn, msg.request_id, false, object_ids.iter().copied())
+                self.send_snapshots(conn, msg.request_id, None, object_ids.iter().copied())
                     .await
             }
             Request::QueryLatest {
@@ -424,8 +425,14 @@ impl<C: ServerConfig> Server<C> {
                     .wrap_context("listing objects matching query")?;
                 // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
                 // So, setting `None` here is the right thing to do.
-                self.send_snapshots(conn, msg.request_id, true, object_ids.into_iter())
-                    .await
+                // TODO(api): set the proper query updatedness here
+                self.send_snapshots(
+                    conn,
+                    msg.request_id,
+                    Some(Updatedness::now()),
+                    object_ids.into_iter(),
+                )
+                .await
             }
             Request::GetBinaries(binary_ids) => {
                 // Just avoid unauthed binary gets
@@ -543,7 +550,7 @@ impl<C: ServerConfig> Server<C> {
         &self,
         conn: &mut ConnectionState,
         request_id: RequestId,
-        ignore_non_existing: bool,
+        query_updatedness: Option<Updatedness>,
         objects: impl Iterator<Item = (ObjectId, Option<Updatedness>)>,
     ) -> crate::Result<()> {
         let sess = conn
@@ -572,7 +579,7 @@ impl<C: ServerConfig> Server<C> {
             .filter_map(|res| async move {
                 match res {
                     Ok(object) => Some(Ok(object)),
-                    Err(crate::Error::ObjectDoesNotExist(_)) if ignore_non_existing => None, // User lost read access to object between query and read
+                    Err(crate::Error::ObjectDoesNotExist(_)) if query_updatedness.is_some() => None, // User lost read access to object between query and read
                     Err(err) => Some(Err(err)),
                 }
             });
@@ -611,7 +618,7 @@ impl<C: ServerConfig> Server<C> {
             request_id,
             Ok(ResponsePart::Objects {
                 data: current_data,
-                now_have_all_until: None, // TODO(api): give real number here for Query answers
+                now_have_all_until: query_updatedness,
             }),
         )
         .await
@@ -621,7 +628,7 @@ impl<C: ServerConfig> Server<C> {
         &self,
         conn: &mut ConnectionState,
         request_id: RequestId,
-        ignore_non_existing: bool,
+        query_updatedness: Option<Updatedness>,
         object_ids: impl Iterator<Item = ObjectId>,
     ) -> crate::Result<()> {
         let sess = conn
@@ -652,7 +659,7 @@ impl<C: ServerConfig> Server<C> {
             .filter_map(|res| async move {
                 match res {
                     Ok(object) => Some(Ok(object)),
-                    Err(crate::Error::ObjectDoesNotExist(_)) if ignore_non_existing => None, // User lost read access to object between query and read
+                    Err(crate::Error::ObjectDoesNotExist(_)) if query_updatedness.is_some() => None, // User lost read access to object between query and read
                     Err(err) => Some(Err(err)),
                 }
             });
@@ -691,7 +698,7 @@ impl<C: ServerConfig> Server<C> {
             request_id,
             Ok(ResponsePart::Snapshots {
                 data: current_data,
-                now_have_all_until: None, // TODO(api): give real number here for Query answers
+                now_have_all_until: query_updatedness,
             }),
         )
         .await
