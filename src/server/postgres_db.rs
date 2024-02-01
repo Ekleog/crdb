@@ -1759,6 +1759,60 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             snapshot: latest_snapshot.snapshot,
         })
     }
+
+    pub async fn create_and_return_rdep_changes<T: Object>(
+        &self,
+        object_id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+        updatedness: Updatedness,
+    ) -> crate::Result<(Option<Arc<T>>, Vec<ReadPermsChanges>)> {
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::create after CacheDb went away");
+
+        let res = self
+            .create_impl(object_id, created_at, object, updatedness, &*cache_db)
+            .await?;
+
+        // Update the reverse-dependencies, now that we have updated the object itself.
+        let rdeps = self
+            .update_rdeps(object_id, &*cache_db)
+            .await
+            .wrap_with_context(|| {
+                format!("updating permissions for reverse-dependencies of {object_id:?}")
+            })?;
+
+        Ok((res, rdeps))
+    }
+
+    pub async fn submit_and_return_rdep_changes<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+        updatedness: Updatedness,
+    ) -> crate::Result<(Option<Arc<T>>, Vec<ReadPermsChanges>)> {
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::submit after CacheDb went away");
+
+        let res = self
+            .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
+            .await?;
+
+        // Update all the other objects that depend on this one
+        let rdeps = self
+            .update_rdeps(object_id, &*cache_db)
+            .await
+            .wrap_with_context(|| {
+                format!("updating permissions of reverse-dependencies fo {object_id:?}")
+            })?;
+
+        Ok((res, rdeps))
+    }
 }
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
@@ -1770,25 +1824,12 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         updatedness: Option<Updatedness>,
         _lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
-        let cache_db = self
-            .cache_db
-            .upgrade()
-            .expect("Called PostgresDb::create after CacheDb went away");
         let updatedness =
             updatedness.expect("Called PostgresDb::create without specifying updatedness");
-
-        let res = self
-            .create_impl(object_id, created_at, object, updatedness, &*cache_db)
-            .await?;
-
-        // Update the reverse-dependencies, now that we have updated the object itself.
-        self.update_rdeps(object_id, &*cache_db)
-            .await
-            .wrap_with_context(|| {
-                format!("updating permissions for reverse-dependencies of {object_id:?}")
-            })?;
-
-        Ok(res)
+        Ok(self
+            .create_and_return_rdep_changes::<T>(object_id, created_at, object, updatedness)
+            .await?
+            .0)
     }
 
     async fn submit<T: Object>(
@@ -1799,25 +1840,12 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         updatedness: Option<Updatedness>,
         _force_lock: bool,
     ) -> crate::Result<Option<Arc<T>>> {
-        let cache_db = self
-            .cache_db
-            .upgrade()
-            .expect("Called PostgresDb::submit after CacheDb went away");
         let updatedness =
             updatedness.expect("Called PostgresDb::create without specifying updatedness");
-
-        let res = self
-            .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
-            .await?;
-
-        // Update all the other objects that depend on this one
-        self.update_rdeps(object_id, &*cache_db)
-            .await
-            .wrap_with_context(|| {
-                format!("updating permissions of reverse-dependencies fo {object_id:?}")
-            })?;
-
-        Ok(res)
+        Ok(self
+            .submit_and_return_rdep_changes::<T>(object_id, event_id, event, updatedness)
+            .await?
+            .0)
     }
 
     async fn get_latest<T: Object>(
