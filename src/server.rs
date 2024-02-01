@@ -216,8 +216,11 @@ impl<C: ServerConfig> Server<C> {
                             break;
                         }
                     }
-                    Some(Ok(ws::Message::Binary(_msg))) => {
-                        unimplemented!() // TODO(api)
+                    Some(Ok(ws::Message::Binary(bin))) => {
+                        if let Err(err) = self.handle_client_binary(&mut conn, bin.into_boxed_slice().into()).await {
+                            tracing::warn!(?err, "client binary violated protocol");
+                            break;
+                        }
                     }
                 },
 
@@ -226,6 +229,28 @@ impl<C: ServerConfig> Server<C> {
                 },
             }
         }
+    }
+
+    async fn handle_client_binary(
+        &self,
+        conn: &mut ConnectionState,
+        bin: Arc<[u8]>,
+    ) -> crate::Result<()> {
+        // Check we're waiting for binaries and count one as done
+        {
+            let sess = conn
+                .session
+                .as_mut()
+                .ok_or(crate::Error::ProtocolViolation)?;
+            sess.expected_binaries = sess
+                .expected_binaries
+                .checked_sub(1)
+                .ok_or(crate::Error::ProtocolViolation)?;
+        }
+
+        // Actually send the binary
+        let binary_id = crate::hash_binary(&bin);
+        self.postgres_db.create_binary(binary_id, bin).await
     }
 
     async fn handle_client_message(
