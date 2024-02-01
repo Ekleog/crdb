@@ -255,7 +255,7 @@ impl<C: ServerConfig> Server<C> {
                     }
                     let send_res = Self::send(&mut conn.socket, &ServerMessage::Updates(Updates {
                         data,
-                        now_have_all_until: Updatedness::from_u128(0), // TODO(api): implement properly
+                        now_have_all_until: update.updates.now_have_all_until,
                     })).await;
                     if let Err(err) = send_res {
                         tracing::warn!(?err, "failed sending update to client");
