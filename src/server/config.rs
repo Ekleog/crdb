@@ -42,6 +42,16 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         snapshot_version: i32,
         snapshot: serde_json::Value,
     ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesWithSnap>>>;
+
+    fn upload_event<'a, C: Db>(
+        call_on: &'a C,
+        user: User,
+        updatedness: Updatedness,
+        type_id: TypeId,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: serde_json::Value,
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesWithSnap>>>;
 }
 
 #[doc(hidden)]
@@ -148,6 +158,54 @@ macro_rules! generate_server {
                                 Some(snapshot_data),
                                 object.users_who_can_read(call_on).await
                                     .wrap_context("listing users who can read for submitted object")?,
+                            ))))
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                )*
+                Err(crdb::Error::TypeDoesNotExist(type_id))
+            }
+
+            async fn upload_event<'a, C: crdb::Db>(
+                call_on: &'a C,
+                user: crdb::User,
+                updatedness: crdb::Updatedness,
+                type_id: crdb::TypeId,
+                object_id: crdb::ObjectId,
+                event_id: crdb::EventId,
+                event_data: crdb::serde_json::Value,
+            ) -> crdb::Result<Option<crdb::UpdatesWithSnap>> {
+                use crdb::Object;
+                $(
+                    if type_id == *<$object as crdb::Object>::type_ulid() {
+                        let event = crdb::Arc::new(crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event_data.clone())
+                            .wrap_context("parsing uploaded snapshot data")?);
+                        let object = call_on.get_latest::<$object>(true, object_id).await
+                            .wrap_context("retrieving requested object id")?;
+                        let can_apply = object.can_apply(user, object_id, &event, call_on).await.wrap_context("checking whether user can apply submitted event")?;
+                        if !can_apply {
+                            return Err(crdb::Error::Forbidden);
+                        }
+                        if let Some(new_last_snapshot) = call_on.submit::<$object>(object_id, event_id, event.clone(), Some(updatedness), true).await? {
+                            let last_snapshot = crdb::serde_json::to_value(&*new_last_snapshot)
+                                .wrap_context("serializing new last snapshot after event application")?;
+                            return Ok(Some(crdb::Arc::new((
+                                crdb::Updates {
+                                    now_have_all_until: updatedness,
+                                    data: vec![crdb::Update {
+                                        object_id,
+                                        type_id,
+                                        data: crdb::UpdateData::Event {
+                                            event_id,
+                                            data: event_data,
+                                        },
+                                    }]
+                                },
+                                Some(last_snapshot),
+                                new_last_snapshot.users_who_can_read(call_on).await
+                                    .wrap_context("listing users who can read for object after submitted event")?,
+                                // TODO(api): this must result in UpdateData::LostReadRights where appropriate
                             ))))
                         } else {
                             return Ok(None);

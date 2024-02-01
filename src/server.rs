@@ -497,8 +497,28 @@ impl<C: ServerConfig> Server<C> {
                         event,
                         subscribe,
                     } => {
-                        let _ = (object_id, type_id, event_id, event, subscribe);
-                        unimplemented!() // TODO(api)
+                        let (updatedness, update_sender) = self.updatedness_slot().await?;
+                        let res = C::upload_event(
+                            &*self.cache_db,
+                            sess.session.user_id,
+                            updatedness,
+                            *type_id,
+                            *object_id,
+                            *event_id,
+                            event.clone(),
+                        )
+                        .await?;
+                        if let Some(new_data) = res {
+                            update_sender.send(new_data).map_err(|_| {
+                                crate::Error::Other(anyhow!(
+                                    "Update reorderer thread went away before updating thread",
+                                ))
+                            })?;
+                        }
+                        if *subscribe {
+                            sess.subscribed_objects.write().unwrap().insert(*object_id);
+                        }
+                        Ok(())
                     }
                 }
             }
