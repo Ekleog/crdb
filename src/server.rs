@@ -46,6 +46,7 @@ pub struct UpdatesWithSnap {
 pub struct Server<C: ServerConfig> {
     cache_db: Arc<CacheDb<PostgresDb<C>>>,
     postgres_db: Arc<PostgresDb<C>>,
+    last_completed_updatedness: Arc<Mutex<Updatedness>>,
     updatedness_requester: mpsc::UnboundedSender<
         oneshot::Sender<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)>,
     >,
@@ -86,6 +87,7 @@ impl<C: ServerConfig> Server<C> {
             oneshot::Sender<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)>,
         >();
         let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
+        let last_completed_updatedness = Arc::new(Mutex::new(Updatedness::from_u128(0)));
         tokio::task::spawn(async move {
             // Updatedness request handler
             let mut generator = ulid::Generator::new();
@@ -96,7 +98,7 @@ impl<C: ServerConfig> Server<C> {
                     "you're either very unlucky, or generated 2**80 updates within one millisecond",
                 ));
                 let (sender, receiver) = mpsc::unbounded_channel();
-                if let Err(_) = update_sender.send(receiver) {
+                if let Err(_) = update_sender.send((updatedness, receiver)) {
                     tracing::error!(
                         "Update reorderer task went away before updatedness request handler task"
                     );
@@ -110,10 +112,11 @@ impl<C: ServerConfig> Server<C> {
         >::new()));
         tokio::task::spawn({
             let sessions = sessions.clone();
+            let last_completed_updatedness = last_completed_updatedness.clone();
             async move {
                 // Actual update reorderer
                 // No cancellation token needed, closing the senders will naturally close this task
-                while let Some(mut update_receiver) = update_receiver.recv().await {
+                while let Some((updatedness, mut update_receiver)) = update_receiver.recv().await {
                     // Ignore the case where the slot sender was dropped
                     while let Some(updates) = update_receiver.recv().await {
                         let mut sessions = sessions.lock().unwrap();
@@ -128,6 +131,7 @@ impl<C: ServerConfig> Server<C> {
                         }
                         // TODO(server): use updates.users_who_can_no_longer_read after figuring out what it should look like
                     }
+                    *last_completed_updatedness.lock().unwrap() = updatedness;
                 }
             }
         });
@@ -195,6 +199,7 @@ impl<C: ServerConfig> Server<C> {
         let this = Server {
             cache_db,
             postgres_db,
+            last_completed_updatedness,
             updatedness_requester,
             _cleanup_token: cancellation_token.drop_guard(),
             sessions,
@@ -379,6 +384,7 @@ impl<C: ServerConfig> Server<C> {
                     .write()
                     .unwrap()
                     .insert(*query_id, query.clone());
+                let updatedness = *self.last_completed_updatedness.lock().unwrap();
                 let object_ids = self
                     .postgres_db
                     .query(
@@ -391,11 +397,10 @@ impl<C: ServerConfig> Server<C> {
                     .wrap_context("listing objects matching query")?;
                 // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
                 // So, setting `None` here is the right thing to do.
-                // TODO(api): set the proper query updatedness here
                 self.send_objects(
                     conn,
                     msg.request_id,
-                    Some(Updatedness::now()),
+                    Some(updatedness),
                     object_ids.into_iter().map(|o| (o, None)),
                 )
                 .await
@@ -413,6 +418,7 @@ impl<C: ServerConfig> Server<C> {
                     .session
                     .as_ref()
                     .ok_or(crate::Error::ProtocolViolation)?;
+                let updatedness = *self.last_completed_updatedness.lock().unwrap();
                 let object_ids = self
                     .postgres_db
                     .query(
@@ -425,11 +431,10 @@ impl<C: ServerConfig> Server<C> {
                     .wrap_context("listing objects matching query")?;
                 // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
                 // So, setting `None` here is the right thing to do.
-                // TODO(api): set the proper query updatedness here
                 self.send_snapshots(
                     conn,
                     msg.request_id,
-                    Some(Updatedness::now()),
+                    Some(updatedness),
                     object_ids.into_iter(),
                 )
                 .await
