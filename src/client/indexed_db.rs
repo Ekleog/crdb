@@ -1,11 +1,7 @@
 use crate::{
-    api::{UploadId, UploadOrBinPtr},
-    client::ClientStorageInfo,
-    db_trait::Db,
-    error::ResultExt,
-    fts,
-    object::parse_snapshot_js,
-    BinPtr, DbPtr, Event, EventId, Object, ObjectId, Query, TypeId, Updatedness,
+    api::UploadId, client::ClientStorageInfo, db_trait::Db, error::ResultExt, fts,
+    messages::Upload, object::parse_snapshot_js, BinPtr, DbPtr, Event, EventId, Object, ObjectId,
+    Query, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -534,7 +530,7 @@ impl IndexedDb {
             .wrap_context("listing upload queue")
     }
 
-    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<UploadOrBinPtr> {
+    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Upload> {
         self.db
             .transaction(&["upload_queue"])
             .run(move |transaction| async move {
@@ -545,7 +541,7 @@ impl IndexedDb {
                     .await
                     .wrap_context("fetching data from upload_queue store")?
                     .ok_or_else(|| indexed_db::Error::DoesNotExist)?;
-                let res = serde_wasm_bindgen::from_value::<UploadOrBinPtr>(res)
+                let res = serde_wasm_bindgen::from_value::<Upload>(res)
                     .wrap_context("deserializing data")?;
                 Ok(res)
             })
@@ -555,7 +551,7 @@ impl IndexedDb {
 
     pub async fn enqueue_upload(
         &self,
-        upload: UploadOrBinPtr,
+        upload: Upload,
         required_binaries: Vec<BinPtr>,
     ) -> crate::Result<UploadId> {
         let metadata = UploadMeta { required_binaries };
