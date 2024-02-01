@@ -42,7 +42,7 @@ pub struct UpdatesWithSnap {
 
     // The new last snapshot, if the update did change it (ie. no vacuum) and if the users affected
     // actually do have access to it. This is used for query matching.
-    pub new_last_snapshot: Option<serde_json::Value>,
+    pub new_last_snapshot: Option<Arc<serde_json::Value>>,
 }
 
 pub type UserUpdatesMap = HashMap<ObjectId, Arc<UpdatesWithSnap>>;
@@ -251,7 +251,7 @@ impl<C: ServerConfig> Server<C> {
                     // TODO(low): batch updates across messages if there are lots of pending updates?
                     let mut data = Vec::new();
                     for (object_id, updates) in update.iter() {
-                        if sess.is_subscribed_to(*object_id, &updates.new_last_snapshot) {
+                        if sess.is_subscribed_to(*object_id, updates.new_last_snapshot.as_deref()) {
                             data.extend(updates.updates.iter().cloned());
                         }
                     }
@@ -512,7 +512,7 @@ impl<C: ServerConfig> Server<C> {
                     } => {
                         let (updatedness, update_sender) = self.updatedness_slot().await?;
                         let res = C::upload_object(
-                            &*self.cache_db,
+                            &*self.postgres_db,
                             sess.session.user_id,
                             updatedness,
                             *type_id,
@@ -520,6 +520,7 @@ impl<C: ServerConfig> Server<C> {
                             *created_at,
                             *snapshot_version,
                             object.clone(),
+                            &*self.cache_db,
                         )
                         .await?;
                         if let Some(new_data) = res {
@@ -965,7 +966,7 @@ impl SessionInfo {
     fn is_subscribed_to(
         &self,
         object_id: ObjectId,
-        new_last_snapshot: &Option<serde_json::Value>,
+        new_last_snapshot: Option<&serde_json::Value>,
     ) -> bool {
         if self.subscribed_objects.read().unwrap().contains(&object_id) {
             return true;

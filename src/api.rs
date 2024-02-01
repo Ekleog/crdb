@@ -16,7 +16,7 @@ pub trait ApiConfig: crate::private::Sealed {
         object_id: ObjectId,
         created_at: EventId,
         snapshot_version: i32,
-        object: serde_json::Value,
+        object: &serde_json::Value,
         updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
@@ -26,7 +26,7 @@ pub trait ApiConfig: crate::private::Sealed {
         type_id: TypeId,
         object_id: ObjectId,
         event_id: EventId,
-        event: serde_json::Value,
+        event: &serde_json::Value,
         updatedness: Option<Updatedness>,
         force_lock: bool,
     ) -> impl CrdbFuture<Output = crate::Result<()>>;
@@ -55,14 +55,14 @@ macro_rules! generate_api {
                 object_id: crdb::ObjectId,
                 created_at: crdb::EventId,
                 snapshot_version: i32,
-                object: crdb::serde_json::Value,
+                object: &crdb::serde_json::Value,
                 updatedness: Option<crdb::Updatedness>,
                 force_lock: bool,
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let _ = snapshot_version;
-                        let object = crdb::serde_json::from_value::<$object>(object)
+                        let object = <$object as crdb::serde::Deserialize>::deserialize(object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
                         return db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), updatedness, force_lock).await.map(|_| ());
                     }
@@ -75,13 +75,13 @@ macro_rules! generate_api {
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
-                event: crdb::serde_json::Value,
+                event: &crdb::serde_json::Value,
                 updatedness: Option<crdb::Updatedness>,
                 force_lock: bool,
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let event = crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event)
+                        let event = <<$object as crdb::Object>::Event as serde::Deserialize>::deserialize(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
                         return db.submit::<$object>(object_id, event_id, crdb::Arc::new(event), updatedness, force_lock).await.map(|_| ());
                     }

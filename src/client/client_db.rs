@@ -6,7 +6,7 @@ use crate::{
     error::ResultExt,
     ids::QueryId,
     messages::{MaybeObject, ObjectData, UpdateData, Updates},
-    object::parse_snapshot,
+    object::parse_snapshot_ref,
     BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, Updatedness,
 };
 use futures::{channel::mpsc, StreamExt};
@@ -90,7 +90,7 @@ impl ClientDb {
                                     object_id,
                                     *created_at,
                                     *snapshot_version,
-                                    data.clone(),
+                                    &data,
                                     Some(updates.now_have_all_until),
                                     false,
                                 )
@@ -112,7 +112,7 @@ impl ClientDb {
                                     type_id,
                                     object_id,
                                     *event_id,
-                                    data.clone(),
+                                    &data,
                                     Some(updates.now_have_all_until),
                                     false,
                                 )
@@ -284,7 +284,7 @@ impl ClientDb {
         }
 
         if let Some((created_at, snapshot_version, snapshot_data)) = data.creation_snapshot {
-            let creation_snapshot = parse_snapshot::<T>(snapshot_version, snapshot_data)
+            let creation_snapshot = parse_snapshot_ref::<T>(snapshot_version, &snapshot_data)
                 .wrap_context("parsing snapshot")?;
 
             db.create::<T>(
@@ -303,7 +303,8 @@ impl ClientDb {
         }
 
         for (event_id, event) in data.events {
-            let event = serde_json::from_value::<T::Event>(event).wrap_context("parsing event")?;
+            let event = <T::Event as serde::Deserialize>::deserialize(&*event)
+                .wrap_context("parsing event")?;
 
             // We already locked the object just above if requested
             match db

@@ -65,7 +65,7 @@ pub mod crdb_internal {
         ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb,
     };
     #[cfg(feature = "server")]
-    pub use crate::server::{ComboLock, PostgresDb, ServerConfig, UpdatesMap};
+    pub use crate::server::{ComboLock, PostgresDb, ServerConfig, UpdatesMap, UpdatesWithSnap};
     #[cfg(feature = "_tests")]
     pub use crate::test_utils;
     pub use crate::{
@@ -84,8 +84,10 @@ pub mod crdb_internal {
     pub use futures::{self, channel::mpsc, future, stream, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
+    pub use serde;
     pub use serde_json;
     pub use std::{
+        collections::HashMap,
         future::Future,
         ops::Bound,
         sync::{Arc, Mutex},

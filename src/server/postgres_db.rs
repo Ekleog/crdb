@@ -362,7 +362,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                                 data: UpdateData::Creation {
                                     created_at: new_created_at,
                                     snapshot_version,
-                                    data,
+                                    data: Arc::new(data),
                                 },
                             },
                             users_who_can_read,
@@ -1691,9 +1691,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id",
             object_id as ObjectId
         )
-        .map(|r| (EventId::from_uuid(r.event_id), r.data))
+        .map(|r| (EventId::from_uuid(r.event_id), Arc::new(r.data)))
         .fetch(&mut *transaction)
-        .try_collect::<BTreeMap<EventId, serde_json::Value>>()
+        .try_collect::<BTreeMap<EventId, Arc<serde_json::Value>>>()
         .await
         .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
 
@@ -1713,7 +1713,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             creation_snapshot: Some((
                 EventId::from_uuid(creation_snapshot.snapshot_id),
                 creation_snapshot.snapshot_version,
-                creation_snapshot.snapshot,
+                Arc::new(creation_snapshot.snapshot),
             )),
             events,
             now_have_all_until: last_modified,
@@ -1756,7 +1756,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             object_id,
             type_id: TypeId::from_uuid(latest_snapshot.type_id),
             snapshot_version: latest_snapshot.snapshot_version,
-            snapshot: latest_snapshot.snapshot,
+            snapshot: Arc::new(latest_snapshot.snapshot),
         })
     }
 

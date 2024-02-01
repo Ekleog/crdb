@@ -33,7 +33,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
     ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, i32, serde_json::Value, Vec<User>)>>>;
 
     fn upload_object<'a, C: Db>(
-        call_on: &'a C,
+        call_on: &'a PostgresDb<Self>,
         user: User,
         updatedness: Updatedness,
         type_id: TypeId,
@@ -41,6 +41,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         created_at: EventId,
         snapshot_version: i32,
         snapshot: serde_json::Value,
+        cb: &'a C,
     ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesMap>>>;
 
     fn upload_event<'a, C: Db>(
@@ -121,7 +122,7 @@ macro_rules! generate_server {
             }
 
             async fn upload_object<'a, C: crdb::Db>(
-                call_on: &'a C,
+                call_on: &'a crdb::PostgresDb<Self>,
                 user: crdb::User,
                 updatedness: crdb::Updatedness,
                 type_id: crdb::TypeId,
@@ -129,40 +130,43 @@ macro_rules! generate_server {
                 created_at: crdb::EventId,
                 snapshot_version: i32,
                 snapshot: crdb::serde_json::Value,
+                cb: &'a C,
             ) -> crdb::Result<Option<crdb::UpdatesMap>> {
-                use crdb::Object;
+                use crdb::Object as _;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let object = crdb::Arc::new(crdb::parse_snapshot::<$object>(snapshot_version, snapshot)
                             .wrap_context("parsing uploaded snapshot data")?);
-                        let can_create = object.can_create(user, object_id, call_on).await.wrap_context("checking whether user can create submitted object")?;
+                        let can_create = object.can_create(user, object_id, cb).await.wrap_context("checking whether user can create submitted object")?;
                         if !can_create {
                             return Err(crdb::Error::Forbidden);
                         }
-                        if call_on.create::<$object>(object_id, created_at, object.clone(), Some(updatedness), true).await?.is_some() {
-                            let snapshot_data = crdb::serde_json::to_value(&*object)
-                                .wrap_context("serializing uploaded snapshot data")?;
-                            let _ = snapshot_data;
-                            unimplemented!() // TODO(server)
-                            /*
-                            return Ok(Some(crdb::Arc::new(crdb::UpdatesWithSnap {
-                                updates: crdb::Updates {
-                                    now_have_all_until: updatedness,
-                                    data: crdb::Arc::new(vec![crdb::Update {
-                                        object_id,
-                                        type_id,
-                                        data: crdb::UpdateData::Creation {
-                                            created_at,
-                                            snapshot_version: <$object as crdb::Object>::snapshot_version(),
-                                            data: snapshot_data.clone(),
-                                        },
-                                    }]),
-                                },
-                                new_last_snapshot: Some(snapshot_data),
-                                for_users: object.users_who_can_read(call_on).await
-                                    .wrap_context("listing users who can read for submitted object")?,
-                            })))
-                            */
+                        if let Some((_, rdeps)) = call_on.create_and_return_rdep_changes::<$object>(object_id, created_at, object.clone(), updatedness).await? {
+                            let snapshot_data = crdb::Arc::new(crdb::serde_json::to_value(&*object)
+                                .wrap_context("serializing uploaded snapshot data")?);
+                            let users_who_can_read = object.users_who_can_read(cb).await
+                                .wrap_context("listing users who can read for submitted object")?;
+
+                            let mut res = crdb::HashMap::new();
+                            let _ = rdeps; // TODO(server): handle rdeps properly
+                            for user in users_who_can_read {
+                                res.entry(user)
+                                    .or_insert_with(crdb::HashMap::new)
+                                    .insert(object_id, crdb::Arc::new(crdb::UpdatesWithSnap {
+                                        updates: vec![crdb::Arc::new(crdb::Update {
+                                            object_id,
+                                            type_id,
+                                            data: crdb::UpdateData::Creation {
+                                                created_at,
+                                                snapshot_version: <$object as crdb::Object>::snapshot_version(),
+                                                data: snapshot_data.clone(),
+                                            },
+                                        })],
+                                        new_last_snapshot: Some(snapshot_data.clone()),
+                                    }));
+                            }
+                            let res = res.into_iter().map(|(k, v)| (k, crdb::Arc::new(v))).collect();
+                            return Ok(Some(res));
                         } else {
                             return Ok(None);
                         }
@@ -180,7 +184,7 @@ macro_rules! generate_server {
                 event_id: crdb::EventId,
                 event_data: crdb::serde_json::Value,
             ) -> crdb::Result<Option<crdb::UpdatesMap>> {
-                use crdb::Object;
+                use crdb::Object as _;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::Arc::new(crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event_data.clone())
