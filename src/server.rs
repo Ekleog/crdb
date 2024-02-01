@@ -36,17 +36,23 @@ pub use config::ServerConfig;
 // Each update is both the list of updates itself, and the new latest snapshot
 // for query matching, available if the latest snapshot actually changed. Also,
 // the list of users allowed to read this object.
-pub type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>, Vec<User>)>;
+pub struct UpdatesWithSnap {
+    pub updates: Updates,
+    pub new_last_snapshot: Option<serde_json::Value>,
+    pub users_who_can_read_after: Vec<User>,
+    pub users_who_can_no_longer_read: Vec<User>,
+}
 
 pub struct Server<C: ServerConfig> {
     cache_db: Arc<CacheDb<PostgresDb<C>>>,
     postgres_db: Arc<PostgresDb<C>>,
     updatedness_requester: mpsc::UnboundedSender<
-        oneshot::Sender<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)>,
+        oneshot::Sender<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)>,
     >,
     _cleanup_token: tokio_util::sync::DropGuard,
-    sessions:
-        Arc<Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>>>>,
+    sessions: Arc<
+        Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<Arc<UpdatesWithSnap>>>>>>,
+    >,
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -77,7 +83,7 @@ impl<C: ServerConfig> Server<C> {
 
         // Setup the update reorderer task
         let (updatedness_requester, mut updatedness_request_receiver) = mpsc::unbounded_channel::<
-            oneshot::Sender<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)>,
+            oneshot::Sender<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)>,
         >();
         let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
         tokio::task::spawn(async move {
@@ -100,7 +106,7 @@ impl<C: ServerConfig> Server<C> {
         });
         let sessions = Arc::new(Mutex::new(HashMap::<
             User,
-            HashMap<SessionRef, Vec<mpsc::UnboundedSender<UpdatesWithSnap>>>,
+            HashMap<SessionRef, Vec<mpsc::UnboundedSender<Arc<UpdatesWithSnap>>>>,
         >::new()));
         tokio::task::spawn({
             let sessions = sessions.clone();
@@ -111,7 +117,7 @@ impl<C: ServerConfig> Server<C> {
                     // Ignore the case where the slot sender was dropped
                     while let Some(updates) = update_receiver.recv().await {
                         let mut sessions = sessions.lock().unwrap();
-                        for user in updates.2.iter() {
+                        for user in updates.users_who_can_read_after.iter() {
                             if let Some(sessions) = sessions.get_mut(user) {
                                 for senders in sessions.values_mut() {
                                     // Discard all senders that return an error
@@ -120,6 +126,7 @@ impl<C: ServerConfig> Server<C> {
                                 }
                             }
                         }
+                        // TODO(server): use updates.users_who_can_no_longer_read after figuring out what it should look like
                     }
                 }
             }
@@ -822,7 +829,7 @@ impl<C: ServerConfig> Server<C> {
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
         kill_sessions_older_than: Option<Timestamp>,
-        slot: mpsc::UnboundedSender<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
+        slot: mpsc::UnboundedSender<Arc<UpdatesWithSnap>>,
     ) -> crate::Result<()> {
         // Perform the vacuum, collecting all updates
         let mut updates = HashMap::new();
@@ -844,15 +851,16 @@ impl<C: ServerConfig> Server<C> {
 
         // Submit the updates
         for (user, updates) in updates {
-            // Vacuum cannot change any latest snapshot
-            if let Err(_) = slot.send(Arc::new((
-                Updates {
+            // Vacuum cannot change any latest snapshot, and we already sorted the updates by user above
+            if let Err(_) = slot.send(Arc::new(UpdatesWithSnap {
+                updates: Updates {
                     data: updates,
                     now_have_all_until: updatedness,
                 },
-                None,
-                vec![user],
-            ))) {
+                new_last_snapshot: None,
+                users_who_can_read_after: vec![user],
+                users_who_can_no_longer_read: Vec::new(),
+            })) {
                 tracing::error!("Update reorderer went away before server");
             }
         }
@@ -863,7 +871,7 @@ impl<C: ServerConfig> Server<C> {
 
     async fn updatedness_slot(
         &self,
-    ) -> crate::Result<(Updatedness, mpsc::UnboundedSender<UpdatesWithSnap>)> {
+    ) -> crate::Result<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)> {
         let (sender, receiver) = oneshot::channel();
         self.updatedness_requester.send(sender).map_err(|_| {
             crate::Error::Other(anyhow!(
@@ -916,7 +924,7 @@ struct SessionInfo {
     expected_binaries: usize,
     subscribed_objects: Arc<RwLock<HashSet<ObjectId>>>,
     subscribed_queries: Arc<RwLock<HashMap<QueryId, Arc<Query>>>>,
-    updates_receiver: mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
+    updates_receiver: mpsc::UnboundedReceiver<Arc<UpdatesWithSnap>>,
 }
 
 fn size_as_json<T: serde::Serialize>(value: &T) -> crate::Result<usize> {

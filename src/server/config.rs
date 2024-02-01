@@ -41,7 +41,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         created_at: EventId,
         snapshot_version: i32,
         snapshot: serde_json::Value,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesWithSnap>>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<Arc<UpdatesWithSnap>>>>;
 
     fn upload_event<'a, C: Db>(
         call_on: &'a C,
@@ -51,7 +51,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         object_id: ObjectId,
         event_id: EventId,
         event: serde_json::Value,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesWithSnap>>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<Arc<UpdatesWithSnap>>>>;
 }
 
 #[doc(hidden)]
@@ -129,7 +129,7 @@ macro_rules! generate_server {
                 created_at: crdb::EventId,
                 snapshot_version: i32,
                 snapshot: crdb::serde_json::Value,
-            ) -> crdb::Result<Option<crdb::UpdatesWithSnap>> {
+            ) -> crdb::Result<Option<crdb::Arc<crdb::UpdatesWithSnap>>> {
                 use crdb::Object;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -142,8 +142,8 @@ macro_rules! generate_server {
                         if call_on.create::<$object>(object_id, created_at, object.clone(), Some(updatedness), true).await?.is_some() {
                             let snapshot_data = crdb::serde_json::to_value(&*object)
                                 .wrap_context("serializing uploaded snapshot data")?;
-                            return Ok(Some(crdb::Arc::new((
-                                crdb::Updates {
+                            return Ok(Some(crdb::Arc::new(crdb::UpdatesWithSnap {
+                                updates: crdb::Updates {
                                     now_have_all_until: updatedness,
                                     data: vec![crdb::Update {
                                         object_id,
@@ -155,10 +155,11 @@ macro_rules! generate_server {
                                         },
                                     }]
                                 },
-                                Some(snapshot_data),
-                                object.users_who_can_read(call_on).await
+                                new_last_snapshot: Some(snapshot_data),
+                                users_who_can_read_after: object.users_who_can_read(call_on).await
                                     .wrap_context("listing users who can read for submitted object")?,
-                            ))))
+                                users_who_can_no_longer_read: Vec::new(),
+                            })))
                         } else {
                             return Ok(None);
                         }
@@ -175,7 +176,7 @@ macro_rules! generate_server {
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
                 event_data: crdb::serde_json::Value,
-            ) -> crdb::Result<Option<crdb::UpdatesWithSnap>> {
+            ) -> crdb::Result<Option<crdb::Arc<crdb::UpdatesWithSnap>>> {
                 use crdb::Object;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -190,8 +191,8 @@ macro_rules! generate_server {
                         if let Some(new_last_snapshot) = call_on.submit::<$object>(object_id, event_id, event.clone(), Some(updatedness), true).await? {
                             let last_snapshot = crdb::serde_json::to_value(&*new_last_snapshot)
                                 .wrap_context("serializing new last snapshot after event application")?;
-                            return Ok(Some(crdb::Arc::new((
-                                crdb::Updates {
+                            return Ok(Some(crdb::Arc::new(crdb::UpdatesWithSnap {
+                                updates: crdb::Updates {
                                     now_have_all_until: updatedness,
                                     data: vec![crdb::Update {
                                         object_id,
@@ -202,11 +203,13 @@ macro_rules! generate_server {
                                         },
                                     }]
                                 },
-                                Some(last_snapshot),
-                                new_last_snapshot.users_who_can_read(call_on).await
+                                new_last_snapshot: Some(last_snapshot),
+                                users_who_can_read_after: new_last_snapshot.users_who_can_read(call_on).await
                                     .wrap_context("listing users who can read for object after submitted event")?,
-                                // TODO(api): this must result in UpdateData::LostReadRights where appropriate
-                            ))))
+                                users_who_can_no_longer_read: Vec::new(),
+                                // TODO(server): AAAAAAAAAAAA this is users_who_can_read_depends_on AGAIN!
+                                // Will need a lot more thought to implement LostReadRights properly
+                            })))
                         } else {
                             return Ok(None);
                         }
