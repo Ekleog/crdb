@@ -58,6 +58,9 @@ pub enum Error {
     #[error("Client violated the protocol")]
     ProtocolViolation,
 
+    #[error("User is not allowed to perform this action")]
+    Forbidden,
+
     #[error(transparent)]
     Other(anyhow::Error),
 }
@@ -117,6 +120,9 @@ pub enum SerializableError {
     #[error("Client violated the protocol")]
     ProtocolViolation,
 
+    #[error("User is not allowed to perform this action")]
+    Forbidden,
+
     #[error("Internal server error")]
     InternalServerError,
 }
@@ -154,6 +160,7 @@ impl From<Error> for SerializableError {
             },
             Error::ConnectionLoss => SerializableError::ConnectionLoss,
             Error::ProtocolViolation => SerializableError::ProtocolViolation,
+            Error::Forbidden => SerializableError::Forbidden,
             Error::Other(err) => {
                 tracing::error!(?err, "returning internal server error to client");
                 SerializableError::InternalServerError
@@ -195,6 +202,7 @@ impl From<SerializableError> for Error {
             },
             SerializableError::ConnectionLoss => Error::ConnectionLoss,
             SerializableError::ProtocolViolation => Error::ProtocolViolation,
+            SerializableError::Forbidden => Error::Forbidden,
             SerializableError::InternalServerError => {
                 Error::Other(anyhow!("Internal server error"))
             }

@@ -65,7 +65,7 @@ pub mod crdb_internal {
         ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb,
     };
     #[cfg(feature = "server")]
-    pub use crate::server::{ComboLock, PostgresDb, ServerConfig};
+    pub use crate::server::{ComboLock, PostgresDb, ServerConfig, UpdatesWithSnap};
     #[cfg(feature = "_tests")]
     pub use crate::test_utils;
     pub use crate::{
@@ -74,6 +74,7 @@ pub mod crdb_internal {
         db_trait::Db,
         error::ResultExt,
         hash_binary,
+        messages::{Update, UpdateData, Updates},
         object::{parse_snapshot, CanDoCallbacks},
         private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object,
         ObjectId, Query, Result, SerializableError, SessionToken, Timestamp, TypeId, Updatedness,

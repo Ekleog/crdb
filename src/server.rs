@@ -36,7 +36,7 @@ pub use config::ServerConfig;
 // Each update is both the list of updates itself, and the new latest snapshot
 // for query matching, available if the latest snapshot actually changed. Also,
 // the list of users allowed to read this object.
-type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>, Vec<User>)>;
+pub type UpdatesWithSnap = Arc<(Updates, Option<serde_json::Value>, Vec<User>)>;
 
 pub struct Server<C: ServerConfig> {
     cache_db: Arc<CacheDb<PostgresDb<C>>>,
@@ -453,7 +453,7 @@ impl<C: ServerConfig> Server<C> {
                 Ok(())
             }
             Request::Upload(upload) => {
-                let _sess = conn
+                let sess = conn
                     .session
                     .as_ref()
                     .ok_or(crate::Error::ProtocolViolation)?;
@@ -466,15 +466,29 @@ impl<C: ServerConfig> Server<C> {
                         object,
                         subscribe,
                     } => {
-                        let _ = (
-                            object_id,
-                            type_id,
-                            created_at,
-                            snapshot_version,
-                            object,
-                            subscribe,
-                        );
-                        unimplemented!() // TODO(api)
+                        let (updatedness, update_sender) = self.updatedness_slot().await?;
+                        let res = C::upload_object(
+                            &*self.cache_db,
+                            sess.session.user_id,
+                            updatedness,
+                            *type_id,
+                            *object_id,
+                            *created_at,
+                            *snapshot_version,
+                            object.clone(),
+                        )
+                        .await?;
+                        if let Some(new_data) = res {
+                            update_sender.send(new_data).map_err(|_| {
+                                crate::Error::Other(anyhow!(
+                                    "Update reorderer thread went away before updating thread",
+                                ))
+                            })?;
+                        }
+                        if *subscribe {
+                            sess.subscribed_objects.write().unwrap().insert(*object_id);
+                        }
+                        Ok(())
                     }
                     Upload::Event {
                         object_id,
