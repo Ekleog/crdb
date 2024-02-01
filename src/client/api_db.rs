@@ -5,7 +5,7 @@ use crate::{
     ids::QueryId,
     messages::{
         MaybeObject, ObjectData, Request, RequestWithSidecar, ResponsePart,
-        ResponsePartWithSidecar, Updates, Upload, UploadOrBinary,
+        ResponsePartWithSidecar, Updates, Upload,
     },
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
 };
@@ -157,7 +157,7 @@ impl ApiDb {
                             .await?
                             .ok_or_else(|| crate::Error::MissingBinaries(vec![binary_id]))?;
                         let bin_request = Arc::new(RequestWithSidecar {
-                            request: Arc::new(Request::Upload(vec![UploadOrBinary::Binary])),
+                            request: Arc::new(Request::UploadBinaries(1)),
                             sidecar: vec![bin],
                         });
                         let (response_sender, _) = mpsc::unbounded();
@@ -198,17 +198,15 @@ impl ApiDb {
         binary_getter: Arc<D>,
         error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
-        let request = Arc::new(Request::Upload(vec![UploadOrBinary::Upload(
-            Upload::Object {
-                object_id,
-                type_id: *T::type_ulid(),
-                created_at,
-                snapshot_version: T::snapshot_version(),
-                object: serde_json::to_value(object)
-                    .wrap_context("serializing object for sending to api")?,
-                subscribe,
-            },
-        )]));
+        let request = Arc::new(Request::Upload(Upload::Object {
+            object_id,
+            type_id: *T::type_ulid(),
+            created_at,
+            snapshot_version: T::snapshot_version(),
+            object: serde_json::to_value(object)
+                .wrap_context("serializing object for sending to api")?,
+            subscribe,
+        }));
         let (result_sender, result_receiver) = oneshot::channel();
         crate::spawn(Self::error_catcher(
             Self::auto_resender_with_binaries(request, self.requests.clone(), binary_getter),
@@ -227,16 +225,14 @@ impl ApiDb {
         binary_getter: Arc<D>,
         error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
-        let request = Arc::new(Request::Upload(vec![UploadOrBinary::Upload(
-            Upload::Event {
-                object_id,
-                type_id: *T::type_ulid(),
-                event_id,
-                event: serde_json::to_value(event)
-                    .wrap_context("serializing event for sending to api")?,
-                subscribe,
-            },
-        )]));
+        let request = Arc::new(Request::Upload(Upload::Event {
+            object_id,
+            type_id: *T::type_ulid(),
+            event_id,
+            event: serde_json::to_value(event)
+                .wrap_context("serializing event for sending to api")?,
+            subscribe,
+        }));
         let (result_sender, result_receiver) = oneshot::channel();
         crate::spawn(Self::error_catcher(
             Self::auto_resender_with_binaries(request, self.requests.clone(), binary_getter),

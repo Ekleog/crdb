@@ -51,13 +51,8 @@ pub enum Request {
     GetBinaries(HashSet<BinPtr>),
     Unsubscribe(HashSet<ObjectId>),
     UnsubscribeQuery(QueryId),
-    Upload(Vec<UploadOrBinary>),
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum UploadOrBinary {
     Upload(Upload),
-    Binary, // If set to `Binary`, then the binary is in the websocket frame of type `Binary` just after this one
+    UploadBinaries(usize), // There are N binaries is in the N websocket frames of type `Binary` just after this one
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

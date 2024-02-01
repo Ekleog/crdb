@@ -4,7 +4,7 @@ use crate::{
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
-        Updates, Upload, UploadOrBinary,
+        Updates, Upload,
     },
     BinPtr, Db, EventId, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, Timestamp,
     Updatedness, User,
@@ -427,52 +427,47 @@ impl<C: ServerConfig> Server<C> {
                     .remove(query_id);
                 Ok(())
             }
-            Request::Upload(uploads) => {
-                let num_binaries = uploads
-                    .iter()
-                    .filter(|u| matches!(u, UploadOrBinary::Binary))
-                    .count();
-                let sess = conn
+            Request::Upload(upload) => {
+                let _sess = conn
                     .session
-                    .as_mut()
+                    .as_ref()
                     .ok_or(crate::Error::ProtocolViolation)?;
-                sess.expected_binaries = num_binaries;
-                for upload in uploads {
-                    let UploadOrBinary::Upload(upload) = upload else {
-                        continue; // already handled above
-                    };
-                    // Apply the uploads in-order, in case there's eg. an object creation and then an event submission in the same message.
-                    match upload {
-                        Upload::Object {
+                match upload {
+                    Upload::Object {
+                        object_id,
+                        type_id,
+                        created_at,
+                        snapshot_version,
+                        object,
+                        subscribe,
+                    } => {
+                        let _ = (
                             object_id,
                             type_id,
                             created_at,
                             snapshot_version,
                             object,
                             subscribe,
-                        } => {
-                            let _ = (
-                                object_id,
-                                type_id,
-                                created_at,
-                                snapshot_version,
-                                object,
-                                subscribe,
-                            );
-                            unimplemented!() // TODO(api)
-                        }
-                        Upload::Event {
-                            object_id,
-                            type_id,
-                            event_id,
-                            event,
-                            subscribe,
-                        } => {
-                            let _ = (object_id, type_id, event_id, event, subscribe);
-                            unimplemented!() // TODO(api)
-                        }
+                        );
+                        unimplemented!() // TODO(api)
+                    }
+                    Upload::Event {
+                        object_id,
+                        type_id,
+                        event_id,
+                        event,
+                        subscribe,
+                    } => {
+                        let _ = (object_id, type_id, event_id, event, subscribe);
+                        unimplemented!() // TODO(api)
                     }
                 }
+            }
+            Request::UploadBinaries(num_binaries) => {
+                conn.session
+                    .as_mut()
+                    .ok_or(crate::Error::ProtocolViolation)?
+                    .expected_binaries = *num_binaries;
                 Ok(())
             }
         }
