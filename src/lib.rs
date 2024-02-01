@@ -93,6 +93,7 @@ pub mod crdb_internal {
         sync::{Arc, Mutex},
     };
     pub use tokio::{self, sync::oneshot};
+    pub use tracing;
     pub use ulid::{self, Ulid};
 }
 

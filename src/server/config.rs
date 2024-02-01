@@ -162,9 +162,12 @@ macro_rules! generate_server {
                                 new_last_snapshot: Some(snapshot_data.clone()),
                             });
                             for user in users_who_can_read {
-                                res.entry(user)
+                                let existing = res.entry(user)
                                     .or_insert_with(crdb::HashMap::new)
                                     .insert(object_id, new_update.clone());
+                                if let Some(existing) = existing {
+                                    crdb::tracing::error!(?user, ?object_id, ?existing, "replacing mistakenly-already-existing update");
+                                }
                             }
                             let res = res.into_iter().map(|(k, v)| (k, crdb::Arc::new(v))).collect();
                             return Ok(Some(res));

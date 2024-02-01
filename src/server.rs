@@ -36,6 +36,7 @@ pub use config::ServerConfig;
 // Each update is both the list of updates itself, and the new latest snapshot
 // for query matching, available if the latest snapshot actually changed. Also,
 // the list of users allowed to read this object.
+#[derive(Debug)]
 pub struct UpdatesWithSnap {
     // The list of actual updates
     pub updates: Vec<Arc<Update>>,
