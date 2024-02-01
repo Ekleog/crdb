@@ -1,6 +1,6 @@
 use super::{
     postgres_db::{ComboLock, PostgresDb},
-    UpdatesWithSnap,
+    UpdatesMap,
 };
 use crate::{
     api::ApiConfig, db_trait::Db, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId,
@@ -41,7 +41,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         created_at: EventId,
         snapshot_version: i32,
         snapshot: serde_json::Value,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<Arc<UpdatesWithSnap>>>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesMap>>>;
 
     fn upload_event<'a, C: Db>(
         call_on: &'a C,
@@ -51,7 +51,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         object_id: ObjectId,
         event_id: EventId,
         event: serde_json::Value,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<Arc<UpdatesWithSnap>>>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesMap>>>;
 }
 
 #[doc(hidden)]
@@ -129,7 +129,7 @@ macro_rules! generate_server {
                 created_at: crdb::EventId,
                 snapshot_version: i32,
                 snapshot: crdb::serde_json::Value,
-            ) -> crdb::Result<Option<crdb::Arc<crdb::UpdatesWithSnap>>> {
+            ) -> crdb::Result<Option<crdb::UpdatesMap>> {
                 use crdb::Object;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -179,7 +179,7 @@ macro_rules! generate_server {
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
                 event_data: crdb::serde_json::Value,
-            ) -> crdb::Result<Option<crdb::Arc<crdb::UpdatesWithSnap>>> {
+            ) -> crdb::Result<Option<crdb::UpdatesMap>> {
                 use crdb::Object;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {

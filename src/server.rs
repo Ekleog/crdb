@@ -523,15 +523,11 @@ impl<C: ServerConfig> Server<C> {
                         )
                         .await?;
                         if let Some(new_data) = res {
-                            let _ = (update_sender, new_data);
-                            unimplemented!() // TODO(server)
-                                             /*
-                                             update_sender.send(new_data).map_err(|_| {
-                                                 crate::Error::Other(anyhow!(
-                                                     "Update reorderer thread went away before updating thread",
-                                                 ))
-                                             })?;
-                                             */
+                            update_sender.send(new_data).map_err(|_| {
+                                crate::Error::Other(anyhow!(
+                                    "Update reorderer thread went away before updating thread",
+                                ))
+                            })?;
                         }
                         if *subscribe {
                             sess.subscribed_objects.write().unwrap().insert(*object_id);
@@ -557,15 +553,11 @@ impl<C: ServerConfig> Server<C> {
                         )
                         .await?;
                         if let Some(new_data) = res {
-                            let _ = (update_sender, new_data);
-                            unimplemented!() // TODO(server)
-                                             /*
-                                             update_sender.send(new_data).map_err(|_| {
-                                                 crate::Error::Other(anyhow!(
-                                                     "Update reorderer thread went away before updating thread",
-                                                 ))
-                                             })?;
-                                             */
+                            update_sender.send(new_data).map_err(|_| {
+                                crate::Error::Other(anyhow!(
+                                    "Update reorderer thread went away before updating thread",
+                                ))
+                            })?;
                         }
                         if *subscribe {
                             sess.subscribed_objects.write().unwrap().insert(*object_id);
