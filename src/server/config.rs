@@ -208,6 +208,11 @@ macro_rules! generate_server {
                             })));
                             // TODO(server): AAAAAAAAAAAA this is users_who_can_read_depends_on AGAIN!
                             // Will need a lot more thought to implement LostReadRights properly, we'll probably have to send lots of UpdatesWithSnap
+                            // Work started with update_users_who_can_read becoming able to know which users gained/lost rights, but we'll probably have to
+                            // replace ReadPermsChanges with straight UpdatesWithSnap? OTOH it's wasteful fetching all events if the latest snapshot would
+                            // not be matched by any query, so maybe ReadPermsChange should just get a new last_snapshot field and then update handling
+                            // would be able to match on the last snapshot and fetch all events only if required? But hen maybe it's too much complexity
+                            // for no perf gain
                         } else {
                             return Ok(None);
                         }
