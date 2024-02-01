@@ -37,6 +37,7 @@ pub struct PostgresDb<Config: ServerConfig> {
 }
 
 pub struct ReadPermsChanges {
+    pub object_id: ObjectId,
     pub lost_read: HashSet<User>,
     pub gained_read: HashSet<User>,
 }
@@ -631,6 +632,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .copied()
             .collect();
         Ok(ReadPermsChanges {
+            object_id,
             lost_read,
             gained_read,
         })
@@ -640,16 +642,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         &self,
         object_id: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<ReadPermsChanges>> {
         let rdeps = self.get_rdeps(&self.db, object_id).await?;
+        let mut res = Vec::with_capacity(rdeps.len());
         for o in rdeps {
             if o != object_id {
-                self.update_users_who_can_read(object_id, o, cb)
+                let changes = self.update_users_who_can_read(object_id, o, cb)
                     .await
                     .with_context(|| format!("updating users_who_can_read field for {o:?} on behalf of {object_id:?}"))?;
+                res.push(changes);
             }
         }
-        Ok(())
+        Ok(res)
     }
 
     async fn write_snapshot<'a, T: Object, C: CanDoCallbacks>(
