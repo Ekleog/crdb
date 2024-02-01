@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                SELECT type_id, snapshot_version, snapshot FROM snapshots\n                WHERE object_id = $1\n                AND is_latest\n            ",
+  "query": "\n                SELECT type_id, snapshot_version, snapshot, users_who_can_read FROM snapshots\n                WHERE object_id = $1\n                AND is_latest\n            ",
   "describe": {
     "columns": [
       {
@@ -17,6 +17,11 @@
         "ordinal": 2,
         "name": "snapshot",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 3,
+        "name": "users_who_can_read",
+        "type_info": "UuidArray"
       }
     ],
     "parameters": {
@@ -27,8 +32,9 @@
     "nullable": [
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "49c8b33be9b6ae89dfd47474aa14aa80cee3b6c4d446c8a0a39b71c9d84feb83"
+  "hash": "305e833bac8a16e2622bb937ab3134c799af41733b5daa19611b2cc1e70691df"
 }

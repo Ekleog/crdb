@@ -10,12 +10,12 @@ use crate::{
     BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
     SessionToken, Timestamp, TypeId, Updatedness, User,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use futures::{StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
 use sqlx::Row;
 use std::{
-    collections::{hash_map, BTreeMap, HashMap},
+    collections::{hash_map, BTreeMap, HashMap, HashSet},
     marker::PhantomData,
     sync::{Arc, Weak},
     time::SystemTime,
@@ -34,6 +34,11 @@ pub struct PostgresDb<Config: ServerConfig> {
     // take a read(). This should significantly improve performance
     object_locks: LockPool<ObjectId>,
     _phantom: PhantomData<Config>,
+}
+
+pub struct ReadPermsChanges {
+    pub lost_read: HashSet<User>,
+    pub gained_read: HashSet<User>,
 }
 
 pub type ComboLock<'a> = (
@@ -491,7 +496,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         requested_by: ObjectId,
         object_id: ObjectId,
         cb: &C,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ReadPermsChanges> {
         // Take the locks
         let _lock = (
             reord::Lock::take_named(format!("{object_id:?}")).await,
@@ -509,7 +514,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         reord::point().await;
         let res = sqlx::query!(
             "
-                SELECT type_id, snapshot_version, snapshot FROM snapshots
+                SELECT type_id, snapshot_version, snapshot, users_who_can_read FROM snapshots
                 WHERE object_id = $1
                 AND is_latest
             ",
@@ -518,6 +523,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
+        let users_who_can_read_before = res
+            .users_who_can_read
+            .ok_or_else(|| {
+                crate::Error::Other(anyhow!("Latest snapshot had NULL users_who_can_read"))
+            })?
+            .into_iter()
+            .map(User::from_uuid)
+            .collect::<HashSet<User>>();
 
         // Figure out the new value of users_who_can_read
         let (users_who_can_read, users_who_can_read_depends_on, _locks) =
@@ -531,6 +544,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             )
             .await
             .with_context(|| format!("updating users_who_can_read cache of {object_id:?}"))?;
+        let users_who_can_read_after = users_who_can_read
+            .iter()
+            .copied()
+            .collect::<HashSet<User>>();
 
         // Save it
         reord::maybe_lock().await;
@@ -602,7 +619,21 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             format!("committing transaction that updated users_who_can_read of {object_id:?}")
         })?;
         reord::point().await;
-        Ok(())
+
+        // TODO(low): there must be some libstd function to compute the two at once?
+        // but symmetric_difference doesn't seem to indicate which set the value came from
+        let lost_read = users_who_can_read_before
+            .difference(&users_who_can_read_after)
+            .copied()
+            .collect();
+        let gained_read = users_who_can_read_after
+            .difference(&users_who_can_read_before)
+            .copied()
+            .collect();
+        Ok(ReadPermsChanges {
+            lost_read,
+            gained_read,
+        })
     }
 
     async fn update_rdeps<C: CanDoCallbacks>(
