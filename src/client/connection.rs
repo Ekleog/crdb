@@ -610,7 +610,7 @@ impl Connection {
                                 if let Some((created_at, snapshot_version, data)) =
                                     object.creation_snapshot
                                 {
-                                    updates.push(Update {
+                                    updates.push(Arc::new(Update {
                                         object_id: object.object_id,
                                         type_id: object.type_id,
                                         data: UpdateData::Creation {
@@ -618,14 +618,14 @@ impl Connection {
                                             snapshot_version,
                                             data,
                                         },
-                                    });
+                                    }));
                                 }
                                 for (event_id, data) in object.events.into_iter() {
-                                    updates.push(Update {
+                                    updates.push(Arc::new(Update {
                                         object_id: object.object_id,
                                         type_id: object.type_id,
                                         data: UpdateData::Event { event_id, data },
-                                    });
+                                    }));
                                 }
                                 let _ = update_sender.unbounded_send(Updates {
                                     data: updates,

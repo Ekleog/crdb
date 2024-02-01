@@ -74,7 +74,7 @@ impl ClientDb {
                         let object_id = u.object_id;
                         let type_id = u.type_id;
                         // TODO(client): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
-                        match u.data {
+                        match &u.data {
                             UpdateData::Creation {
                                 created_at,
                                 snapshot_version,
@@ -82,13 +82,15 @@ impl ClientDb {
                             } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including new objects
                                 // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
+                                // TODO(low): here and in all other places where we clone json to deserialize, consider using
+                                // https://github.com/serde-rs/json/issues/483#issuecomment-422868517
                                 if let Err(err) = C::recreate(
                                     &*local_db,
                                     type_id,
                                     object_id,
-                                    created_at,
-                                    snapshot_version,
-                                    data,
+                                    *created_at,
+                                    *snapshot_version,
+                                    data.clone(),
                                     Some(updates.now_have_all_until),
                                     false,
                                 )
@@ -109,8 +111,8 @@ impl ClientDb {
                                     &*local_db,
                                     type_id,
                                     object_id,
-                                    event_id,
-                                    data,
+                                    *event_id,
+                                    data.clone(),
                                     Some(updates.now_have_all_until),
                                     false,
                                 )

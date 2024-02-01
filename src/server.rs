@@ -4,7 +4,7 @@ use crate::{
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
-        Updates, Upload,
+        Update, Updates, Upload,
     },
     BinPtr, Db, EventId, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, Timestamp,
     Updatedness, User,
@@ -38,27 +38,30 @@ pub use config::ServerConfig;
 // the list of users allowed to read this object.
 pub struct UpdatesWithSnap {
     // The list of actual updates
-    pub updates: Updates,
+    pub updates: Vec<Arc<Update>>,
 
     // The new last snapshot, if the update did change it (ie. no vacuum) and if the users affected
     // actually do have access to it. This is used for query matching.
     pub new_last_snapshot: Option<serde_json::Value>,
-
-    // The users this update is made for
-    pub for_users: Vec<User>,
 }
+
+pub type UserUpdatesMap = HashMap<ObjectId, Arc<UpdatesWithSnap>>;
+
+pub type UpdatesMap = HashMap<User, Arc<UserUpdatesMap>>;
+
+type SessionsSenderMap = HashMap<
+    User,
+    HashMap<SessionRef, Vec<mpsc::UnboundedSender<(Updatedness, Arc<UserUpdatesMap>)>>>,
+>;
 
 pub struct Server<C: ServerConfig> {
     cache_db: Arc<CacheDb<PostgresDb<C>>>,
     postgres_db: Arc<PostgresDb<C>>,
     last_completed_updatedness: Arc<Mutex<Updatedness>>,
-    updatedness_requester: mpsc::UnboundedSender<
-        oneshot::Sender<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)>,
-    >,
+    updatedness_requester:
+        mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesMap>)>>,
     _cleanup_token: tokio_util::sync::DropGuard,
-    sessions: Arc<
-        Mutex<HashMap<User, HashMap<SessionRef, Vec<mpsc::UnboundedSender<Arc<UpdatesWithSnap>>>>>>,
-    >,
+    sessions: Arc<Mutex<SessionsSenderMap>>,
 }
 
 impl<C: ServerConfig> Server<C> {
@@ -89,7 +92,7 @@ impl<C: ServerConfig> Server<C> {
 
         // Setup the update reorderer task
         let (updatedness_requester, mut updatedness_request_receiver) = mpsc::unbounded_channel::<
-            oneshot::Sender<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)>,
+            oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesMap>)>,
         >();
         let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
         let last_completed_updatedness = Arc::new(Mutex::new(Updatedness::from_u128(0)));
@@ -102,7 +105,7 @@ impl<C: ServerConfig> Server<C> {
                 let updatedness = Updatedness(generator.generate().expect(
                     "you're either very unlucky, or generated 2**80 updates within one millisecond",
                 ));
-                let (sender, receiver) = mpsc::unbounded_channel();
+                let (sender, receiver) = oneshot::channel();
                 if let Err(_) = update_sender.send((updatedness, receiver)) {
                     tracing::error!(
                         "Update reorderer task went away before updatedness request handler task"
@@ -111,25 +114,24 @@ impl<C: ServerConfig> Server<C> {
                 let _ = requester.send((updatedness, sender)); // Ignore any failures, they'll free the slot anyway
             }
         });
-        let sessions = Arc::new(Mutex::new(HashMap::<
-            User,
-            HashMap<SessionRef, Vec<mpsc::UnboundedSender<Arc<UpdatesWithSnap>>>>,
-        >::new()));
+        let sessions = Arc::new(Mutex::new(SessionsSenderMap::new()));
         tokio::task::spawn({
             let sessions = sessions.clone();
             let last_completed_updatedness = last_completed_updatedness.clone();
             async move {
                 // Actual update reorderer
                 // No cancellation token needed, closing the senders will naturally close this task
-                while let Some((updatedness, mut update_receiver)) = update_receiver.recv().await {
+                while let Some((updatedness, update_receiver)) = update_receiver.recv().await {
                     // Ignore the case where the slot sender was dropped
-                    while let Some(updates) = update_receiver.recv().await {
+                    if let Ok(updates) = update_receiver.await {
                         let mut sessions = sessions.lock().unwrap();
-                        for user in updates.for_users.iter() {
-                            if let Some(sessions) = sessions.get_mut(user) {
+                        for (user, updates) in updates {
+                            if let Some(sessions) = sessions.get_mut(&user) {
                                 for senders in sessions.values_mut() {
                                     // Discard all senders that return an error
-                                    senders.retain(|sender| sender.send(updates.clone()).is_ok());
+                                    senders.retain(|sender| {
+                                        sender.send((updatedness, updates.clone())).is_ok()
+                                    });
                                     // TODO(low): remove the entry from the hashmap altogether if it becomes empty
                                 }
                             }
@@ -241,21 +243,21 @@ impl<C: ServerConfig> Server<C> {
                 },
 
                 Some(update) = OptionFuture::from(conn.session.as_mut().map(|s| s.updates_receiver.recv())) => {
-                    let Some(update) = update else {
+                    let Some((updatedness, update)) = update else {
                         tracing::error!("Update receiver broke before connection went down");
                         break;
                     };
                     let sess = conn.session.as_ref().unwrap();
                     // TODO(low): batch updates across messages if there are lots of pending updates?
                     let mut data = Vec::new();
-                    for u in &update.updates.data {
-                        if sess.is_subscribed_to(u.object_id, &update.new_last_snapshot) {
-                            data.push(u.clone());
+                    for (object_id, updates) in update.iter() {
+                        if sess.is_subscribed_to(*object_id, &updates.new_last_snapshot) {
+                            data.extend(updates.updates.iter().cloned());
                         }
                     }
                     let send_res = Self::send(&mut conn.socket, &ServerMessage::Updates(Updates {
                         data,
-                        now_have_all_until: update.updates.now_have_all_until,
+                        now_have_all_until: updatedness,
                     })).await;
                     if let Err(err) = send_res {
                         tracing::warn!(?err, "failed sending update to client");
@@ -521,11 +523,15 @@ impl<C: ServerConfig> Server<C> {
                         )
                         .await?;
                         if let Some(new_data) = res {
-                            update_sender.send(new_data).map_err(|_| {
-                                crate::Error::Other(anyhow!(
-                                    "Update reorderer thread went away before updating thread",
-                                ))
-                            })?;
+                            let _ = (update_sender, new_data);
+                            unimplemented!() // TODO(server)
+                                             /*
+                                             update_sender.send(new_data).map_err(|_| {
+                                                 crate::Error::Other(anyhow!(
+                                                     "Update reorderer thread went away before updating thread",
+                                                 ))
+                                             })?;
+                                             */
                         }
                         if *subscribe {
                             sess.subscribed_objects.write().unwrap().insert(*object_id);
@@ -551,11 +557,15 @@ impl<C: ServerConfig> Server<C> {
                         )
                         .await?;
                         if let Some(new_data) = res {
-                            update_sender.send(new_data).map_err(|_| {
-                                crate::Error::Other(anyhow!(
-                                    "Update reorderer thread went away before updating thread",
-                                ))
-                            })?;
+                            let _ = (update_sender, new_data);
+                            unimplemented!() // TODO(server)
+                                             /*
+                                             update_sender.send(new_data).map_err(|_| {
+                                                 crate::Error::Other(anyhow!(
+                                                     "Update reorderer thread went away before updating thread",
+                                                 ))
+                                             })?;
+                                             */
                         }
                         if *subscribe {
                             sess.subscribed_objects.write().unwrap().insert(*object_id);
@@ -864,7 +874,7 @@ impl<C: ServerConfig> Server<C> {
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
         kill_sessions_older_than: Option<Timestamp>,
-        slot: mpsc::UnboundedSender<Arc<UpdatesWithSnap>>,
+        slot: oneshot::Sender<UpdatesMap>,
     ) -> crate::Result<()> {
         // Perform the vacuum, collecting all updates
         let mut updates = HashMap::new();
@@ -874,38 +884,36 @@ impl<C: ServerConfig> Server<C> {
                 updatedness,
                 kill_sessions_older_than,
                 |update, users_who_can_read| {
+                    // Vacuum cannot change any latest snapshot
+                    let object_id = update.object_id;
+                    let update = Arc::new(UpdatesWithSnap {
+                        updates: vec![Arc::new(update)],
+                        new_last_snapshot: None,
+                    });
                     for u in users_who_can_read {
                         updates
                             .entry(u)
-                            .or_insert_with(Vec::new)
-                            .push(update.clone());
+                            .or_insert_with(HashMap::new)
+                            .insert(object_id, update.clone());
                     }
                 },
             )
             .await;
 
+        // Arc where appropriate
+        // TODO(low): this could probably be done without copying by having &muts to the underlying Arc at creation time
+        let updates = updates.into_iter().map(|(k, v)| (k, Arc::new(v))).collect();
+
         // Submit the updates
-        for (user, updates) in updates {
-            // Vacuum cannot change any latest snapshot, and we already sorted the updates by user above
-            if let Err(_) = slot.send(Arc::new(UpdatesWithSnap {
-                updates: Updates {
-                    data: updates,
-                    now_have_all_until: updatedness,
-                },
-                new_last_snapshot: None,
-                for_users: vec![user],
-            })) {
-                tracing::error!("Update reorderer went away before server");
-            }
+        if let Err(_) = slot.send(updates) {
+            tracing::error!("Update reorderer went away before server");
         }
 
         // And return the result
         res
     }
 
-    async fn updatedness_slot(
-        &self,
-    ) -> crate::Result<(Updatedness, mpsc::UnboundedSender<Arc<UpdatesWithSnap>>)> {
+    async fn updatedness_slot(&self) -> crate::Result<(Updatedness, oneshot::Sender<UpdatesMap>)> {
         let (sender, receiver) = oneshot::channel();
         self.updatedness_requester.send(sender).map_err(|_| {
             crate::Error::Other(anyhow!(
@@ -958,7 +966,7 @@ struct SessionInfo {
     expected_binaries: usize,
     subscribed_objects: Arc<RwLock<HashSet<ObjectId>>>,
     subscribed_queries: Arc<RwLock<HashMap<QueryId, Arc<Query>>>>,
-    updates_receiver: mpsc::UnboundedReceiver<Arc<UpdatesWithSnap>>,
+    updates_receiver: mpsc::UnboundedReceiver<(Updatedness, Arc<UserUpdatesMap>)>,
 }
 
 impl SessionInfo {

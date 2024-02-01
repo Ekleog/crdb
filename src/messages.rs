@@ -90,7 +90,7 @@ pub enum ServerMessage {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Updates {
-    pub data: Vec<Update>,
+    pub data: Vec<Arc<Update>>,
     // This is the updatedness for all the currently subscribed queries
     pub now_have_all_until: Updatedness,
 }
@@ -151,14 +151,14 @@ pub struct SnapshotData {
     pub snapshot: serde_json::Value,
 }
 
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Update {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     pub data: UpdateData,
 }
 
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum UpdateData {
     // Also used for re-creation events
     Creation {

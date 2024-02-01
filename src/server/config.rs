@@ -142,10 +142,13 @@ macro_rules! generate_server {
                         if call_on.create::<$object>(object_id, created_at, object.clone(), Some(updatedness), true).await?.is_some() {
                             let snapshot_data = crdb::serde_json::to_value(&*object)
                                 .wrap_context("serializing uploaded snapshot data")?;
+                            let _ = snapshot_data;
+                            unimplemented!() // TODO(server)
+                            /*
                             return Ok(Some(crdb::Arc::new(crdb::UpdatesWithSnap {
                                 updates: crdb::Updates {
                                     now_have_all_until: updatedness,
-                                    data: vec![crdb::Update {
+                                    data: crdb::Arc::new(vec![crdb::Update {
                                         object_id,
                                         type_id,
                                         data: crdb::UpdateData::Creation {
@@ -153,12 +156,13 @@ macro_rules! generate_server {
                                             snapshot_version: <$object as crdb::Object>::snapshot_version(),
                                             data: snapshot_data.clone(),
                                         },
-                                    }]
+                                    }]),
                                 },
                                 new_last_snapshot: Some(snapshot_data),
                                 for_users: object.users_who_can_read(call_on).await
                                     .wrap_context("listing users who can read for submitted object")?,
                             })))
+                            */
                         } else {
                             return Ok(None);
                         }
@@ -190,6 +194,9 @@ macro_rules! generate_server {
                         if let Some(new_last_snapshot) = call_on.submit::<$object>(object_id, event_id, event.clone(), Some(updatedness), true).await? {
                             let last_snapshot = crdb::serde_json::to_value(&*new_last_snapshot)
                                 .wrap_context("serializing new last snapshot after event application")?;
+                            let _ = last_snapshot;
+                            unimplemented!() // TODO(server)
+                            /*
                             return Ok(Some(crdb::Arc::new(crdb::UpdatesWithSnap {
                                 updates: crdb::Updates {
                                     now_have_all_until: updatedness,
@@ -206,6 +213,7 @@ macro_rules! generate_server {
                                 for_users: new_last_snapshot.users_who_can_read(call_on).await
                                     .wrap_context("listing users who can read for object after submitted event")?,
                             })));
+                            */
                             // TODO(server): AAAAAAAAAAAA this is users_who_can_read_depends_on AGAIN!
                             // Will need a lot more thought to implement LostReadRights properly, we'll probably have to send lots of UpdatesWithSnap
                             // Work started with update_users_who_can_read becoming able to know which users gained/lost rights, but we'll probably have to
