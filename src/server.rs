@@ -37,10 +37,15 @@ pub use config::ServerConfig;
 // for query matching, available if the latest snapshot actually changed. Also,
 // the list of users allowed to read this object.
 pub struct UpdatesWithSnap {
+    // The list of actual updates
     pub updates: Updates,
+
+    // The new last snapshot, if the update did change it (ie. no vacuum) and if the users affected
+    // actually do have access to it. This is used for query matching.
     pub new_last_snapshot: Option<serde_json::Value>,
-    pub users_who_can_read_after: Vec<User>,
-    pub users_who_can_no_longer_read: Vec<User>,
+
+    // The users this update is made for
+    pub for_users: Vec<User>,
 }
 
 pub struct Server<C: ServerConfig> {
@@ -120,7 +125,7 @@ impl<C: ServerConfig> Server<C> {
                     // Ignore the case where the slot sender was dropped
                     while let Some(updates) = update_receiver.recv().await {
                         let mut sessions = sessions.lock().unwrap();
-                        for user in updates.users_who_can_read_after.iter() {
+                        for user in updates.for_users.iter() {
                             if let Some(sessions) = sessions.get_mut(user) {
                                 for senders in sessions.values_mut() {
                                     // Discard all senders that return an error
@@ -129,7 +134,6 @@ impl<C: ServerConfig> Server<C> {
                                 }
                             }
                         }
-                        // TODO(server): use updates.users_who_can_no_longer_read after figuring out what it should look like
                     }
                     *last_completed_updatedness.lock().unwrap() = updatedness;
                 }
@@ -870,8 +874,7 @@ impl<C: ServerConfig> Server<C> {
                     now_have_all_until: updatedness,
                 },
                 new_last_snapshot: None,
-                users_who_can_read_after: vec![user],
-                users_who_can_no_longer_read: Vec::new(),
+                for_users: vec![user],
             })) {
                 tracing::error!("Update reorderer went away before server");
             }

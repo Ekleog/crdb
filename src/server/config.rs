@@ -156,9 +156,8 @@ macro_rules! generate_server {
                                     }]
                                 },
                                 new_last_snapshot: Some(snapshot_data),
-                                users_who_can_read_after: object.users_who_can_read(call_on).await
+                                for_users: object.users_who_can_read(call_on).await
                                     .wrap_context("listing users who can read for submitted object")?,
-                                users_who_can_no_longer_read: Vec::new(),
                             })))
                         } else {
                             return Ok(None);
@@ -204,12 +203,11 @@ macro_rules! generate_server {
                                     }]
                                 },
                                 new_last_snapshot: Some(last_snapshot),
-                                users_who_can_read_after: new_last_snapshot.users_who_can_read(call_on).await
+                                for_users: new_last_snapshot.users_who_can_read(call_on).await
                                     .wrap_context("listing users who can read for object after submitted event")?,
-                                users_who_can_no_longer_read: Vec::new(),
-                                // TODO(server): AAAAAAAAAAAA this is users_who_can_read_depends_on AGAIN!
-                                // Will need a lot more thought to implement LostReadRights properly
-                            })))
+                            })));
+                            // TODO(server): AAAAAAAAAAAA this is users_who_can_read_depends_on AGAIN!
+                            // Will need a lot more thought to implement LostReadRights properly, we'll probably have to send lots of UpdatesWithSnap
                         } else {
                             return Ok(None);
                         }
