@@ -62,6 +62,7 @@ macro_rules! generate_server {
         pub struct $name;
 
         impl crdb::private::Sealed for $name {}
+
         impl crdb::ServerConfig for $name {
             type ApiConfig = $api_config;
 
@@ -148,7 +149,8 @@ macro_rules! generate_server {
                                 .wrap_context("listing users who can read for submitted object")?;
 
                             let mut res = crdb::HashMap::new();
-                            let _ = rdeps; // TODO(server): handle rdeps properly
+                            Self::add_rdeps_updates(&mut res, call_on, rdeps, cb).await
+                                .wrap_context("listing updates for rdeps")?;
                             let new_update = crdb::Arc::new(crdb::UpdatesWithSnap {
                                 updates: vec![crdb::Arc::new(crdb::Update {
                                     object_id,
@@ -235,6 +237,17 @@ macro_rules! generate_server {
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
+            }
+        }
+
+        impl $name {
+            async fn add_rdeps_updates<C: crdb::Db>(
+                _res: &mut crdb::HashMap<crdb::User, crdb::HashMap<crdb::ObjectId, crdb::Arc<crdb::UpdatesWithSnap>>>,
+                _call_on: &crdb::PostgresDb<Self>,
+                _rdeps: Vec<crdb::ReadPermsChanges>,
+                _cb: &C,
+            ) -> crdb::Result<()> {
+                unimplemented!() // TODO(server)
             }
         }
     };
