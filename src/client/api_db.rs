@@ -229,8 +229,9 @@ impl ApiDb {
             object_id,
             type_id: *T::type_ulid(),
             event_id,
-            event: serde_json::to_value(event)
-                .wrap_context("serializing event for sending to api")?,
+            event: Arc::new(
+                serde_json::to_value(event).wrap_context("serializing event for sending to api")?,
+            ),
             subscribe,
         }));
         let (result_sender, result_receiver) = oneshot::channel();

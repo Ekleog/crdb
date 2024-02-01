@@ -45,13 +45,14 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
     ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesMap>>>;
 
     fn upload_event<'a, C: Db>(
-        call_on: &'a C,
+        call_on: &'a PostgresDb<Self>,
         user: User,
         updatedness: Updatedness,
         type_id: TypeId,
         object_id: ObjectId,
         event_id: EventId,
-        event: serde_json::Value,
+        event: Arc<serde_json::Value>,
+        cb: &'a C,
     ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesMap>>>;
 }
 
@@ -182,18 +183,19 @@ macro_rules! generate_server {
             }
 
             async fn upload_event<'a, C: crdb::Db>(
-                call_on: &'a C,
+                call_on: &'a crdb::PostgresDb<Self>,
                 user: crdb::User,
                 updatedness: crdb::Updatedness,
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
-                event_data: crdb::serde_json::Value,
+                event_data: crdb::Arc<crdb::serde_json::Value>,
+                cb: &'a C,
             ) -> crdb::Result<Option<crdb::UpdatesMap>> {
                 use crdb::Object as _;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let event = crdb::Arc::new(crdb::serde_json::from_value::<<$object as crdb::Object>::Event>(event_data.clone())
+                        let event = crdb::Arc::new(<<$object as crdb::Object>::Event as crdb::serde::Deserialize>::deserialize(&*event_data)
                             .wrap_context("parsing uploaded snapshot data")?);
                         let object = call_on.get_latest::<$object>(true, object_id).await
                             .wrap_context("retrieving requested object id")?;
@@ -201,36 +203,36 @@ macro_rules! generate_server {
                         if !can_apply {
                             return Err(crdb::Error::Forbidden);
                         }
-                        if let Some(new_last_snapshot) = call_on.submit::<$object>(object_id, event_id, event.clone(), Some(updatedness), true).await? {
-                            let last_snapshot = crdb::serde_json::to_value(&*new_last_snapshot)
-                                .wrap_context("serializing new last snapshot after event application")?;
-                            let _ = last_snapshot;
-                            unimplemented!() // TODO(server)
-                            /*
-                            return Ok(Some(crdb::Arc::new(crdb::UpdatesWithSnap {
-                                updates: crdb::Updates {
-                                    now_have_all_until: updatedness,
-                                    data: vec![crdb::Update {
-                                        object_id,
-                                        type_id,
-                                        data: crdb::UpdateData::Event {
-                                            event_id,
-                                            data: event_data,
-                                        },
-                                    }]
-                                },
-                                new_last_snapshot: Some(last_snapshot),
-                                for_users: new_last_snapshot.users_who_can_read(call_on).await
-                                    .wrap_context("listing users who can read for object after submitted event")?,
-                            })));
-                            */
-                            // TODO(server): AAAAAAAAAAAA this is users_who_can_read_depends_on AGAIN!
-                            // Will need a lot more thought to implement LostReadRights properly, we'll probably have to send lots of UpdatesWithSnap
-                            // Work started with update_users_who_can_read becoming able to know which users gained/lost rights, but we'll probably have to
-                            // replace ReadPermsChanges with straight UpdatesWithSnap? OTOH it's wasteful fetching all events if the latest snapshot would
-                            // not be matched by any query, so maybe ReadPermsChange should just get a new last_snapshot field and then update handling
-                            // would be able to match on the last snapshot and fetch all events only if required? But hen maybe it's too much complexity
-                            // for no perf gain
+                        if let Some((new_last_snapshot, rdeps)) = call_on.submit_and_return_rdep_changes::<$object>(object_id, event_id, event.clone(), updatedness).await? {
+                            let snapshot_data = crdb::Arc::new(crdb::serde_json::to_value(&*new_last_snapshot)
+                                .wrap_context("serializing updated latest snapshot data")?);
+                            let users_who_can_read = new_last_snapshot.users_who_can_read(cb).await
+                                .wrap_context("listing users who can read for submitted object")?;
+
+                            let mut res = crdb::HashMap::new();
+                            Self::add_rdeps_updates(&mut res, call_on, rdeps, cb).await
+                                .wrap_context("listing updates for rdeps")?;
+                            let new_update = crdb::Arc::new(crdb::UpdatesWithSnap {
+                                updates: vec![crdb::Arc::new(crdb::Update {
+                                    object_id,
+                                    type_id,
+                                    data: crdb::UpdateData::Event {
+                                        event_id,
+                                        data: event_data.clone(),
+                                    },
+                                })],
+                                new_last_snapshot: Some(snapshot_data.clone()),
+                            });
+                            for user in users_who_can_read {
+                                let existing = res.entry(user)
+                                    .or_insert_with(crdb::HashMap::new)
+                                    .insert(object_id, new_update.clone());
+                                if let Some(existing) = existing {
+                                    crdb::tracing::error!(?user, ?object_id, ?existing, "replacing mistakenly-already-existing update");
+                                }
+                            }
+                            let res = res.into_iter().map(|(k, v)| (k, crdb::Arc::new(v))).collect();
+                            return Ok(Some(res));
                         } else {
                             return Ok(None);
                         }

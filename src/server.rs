@@ -545,13 +545,14 @@ impl<C: ServerConfig> Server<C> {
                     } => {
                         let (updatedness, update_sender) = self.updatedness_slot().await?;
                         let res = C::upload_event(
-                            &*self.cache_db,
+                            &*self.postgres_db,
                             sess.session.user_id,
                             updatedness,
                             *type_id,
                             *object_id,
                             *event_id,
                             event.clone(),
+                            &*self.cache_db,
                         )
                         .await?;
                         if let Some(new_data) = res {
