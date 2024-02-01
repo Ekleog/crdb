@@ -149,21 +149,22 @@ macro_rules! generate_server {
 
                             let mut res = crdb::HashMap::new();
                             let _ = rdeps; // TODO(server): handle rdeps properly
+                            let new_update = crdb::Arc::new(crdb::UpdatesWithSnap {
+                                updates: vec![crdb::Arc::new(crdb::Update {
+                                    object_id,
+                                    type_id,
+                                    data: crdb::UpdateData::Creation {
+                                        created_at,
+                                        snapshot_version: <$object as crdb::Object>::snapshot_version(),
+                                        data: snapshot_data.clone(),
+                                    },
+                                })],
+                                new_last_snapshot: Some(snapshot_data.clone()),
+                            });
                             for user in users_who_can_read {
                                 res.entry(user)
                                     .or_insert_with(crdb::HashMap::new)
-                                    .insert(object_id, crdb::Arc::new(crdb::UpdatesWithSnap {
-                                        updates: vec![crdb::Arc::new(crdb::Update {
-                                            object_id,
-                                            type_id,
-                                            data: crdb::UpdateData::Creation {
-                                                created_at,
-                                                snapshot_version: <$object as crdb::Object>::snapshot_version(),
-                                                data: snapshot_data.clone(),
-                                            },
-                                        })],
-                                        new_last_snapshot: Some(snapshot_data.clone()),
-                                    }));
+                                    .insert(object_id, new_update.clone());
                             }
                             let res = res.into_iter().map(|(k, v)| (k, crdb::Arc::new(v))).collect();
                             return Ok(Some(res));
