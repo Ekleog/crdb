@@ -1,4 +1,3 @@
-#![allow(dead_code)] // TODO(api): remove once server-side API is done
 use crate::{
     ids::QueryId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
     TypeId, Updatedness,
