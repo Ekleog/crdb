@@ -1,11 +1,12 @@
-use super::connection::{Command, Connection, ConnectionEvent, RequestWithSidecar, ResponseSender};
+use super::connection::{
+    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+    ResponseSender,
+};
 use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{
-        MaybeObject, ObjectData, Request, ResponsePart, ResponsePartWithSidecar, Updates, Upload,
-    },
+    messages::{MaybeObject, ObjectData, Request, ResponsePart, Updates, Upload},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
 };
 use anyhow::anyhow;
@@ -314,17 +315,15 @@ impl ApiDb {
             None => Err(crate::Error::Other(anyhow!(
                 "Connection-handling thread went out before ApiDb"
             ))),
-            Some(mut response) => match response.response {
+            Some(response) => match response.response {
                 ResponsePart::Error(err) => Err(err.into()),
                 ResponsePart::Binaries(1) => {
-                    if response.sidecar.len() != 1 {
-                        Err(crate::Error::Other(anyhow!(
-                            "Server claimed to send us one binary but actually sent {}",
-                            response.sidecar.len()
-                        )))
-                    } else {
-                        Ok(Some(response.sidecar.pop().unwrap()))
-                    }
+                    let bin = response.sidecar.ok_or_else(|| {
+                        crate::Error::Other(anyhow!(
+                            "Connection thread claimed to send us one binary but actually did not"
+                        ))
+                    })?;
+                    Ok(Some(bin))
                 }
                 _ => Err(crate::Error::Other(anyhow!(
                     "Unexpected response to get-binary request: {:?}",

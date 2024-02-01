@@ -1,8 +1,8 @@
 use crate::{
     ids::QueryId,
     messages::{
-        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ResponsePartWithSidecar,
-        ServerMessage, Update, UpdateData, Updates,
+        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
+        UpdateData, Updates,
     },
     ObjectId, Query, SessionToken, Timestamp, TypeId, Updatedness,
 };
@@ -32,6 +32,11 @@ const PONG_DEADLINE: Duration = Duration::from_secs(10);
 pub struct RequestWithSidecar {
     pub request: Arc<Request>,
     pub sidecar: Vec<Arc<[u8]>>,
+}
+
+pub struct ResponsePartWithSidecar {
+    pub response: ResponsePart,
+    pub sidecar: Option<Arc<[u8]>>,
 }
 
 pub enum Command {
@@ -310,7 +315,7 @@ impl Connection {
                                 *already_sent = true;
                                 let _ = sender.unbounded_send(ResponsePartWithSidecar {
                                     response: ResponsePart::Binaries(1),
-                                    sidecar: vec![message],
+                                    sidecar: Some(message),
                                 });
                                 *num_bins -= 1;
                                 if *num_bins == 0 {
@@ -378,7 +383,7 @@ impl Connection {
                                 response: ResponsePart::Error(
                                     crate::SerializableError::ConnectionLoss,
                                 ),
-                                sidecar: Vec::new(),
+                                sidecar: None,
                             });
                         } else {
                             self.not_sent_requests
@@ -540,7 +545,7 @@ impl Connection {
                         *already_sent = true;
                         let _ = sender.unbounded_send(ResponsePartWithSidecar {
                             response,
-                            sidecar: Vec::new(),
+                            sidecar: None,
                         });
                         if last_response {
                             self.pending_requests.remove(&request_id);

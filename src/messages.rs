@@ -96,11 +96,6 @@ pub struct Updates {
     pub now_have_all_until: Updatedness,
 }
 
-pub struct ResponsePartWithSidecar {
-    pub response: ResponsePart,
-    pub sidecar: Vec<Arc<[u8]>>,
-}
-
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ResponsePart {
     Success,
