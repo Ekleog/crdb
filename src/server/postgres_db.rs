@@ -1766,15 +1766,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Updatedness,
-    ) -> crate::Result<(Option<Arc<T>>, Vec<ReadPermsChanges>)> {
+    ) -> crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>> {
         let cache_db = self
             .cache_db
             .upgrade()
             .expect("Called PostgresDb::create after CacheDb went away");
 
-        let res = self
+        let Some(res) = self
             .create_impl(object_id, created_at, object, updatedness, &*cache_db)
-            .await?;
+            .await?
+        else {
+            return Ok(None);
+        };
 
         // Update the reverse-dependencies, now that we have updated the object itself.
         let rdeps = self
@@ -1784,7 +1787,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 format!("updating permissions for reverse-dependencies of {object_id:?}")
             })?;
 
-        Ok((res, rdeps))
+        Ok(Some((res, rdeps)))
     }
 
     pub async fn submit_and_return_rdep_changes<T: Object>(
@@ -1793,15 +1796,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Updatedness,
-    ) -> crate::Result<(Option<Arc<T>>, Vec<ReadPermsChanges>)> {
+    ) -> crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>> {
         let cache_db = self
             .cache_db
             .upgrade()
             .expect("Called PostgresDb::submit after CacheDb went away");
 
-        let res = self
+        let Some(res) = self
             .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
-            .await?;
+            .await?
+        else {
+            return Ok(None);
+        };
 
         // Update all the other objects that depend on this one
         let rdeps = self
@@ -1811,7 +1817,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 format!("updating permissions of reverse-dependencies fo {object_id:?}")
             })?;
 
-        Ok((res, rdeps))
+        Ok(Some((res, rdeps)))
     }
 }
 
@@ -1829,7 +1835,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(self
             .create_and_return_rdep_changes::<T>(object_id, created_at, object, updatedness)
             .await?
-            .0)
+            .map(|(snap, _)| snap))
     }
 
     async fn submit<T: Object>(
@@ -1845,7 +1851,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         Ok(self
             .submit_and_return_rdep_changes::<T>(object_id, event_id, event, updatedness)
             .await?
-            .0)
+            .map(|(snap, _)| snap))
     }
 
     async fn get_latest<T: Object>(
