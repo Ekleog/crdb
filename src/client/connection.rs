@@ -1,8 +1,8 @@
 use crate::{
     ids::QueryId,
     messages::{
-        ClientMessage, MaybeObject, Request, RequestId, RequestWithSidecar, ResponsePart,
-        ResponsePartWithSidecar, ServerMessage, Update, UpdateData, Updates,
+        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ResponsePartWithSidecar,
+        ServerMessage, Update, UpdateData, Updates,
     },
     ObjectId, Query, SessionToken, Timestamp, TypeId, Updatedness,
 };
@@ -28,6 +28,11 @@ use wasm as implem;
 const RECONNECT_INTERVAL: Duration = Duration::from_secs(10);
 const PING_INTERVAL: Duration = Duration::from_secs(10);
 const PONG_DEADLINE: Duration = Duration::from_secs(10);
+
+pub struct RequestWithSidecar {
+    pub request: Arc<Request>,
+    pub sidecar: Vec<Arc<[u8]>>,
+}
 
 pub enum Command {
     Login {

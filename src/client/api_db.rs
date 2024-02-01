@@ -1,11 +1,10 @@
-use super::connection::{Command, Connection, ConnectionEvent, ResponseSender};
+use super::connection::{Command, Connection, ConnectionEvent, RequestWithSidecar, ResponseSender};
 use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
     messages::{
-        MaybeObject, ObjectData, Request, RequestWithSidecar, ResponsePart,
-        ResponsePartWithSidecar, Updates, Upload,
+        MaybeObject, ObjectData, Request, ResponsePart, ResponsePartWithSidecar, Updates, Upload,
     },
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
 };

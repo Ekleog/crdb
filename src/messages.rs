@@ -20,11 +20,6 @@ pub struct ClientMessage {
     pub request: Arc<Request>,
 }
 
-pub struct RequestWithSidecar {
-    pub request: Arc<Request>,
-    pub sidecar: Vec<Arc<[u8]>>,
-}
-
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Request {
     // TODO(client): make sure all these request types are properly exposed to the user.
