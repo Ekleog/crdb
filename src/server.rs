@@ -4,7 +4,7 @@ use crate::{
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
-        Updates,
+        Updates, Upload, UploadOrBinary,
     },
     BinPtr, Db, EventId, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, Timestamp,
     Updatedness, User,
@@ -233,6 +233,14 @@ impl<C: ServerConfig> Server<C> {
         conn: &mut ConnectionState,
         msg: &str,
     ) -> crate::Result<()> {
+        if conn
+            .session
+            .as_ref()
+            .map(|sess| sess.expected_binaries > 0)
+            .unwrap_or(false)
+        {
+            return Err(crate::Error::ProtocolViolation);
+        }
         let msg = serde_json::from_str::<ClientMessage>(msg)
             .wrap_context("deserializing client message")?;
         // TODO(low): We could parallelize requests here, and not just pipeline them. However, we need to be
@@ -257,6 +265,7 @@ impl<C: ServerConfig> Server<C> {
                         conn.session = Some(SessionInfo {
                             token: *token,
                             session,
+                            expected_binaries: 0,
                             subscribed_objects: Arc::new(RwLock::new(HashSet::new())),
                             subscribed_queries: Arc::new(RwLock::new(HashMap::new())),
                             updates_receiver,
@@ -418,8 +427,53 @@ impl<C: ServerConfig> Server<C> {
                     .remove(query_id);
                 Ok(())
             }
-            _ => {
-                unimplemented!() // TODO(api)
+            Request::Upload(uploads) => {
+                let num_binaries = uploads
+                    .iter()
+                    .filter(|u| matches!(u, UploadOrBinary::Binary))
+                    .count();
+                let sess = conn
+                    .session
+                    .as_mut()
+                    .ok_or(crate::Error::ProtocolViolation)?;
+                sess.expected_binaries = num_binaries;
+                for upload in uploads {
+                    let UploadOrBinary::Upload(upload) = upload else {
+                        continue; // already handled above
+                    };
+                    // Apply the uploads in-order, in case there's eg. an object creation and then an event submission in the same message.
+                    match upload {
+                        Upload::Object {
+                            object_id,
+                            type_id,
+                            created_at,
+                            snapshot_version,
+                            object,
+                            subscribe,
+                        } => {
+                            let _ = (
+                                object_id,
+                                type_id,
+                                created_at,
+                                snapshot_version,
+                                object,
+                                subscribe,
+                            );
+                            unimplemented!() // TODO(api)
+                        }
+                        Upload::Event {
+                            object_id,
+                            type_id,
+                            event_id,
+                            event,
+                            subscribe,
+                        } => {
+                            let _ = (object_id, type_id, event_id, event, subscribe);
+                            unimplemented!() // TODO(api)
+                        }
+                    }
+                }
+                Ok(())
             }
         }
     }
@@ -805,6 +859,7 @@ struct ConnectionState {
 struct SessionInfo {
     token: SessionToken,
     session: Session,
+    expected_binaries: usize,
     subscribed_objects: Arc<RwLock<HashSet<ObjectId>>>,
     subscribed_queries: Arc<RwLock<HashMap<QueryId, Arc<Query>>>>,
     updates_receiver: mpsc::UnboundedReceiver<Arc<(Updates, Option<serde_json::Value>, Vec<User>)>>,
