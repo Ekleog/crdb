@@ -1606,23 +1606,31 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         panic!()
     }
 
-    // TODO(test): introduce in server-side fuzzer
-    pub async fn get_all(&self, user: User, object_id: ObjectId) -> crate::Result<ObjectData> {
-        // TODO(server): take as parameter if-modified-since, and only return the things that are more recent than that
-        reord::point().await;
+    pub async fn get_transaction(&self) -> crate::Result<sqlx::Transaction<'_, sqlx::Postgres>> {
         let mut transaction = self
             .db
             .begin()
             .await
             .wrap_context("acquiring postgresql transaction")?;
 
-        // Atomically perform all the reads here
+        // Atomically perform all the reads in this transaction
         reord::point().await;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *transaction)
             .await
             .wrap_context("setting transaction as repeatable read")?;
 
+        Ok(transaction)
+    }
+
+    // TODO(test): introduce in server-side fuzzer
+    pub async fn get_all(
+        &self,
+        transaction: &mut sqlx::PgConnection,
+        user: User,
+        object_id: ObjectId,
+    ) -> crate::Result<ObjectData> {
+        // TODO(server): take as parameter if-modified-since, and only return the things that are more recent than that
         // Check that our user has permissions to read the object
         reord::point().await;
         let can_read = sqlx::query!(
@@ -1694,17 +1702,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     pub async fn get_latest_snapshot(
         &self,
+        transaction: &mut sqlx::PgConnection,
         user: User,
         object_id: ObjectId,
     ) -> crate::Result<SnapshotData> {
-        reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
-        // First, check the existence and requested type
         reord::point().await;
         let latest_snapshot = sqlx::query!(
             "

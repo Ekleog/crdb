@@ -674,7 +674,8 @@ impl<C: ServerConfig> Server<C> {
                     // Subscribe BEFORE getting the object. This makes sure no updates are lost.
                     // We must then not return to the update-sending loop until all the responses are sent.
                     subscribed_objects.write().unwrap().insert(object_id);
-                    let object = self.postgres_db.get_all(user, object_id).await?;
+                    let mut t = self.postgres_db.get_transaction().await?;
+                    let object = self.postgres_db.get_all(&mut *t, user, object_id).await?;
                     Ok(MaybeObject::NotYetSubscribed(object))
                 }
             }
@@ -748,12 +749,10 @@ impl<C: ServerConfig> Server<C> {
                 ))))
             } else {
                 Either::Right(async move {
-                    // TODO(low): Think about whether to use postgres_db or cache_db for answering *Latest queries.
-                    // Using cache_db means clobbering the cache with stuff useless for computing users_who_can_read,
-                    // but can also mean faster QueryRemote(Importance::Latest) queries
+                    let mut t = self.postgres_db.get_transaction().await?;
                     let snapshot = self
                         .postgres_db
-                        .get_latest_snapshot(user, object_id)
+                        .get_latest_snapshot(&mut *t, user, object_id)
                         .await?;
                     Ok(MaybeSnapshot::NotSubscribed(snapshot))
                 })
