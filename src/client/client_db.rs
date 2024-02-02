@@ -41,6 +41,12 @@ impl ClientDb {
         // TODO(api): re-subscribe upon bootup to all the objects in database
         // (note that ObjectDoesNotExist means that our user lost read access to the object while offline)
         // TODO(api): re-subscribe upon bootup to all the queries in database
+        // Or should we? Maybe the user should manually re-run the query again? Because the snapshot version
+        // could have changed and thus the query have to be adjusted accordingly. Regardless, we must not
+        // reuse an updatedness saved for a query with a new snapshot version. We can probably trust the
+        // user to reuse the same QueryId iff they're submitting the same Query, but not with changing
+        // snapshot versions, that's too likely to fail.
+        // TODO(client): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
             api,
             db,
