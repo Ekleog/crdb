@@ -15,13 +15,13 @@ enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
-        updatedness: Option<Updatedness>,
+        updatedness: Updatedness,
         object: Arc<TestObjectFull>,
     },
     Submit {
         object: usize,
         event_id: EventId,
-        updatedness: Option<Updatedness>,
+        updatedness: Updatedness,
         event: Arc<TestEventFull>,
     },
     GetLatest {
@@ -64,7 +64,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
         } => {
             s.objects.lock().await.push(*id);
             let _pg = db
-                .create(*id, *created_at, object.clone(), *updatedness, true)
+                .create(*id, *created_at, object.clone(), Some(*updatedness), true)
                 .await;
         }
         Op::Submit {
@@ -81,7 +81,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db
-                .submit::<TestObjectFull>(o, *event_id, event.clone(), *updatedness, true)
+                .submit::<TestObjectFull>(o, *event_id, event.clone(), Some(*updatedness), true)
                 .await;
         }
         Op::GetLatest { object } => {
