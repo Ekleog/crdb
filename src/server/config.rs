@@ -208,6 +208,7 @@ macro_rules! generate_server {
                                 .wrap_context("listing users who can read for submitted object")?;
                             rdeps.push(crdb::ReadPermsChanges {
                                 object_id,
+                                type_id,
                                 lost_read: users_who_can_read_before.iter().filter(|u| !users_who_can_read_after.contains(u)).copied().collect(),
                                 gained_read: users_who_can_read_after.iter().filter(|u| !users_who_can_read_before.contains(u)).copied().collect(),
                             });

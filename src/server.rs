@@ -4,7 +4,7 @@ use crate::{
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
-        Update, Updates, Upload,
+        Update, UpdateData, Updates, Upload,
     },
     BinPtr, Db, EventId, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, Timestamp,
     Updatedness, User,
@@ -629,10 +629,26 @@ impl<C: ServerConfig> Server<C> {
 
     async fn add_rdeps_updates(
         &self,
-        _updates: &mut EditableUpdatesMap,
-        _rdeps: Vec<ReadPermsChanges>,
+        updates: &mut EditableUpdatesMap,
+        rdeps: Vec<ReadPermsChanges>,
     ) -> crate::Result<()> {
-        todo!()
+        for c in rdeps {
+            for u in c.lost_read {
+                updates.entry(u).or_insert_with(HashMap::new).insert(
+                    c.object_id,
+                    Arc::new(UpdatesWithSnap {
+                        updates: vec![Arc::new(Update {
+                            object_id: c.object_id,
+                            type_id: c.type_id,
+                            data: UpdateData::LostReadRights,
+                        })],
+                        new_last_snapshot: None,
+                    }),
+                );
+            }
+            // TODO(server): handle c.gained_read
+        }
+        Ok(())
     }
 
     async fn send_objects(

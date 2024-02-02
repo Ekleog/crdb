@@ -38,6 +38,7 @@ pub struct PostgresDb<Config: ServerConfig> {
 
 pub struct ReadPermsChanges {
     pub object_id: ObjectId,
+    pub type_id: TypeId,
     pub lost_read: HashSet<User>,
     pub gained_read: HashSet<User>,
 }
@@ -518,6 +519,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .fetch_one(&mut *transaction)
         .await
         .with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
+        let type_id = TypeId::from_uuid(res.type_id);
         let users_who_can_read_before = res
             .users_who_can_read
             .ok_or_else(|| {
@@ -532,7 +534,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             Config::get_users_who_can_read(
                 &self,
                 object_id,
-                TypeId::from_uuid(res.type_id),
+                type_id,
                 res.snapshot_version,
                 res.snapshot,
                 cb,
@@ -620,6 +622,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .collect();
         Ok(ReadPermsChanges {
             object_id,
+            type_id,
             lost_read,
             gained_read,
         })
