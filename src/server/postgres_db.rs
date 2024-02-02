@@ -719,6 +719,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     async fn create_impl<T: Object, C: CanDoCallbacks>(
         &self,
+        transaction: &mut sqlx::PgConnection,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
@@ -726,11 +727,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
 
         // Acquire the locks required to create the object
         let _lock = reord::Lock::take_named(format!("{created_at:?}")).await;
@@ -831,17 +827,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
-        check_required_binaries(&mut transaction, required_binaries)
+        check_required_binaries(&mut *transaction, required_binaries)
             .await
             .wrap_with_context(|| {
                 format!("checking that all binaries for object {object_id:?} are already present")
             })?;
 
-        reord::point().await;
-        transaction
-            .commit()
-            .await
-            .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
         reord::point().await;
 
         Ok(Some(object))
@@ -849,6 +840,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     async fn submit_impl<T: Object, C: CanDoCallbacks>(
         &self,
+        transaction: &mut sqlx::PgConnection,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
@@ -856,11 +848,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
 
         // Acquire the locks required to submit the event
         let _lock = reord::Lock::take_named(format!("{event_id:?}")).await;
@@ -1005,7 +992,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // Save the new snapshot (the new event was already saved above)
         let mut _dep_locks = self
             .write_snapshot(
-                &mut transaction,
+                &mut *transaction,
                 event_id,
                 object_id,
                 false,
@@ -1066,7 +1053,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             );
             _dep_locks = self
                 .write_snapshot(
-                    &mut transaction,
+                    &mut *transaction,
                     snapshot_id,
                     object_id,
                     false,
@@ -1083,17 +1070,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
-        check_required_binaries(&mut transaction, event.required_binaries())
+        check_required_binaries(&mut *transaction, event.required_binaries())
             .await
             .wrap_with_context(|| {
                 format!("checking that all binaries for object {object_id:?} are already present")
             })?;
-
-        reord::point().await;
-        transaction.commit().await.wrap_with_context(|| {
-            format!("committing transaction adding event {event_id:?} to object {object_id:?}")
-        })?;
-        reord::point().await;
 
         Ok(Some(Arc::new(object)))
     }
@@ -1772,12 +1753,32 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .upgrade()
             .expect("Called PostgresDb::create after CacheDb went away");
 
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
         let Some(res) = self
-            .create_impl(object_id, created_at, object, updatedness, &*cache_db)
+            .create_impl(
+                &mut transaction,
+                object_id,
+                created_at,
+                object,
+                updatedness,
+                &*cache_db,
+            )
             .await?
         else {
             return Ok(None);
         };
+
+        reord::point().await;
+        transaction
+            .commit()
+            .await
+            .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
+        reord::point().await;
 
         // Update the reverse-dependencies, now that we have updated the object itself.
         let rdeps = self
@@ -1802,12 +1803,31 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .upgrade()
             .expect("Called PostgresDb::submit after CacheDb went away");
 
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
         let Some(res) = self
-            .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
+            .submit_impl(
+                &mut transaction,
+                object_id,
+                event_id,
+                event,
+                updatedness,
+                &*cache_db,
+            )
             .await?
         else {
             return Ok(None);
         };
+
+        reord::point().await;
+        transaction.commit().await.wrap_with_context(|| {
+            format!("committing transaction adding event {event_id:?} to object {object_id:?}")
+        })?;
+        reord::point().await;
 
         // Update all the other objects that depend on this one
         let rdeps = self
@@ -1945,7 +1965,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
 }
 
 async fn check_required_binaries(
-    t: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    t: &mut sqlx::PgConnection,
     mut binaries: Vec<BinPtr>,
 ) -> crate::Result<()> {
     // FOR KEY SHARE: prevent DELETE of the binaries while `t` is running
@@ -1953,7 +1973,7 @@ async fn check_required_binaries(
     let present_ids =
         sqlx::query("SELECT binary_id FROM binaries WHERE binary_id = ANY ($1) FOR KEY SHARE")
             .bind(&binaries)
-            .fetch_all(&mut **t)
+            .fetch_all(&mut *t)
             .await
             .wrap_context("listing binaries already present in database")?;
     reord::point().await;
