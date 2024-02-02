@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                SELECT snapshot_id, type_id, snapshot_version, snapshot\n                FROM snapshots\n                WHERE object_id = $1\n                AND is_creation\n            ",
+  "query": "\n                SELECT snapshot_id, type_id, snapshot_version, snapshot\n                FROM snapshots\n                WHERE object_id = $1\n                AND is_creation\n                AND last_modified >= $2\n            ",
   "describe": {
     "columns": [
       {
@@ -26,6 +26,7 @@
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Uuid"
       ]
     },
@@ -36,5 +37,5 @@
       false
     ]
   },
-  "hash": "5934efdbef157ec0d4943f873099a41fa7b313a0364d28d7c7091ad711bed463"
+  "hash": "f8d0a9017033a058042a36c8163736974b6427e6288ca18c8744ff1a73345bc3"
 }

@@ -1630,13 +1630,17 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         transaction: &mut sqlx::PgConnection,
         user: User,
         object_id: ObjectId,
+        only_updated_since: Option<Updatedness>,
     ) -> crate::Result<ObjectData> {
-        // TODO(server): take as parameter if-modified-since, and only return the things that are more recent than that
-        // Check that our user has permissions to read the object
+        let min_last_modified = only_updated_since
+            .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
+            .unwrap_or(EventId::from_u128(0));
+
+        // Check that our user has permissions to read the object and retrieve the type_id
         reord::point().await;
-        let can_read = sqlx::query!(
+        let latest = sqlx::query!(
             "
-                SELECT snapshot_id
+                SELECT type_id
                 FROM snapshots
                 WHERE object_id = $1
                 AND is_latest
@@ -1647,11 +1651,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .fetch_optional(&mut *transaction)
         .await
-        .wrap_with_context(|| format!("checking whether {user:?} can read {object_id:?}"))?
-        .is_some();
-        if !can_read {
+        .wrap_with_context(|| format!("checking whether {user:?} can read {object_id:?}"))?;
+        let Some(latest) = latest else {
             return Err(crate::Error::ObjectDoesNotExist(object_id));
-        }
+        };
+        let type_id = TypeId::from_uuid(latest.type_id);
 
         reord::point().await;
         let creation_snapshot = sqlx::query!(
@@ -1660,17 +1664,25 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 FROM snapshots
                 WHERE object_id = $1
                 AND is_creation
+                AND last_modified >= $2
             ",
             object_id as ObjectId,
+            min_last_modified as EventId,
         )
-        .fetch_one(&mut *transaction)
+        .fetch_optional(&mut *transaction)
         .await
         .wrap_with_context(|| format!("fetching creation snapshot for object {object_id:?}"))?;
 
         reord::point().await;
         let events = sqlx::query!(
-            "SELECT event_id, data FROM events WHERE object_id = $1 ORDER BY event_id",
-            object_id as ObjectId
+            "
+                SELECT event_id, data
+                FROM events
+                WHERE object_id = $1
+                AND last_modified >= $2
+            ",
+            object_id as ObjectId,
+            min_last_modified as EventId,
         )
         .map(|r| (EventId::from_uuid(r.event_id), Arc::new(r.data)))
         .fetch(&mut *transaction)
@@ -1690,12 +1702,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         Ok(ObjectData {
             object_id,
-            type_id: TypeId::from_uuid(creation_snapshot.type_id),
-            creation_snapshot: Some((
-                EventId::from_uuid(creation_snapshot.snapshot_id),
-                creation_snapshot.snapshot_version,
-                Arc::new(creation_snapshot.snapshot),
-            )),
+            type_id,
+            creation_snapshot: creation_snapshot.map(|c| {
+                (
+                    EventId::from_uuid(c.snapshot_id),
+                    c.snapshot_version,
+                    Arc::new(c.snapshot),
+                )
+            }),
             events,
             now_have_all_until: last_modified,
         })

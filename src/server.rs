@@ -650,7 +650,7 @@ impl<C: ServerConfig> Server<C> {
                 let mut t = self.postgres_db.get_transaction().await?;
                 let object = self
                     .postgres_db
-                    .get_all(&mut *t, *one_user, c.object_id)
+                    .get_all(&mut *t, *one_user, c.object_id, None)
                     .await?;
                 let last_snapshot = self
                     .postgres_db
@@ -684,8 +684,7 @@ impl<C: ServerConfig> Server<C> {
             .ok_or(crate::Error::ProtocolViolation)?;
         let user = sess.session.user_id;
         let subscribed_objects = sess.subscribed_objects.clone();
-        let objects = objects.map(|(object_id, _updatedness)| {
-            // TODO(server): use _updatedness as get_all parameter when possible
+        let objects = objects.map(|(object_id, updatedness)| {
             let subscribed_objects = subscribed_objects.clone();
             async move {
                 if subscribed_objects.read().unwrap().contains(&object_id) {
@@ -695,7 +694,10 @@ impl<C: ServerConfig> Server<C> {
                     // We must then not return to the update-sending loop until all the responses are sent.
                     subscribed_objects.write().unwrap().insert(object_id);
                     let mut t = self.postgres_db.get_transaction().await?;
-                    let object = self.postgres_db.get_all(&mut *t, user, object_id).await?;
+                    let object = self
+                        .postgres_db
+                        .get_all(&mut *t, user, object_id, updatedness)
+                        .await?;
                     Ok(MaybeObject::NotYetSubscribed(object))
                 }
             }
