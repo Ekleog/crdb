@@ -137,6 +137,33 @@ pub struct ObjectData {
     pub now_have_all_until: Updatedness,
 }
 
+impl ObjectData {
+    #[cfg(any(feature = "client", feature = "server"))]
+    pub fn into_updates(self) -> Vec<Arc<Update>> {
+        let mut res =
+            Vec::with_capacity(self.events.len() + self.creation_snapshot.is_some() as usize);
+        if let Some((created_at, snapshot_version, data)) = self.creation_snapshot {
+            res.push(Arc::new(Update {
+                object_id: self.object_id,
+                type_id: self.type_id,
+                data: UpdateData::Creation {
+                    created_at,
+                    snapshot_version,
+                    data,
+                },
+            }));
+        }
+        for (event_id, data) in self.events.into_iter() {
+            res.push(Arc::new(Update {
+                object_id: self.object_id,
+                type_id: self.type_id,
+                data: UpdateData::Event { event_id, data },
+            }));
+        }
+        res
+    }
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum MaybeSnapshot {
     AlreadySubscribed(ObjectId),

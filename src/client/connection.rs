@@ -1,8 +1,7 @@
 use crate::{
     ids::QueryId,
     messages::{
-        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
-        UpdateData, Updates,
+        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
     },
     ObjectId, Query, SessionToken, Timestamp, TypeId, Updatedness,
 };
@@ -603,33 +602,10 @@ impl Connection {
                         match maybe_object {
                             MaybeObject::AlreadySubscribed(_) => continue,
                             MaybeObject::NotYetSubscribed(object) => {
-                                let mut updates = Vec::with_capacity(
-                                    object.events.len()
-                                        + object.creation_snapshot.is_some() as usize,
-                                );
-                                if let Some((created_at, snapshot_version, data)) =
-                                    object.creation_snapshot
-                                {
-                                    updates.push(Arc::new(Update {
-                                        object_id: object.object_id,
-                                        type_id: object.type_id,
-                                        data: UpdateData::Creation {
-                                            created_at,
-                                            snapshot_version,
-                                            data,
-                                        },
-                                    }));
-                                }
-                                for (event_id, data) in object.events.into_iter() {
-                                    updates.push(Arc::new(Update {
-                                        object_id: object.object_id,
-                                        type_id: object.type_id,
-                                        data: UpdateData::Event { event_id, data },
-                                    }));
-                                }
+                                let now_have_all_until = object.now_have_all_until;
                                 let _ = update_sender.unbounded_send(Updates {
-                                    data: updates,
-                                    now_have_all_until: object.now_have_all_until,
+                                    data: object.into_updates(),
+                                    now_have_all_until,
                                 });
                             }
                         }
