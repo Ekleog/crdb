@@ -104,7 +104,7 @@ impl<C: ServerConfig> Server<C> {
             let mut generator = ulid::Generator::new();
             // No cancellation token needed, closing the sender will naturally close this task
             while let Some(requester) = updatedness_request_receiver.recv().await {
-                // TODO(low): see also https://github.com/dylanhart/ulid-rs/issues/71
+                // TODO(blocked): use generate_overflowing once it lands https://github.com/dylanhart/ulid-rs/pull/75
                 let updatedness = Updatedness(generator.generate().expect(
                     "you're either very unlucky, or generated 2**80 updates within one millisecond",
                 ));
