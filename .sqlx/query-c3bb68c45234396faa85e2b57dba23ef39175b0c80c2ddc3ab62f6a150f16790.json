@@ -22,6 +22,11 @@
         "ordinal": 3,
         "name": "required_binaries",
         "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 4,
+        "name": "last_modified",
+        "type_info": "Uuid"
       }
     ],
     "parameters": {
@@ -30,6 +35,7 @@
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,

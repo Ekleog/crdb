@@ -34,7 +34,8 @@ CREATE TABLE events (
     event_id UUID PRIMARY KEY NOT NULL, -- the timestamp ULID, cast to an UUID
     object_id UUID NOT NULL,
     data JSONB NOT NULL,
-    required_binaries UUID ARRAY NOT NULL
+    required_binaries UUID ARRAY NOT NULL,
+    last_modified UUID NOT NULL -- `Updatedness` at which this event was written on the server
 );
 
 CREATE UNIQUE INDEX snapshot_creations ON snapshots (object_id) WHERE is_creation;

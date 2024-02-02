@@ -887,11 +887,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let required_binaries = event.required_binaries();
         reord::maybe_lock().await;
         let affected =
-            sqlx::query("INSERT INTO events VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
+            sqlx::query("INSERT INTO events VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING")
                 .bind(event_id)
                 .bind(object_id)
                 .bind(event_json)
                 .bind(required_binaries)
+                .bind(updatedness)
                 .execute(&mut *transaction)
                 .await
                 .wrap_with_context(|| format!("inserting event {event_id:?} in database"))?
