@@ -50,6 +50,8 @@ pub type UserUpdatesMap = HashMap<ObjectId, Arc<UpdatesWithSnap>>;
 
 pub type UpdatesMap = HashMap<User, Arc<UserUpdatesMap>>;
 
+type EditableUpdatesMap = HashMap<User, HashMap<ObjectId, Arc<UpdatesWithSnap>>>;
+
 type SessionsSenderMap = HashMap<
     User,
     HashMap<SessionRef, Vec<mpsc::UnboundedSender<(Updatedness, Arc<UserUpdatesMap>)>>>,
@@ -524,7 +526,30 @@ impl<C: ServerConfig> Server<C> {
                             &*self.cache_db,
                         )
                         .await?;
-                        if let Some(new_data) = res {
+                        if let Some((new_update, users_who_can_read, rdeps)) = res {
+                            let mut new_data = HashMap::new();
+                            self.add_rdeps_updates(&mut new_data, rdeps)
+                                .await
+                                .wrap_context("listing updates for rdeps")?;
+                            for user in users_who_can_read {
+                                let existing = new_data
+                                    .entry(user)
+                                    .or_insert_with(HashMap::new)
+                                    .insert(*object_id, new_update.clone());
+                                if let Some(existing) = existing {
+                                    tracing::error!(
+                                        ?user,
+                                        ?object_id,
+                                        ?existing,
+                                        "replacing mistakenly-already-existing update"
+                                    );
+                                }
+                            }
+                            let new_data = new_data
+                                .into_iter()
+                                .map(|(k, v)| (k, Arc::new(v)))
+                                .collect();
+
                             update_sender.send(new_data).map_err(|_| {
                                 crate::Error::Other(anyhow!(
                                     "Update reorderer thread went away before updating thread",
@@ -577,6 +602,14 @@ impl<C: ServerConfig> Server<C> {
                 Ok(())
             }
         }
+    }
+
+    async fn add_rdeps_updates(
+        &self,
+        _updates: &mut EditableUpdatesMap,
+        _rdeps: Vec<ReadPermsChanges>,
+    ) -> crate::Result<()> {
+        todo!()
     }
 
     async fn send_objects(
