@@ -1,6 +1,6 @@
 use super::{
     postgres_db::{ComboLock, PostgresDb},
-    ReadPermsChanges, UpdatesMap, UpdatesWithSnap,
+    ReadPermsChanges, UpdatesWithSnap,
 };
 use crate::{
     api::ApiConfig, db_trait::Db, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId,
@@ -47,6 +47,8 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         Output = crate::Result<Option<(Arc<UpdatesWithSnap>, Vec<User>, Vec<ReadPermsChanges>)>>,
     >;
 
+    /// The Vec<User> in return type is the list of users who can read the object both before and after the change. Users who gained or
+    /// lost access to `object_id` are returned as part of the `Vec<ReadPermsChanges>`.
     fn upload_event<'a, C: Db>(
         call_on: &'a PostgresDb<Self>,
         user: User,
@@ -56,7 +58,10 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         event_id: EventId,
         event: Arc<serde_json::Value>,
         cb: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<UpdatesMap>>>;
+    ) -> impl 'a
+           + CrdbFuture<
+        Output = crate::Result<Option<(Arc<UpdatesWithSnap>, Vec<User>, Vec<ReadPermsChanges>)>>,
+    >;
 }
 
 #[doc(hidden)]
@@ -182,7 +187,7 @@ macro_rules! generate_server {
                 event_id: crdb::EventId,
                 event_data: crdb::Arc<crdb::serde_json::Value>,
                 cb: &'a C,
-            ) -> crdb::Result<Option<crdb::UpdatesMap>> {
+            ) -> crdb::Result<Option<(crdb::Arc<crdb::UpdatesWithSnap>, Vec<crdb::User>, Vec<crdb::ReadPermsChanges>)>> {
                 use crdb::Object as _;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -194,15 +199,20 @@ macro_rules! generate_server {
                         if !can_apply {
                             return Err(crdb::Error::Forbidden);
                         }
-                        if let Some((new_last_snapshot, rdeps)) = call_on.submit_and_return_rdep_changes::<$object>(object_id, event_id, event.clone(), updatedness).await? {
+                        let users_who_can_read_before = object.users_who_can_read(cb).await
+                            .wrap_context("listing users who can read for the object before submitting the event")?;
+                        if let Some((new_last_snapshot, mut rdeps)) = call_on.submit_and_return_rdep_changes::<$object>(object_id, event_id, event.clone(), updatedness).await? {
                             let snapshot_data = crdb::Arc::new(crdb::serde_json::to_value(&*new_last_snapshot)
                                 .wrap_context("serializing updated latest snapshot data")?);
-                            let users_who_can_read = new_last_snapshot.users_who_can_read(cb).await
+                            let users_who_can_read_after = new_last_snapshot.users_who_can_read(cb).await
                                 .wrap_context("listing users who can read for submitted object")?;
+                            rdeps.push(crdb::ReadPermsChanges {
+                                object_id,
+                                lost_read: users_who_can_read_before.iter().filter(|u| !users_who_can_read_after.contains(u)).copied().collect(),
+                                gained_read: users_who_can_read_after.iter().filter(|u| !users_who_can_read_before.contains(u)).copied().collect(),
+                            });
+                            let users_who_can_read_always = users_who_can_read_before.into_iter().filter(|u| users_who_can_read_after.contains(&u)).collect();
 
-                            let mut res = crdb::HashMap::new();
-                            Self::add_rdeps_updates(&mut res, call_on, rdeps, cb).await
-                                .wrap_context("listing updates for rdeps")?;
                             let new_update = crdb::Arc::new(crdb::UpdatesWithSnap {
                                 updates: vec![crdb::Arc::new(crdb::Update {
                                     object_id,
@@ -214,34 +224,13 @@ macro_rules! generate_server {
                                 })],
                                 new_last_snapshot: Some(snapshot_data.clone()),
                             });
-                            for user in users_who_can_read {
-                                let existing = res.entry(user)
-                                    .or_insert_with(crdb::HashMap::new)
-                                    .insert(object_id, new_update.clone());
-                                if let Some(existing) = existing {
-                                    crdb::tracing::error!(?user, ?object_id, ?existing, "replacing mistakenly-already-existing update");
-                                }
-                            }
-                            let res = res.into_iter().map(|(k, v)| (k, crdb::Arc::new(v))).collect();
-                            return Ok(Some(res));
+                            return Ok(Some((new_update, users_who_can_read_always, rdeps)));
                         } else {
                             return Ok(None);
                         }
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
-            }
-        }
-
-        impl $name {
-            async fn add_rdeps_updates<C: crdb::Db>(
-                _res: &mut crdb::HashMap<crdb::User, crdb::HashMap<crdb::ObjectId, crdb::Arc<crdb::UpdatesWithSnap>>>,
-                _call_on: &crdb::PostgresDb<Self>,
-                _rdeps: Vec<crdb::ReadPermsChanges>,
-                _cb: &C,
-            ) -> crdb::Result<()> {
-                // TODO(server): move to Server, as this only needs to access users_who_can_read and this is already saved in the latest snapshot
-                unimplemented!() // TODO(server)
             }
         }
     };
