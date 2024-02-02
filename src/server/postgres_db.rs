@@ -586,6 +586,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         };
 
         // Remove the request to update
+        // TODO(server): we could have these not be in the same transaction as the event submission, under the prerequisite of
+        // actually resuming restarting the updater thread after a server crash, as well as making sure that event submission
+        // does not succeed if the event already exists but there are still reverse dependents to update.
         reord::maybe_lock().await;
         let affected = sqlx::query(
             "
