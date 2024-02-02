@@ -494,6 +494,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     /// `_lock` is a lock that makes sure `object` is not being modified while this executes.
     pub async fn update_users_who_can_read<C: CanDoCallbacks>(
         &self,
+        transaction: &mut sqlx::PgConnection,
         requested_by: ObjectId,
         object_id: ObjectId,
         cb: &C,
@@ -503,13 +504,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             reord::Lock::take_named(format!("{object_id:?}")).await,
             self.object_locks.async_lock(object_id).await,
         );
-
-        // Start the transaction
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .context("starting postgresql transaction")?;
 
         // Retrieve the snapshot
         reord::point().await;
@@ -614,13 +608,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "Failed to mark reverse dependent {object_id:?} of {requested_by:?} as updated"
         );
 
-        // Commit the transaction
-        reord::point().await;
-        transaction.commit().await.with_context(|| {
-            format!("committing transaction that updated users_who_can_read of {object_id:?}")
-        })?;
-        reord::point().await;
-
         // TODO(low): there must be some libstd function to compute the two at once?
         // but symmetric_difference doesn't seem to indicate which set the value came from
         let lost_read = users_who_can_read_before
@@ -640,6 +627,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     async fn update_rdeps<C: CanDoCallbacks>(
         &self,
+        transaction: &mut sqlx::PgConnection,
         object_id: ObjectId,
         cb: &C,
     ) -> anyhow::Result<Vec<ReadPermsChanges>> {
@@ -647,7 +635,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let mut res = Vec::with_capacity(rdeps.len());
         for o in rdeps {
             if o != object_id {
-                let changes = self.update_users_who_can_read(object_id, o, cb)
+                let changes = self.update_users_who_can_read(&mut *transaction, object_id, o, cb)
                     .await
                     .with_context(|| format!("updating users_who_can_read field for {o:?} on behalf of {object_id:?}"))?;
                 res.push(changes);
@@ -1773,20 +1761,20 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             return Ok(None);
         };
 
+        // Update the reverse-dependencies, now that we have updated the object itself.
+        let rdeps = self
+            .update_rdeps(&mut transaction, object_id, &*cache_db)
+            .await
+            .wrap_with_context(|| {
+                format!("updating permissions for reverse-dependencies of {object_id:?}")
+            })?;
+
         reord::point().await;
         transaction
             .commit()
             .await
             .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
         reord::point().await;
-
-        // Update the reverse-dependencies, now that we have updated the object itself.
-        let rdeps = self
-            .update_rdeps(object_id, &*cache_db)
-            .await
-            .wrap_with_context(|| {
-                format!("updating permissions for reverse-dependencies of {object_id:?}")
-            })?;
 
         Ok(Some((res, rdeps)))
     }
@@ -1823,19 +1811,19 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             return Ok(None);
         };
 
+        // Update all the other objects that depend on this one
+        let rdeps = self
+            .update_rdeps(&mut transaction, object_id, &*cache_db)
+            .await
+            .wrap_with_context(|| {
+                format!("updating permissions of reverse-dependencies fo {object_id:?}")
+            })?;
+
         reord::point().await;
         transaction.commit().await.wrap_with_context(|| {
             format!("committing transaction adding event {event_id:?} to object {object_id:?}")
         })?;
         reord::point().await;
-
-        // Update all the other objects that depend on this one
-        let rdeps = self
-            .update_rdeps(object_id, &*cache_db)
-            .await
-            .wrap_with_context(|| {
-                format!("updating permissions of reverse-dependencies fo {object_id:?}")
-            })?;
 
         Ok(Some((res, rdeps)))
     }
