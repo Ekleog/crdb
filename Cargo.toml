@@ -55,7 +55,7 @@ icu_casemap = "1.4"
 icu_normalizer = "1.4"
 icu_properties = "1.4"
 icu_segmenter = "1.4"
-reord = "0.2.2"
+reord = "0.2.3"
 rust_decimal = { version = "1.33", features = ["serde-arbitrary-precision"] }
 rust-stemmers = "1.2"
 serde = { version = "1.0", features = ["derive", "rc"] }
