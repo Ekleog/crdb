@@ -646,7 +646,47 @@ impl<C: ServerConfig> Server<C> {
                     }),
                 );
             }
-            // TODO(server): handle c.gained_read
+            if let Some(one_user) = c.gained_read.iter().next() {
+                let mut t = self.postgres_db.get_transaction().await?;
+                let object = self
+                    .postgres_db
+                    .get_all(&mut *t, *one_user, c.object_id)
+                    .await?;
+                let last_snapshot = self
+                    .postgres_db
+                    .get_latest_snapshot(&mut *t, *one_user, c.object_id)
+                    .await?;
+                let mut new_updates = Vec::with_capacity(
+                    object.events.len() + object.creation_snapshot.is_some() as usize,
+                );
+                if let Some((created_at, snapshot_version, data)) = object.creation_snapshot {
+                    new_updates.push(Arc::new(Update {
+                        object_id: object.object_id,
+                        type_id: object.type_id,
+                        data: UpdateData::Creation {
+                            created_at,
+                            snapshot_version,
+                            data,
+                        },
+                    }));
+                }
+                for (event_id, data) in object.events.into_iter() {
+                    new_updates.push(Arc::new(Update {
+                        object_id: object.object_id,
+                        type_id: object.type_id,
+                        data: UpdateData::Event { event_id, data },
+                    }));
+                }
+                for u in c.gained_read {
+                    updates.entry(u).or_insert_with(HashMap::new).insert(
+                        c.object_id,
+                        Arc::new(UpdatesWithSnap {
+                            updates: new_updates.clone(),
+                            new_last_snapshot: Some(last_snapshot.snapshot.clone()),
+                        }),
+                    );
+                }
+            }
         }
         Ok(())
     }
