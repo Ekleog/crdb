@@ -21,16 +21,7 @@ macro_rules! impl_id {
         #[allow(dead_code)]
         impl $type {
             pub fn now() -> Self {
-                #[cfg(not(target_arch = "wasm32"))]
-                let res = Self(Ulid::new());
-                #[cfg(target_arch = "wasm32")]
-                let res = Self(Ulid::from_datetime(
-                    std::time::SystemTime::UNIX_EPOCH
-                        + wasm_timer::SystemTime::now()
-                            .duration_since(wasm_timer::SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                ));
-                res
+                Self(Ulid::new())
             }
 
             pub(crate) fn time(&self) -> Timestamp {
