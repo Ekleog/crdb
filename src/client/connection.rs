@@ -242,7 +242,7 @@ impl Connection {
                                 // Re-subscribe to the previously subscribed queries and objects
                                 // Start with subscribed objects, so that we easily tell the server what we already know about them.
                                 // Only then re-subscribe to queries, this way the server can answer AlreadySubscribed whenever relevant.
-                                // TODO(client): stop tracking any subscription information here, and instead just re-ask the LocalDb for
+                                // TODO(api): stop tracking any subscription information here, and instead just re-ask the LocalDb for
                                 // what to re-subscribe on upon reconnection?
                                 if !self.subscribed_objects.is_empty() {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
@@ -478,8 +478,8 @@ impl Connection {
                     if let Some(updated) = self.subscribed_objects.get_mut(&update.object_id) {
                         *updated = Some(updates.now_have_all_until);
                     }
-                    // TODO(client): somehow keep track of now_have_all_until for each subscribed query
-                    // TODO(client): make sure we track subscribed_objects properly, after an object newly starts matching a subscribed query.
+                    // TODO(api): somehow keep track of now_have_all_until for each subscribed query
+                    // TODO(api): make sure we track subscribed_objects properly, after an object newly starts matching a subscribed query.
                 }
 
                 // And send the update

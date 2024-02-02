@@ -258,7 +258,7 @@ impl ApiDb {
             Some(response) => match response.response {
                 ResponsePart::Error(err) => Err(err.into()),
                 ResponsePart::Objects { mut data, .. } if data.len() == 1 => {
-                    // TODO(client): record now_have_all_until somewhere (for queries)
+                    // TODO(api): record now_have_all_until somewhere (for queries)
                     match data.pop().unwrap() {
                         MaybeObject::AlreadySubscribed(_) => Err(crate::Error::Other(anyhow!(
                             "Server unexpectedly told us we already know unknown {object_id:?}"

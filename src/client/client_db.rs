@@ -38,9 +38,9 @@ impl ClientDb {
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
         let cancellation_token = CancellationToken::new();
-        // TODO(client): re-subscribe upon bootup to all the objects in database
+        // TODO(api): re-subscribe upon bootup to all the objects in database
         // (note that ObjectDoesNotExist means that our user lost read access to the object while offline)
-        // TODO(client): re-subscribe upon bootup to all the queries in database
+        // TODO(api): re-subscribe upon bootup to all the queries in database
         let this = ClientDb {
             api,
             db,
@@ -73,7 +73,7 @@ impl ClientDb {
                     for u in updates.data {
                         let object_id = u.object_id;
                         let type_id = u.type_id;
-                        // TODO(client): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
+                        // TODO(api): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
                         match &u.data {
                             UpdateData::Creation {
                                 created_at,
@@ -81,7 +81,7 @@ impl ClientDb {
                                 data,
                             } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including new objects
-                                // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
+                                // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
                                 // TODO(low): here and in all other places where we clone json to deserialize, consider using
                                 // https://github.com/serde-rs/json/issues/483#issuecomment-422868517
                                 if let Err(err) = C::recreate(
@@ -106,7 +106,7 @@ impl ClientDb {
                             UpdateData::Event { event_id, data } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including objects that start
                                 // matching the query only after the initial run
-                                // TODO(client): automatically handle MissingBinaries error by requesting them from server and retrying
+                                // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
                                 if let Err(err) = C::submit(
                                     &*local_db,
                                     type_id,
