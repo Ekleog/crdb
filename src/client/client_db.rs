@@ -45,7 +45,8 @@ impl ClientDb {
         // could have changed and thus the query have to be adjusted accordingly. Regardless, we must not
         // reuse an updatedness saved for a query with a new snapshot version. We can probably trust the
         // user to reuse the same QueryId iff they're submitting the same Query, but not with changing
-        // snapshot versions, that's too likely to fail.
+        // snapshot versions, that's too likely to fail. Or we should have a method of Object that upgrades
+        // the Query's?
         // TODO(client): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
             api,
