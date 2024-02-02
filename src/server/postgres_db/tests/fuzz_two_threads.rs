@@ -13,7 +13,7 @@ use ulid::Ulid;
 #[derive(Debug, arbitrary::Arbitrary)]
 enum Op {
     Create {
-        id: ObjectId,
+        object_id: ObjectId,
         created_at: EventId,
         updatedness: Updatedness,
         object: Arc<TestObjectFull>,
@@ -57,14 +57,22 @@ impl FuzzState {
 async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Create {
-            id,
+            object_id,
             created_at,
             updatedness,
             object,
         } => {
-            s.objects.lock().await.push(*id);
+            let mut object = object.clone();
+            Arc::make_mut(&mut object).standardize(*object_id);
+            s.objects.lock().await.push(*object_id);
             let _pg = db
-                .create(*id, *created_at, object.clone(), Some(*updatedness), true)
+                .create(
+                    *object_id,
+                    *created_at,
+                    object.clone(),
+                    Some(*updatedness),
+                    true,
+                )
                 .await;
         }
         Op::Submit {
