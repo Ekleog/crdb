@@ -4,9 +4,9 @@ use crate::{
     error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{db::ServerConfig, *},
-    EventId, ObjectId, Query, Timestamp, User,
+    EventId, ObjectId, Updatedness,
 };
-use std::{ops::Bound, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
@@ -15,30 +15,30 @@ enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
+        updatedness: Option<Updatedness>,
         object: Arc<TestObjectFull>,
     },
     Submit {
         object: usize,
         event_id: EventId,
+        updatedness: Option<Updatedness>,
         event: Arc<TestEventFull>,
     },
-    Get {
+    GetLatest {
         object: usize,
-        at: EventId,
     },
-    Query {
-        _user: User,
-        _q: Query,
-    },
+    // TODO(test): also test query
     Recreate {
         object: usize,
-        time: Timestamp,
+        updatedness: Updatedness,
+        event_id: EventId,
     },
     Remove {
         object: usize,
     },
     Vacuum {
-        recreate_at: Option<Timestamp>,
+        recreate_at: Option<EventId>,
+        updatedness: Updatedness,
     },
 }
 
@@ -59,14 +59,18 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
         Op::Create {
             id,
             created_at,
+            updatedness,
             object,
         } => {
             s.objects.lock().await.push(*id);
-            let _pg = db.create(*id, *created_at, object.clone(), true, db).await;
+            let _pg = db
+                .create(*id, *created_at, object.clone(), *updatedness, true)
+                .await;
         }
         Op::Submit {
             object,
             event_id,
+            updatedness,
             event,
         } => {
             let o = s
@@ -77,10 +81,10 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db
-                .submit::<TestObjectFull, _>(o, *event_id, event.clone(), db)
+                .submit::<TestObjectFull>(o, *event_id, event.clone(), *updatedness, true)
                 .await;
         }
-        Op::Get { object, at } => {
+        Op::GetLatest { object } => {
             let o = s
                 .objects
                 .lock()
@@ -88,20 +92,16 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg: crate::Result<Arc<TestObjectFull>> =
-                match db.get::<TestObjectFull>(true, o).await {
-                    Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
-                        Ok(o) => Ok(o.1),
-                        Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
-                    },
-                };
+            let _pg: crate::Result<Arc<TestObjectFull>> = db
+                .get_latest::<TestObjectFull>(true, o)
+                .await
+                .wrap_context(&format!("getting {o:?} in database"));
         }
-        Op::Query { .. } => {
-            // TODO(test): when there's something actually tested
-            // run_query::<TestObjectFull>(&db, &s.mem, *user, None, q).await?;
-        }
-        Op::Recreate { object, time } => {
+        Op::Recreate {
+            object,
+            updatedness,
+            event_id,
+        } => {
             let o = s
                 .objects
                 .lock()
@@ -109,22 +109,30 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg = db.recreate::<TestObjectFull, _>(o, *time, db).await;
+            let _pg = db
+                .recreate_impl::<TestObjectFull, _>(o, *event_id, *updatedness, db)
+                .await;
         }
         Op::Remove { object } => {
             let _object = object; // TODO(test): implement for non-postgres databases
         }
-        Op::Vacuum { recreate_at: None } => {
-            db.vacuum(None, None, db, |r| {
-                panic!("got unexpected recreation {r:?}")
+        Op::Vacuum {
+            recreate_at: None,
+            updatedness,
+        } => {
+            db.vacuum(None, *updatedness, None, |_, _| {
+                panic!("got unexpected recreation")
             })
             .await
             .unwrap();
         }
         Op::Vacuum {
             recreate_at: Some(recreate_at),
+            updatedness,
         } => {
-            let _pg = db.vacuum(Some(*recreate_at), None, db, |_| ()).await;
+            let _pg = db
+                .vacuum(Some(*recreate_at), *updatedness, None, |_, _| ())
+                .await;
         }
     }
     Ok(())
@@ -149,7 +157,9 @@ fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord:
         .unwrap()
         .block_on(async move {
             let pool = cluster.pool().await;
-            let db = Arc::new(PostgresDb::connect(pool.clone()).await.unwrap());
+            let (db, _cache_db) = PostgresDb::connect(pool.clone(), 1024 * 1024)
+                .await
+                .unwrap();
             sqlx::query(include_str!("../cleanup-db.sql"))
                 .execute(&pool)
                 .await
