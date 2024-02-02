@@ -15,12 +15,12 @@ enum Op {
     Create {
         id: ObjectId,
         created_at: EventId,
-        object: Arc<TestObjectSimple>,
+        object: Arc<TestObjectFull>,
     },
     Submit {
         object: usize,
         event_id: EventId,
-        event: Arc<TestEventSimple>,
+        event: Arc<TestEventFull>,
     },
     Get {
         object: usize,
@@ -77,7 +77,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db
-                .submit::<TestObjectSimple, _>(o, *event_id, event.clone(), db)
+                .submit::<TestObjectFull, _>(o, *event_id, event.clone(), db)
                 .await;
         }
         Op::Get { object, at } => {
@@ -88,10 +88,10 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg: crate::Result<Arc<TestObjectSimple>> =
-                match db.get::<TestObjectSimple>(true, o).await {
+            let _pg: crate::Result<Arc<TestObjectFull>> =
+                match db.get::<TestObjectFull>(true, o).await {
                     Err(e) => Err(e).wrap_context(&format!("getting {o:?} in database")),
-                    Ok(o) => match o.get_snapshot_at::<TestObjectSimple>(Bound::Included(*at)) {
+                    Ok(o) => match o.get_snapshot_at::<TestObjectFull>(Bound::Included(*at)) {
                         Ok(o) => Ok(o.1),
                         Err(e) => Err(e).wrap_context(&format!("getting last snapshot of {o:?}")),
                     },
@@ -99,7 +99,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
         }
         Op::Query { .. } => {
             // TODO(test): when there's something actually tested
-            // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
+            // run_query::<TestObjectFull>(&db, &s.mem, *user, None, q).await?;
         }
         Op::Recreate { object, time } => {
             let o = s
@@ -109,7 +109,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .get(*object)
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
-            let _pg = db.recreate::<TestObjectSimple, _>(o, *time, db).await;
+            let _pg = db.recreate::<TestObjectFull, _>(o, *time, db).await;
         }
         Op::Remove { object } => {
             let _object = object; // TODO(test): implement for non-postgres databases
@@ -176,7 +176,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord:
             b.unwrap();
             h.unwrap();
             db.assert_invariants_generic().await;
-            db.assert_invariants_for::<TestObjectSimple>().await;
+            db.assert_invariants_for::<TestObjectFull>().await;
         });
 }
 
