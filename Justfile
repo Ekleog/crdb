@@ -67,7 +67,7 @@ test-example-basic-host *ARGS:
 fuzz-pg-simple ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_simple::fuzz \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_simple__db_keeps_invariants/corpus.nounit \
+        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_simple__fuzz/corpus.nounit \
         {{ARGS}}
 
 fuzz-idb-simple ARGS='':
