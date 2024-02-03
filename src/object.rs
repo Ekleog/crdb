@@ -1,6 +1,6 @@
 use crate::{BinPtr, CrdbFuture, CrdbSend, CrdbSync, Db, DbPtr, ObjectId, ResultExt, TypeId, User};
 use anyhow::Context;
-use std::{any::Any, sync::Arc};
+use std::{any::Any, collections::HashSet, sync::Arc};
 
 pub(crate) mod private {
     pub trait Sealed {}
@@ -97,7 +97,7 @@ pub trait Object:
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<Vec<User>>>;
+    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<HashSet<User>>>;
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 

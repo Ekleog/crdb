@@ -89,7 +89,7 @@ pub mod crdb_internal {
     pub use serde;
     pub use serde_json;
     pub use std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         future::Future,
         ops::Bound,
         sync::{Arc, Mutex},

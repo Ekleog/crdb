@@ -11,7 +11,7 @@ use super::fuzz_helpers::{
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
 use anyhow::Context;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use ulid::Ulid;
 
 make_fuzzer_stuffs! {
@@ -49,7 +49,7 @@ async fn regression_postgres_and_indexeddb_considered_missing_binaries_the_other
                 bins: vec![BinPtr(
                     Ulid::from_string("1TF80000000000000000000000").unwrap(),
                 )],
-                users: vec![],
+                users: HashSet::new(),
             }),
             updatedness: Some(Updatedness::from_u128(1)),
             lock: true,
@@ -72,7 +72,7 @@ async fn regression_postgres_crashed_on_null_byte_in_string() {
                     name: SearchableString::from("foo\0bar"),
                     deps: vec![],
                     bins: vec![],
-                    users: vec![],
+                    users: HashSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
@@ -135,7 +135,7 @@ async fn regression_stack_overflow() {
                     name: SearchableString::from(""),
                     deps: vec![DbPtr::from(OBJECT_ID_2)],
                     bins: vec![],
-                    users: vec![],
+                    users: HashSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
@@ -147,7 +147,7 @@ async fn regression_stack_overflow() {
                     name: SearchableString::from(""),
                     deps: vec![DbPtr::from(OBJECT_ID_2)],
                     bins: vec![],
-                    users: vec![],
+                    users: HashSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: false,
@@ -170,7 +170,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     name: SearchableString::from(""),
                     deps: vec![],
                     bins: vec![],
-                    users: vec![],
+                    users: HashSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
@@ -182,7 +182,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     name: SearchableString::from("\0"),
                     deps: vec![],
                     bins: vec![],
-                    users: vec![],
+                    users: HashSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,

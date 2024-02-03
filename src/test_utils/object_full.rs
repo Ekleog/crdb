@@ -5,15 +5,13 @@ use crate::{
 };
 use anyhow::Context;
 use bolero::ValueGenerator;
-use std::future::Future;
+use std::{collections::HashSet, future::Future};
 
 #[derive(
     Clone,
     Debug,
     Eq,
-    Ord,
     PartialEq,
-    PartialOrd,
     arbitrary::Arbitrary,
     deepsize::DeepSizeOf,
     serde::Deserialize,
@@ -23,7 +21,7 @@ pub struct TestObjectFull {
     pub name: SearchableString,
     pub deps: Vec<DbPtr<TestObjectFull>>,
     pub bins: Vec<BinPtr>,
-    pub users: Vec<User>,
+    pub users: HashSet<User>,
 }
 
 #[derive(
@@ -88,7 +86,7 @@ impl Object for TestObjectFull {
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<Vec<User>>> {
+    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<HashSet<User>>> {
         async move {
             let mut res = self.users.clone();
             for remote in &self.deps {
@@ -127,7 +125,7 @@ impl Object for TestObjectFull {
             }
             TestEventFull::AddUser(u) => {
                 if self.users.len() < 4 {
-                    self.users.push(*u);
+                    self.users.insert(*u);
                 }
             }
             TestEventFull::RmUser(u) => {

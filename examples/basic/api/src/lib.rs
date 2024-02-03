@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crdb::{CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
 use ulid::Ulid;
 
@@ -38,7 +40,7 @@ impl crdb::Object for Foo {
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> anyhow::Result<Vec<User>> {
+    ) -> anyhow::Result<HashSet<User>> {
         unimplemented!()
     }
 

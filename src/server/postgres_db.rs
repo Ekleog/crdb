@@ -269,7 +269,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
         kill_sessions_older_than: Option<Timestamp>,
-        mut notify_recreation: impl FnMut(Update, Vec<User>),
+        mut notify_recreation: impl FnMut(Update, HashSet<User>),
     ) -> crate::Result<()> {
         // TODO(low): do not vacuum away binaries that have been uploaded less than an hour ago
         // TODO(low): also keep an "upload time" field on events, and allow fetching just the new events for an object
@@ -407,7 +407,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object_id: &ObjectId,
         object: &T,
         cb: &C,
-    ) -> anyhow::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)> {
+    ) -> anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)> {
         struct TrackingCanDoCallbacks<'a, 'b, C: CanDoCallbacks> {
             cb: &'a C,
             already_taken_lock: ObjectId,
@@ -557,7 +557,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 AND is_latest
             ",
         )
-        .bind(users_who_can_read)
+        .bind(users_who_can_read.into_iter().collect::<Vec<_>>())
         .bind(&users_who_can_read_depends_on)
         .bind(object_id)
         .execute(&mut *transaction)
@@ -692,7 +692,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(&fts::normalizer_version())
         .bind(T::snapshot_version())
         .bind(sqlx::types::Json(object))
-        .bind(users_who_can_read)
+        .bind(users_who_can_read.map(|u| u.into_iter().collect::<Vec<_>>()))
         .bind(users_who_can_read_depends_on)
         .bind(rdeps)
         .bind(object.required_binaries())
@@ -751,7 +751,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(&fts::normalizer_version())
                 .bind(snapshot_version)
                 .bind(object_json)
-                .bind(&users_who_can_read)
+                .bind(users_who_can_read.iter().copied().collect::<Vec<_>>())
                 .bind(&users_who_can_read_depends_on)
                 .bind(&rdeps)
                 .bind(&required_binaries)
@@ -1590,16 +1590,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             }
             assert!(snapshots[snapshots.len() - 1].is_latest);
             assert_eq!(
-                snapshots[snapshots.len() - 1].users_who_can_read,
-                Some(
-                    object
-                        .users_who_can_read(self)
-                        .await
-                        .unwrap()
-                        .into_iter()
-                        .map(|u| u.to_uuid())
-                        .collect::<Vec<_>>()
-                )
+                snapshots[snapshots.len() - 1]
+                    .users_who_can_read
+                    .as_ref()
+                    .unwrap()
+                    .into_iter()
+                    .map(|u| User::from_uuid(*u))
+                    .collect::<HashSet<_>>(),
+                object.users_who_can_read(self).await.unwrap()
             );
         }
     }

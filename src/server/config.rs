@@ -6,7 +6,7 @@ use crate::{
     api::ApiConfig, db_trait::Db, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId,
     Updatedness, User,
 };
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
@@ -21,7 +21,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         snapshot_version: i32,
         snapshot: serde_json::Value,
         cb: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<(Vec<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
 
     fn recreate_no_lock<'a, C: Db>(
         call_on: &'a PostgresDb<Self>,
@@ -30,7 +30,10 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         event_id: EventId,
         updatedness: Updatedness,
         cb: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, i32, serde_json::Value, Vec<User>)>>>;
+    ) -> impl 'a
+           + CrdbFuture<
+        Output = crate::Result<Option<(EventId, i32, serde_json::Value, HashSet<User>)>>,
+    >;
 
     fn upload_object<'a, C: Db>(
         call_on: &'a PostgresDb<Self>,
@@ -44,7 +47,9 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         cb: &'a C,
     ) -> impl 'a
            + CrdbFuture<
-        Output = crate::Result<Option<(Arc<UpdatesWithSnap>, Vec<User>, Vec<ReadPermsChanges>)>>,
+        Output = crate::Result<
+            Option<(Arc<UpdatesWithSnap>, HashSet<User>, Vec<ReadPermsChanges>)>,
+        >,
     >;
 
     /// The Vec<User> in return type is the list of users who can read the object both before and after the change. Users who gained or
@@ -90,7 +95,7 @@ macro_rules! generate_server {
                 snapshot_version: i32,
                 snapshot: crdb::serde_json::Value,
                 cb: &'a C,
-            ) -> crdb::Result<(Vec<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
+            ) -> crdb::Result<(crdb::HashSet<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let snapshot = crdb::parse_snapshot::<$object>(snapshot_version, snapshot)
@@ -110,7 +115,7 @@ macro_rules! generate_server {
                 event_id: crdb::EventId,
                 updatedness: crdb::Updatedness,
                 cb: &'a C,
-            ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value, Vec<crdb::User>)>> {
+            ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value, crdb::HashSet<crdb::User>)>> {
                 use crdb::Object;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -141,7 +146,7 @@ macro_rules! generate_server {
                 snapshot_version: i32,
                 snapshot: crdb::serde_json::Value,
                 cb: &'a C,
-            ) -> crdb::Result<Option<(crdb::Arc<crdb::UpdatesWithSnap>, Vec<crdb::User>, Vec<crdb::ReadPermsChanges>)>> {
+            ) -> crdb::Result<Option<(crdb::Arc<crdb::UpdatesWithSnap>, crdb::HashSet<crdb::User>, Vec<crdb::ReadPermsChanges>)>> {
                 use crdb::Object as _;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {

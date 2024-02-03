@@ -2,6 +2,7 @@ use super::{ulid, TestObjectPerms};
 use crate::{
     test_utils::USER_ID_NULL, BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User,
 };
+use std::collections::HashSet;
 
 #[derive(
     Clone,
@@ -65,13 +66,13 @@ impl Object for TestObjectDelegatePerms {
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> anyhow::Result<Vec<User>> {
+    ) -> anyhow::Result<HashSet<User>> {
         let remote = match db.get(self.0).await {
             Ok(r) => r,
             Err(crate::Error::Other(e)) => panic!("got unexpected error {e:?}"),
-            _ => return Ok(Vec::new()), // protocol not respected
+            _ => return Ok(HashSet::new()), // protocol not respected
         };
-        Ok(vec![USER_ID_NULL, remote.0])
+        Ok([USER_ID_NULL, remote.0].into_iter().collect())
     }
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
