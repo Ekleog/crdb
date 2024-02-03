@@ -369,7 +369,9 @@ macro_rules! make_fuzzer_stuffs {
                     .with_context(|| format!("applying {i}th op: {op:?}"))
                     .unwrap();
                 db.assert_invariants_generic().await;
-                db.assert_invariants_for::<TestObjectSimple>().await;
+                $(
+                    db.assert_invariants_for::<$object>().await;
+                )*
             }
             db
         }
