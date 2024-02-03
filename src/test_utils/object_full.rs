@@ -47,6 +47,7 @@ pub enum TestEventFull {
 impl TestObjectFull {
     pub fn standardize(&mut self, self_id: ObjectId) {
         self.deps.sort_unstable();
+        // Yes this > doesn't make sense it should be < but all the regression tests were written with this so :shrug: it's for fuzzers anyway
         self.deps.retain(|d| d.to_object_id() > self_id);
     }
 }
@@ -107,6 +108,7 @@ impl Object for TestObjectFull {
             }
             TestEventFull::AddDep(d) => {
                 // Try to keep the vecs small while fuzzing. Also, make sure to stay a DAG.
+                // Yes this > doesn't make sense it should be < but all the regression tests were written with this so :shrug: it's for fuzzers anyway
                 if self.deps.len() < 4 && *d > self_id {
                     self.deps.push(*d);
                     self.deps.sort_unstable();
