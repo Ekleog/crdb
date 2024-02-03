@@ -495,11 +495,17 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     /// `_lock` is a lock that makes sure `object` is not being modified while this executes.
     pub async fn update_users_who_can_read<C: CanDoCallbacks>(
         &self,
-        transaction: &mut sqlx::PgConnection,
         requested_by: ObjectId,
         object_id: ObjectId,
         cb: &C,
     ) -> anyhow::Result<ReadPermsChanges> {
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
         // Take the locks
         let _lock = (
             reord::Lock::take_named(format!("{object_id:?}")).await,
@@ -586,8 +592,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         };
 
         // Remove the request to update
-        // TODO(server): we could have these not be in the same transaction as the event submission, under the prerequisite of
-        // actually resuming restarting the updater thread after a server crash, as well as making sure that event submission
+        // TODO(server): These are not in the same transaction as the event submission. We must actually resume
+        //  the updater thread after a server crash! as well as making sure that event submission
         // does not succeed if the event already exists but there are still reverse dependents to update.
         reord::maybe_lock().await;
         let affected = sqlx::query(
@@ -613,6 +619,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             "Failed to mark reverse dependent {object_id:?} of {requested_by:?} as updated"
         );
 
+        reord::point().await;
+        transaction.commit().await.wrap_with_context(|| {
+            format!("committing transaction that updated the rdeps of {object_id:?}")
+        })?;
+        reord::point().await;
+
         // TODO(low): there must be some libstd function to compute the two at once?
         // but symmetric_difference doesn't seem to indicate which set the value came from
         let lost_read = users_who_can_read_before
@@ -633,15 +645,20 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     async fn update_rdeps<C: CanDoCallbacks>(
         &self,
-        transaction: &mut sqlx::PgConnection,
         object_id: ObjectId,
         cb: &C,
     ) -> anyhow::Result<Vec<ReadPermsChanges>> {
+        // This is NOT in the same transaction as creation/submission of the object!
+        // The reason is, because CanDoCallbacks will read data outside of the transaction. So it would miss the changes that we brought in
+        // with the transaction otherwise.
+        // An alternative would be to have CanDoCallbacks run inside the transaction itself; but let's keep the current behavior of lazily
+        // recomputing users_who_can_read upon reverse-dependent event submission.
+
         let rdeps = self.get_rdeps(&self.db, object_id).await?;
         let mut res = Vec::with_capacity(rdeps.len());
         for o in rdeps {
             if o != object_id {
-                let changes = self.update_users_who_can_read(&mut *transaction, object_id, o, cb)
+                let changes = self.update_users_who_can_read(object_id, o, cb)
                     .await
                     .with_context(|| format!("updating users_who_can_read field for {o:?} on behalf of {object_id:?}"))?;
                 res.push(changes);
@@ -713,7 +730,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     async fn create_impl<T: Object, C: CanDoCallbacks>(
         &self,
-        transaction: &mut sqlx::PgConnection,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
@@ -721,6 +737,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
 
         // Acquire the locks required to create the object
         let _lock = reord::Lock::take_named(format!("{created_at:?}")).await;
@@ -828,13 +849,17 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             })?;
 
         reord::point().await;
+        transaction
+            .commit()
+            .await
+            .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
+        reord::point().await;
 
         Ok(Some(object))
     }
 
     async fn submit_impl<T: Object, C: CanDoCallbacks>(
         &self,
-        transaction: &mut sqlx::PgConnection,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
@@ -842,6 +867,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         cb: &C,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
 
         // Acquire the locks required to submit the event
         let _lock = reord::Lock::take_named(format!("{event_id:?}")).await;
@@ -1070,6 +1100,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| {
                 format!("checking that all binaries for object {object_id:?} are already present")
             })?;
+
+        reord::point().await;
+        transaction.commit().await.wrap_with_context(|| {
+            format!("committing transaction adding event {event_id:?} to object {object_id:?}")
+        })?;
+        reord::point().await;
 
         Ok(Some(Arc::new(object)))
     }
@@ -1761,21 +1797,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .upgrade()
             .expect("Called PostgresDb::create after CacheDb went away");
 
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
         let Some(res) = self
-            .create_impl(
-                &mut transaction,
-                object_id,
-                created_at,
-                object,
-                updatedness,
-                &*cache_db,
-            )
+            .create_impl(object_id, created_at, object, updatedness, &*cache_db)
             .await?
         else {
             return Ok(None);
@@ -1783,18 +1806,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         // Update the reverse-dependencies, now that we have updated the object itself.
         let rdeps = self
-            .update_rdeps(&mut transaction, object_id, &*cache_db)
+            .update_rdeps(object_id, &*cache_db)
             .await
             .wrap_with_context(|| {
                 format!("updating permissions for reverse-dependencies of {object_id:?}")
             })?;
-
-        reord::point().await;
-        transaction
-            .commit()
-            .await
-            .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
-        reord::point().await;
 
         Ok(Some((res, rdeps)))
     }
@@ -1811,21 +1827,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .upgrade()
             .expect("Called PostgresDb::submit after CacheDb went away");
 
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
         let Some(res) = self
-            .submit_impl(
-                &mut transaction,
-                object_id,
-                event_id,
-                event,
-                updatedness,
-                &*cache_db,
-            )
+            .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
             .await?
         else {
             return Ok(None);
@@ -1833,17 +1836,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
         // Update all the other objects that depend on this one
         let rdeps = self
-            .update_rdeps(&mut transaction, object_id, &*cache_db)
+            .update_rdeps(object_id, &*cache_db)
             .await
             .wrap_with_context(|| {
                 format!("updating permissions of reverse-dependencies fo {object_id:?}")
             })?;
-
-        reord::point().await;
-        transaction.commit().await.wrap_with_context(|| {
-            format!("committing transaction adding event {event_id:?} to object {object_id:?}")
-        })?;
-        reord::point().await;
 
         Ok(Some((res, rdeps)))
     }

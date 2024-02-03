@@ -193,6 +193,41 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
 }
 
 #[fuzz_helpers::test]
+async fn regression_creating_missing_object_did_not_refresh_perms() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                updatedness: Some(UPDATEDNESS_1),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![DbPtr::from(OBJECT_ID_2)],
+                    bins: vec![],
+                    users: HashSet::new(),
+                }),
+                lock: true,
+            },
+            Op::CreateFull {
+                object_id: OBJECT_ID_2,
+                created_at: EVENT_ID_2,
+                updatedness: Some(UPDATEDNESS_2),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![],
+                    bins: vec![],
+                    users: [USER_ID_1].into_iter().collect(),
+                }),
+                lock: true,
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
 #[cfg(disabled)]
 async fn impl_reproducer() {
     let cluster = setup();
