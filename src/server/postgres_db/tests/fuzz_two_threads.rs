@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use ulid::Ulid;
 
-#[derive(Debug, arbitrary::Arbitrary)]
+#[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
 enum Op {
     Create {
         object_id: ObjectId,
@@ -161,6 +161,11 @@ async fn apply_ops(
 }
 
 fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord::Config) {
+    #[cfg(not(fuzzing))]
+    eprintln!(
+        "Fuzzing with:\n---\n{}\n---",
+        serde_json::to_string(ops).unwrap()
+    );
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async move {
