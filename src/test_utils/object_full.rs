@@ -5,7 +5,10 @@ use crate::{
 };
 use anyhow::Context;
 use bolero::ValueGenerator;
-use std::{collections::HashSet, future::Future};
+use std::{
+    collections::{BTreeSet, HashSet},
+    future::Future,
+};
 
 #[derive(
     Clone,
@@ -21,7 +24,7 @@ pub struct TestObjectFull {
     pub name: SearchableString,
     pub deps: Vec<DbPtr<TestObjectFull>>,
     pub bins: Vec<BinPtr>,
-    pub users: HashSet<User>,
+    pub users: BTreeSet<User>,
 }
 
 #[derive(
@@ -89,7 +92,7 @@ impl Object for TestObjectFull {
         db: &'a C,
     ) -> impl 'a + CrdbFuture<Output = anyhow::Result<HashSet<User>>> {
         async move {
-            let mut res = self.users.clone();
+            let mut res = self.users.iter().copied().collect::<HashSet<_>>();
             for remote in &self.deps {
                 match db.get(*remote).await {
                     Err(crate::Error::ObjectDoesNotExist(o)) if o == remote.to_object_id() => (),

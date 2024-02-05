@@ -27,6 +27,11 @@ pub trait Event:
     fn required_binaries(&self) -> Vec<BinPtr>;
 }
 
+/// Note that for this trait to be implemented correctly, the `Eq` trait should be
+/// equivalent to equality of the JSON-serialized representation. In particular, this
+/// means that things like [`HashMap`]s should be banned, and [`BTreeMap`]s should be
+/// preferred.
+///
 /// Note that due to postgresql limitations reasons, this type MUST NOT include any
 /// null byte in the serialized JSON. Including them will result in internal server
 /// errors.

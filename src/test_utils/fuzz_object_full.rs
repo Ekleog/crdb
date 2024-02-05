@@ -11,7 +11,7 @@ use super::fuzz_helpers::{
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
 use anyhow::Context;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 use ulid::Ulid;
 
 make_fuzzer_stuffs! {
@@ -49,7 +49,7 @@ async fn regression_postgres_and_indexeddb_considered_missing_binaries_the_other
                 bins: vec![BinPtr(
                     Ulid::from_string("1TF80000000000000000000000").unwrap(),
                 )],
-                users: HashSet::new(),
+                users: BTreeSet::new(),
             }),
             updatedness: Some(Updatedness::from_u128(1)),
             lock: true,
@@ -72,7 +72,7 @@ async fn regression_postgres_crashed_on_null_byte_in_string() {
                     name: SearchableString::from("foo\0bar"),
                     deps: vec![],
                     bins: vec![],
-                    users: HashSet::new(),
+                    users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
@@ -135,7 +135,7 @@ async fn regression_stack_overflow() {
                     name: SearchableString::from(""),
                     deps: vec![DbPtr::from(OBJECT_ID_2)],
                     bins: vec![],
-                    users: HashSet::new(),
+                    users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
@@ -147,7 +147,7 @@ async fn regression_stack_overflow() {
                     name: SearchableString::from(""),
                     deps: vec![DbPtr::from(OBJECT_ID_2)],
                     bins: vec![],
-                    users: HashSet::new(),
+                    users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: false,
@@ -170,7 +170,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     name: SearchableString::from(""),
                     deps: vec![],
                     bins: vec![],
-                    users: HashSet::new(),
+                    users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 lock: true,
@@ -182,7 +182,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     name: SearchableString::from("\0"),
                     deps: vec![],
                     bins: vec![],
-                    users: HashSet::new(),
+                    users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
                 force_lock: true,
@@ -206,7 +206,7 @@ async fn regression_creating_missing_object_did_not_refresh_perms() {
                     name: SearchableString::from(""),
                     deps: vec![DbPtr::from(OBJECT_ID_2)],
                     bins: vec![],
-                    users: HashSet::new(),
+                    users: BTreeSet::new(),
                 }),
                 lock: true,
             },
@@ -219,6 +219,88 @@ async fn regression_creating_missing_object_did_not_refresh_perms() {
                     deps: vec![],
                     bins: vec![],
                     users: [USER_ID_1].into_iter().collect(),
+                }),
+                lock: true,
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+async fn regression_serde_serializes_hashmap_order_at_random() {
+    // Create a lot of objects that are all the same with a lot of HashMap items
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                updatedness: Some(UPDATEDNESS_1),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![],
+                    bins: vec![],
+                    users: [USER_ID_1, USER_ID_2, USER_ID_3, USER_ID_4, USER_ID_5]
+                        .into_iter()
+                        .collect(),
+                }),
+                lock: true,
+            },
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                updatedness: Some(UPDATEDNESS_2),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![],
+                    bins: vec![],
+                    users: [USER_ID_1, USER_ID_2, USER_ID_3, USER_ID_4, USER_ID_5]
+                        .into_iter()
+                        .collect(),
+                }),
+                lock: true,
+            },
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                updatedness: Some(UPDATEDNESS_2),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![],
+                    bins: vec![],
+                    users: [USER_ID_1, USER_ID_2, USER_ID_3, USER_ID_4, USER_ID_5]
+                        .into_iter()
+                        .collect(),
+                }),
+                lock: true,
+            },
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                updatedness: Some(UPDATEDNESS_2),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![],
+                    bins: vec![],
+                    users: [USER_ID_1, USER_ID_2, USER_ID_3, USER_ID_4, USER_ID_5]
+                        .into_iter()
+                        .collect(),
+                }),
+                lock: true,
+            },
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                updatedness: Some(UPDATEDNESS_2),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from(""),
+                    deps: vec![],
+                    bins: vec![],
+                    users: [USER_ID_1, USER_ID_2, USER_ID_3, USER_ID_4, USER_ID_5]
+                        .into_iter()
+                        .collect(),
                 }),
                 lock: true,
             },
