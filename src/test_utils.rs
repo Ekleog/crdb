@@ -361,6 +361,8 @@ macro_rules! make_fuzzer_stuffs {
         }
 
         async fn fuzz_impl((cluster, is_server): &(SetupState, bool), ops: Arc<Vec<Op>>) -> Database {
+            #[cfg(not(fuzzing))]
+            eprintln!("Fuzzing with:\n{}", serde_json::to_string(&ops).unwrap());
             let (db, _keepalive) = make_db(cluster).await;
             let mut s = FuzzState::new(*is_server);
             for (i, op) in ops.iter().enumerate() {
