@@ -1,6 +1,8 @@
 use crate::{BinPtr, CrdbFuture, CrdbSend, CrdbSync, Db, DbPtr, ObjectId, ResultExt, TypeId, User};
 use anyhow::Context;
 use std::{any::Any, collections::HashSet, sync::Arc};
+#[cfg(doc)]
+use std::collections::{BTreeMap, HashMap};
 
 pub(crate) mod private {
     pub trait Sealed {}
