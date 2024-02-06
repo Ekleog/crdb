@@ -1878,7 +1878,13 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             }
             Either::Right(Some(_snapshot_id)) => {
                 // Was already present, but had a task ongoing to update the rdeps
-                unimplemented!() // TODO(server)
+                // TODO(low): this will duplicate the work done by the other create call
+                self.update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
+                Ok(None)
             }
         }
     }
