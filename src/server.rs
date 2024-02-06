@@ -91,7 +91,10 @@ impl<C: ServerConfig> Server<C> {
         let (postgres_db, cache_db) = postgres_db::PostgresDb::connect(db, cache_watermark).await?;
 
         // Start the upgrading task
-        let upgrade_handle = tokio::task::spawn(C::reencode_old_versions(postgres_db.clone()));
+        let upgrade_handle = tokio::task::spawn({
+            let postgres_db = postgres_db.clone();
+            async move { C::reencode_old_versions(&postgres_db).await }
+        });
 
         // Setup the update reorderer task
         let (updatedness_requester, mut updatedness_request_receiver) = mpsc::unbounded_channel::<
