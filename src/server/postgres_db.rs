@@ -792,7 +792,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object: Arc<T>,
         updatedness: Updatedness,
         cb: &C,
-    ) -> crate::Result<Either<Arc<T>, bool>> {
+    ) -> crate::Result<Either<Arc<T>, Option<EventId>>> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -883,7 +883,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 };
             };
 
-            return Ok(Either::Right(rdeps_to_update.num_rdeps.is_some()));
+            return Ok(Either::Right(
+                rdeps_to_update.num_rdeps.is_some().then(|| created_at),
+            ));
         }
 
         // We just inserted. Check that no event existed at this id
@@ -1870,11 +1872,11 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
                 Ok(Some((res, rdeps)))
             }
-            Either::Right(false) => {
+            Either::Right(None) => {
                 // Was already present, and has no pending rdeps
                 Ok(None)
             }
-            Either::Right(true) => {
+            Either::Right(Some(_snapshot_id)) => {
                 // Was already present, but had a task ongoing to update the rdeps
                 unimplemented!() // TODO(server)
             }
