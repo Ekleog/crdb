@@ -606,9 +606,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // remove the requirement on `Object::users_who_can_read` that `.get()` must always be called in the same
         // order. Maybe make serializable transactions a feature of this crate? If not we should at least provide
         // an easy way for users to fuzz their Object implementation for these deadlock conditions
-        // TODO(server): These are not in the same transaction as the event submission. We must actually resume
-        //  the updater thread after a server crash! as well as making sure that event submission
-        // does not succeed if the event already exists but there are still reverse dependents to update.
+        // TODO(server): These are not in the same transaction as the event submission. We must make sure that
+        // event submission does not succeed if the event already exists but there are still reverse dependents
+        // to update.
         reord::maybe_lock().await;
         let affected = sqlx::query(
             "
@@ -693,6 +693,36 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             }
         }
         Ok(res)
+    }
+
+    pub async fn update_pending_rdeps(&self) -> crate::Result<()> {
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::create after CacheDb went away");
+        let cache_db = &*cache_db;
+
+        let mut rdep_update_res = sqlx::query!(
+            "
+                SELECT object_id
+                FROM snapshots
+                WHERE array_length(reverse_dependents_to_update, 1) IS NOT NULL
+            "
+        )
+        .map(|r| ObjectId::from_uuid(r.object_id))
+        .fetch(&self.db)
+        .map(|object_id| async move {
+            let object_id = object_id.wrap_context("listing updates with rdeps to update")?;
+            self.update_rdeps(object_id, cache_db)
+                .await
+                .wrap_with_context(|| format!("updating rdeps of {object_id:?}"))
+        })
+        .buffered(32);
+        while let Some(res) = rdep_update_res.next().await {
+            res?;
+            // TODO(server): make sure these updates are properly pushed to clients
+        }
+        Ok(())
     }
 
     async fn write_snapshot<'a, T: Object, C: CanDoCallbacks>(
