@@ -666,7 +666,19 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // An alternative would be to have CanDoCallbacks run inside the transaction itself; but let's keep the current behavior of lazily
         // recomputing users_who_can_read upon reverse-dependent event submission.
 
-        let rdeps = self.get_rdeps(&self.db, object_id).await?;
+        let rdeps = sqlx::query!(
+            r#"
+                SELECT UNNEST(reverse_dependents_to_update) AS "rdep!"
+                FROM snapshots
+                WHERE object_id = $1
+                AND reverse_dependents_to_update IS NOT NULL
+            "#,
+            object_id as ObjectId,
+        )
+        .map(|r| ObjectId::from_uuid(r.rdep))
+        .fetch_all(&self.db)
+        .await
+        .wrap_with_context(|| format!("listing reverse dependents of {object_id:?} that need updating"))?;
         let mut res = Vec::with_capacity(rdeps.len());
         for o in rdeps {
             if o != object_id {

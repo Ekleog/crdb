@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT UNNEST(reverse_dependents_to_update) AS \"rdep!\"\n                FROM snapshots\n                WHERE object_id = $1\n                AND reverse_dependents_to_update IS NOT NULL\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "rdep!",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "aa0c92e20de703b89e107f2fe5f343f4afc987cbadc37b2e985f7a1ec74723eb"
+}
