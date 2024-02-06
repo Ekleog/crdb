@@ -594,7 +594,8 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // Remove the request to update
         // TODO(server): Consider switching to serializable transactions only and discarding locking. This would
         // remove the requirement on `Object::users_who_can_read` that `.get()` must always be called in the same
-        // order. Maybe make serializable transactions a feature of this crate?
+        // order. Maybe make serializable transactions a feature of this crate? If not we should at least provide
+        // an easy way for users to fuzz their Object implementation for these deadlock conditions
         // TODO(server): These are not in the same transaction as the event submission. We must actually resume
         //  the updater thread after a server crash! as well as making sure that event submission
         // does not succeed if the event already exists but there are still reverse dependents to update.
