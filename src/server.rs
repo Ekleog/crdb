@@ -90,12 +90,18 @@ impl<C: ServerConfig> Server<C> {
         // Connect to the database and setup the cache
         let (postgres_db, cache_db) = postgres_db::PostgresDb::connect(db, cache_watermark).await?;
 
+        // Immediately update the permissions of objects pending permissions upgrades
+        // This must happen before starting the server, so long as we do not actually push the returned ReadPermsChange's to subscribers
+        postgres_db
+            .update_pending_rdeps()
+            .await
+            .wrap_context("updating all pending reverse-dependencies")?;
+
         // Start the upgrading task
         let upgrade_handle = tokio::task::spawn({
             let postgres_db = postgres_db.clone();
             async move {
                 let mut res = 0;
-                res += postgres_db.update_pending_rdeps().await.is_err() as usize;
                 res += C::reencode_old_versions(&postgres_db).await;
                 res
             }

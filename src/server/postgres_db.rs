@@ -720,7 +720,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .buffered(32);
         while let Some(res) = rdep_update_res.next().await {
             res?;
-            // TODO(server): make sure these updates are properly pushed to clients
         }
         Ok(())
     }
