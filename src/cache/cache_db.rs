@@ -1,6 +1,5 @@
 use super::{BinariesCache, ObjectCache};
 use crate::{db_trait::Db, hash_binary, BinPtr, DynSized, EventId, Object, ObjectId, Updatedness};
-use anyhow::anyhow;
 use std::{
     ops::Deref,
     sync::{Arc, RwLock},
@@ -78,10 +77,10 @@ impl<D: Db> Db for CacheDb<D> {
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         if let Some(res) = self.cache.read().unwrap().get(&object_id) {
-            let res = Arc::downcast(DynSized::arc_to_any(res)).map_err(|_| {
-                crate::Error::Other(anyhow!("requested object with the wrong type"))
-            })?;
-            return Ok(res);
+            if let Ok(res) = Arc::downcast(DynSized::arc_to_any(res)) {
+                return Ok(res);
+            }
+            // Ignore wrong type errors, they'll be catched by self.db.get_latest below, where the real type will be known
         }
         let res = self.db.get_latest::<T>(lock, object_id).await?;
         self.cache.write().unwrap().set(object_id, res.clone() as _);

@@ -235,3 +235,64 @@ async fn regression_memdb_vacuum_updated_updatedness_even_without_any_change() {
     )
     .await;
 }
+
+#[fuzz_helpers::test]
+async fn regression_cache_db_returned_early_error_of_the_wrong_kind() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateDelegator {
+                object_id: ObjectId(Ulid::from_string("33CDHP6RV3CDHP6RV3CDHP6RV3").unwrap()),
+                created_at: EventId(Ulid::from_string("33CDHPESV7CXKPESV7CXKPESV7").unwrap()),
+                object: Arc::new(TestObjectDelegatePerms(DbPtr::from(ObjectId(
+                    Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
+                )))),
+                updatedness: Some(Updatedness(
+                    Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
+                )),
+                lock: true,
+            },
+            Op::SubmitDelegator {
+                object_id: 0,
+                event_id: EventId(Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap()),
+                event: Arc::new(TestEventDelegatePerms::Set(DbPtr::from(ObjectId(
+                    Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
+                )))),
+                updatedness: Some(Updatedness(
+                    Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
+                )),
+                force_lock: true,
+            },
+            Op::Vacuum {
+                recreate_at: Some((
+                    EventId(Ulid::from_string("7ZZZZZZZZZZZZZZZR10M3G0000").unwrap()),
+                    Updatedness(Ulid::from_string("2VDNPPTVBDDME6ESV7CXKPESV7").unwrap()),
+                )),
+            },
+            Op::CreateDelegator {
+                object_id: ObjectId(Ulid::from_string("3QD1QNYRV1DSFQ4SB1CHKPESV7").unwrap()),
+                created_at: EventId(Ulid::from_string("37CXKPESV7CXKPESV7CXKPEWB3").unwrap()),
+                object: Arc::new(TestObjectDelegatePerms(DbPtr::from(ObjectId(
+                    Ulid::from_string("33CDHP6RV3CDHP6RV3CDHP6RV3").unwrap(),
+                )))),
+                updatedness: Some(Updatedness(
+                    Ulid::from_string("33CDHP6RV3CDHP6RWXKJE9JRV3").unwrap(),
+                )),
+                lock: true,
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+#[cfg(disabled)]
+async fn impl_reproducer() {
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        serde_json::from_str(include_str!("../../repro.json")).unwrap(),
+    )
+    .await;
+}
