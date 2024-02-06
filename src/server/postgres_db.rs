@@ -399,7 +399,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         reord::point().await;
 
         // Finally, take care of the database itself
-        reord::maybe_lock().await;
+        // This is very slow for tests and produces deadlock false-positives, plus it's useless there.
+        // So let's just skip it in tests.
+        #[cfg(not(test))]
         sqlx::query("VACUUM ANALYZE")
             .execute(&self.db)
             .await
