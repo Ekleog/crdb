@@ -924,7 +924,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         event: Arc<T::Event>,
         updatedness: Updatedness,
         cb: &C,
-    ) -> crate::Result<Option<Arc<T>>> {
+    ) -> crate::Result<Either<Arc<T>, Option<EventId>>> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -1000,7 +1000,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(event_id)
             .bind(object_id)
             .bind(event_json)
-            .execute(&self.db)
+            .execute(&mut *transaction)
             .await
             .wrap_with_context(|| {
                 format!("checking pre-existing snapshot for {event_id:?} is the same")
@@ -1009,8 +1009,25 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             if affected != 1 {
                 return Err(crate::Error::EventAlreadyExists(event_id));
             }
-            // Nothing else to do, event was already inserted
-            return Ok(None);
+            // Nothing else to do, event was already inserted. Has the current latest snapshot finished
+            // updating all its rdeps?
+            let last_snapshot_id = sqlx::query!(
+                "
+                    SELECT snapshot_id
+                    FROM snapshots
+                    WHERE object_id = $1
+                    AND is_latest
+                    AND array_length(reverse_dependents_to_update, 1) IS NOT NULL
+                ",
+                object_id as ObjectId,
+            )
+            .map(|r| EventId::from_uuid(r.snapshot_id))
+            .fetch_optional(&mut *transaction)
+            .await
+            .wrap_context(
+                "checking whether the event's reverse-dependency changes have been handled",
+            )?;
+            return Ok(Either::Right(last_snapshot_id));
         }
 
         // Clear all snapshots after the event
@@ -1166,7 +1183,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })?;
         reord::point().await;
 
-        Ok(Some(Arc::new(object)))
+        Ok(Either::Left(Arc::new(object)))
     }
 
     /// This function assumes that the lock on `object_id` is already taken
@@ -1901,22 +1918,37 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .upgrade()
             .expect("Called PostgresDb::submit after CacheDb went away");
 
-        let Some(res) = self
+        let res = self
             .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
-            .await?
-        else {
-            return Ok(None);
-        };
+            .await?;
+        match res {
+            Either::Left(res) => {
+                // Newly inserted, update rdeps and return
+                // Update the reverse-dependencies, now that we have updated the object itself.
+                let rdeps = self
+                    .update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
 
-        // Update all the other objects that depend on this one
-        let rdeps = self
-            .update_rdeps(object_id, &*cache_db)
-            .await
-            .wrap_with_context(|| {
-                format!("updating permissions of reverse-dependencies fo {object_id:?}")
-            })?;
-
-        Ok(Some((res, rdeps)))
+                Ok(Some((res, rdeps)))
+            }
+            Either::Right(None) => {
+                // Was already present, and has no pending rdeps
+                Ok(None)
+            }
+            Either::Right(Some(_snapshot_id)) => {
+                // Was already present, but had a task ongoing to update the rdeps
+                // TODO(low): this will duplicate the work done by the other create call
+                self.update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
+                Ok(None)
+            }
+        }
     }
 }
 

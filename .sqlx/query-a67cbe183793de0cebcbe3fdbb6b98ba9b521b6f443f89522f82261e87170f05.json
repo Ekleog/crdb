@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT snapshot_id\n                    FROM snapshots\n                    WHERE object_id = $1\n                    AND is_latest\n                    AND array_length(reverse_dependents_to_update, 1) IS NOT NULL\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "snapshot_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a67cbe183793de0cebcbe3fdbb6b98ba9b521b6f443f89522f82261e87170f05"
+}
