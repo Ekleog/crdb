@@ -1,6 +1,6 @@
 # export RUST_BACKTRACE := "short"
 
-all *ARGS: fmt (test ARGS) clippy udeps
+all *ARGS: fmt (test ARGS) clippy udeps doc
 
 fmt:
     cargo fmt

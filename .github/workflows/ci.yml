@@ -69,3 +69,13 @@ jobs:
         with:
           tool: just, cargo-udeps
       - run: just udeps
+
+  just-doc:
+    name: Doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@91af8c38814c3998cb755869e5cbeffd3ab0e462
+        with:
+          tool: just
+      - run: just doc
