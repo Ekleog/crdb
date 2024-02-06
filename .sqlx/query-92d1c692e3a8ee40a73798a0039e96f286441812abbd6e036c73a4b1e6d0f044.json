@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT array_length(reverse_dependents_to_update, 1) AS num_rdeps\n                    FROM snapshots\n                    WHERE snapshot_id = $1\n                    AND type_id = $2\n                    AND object_id = $3\n                    AND is_creation\n                    AND snapshot_version = $4\n                    AND snapshot = $5\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "num_rdeps",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "92d1c692e3a8ee40a73798a0039e96f286441812abbd6e036c73a4b1e6d0f044"
+}

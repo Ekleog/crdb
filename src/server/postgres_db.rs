@@ -11,7 +11,7 @@ use crate::{
     SessionToken, Timestamp, TypeId, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
-use futures::{StreamExt, TryStreamExt};
+use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
 use sqlx::Row;
 use std::{
@@ -792,7 +792,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object: Arc<T>,
         updatedness: Updatedness,
         cb: &C,
-    ) -> crate::Result<Option<Arc<T>>> {
+    ) -> crate::Result<Either<Arc<T>, bool>> {
         reord::point().await;
         let mut transaction = self
             .db
@@ -842,9 +842,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         if affected != 1 {
             // Check for equality with pre-existing
             reord::point().await;
-            let affected = sqlx::query(
+            let rdeps_to_update = sqlx::query!(
                 "
-                    SELECT 1 FROM snapshots
+                    SELECT array_length(reverse_dependents_to_update, 1) AS num_rdeps
+                    FROM snapshots
                     WHERE snapshot_id = $1
                     AND type_id = $2
                     AND object_id = $3
@@ -852,19 +853,18 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     AND snapshot_version = $4
                     AND snapshot = $5
                 ",
+                created_at as EventId,
+                *T::type_ulid() as TypeId,
+                object_id as ObjectId,
+                snapshot_version,
+                object_json as _,
             )
-            .bind(created_at)
-            .bind(T::type_ulid())
-            .bind(object_id)
-            .bind(snapshot_version)
-            .bind(object_json)
-            .execute(&mut *transaction)
+            .fetch_optional(&mut *transaction)
             .await
             .wrap_with_context(|| {
                 format!("checking pre-existing snapshot for {created_at:?} is the same")
-            })?
-            .rows_affected();
-            if affected != 1 {
+            })?;
+            let Some(rdeps_to_update) = rdeps_to_update else {
                 // There is a conflict. Is it an object conflict or an event conflict?
                 reord::point().await;
                 let object_exists_affected =
@@ -881,9 +881,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 } else {
                     Err(crate::Error::EventAlreadyExists(created_at))
                 };
-            }
+            };
 
-            return Ok(None);
+            return Ok(Either::Right(rdeps_to_update.num_rdeps.is_some()));
         }
 
         // We just inserted. Check that no event existed at this id
@@ -912,7 +912,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
         reord::point().await;
 
-        Ok(Some(object))
+        Ok(Either::Left(object))
     }
 
     async fn submit_impl<T: Object, C: CanDoCallbacks>(
@@ -1854,22 +1854,31 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .upgrade()
             .expect("Called PostgresDb::create after CacheDb went away");
 
-        let Some(res) = self
+        let res = self
             .create_impl(object_id, created_at, object, updatedness, &*cache_db)
-            .await?
-        else {
-            return Ok(None);
-        };
+            .await?;
+        match res {
+            Either::Left(res) => {
+                // Newly inserted, update rdeps and return
+                // Update the reverse-dependencies, now that we have updated the object itself.
+                let rdeps = self
+                    .update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
 
-        // Update the reverse-dependencies, now that we have updated the object itself.
-        let rdeps = self
-            .update_rdeps(object_id, &*cache_db)
-            .await
-            .wrap_with_context(|| {
-                format!("updating permissions for reverse-dependencies of {object_id:?}")
-            })?;
-
-        Ok(Some((res, rdeps)))
+                Ok(Some((res, rdeps)))
+            }
+            Either::Right(false) => {
+                // Was already present, and has no pending rdeps
+                Ok(None)
+            }
+            Either::Right(true) => {
+                // Was already present, but had a task ongoing to update the rdeps
+                unimplemented!() // TODO(server)
+            }
+        }
     }
 
     pub async fn submit_and_return_rdep_changes<T: Object>(
