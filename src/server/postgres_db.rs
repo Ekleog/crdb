@@ -212,12 +212,20 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // If not, we still need to parse-and-reencode it
         let snapshot = parse_snapshot::<T>(s.snapshot_version, s.snapshot)
             .wrap_with_context(|| format!("parsing snapshot {snapshot_id:?}"))?;
-        sqlx::query("UPDATE snapshots SET snapshot = $1 WHERE snapshot_id = $2")
-            .bind(sqlx::types::Json(&snapshot))
-            .bind(snapshot_id)
-            .execute(&self.db)
-            .await
-            .wrap_with_context(|| format!("re-encoding snapshot data for {snapshot_id:?}"))?;
+        sqlx::query(
+            "
+                UPDATE snapshots
+                SET snapshot = $1, snapshot_version = $2, normalizer_version = $3
+                WHERE snapshot_id = $4
+            ",
+        )
+        .bind(sqlx::types::Json(&snapshot))
+        .bind(T::snapshot_version())
+        .bind(fts::normalizer_version())
+        .bind(snapshot_id)
+        .execute(&self.db)
+        .await
+        .wrap_with_context(|| format!("re-encoding snapshot data for {snapshot_id:?}"))?;
 
         Ok(())
     }
