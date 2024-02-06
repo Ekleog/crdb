@@ -52,7 +52,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         >,
     >;
 
-    /// The Vec<User> in return type is the list of users who can read the object both before and after the change. Users who gained or
+    /// The [`Vec<User>`] in return type is the list of users who can read the object both before and after the change. Users who gained or
     /// lost access to `object_id` are returned as part of the `Vec<ReadPermsChanges>`.
     fn upload_event<'a, C: Db>(
         call_on: &'a PostgresDb<Self>,
