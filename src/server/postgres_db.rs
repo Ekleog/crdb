@@ -678,7 +678,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .map(|r| ObjectId::from_uuid(r.rdep))
         .fetch_all(&self.db)
         .await
-        .wrap_with_context(|| format!("listing reverse dependents of {object_id:?} that need updating"))?;
+        .wrap_with_context(|| {
+            format!("listing reverse dependents of {object_id:?} that need updating")
+        })?;
         let mut res = Vec::with_capacity(rdeps.len());
         for o in rdeps {
             if o != object_id {
