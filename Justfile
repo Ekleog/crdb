@@ -1,6 +1,7 @@
 # export RUST_BACKTRACE := "short"
 
-all *ARGS: fmt (test ARGS) clippy udeps doc
+# TODO(low): introduce `doc` again here after figuring out why it always restarts at unicode-ident despite the cache
+all *ARGS: fmt (test ARGS) clippy udeps
 
 fmt:
     cargo fmt
