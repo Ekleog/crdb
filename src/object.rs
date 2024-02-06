@@ -98,7 +98,12 @@ pub trait Object:
     ///   on `C` and causing a deadlock.
     ///   Similarly, if A and B both depend on C and D, then `users_who_can_read` for A and B should
     ///   always lock C and D in the same order, to avoid deadlocks.
-    ///   In other words, you should consider `db.get()` as taking a lock on the obtained object.
+    ///
+    /// In other words, you should consider `db.get()` as taking a lock on the obtained object: there
+    /// must exist a total order for which the vector, consisting of `self` and then all the `C::get`
+    /// calls in-order, is sorted.
+    ///
+    /// In particular, any recursive call of `users_who_can_read` is most likely wrong.
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,

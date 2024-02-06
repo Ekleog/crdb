@@ -6,7 +6,7 @@ use crate::{
 use anyhow::Context;
 use bolero::ValueGenerator;
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeSet, HashSet, VecDeque},
     future::Future,
 };
 
@@ -93,11 +93,16 @@ impl Object for TestObjectFull {
     ) -> impl 'a + CrdbFuture<Output = anyhow::Result<HashSet<User>>> {
         async move {
             let mut res = self.users.iter().copied().collect::<HashSet<_>>();
-            for remote in &self.deps {
-                match db.get(*remote).await {
+            let mut deps_to_observe = self.deps.iter().copied().collect::<VecDeque<_>>();
+            while let Some(remote) = deps_to_observe.pop_front() {
+                match db.get(remote).await {
                     Err(crate::Error::ObjectDoesNotExist(o)) if o == remote.to_object_id() => (),
                     Err(e) => return Err(e).context(format!("fetching {remote:?}")),
-                    Ok(r) => res.extend(r.users_who_can_read(db).boxed_crdb().await?),
+                    Ok(r) => {
+                        res.extend(r.users.iter().copied());
+                        deps_to_observe.extend(r.deps.iter().copied());
+                        deps_to_observe.make_contiguous().sort_unstable();
+                    }
                 }
             }
             Ok(res)

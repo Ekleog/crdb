@@ -161,11 +161,6 @@ async fn apply_ops(
 }
 
 fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord::Config) {
-    #[cfg(not(fuzzing))]
-    eprintln!(
-        "Fuzzing with:\n---\n{}\n---",
-        serde_json::to_string(ops).unwrap()
-    );
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async move {
@@ -211,6 +206,11 @@ fn fuzz_no_lock_check() {
         .with_shrink_time(std::time::Duration::from_millis(0))
         .with_arbitrary()
         .for_each(move |(seed, ops)| {
+            #[cfg(not(fuzzing))]
+            eprintln!(
+                "Fuzzing with:\n---\n{}\n---",
+                serde_json::to_string(&(seed, ops)).unwrap()
+            );
             let mut config = reord::Config::from_seed(*seed);
             config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
             fuzz_impl(&cluster, ops, config)
@@ -224,6 +224,11 @@ fn fuzz_checking_locks() {
         .with_iterations(20)
         .with_arbitrary()
         .for_each(move |(seed, ops)| {
+            #[cfg(not(fuzzing))]
+            eprintln!(
+                "Fuzzing with:\n---\n{}\n---",
+                serde_json::to_string(&(seed, ops)).unwrap()
+            );
             let mut config = reord::Config::from_seed(*seed);
             config.check_named_locks_work_for = Some(CHECK_NAMED_LOCKS_FOR);
             config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
@@ -238,3 +243,16 @@ fn fuzz_checking_locks() {
 // - somehow synchronize for recreations? to avoid event submissions being rejected dependent on interleaving
 // - assert only once all operations are complete, that MemDb and PostgresDb have the same last_snapshot
 // Also, same for the battle-royale fuzzer.
+
+#[test]
+#[cfg(disabled)]
+fn impl_reproducer() {
+    tracing_subscriber::FmtSubscriber::builder()
+        .with_max_level(tracing::Level::TRACE)
+        .init();
+    let cluster = TmpDb::new();
+    let (seed, ops) = serde_json::from_str(include_str!("../../../../repro.json")).unwrap();
+    let mut config = reord::Config::from_seed(seed);
+    config.maybe_lock_timeout = MAYBE_LOCK_TIMEOUT;
+    fuzz_impl(&cluster, &ops, config);
+}
