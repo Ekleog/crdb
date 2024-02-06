@@ -891,10 +891,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
         let _lock = self.object_locks.async_lock(object_id).await;
         reord::point().await;
-        let rdeps = self
-            .get_rdeps(&mut *transaction, object_id)
-            .await
-            .wrap_with_context(|| format!("fetching reverse dependencies of {object_id:?}"))?;
 
         // Check the object does exist, is of the right type and is not too new
         reord::point().await;
@@ -1027,6 +1023,10 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object.apply(DbPtr::from(object_id), &event);
 
         // Save the new snapshot (the new event was already saved above)
+        let rdeps = self
+            .get_rdeps(&mut *transaction, object_id)
+            .await
+            .wrap_with_context(|| format!("fetching reverse dependencies of {object_id:?}"))?;
         let mut _dep_locks = self
             .write_snapshot(
                 &mut *transaction,
