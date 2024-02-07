@@ -85,6 +85,7 @@ impl ClientDb {
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
         crate::spawn({
             let local_db = self.db.clone();
+            let subscribed_objects = self.subscribed_objects.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
                     for u in updates.data {
@@ -99,9 +100,7 @@ impl ClientDb {
                             } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including new objects
                                 // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
-                                // TODO(low): here and in all other places where we clone json to deserialize, consider using
-                                // https://github.com/serde-rs/json/issues/483#issuecomment-422868517
-                                if let Err(err) = C::recreate(
+                                let res = C::recreate(
                                     &*local_db,
                                     type_id,
                                     object_id,
@@ -111,20 +110,28 @@ impl ClientDb {
                                     Some(updates.now_have_all_until),
                                     false,
                                 )
-                                .await
-                                {
-                                    tracing::error!(
-                                        ?err,
-                                        ?object_id,
-                                        "failed creating received object in internal db"
-                                    );
+                                .await;
+                                match res {
+                                    Ok(()) => {
+                                        subscribed_objects
+                                            .lock()
+                                            .unwrap()
+                                            .insert(object_id, Some(updates.now_have_all_until));
+                                    }
+                                    Err(err) => {
+                                        tracing::error!(
+                                            ?err,
+                                            ?object_id,
+                                            "failed creating received object in internal db"
+                                        );
+                                    }
                                 }
                             }
                             UpdateData::Event { event_id, data } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including objects that start
                                 // matching the query only after the initial run
                                 // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
-                                if let Err(err) = C::submit(
+                                let res = C::submit(
                                     &*local_db,
                                     type_id,
                                     object_id,
@@ -133,14 +140,21 @@ impl ClientDb {
                                     Some(updates.now_have_all_until),
                                     false,
                                 )
-                                .await
-                                {
-                                    tracing::error!(
-                                        ?err,
-                                        ?object_id,
-                                        ?event_id,
-                                        "failed submitting received object to internal db"
-                                    );
+                                .await;
+                                match res {
+                                    Ok(()) => {
+                                        subscribed_objects
+                                            .lock()
+                                            .unwrap()
+                                            .insert(object_id, Some(updates.now_have_all_until));
+                                    }
+                                    Err(err) => {
+                                        tracing::error!(
+                                            ?err,
+                                            ?object_id,
+                                            "failed submitting received event to internal db"
+                                        );
+                                    }
                                 }
                                 // TODO(client): avoid tracing::error! when below comment holds
                                 // DO NOT re-fetch object when receiving an event not in cache for it.
@@ -148,6 +162,7 @@ impl ClientDb {
                                 // an event on this object (as a race condition), and then staying subscribed.
                             }
                             UpdateData::LostReadRights => {
+                                subscribed_objects.lock().unwrap().remove(&object_id);
                                 if let Err(err) = local_db.remove(object_id).await {
                                     tracing::error!(
                                         ?err,
