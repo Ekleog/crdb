@@ -976,7 +976,7 @@ impl IndexedDb {
     }
 
     pub async fn get_subscribed_objects(
-        self: Arc<Self>,
+        &self,
     ) -> crate::Result<HashMap<ObjectId, Option<Updatedness>>> {
         // TODO(test): fuzz this, and all other LocalDb functions
         // TODO(test): fuzz connection handling
@@ -1019,7 +1019,7 @@ impl IndexedDb {
     }
 
     pub async fn get_subscribed_queries(
-        self: Arc<Self>,
+        &self,
     ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>
     {
         self.db

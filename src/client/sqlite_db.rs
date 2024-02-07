@@ -68,13 +68,13 @@ impl SqliteDb {
     }
 
     pub async fn get_subscribed_objects(
-        self: Arc<Self>,
+        &self,
     ) -> crate::Result<HashMap<ObjectId, Option<Updatedness>>> {
         unimplemented!() // TODO(sqlite)
     }
 
     pub async fn get_subscribed_queries(
-        self: Arc<Self>,
+        &self,
     ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>
     {
         unimplemented!() // TODO(sqlite)
