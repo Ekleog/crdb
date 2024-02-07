@@ -1,7 +1,7 @@
 use crate::{
-    api::UploadId, client::ClientStorageInfo, db_trait::Db, error::ResultExt, fts,
-    messages::Upload, object::parse_snapshot_js, BinPtr, DbPtr, Event, EventId, Object, ObjectId,
-    Query, QueryId, TypeId, Updatedness,
+    api::UploadId, client::ClientStorageInfo, client::ShouldLock, db_trait::Db, error::ResultExt,
+    fts, messages::Upload, object::parse_snapshot_js, BinPtr, DbPtr, Event, EventId, Object,
+    ObjectId, Query, QueryId, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -48,6 +48,15 @@ struct EventMeta {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct QueryMeta {
+    query_id: QueryId,
+    query: Arc<Query>,
+    type_id: TypeId,
+    have_all_until: Option<Updatedness>,
+    lock: bool,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct UploadMeta {
     required_binaries: Vec<BinPtr>,
 }
@@ -81,6 +90,9 @@ impl IndexedDb {
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
                 db.build_object_store("upload_queue").create()?;
+                db.build_object_store("queries_meta")
+                    .key_path("query_id")
+                    .create()?;
                 let snapshots_meta = db
                     .build_object_store("snapshots_meta")
                     .key_path("snapshot_id")
@@ -1008,8 +1020,33 @@ impl IndexedDb {
 
     pub async fn get_subscribed_queries(
         self: Arc<Self>,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>> {
-        unimplemented!() // TODO(api)
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>
+    {
+        self.db
+            .transaction(&["snapshots_meta"])
+            .run(|transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                let queries = queries_meta
+                    .get_all(None)
+                    .await
+                    .wrap_context("listing subscribed queries")?;
+                let res = queries
+                    .into_iter()
+                    .map(|q| {
+                        let q = serde_wasm_bindgen::from_value::<QueryMeta>(q)
+                            .wrap_context("deserializing query metadata")?;
+                        Ok((
+                            q.query_id,
+                            (q.query, q.type_id, q.have_all_until, ShouldLock(q.lock)),
+                        ))
+                    })
+                    .collect();
+                res
+            })
+            .await
+            .wrap_context("listing subscribed objects")
     }
 }
 

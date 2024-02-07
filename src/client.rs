@@ -14,3 +14,5 @@ pub use connection::ConnectionEvent;
 pub use indexed_db::IndexedDb as LocalDb;
 #[cfg(not(target_arch = "wasm32"))]
 pub use sqlite_db::SqliteDb as LocalDb;
+
+pub struct ShouldLock(pub bool);

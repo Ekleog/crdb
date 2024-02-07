@@ -5,7 +5,7 @@ use crate::{
 use anyhow::Context;
 use std::{collections::HashMap, sync::Arc};
 
-use super::ClientStorageInfo;
+use super::{ClientStorageInfo, ShouldLock};
 
 #[cfg(test)]
 mod tests;
@@ -75,7 +75,8 @@ impl SqliteDb {
 
     pub async fn get_subscribed_queries(
         self: Arc<Self>,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>> {
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>
+    {
         unimplemented!() // TODO(sqlite)
     }
 }

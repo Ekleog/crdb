@@ -40,16 +40,12 @@ impl ApiDb {
                 requests_receiver,
                 connection_event_cb.clone(),
                 update_sender,
-                {
-                    let local_db = local_db.clone();
-                    move || {
-                        let local_db = local_db.upgrade().expect("Connection outlived ClientDb");
-                        local_db.get_subscribed_objects()
-                    }
-                },
                 move || {
                     let local_db = local_db.upgrade().expect("Connection outlived ClientDb");
-                    local_db.get_subscribed_queries()
+                    local_db.get_subscribed_objects()
+                },
+                move || async move {
+                    unimplemented!() // TODO(api)
                 },
             )
             .run(),
