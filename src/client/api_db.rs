@@ -1,6 +1,9 @@
-use super::connection::{
-    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
-    ResponseSender,
+use super::{
+    connection::{
+        Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+        ResponseSender,
+    },
+    LocalDb,
 };
 use crate::{
     db_trait::Db,
@@ -15,7 +18,7 @@ use std::{
     collections::{HashMap, HashSet},
     future::Future,
     iter,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, Weak},
 };
 use tokio::sync::oneshot;
 
@@ -26,7 +29,7 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub fn new() -> (ApiDb, mpsc::UnboundedReceiver<Updates>) {
+    pub fn new(local_db: Weak<LocalDb>) -> (ApiDb, mpsc::UnboundedReceiver<Updates>) {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let (connection, commands) = mpsc::unbounded();
@@ -37,6 +40,17 @@ impl ApiDb {
                 requests_receiver,
                 connection_event_cb.clone(),
                 update_sender,
+                {
+                    let local_db = local_db.clone();
+                    move || {
+                        let local_db = local_db.upgrade().expect("Connection outlived ClientDb");
+                        local_db.get_subscribed_objects()
+                    }
+                },
+                move || {
+                    let local_db = local_db.upgrade().expect("Connection outlived ClientDb");
+                    local_db.get_subscribed_queries()
+                },
             )
             .run(),
         );
@@ -258,7 +272,6 @@ impl ApiDb {
             Some(response) => match response.response {
                 ResponsePart::Error(err) => Err(err.into()),
                 ResponsePart::Objects { mut data, .. } if data.len() == 1 => {
-                    // TODO(api): record now_have_all_until somewhere (for queries)
                     match data.pop().unwrap() {
                         MaybeObject::AlreadySubscribed(_) => Err(crate::Error::Other(anyhow!(
                             "Server unexpectedly told us we already know unknown {object_id:?}"
@@ -295,7 +308,7 @@ impl ApiDb {
                 ResponsePart::Error(err) => Either::Left(stream::iter(iter::once(Err(err.into())))),
                 ResponsePart::Objects {
                     data,
-                    now_have_all_until: _, // TODO(client): record now_have_all_until somewhere (for queries)
+                    now_have_all_until: _, // TODO(api): record now_have_all_until somewhere (for queries)
                 } => Either::Right(stream::iter(data.into_iter().map(Ok))),
                 resp => Either::Left(stream::iter(iter::once(Err(crate::Error::Other(anyhow!(
                     "Server gave unexpected answer to Query request: {resp:?}"

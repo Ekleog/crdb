@@ -1,13 +1,18 @@
 use crate::{
     api::UploadId, client::ClientStorageInfo, db_trait::Db, error::ResultExt, fts,
     messages::Upload, object::parse_snapshot_js, BinPtr, DbPtr, Event, EventId, Object, ObjectId,
-    Query, TypeId, Updatedness,
+    Query, QueryId, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
 use indexed_db::CursorDirection;
 use js_sys::{Array, JsString, Uint8Array};
-use std::{cell::Cell, collections::HashSet, ops::Bound, sync::Arc};
+use std::{
+    cell::Cell,
+    collections::{HashMap, HashSet},
+    ops::Bound,
+    sync::Arc,
+};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
@@ -615,7 +620,7 @@ impl IndexedDb {
 
     #[cfg(feature = "_tests")]
     pub async fn assert_invariants_generic(&self) {
-        use std::collections::{hash_map, HashMap};
+        use std::collections::hash_map;
 
         self.db
             .transaction(&[
@@ -712,7 +717,7 @@ impl IndexedDb {
 
     #[cfg(feature = "_tests")]
     pub async fn assert_invariants_for<T: Object>(&self) {
-        use std::collections::{BTreeMap, HashMap};
+        use std::collections::BTreeMap;
 
         self.db
             .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
@@ -956,6 +961,18 @@ impl IndexedDb {
             })
             .await
             .wrap_context("clearing the IndexedDB database")
+    }
+
+    pub async fn get_subscribed_objects(
+        self: Arc<Self>,
+    ) -> crate::Result<HashMap<ObjectId, Option<Updatedness>>> {
+        unimplemented!() // TODO(api)
+    }
+
+    pub async fn get_subscribed_queries(
+        self: Arc<Self>,
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>> {
+        unimplemented!() // TODO(api)
     }
 }
 

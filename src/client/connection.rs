@@ -9,6 +9,7 @@ use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
+    future::Future,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -121,7 +122,7 @@ impl State {
 
 pub type ResponseSender = mpsc::UnboundedSender<ResponsePartWithSidecar>;
 
-pub struct Connection {
+pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
     state: State,
     last_request_id: RequestId,
     commands: mpsc::UnboundedReceiver<Command>,
@@ -135,17 +136,26 @@ pub struct Connection {
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
-    subscribed_objects: HashMap<ObjectId, Option<Updatedness>>,
-    subscribed_queries: HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>,
+    get_subscribed_objects: GetSubscribedObjects,
+    get_subscribed_queries: GetSubscribedQueries,
 }
 
-impl Connection {
+impl<GSO, GSQ, GSOF, GSQF> Connection<GSO, GSQ>
+where
+    GSO: 'static + FnMut() -> GSOF,
+    GSOF: 'static + Future<Output = crate::Result<HashMap<ObjectId, Option<Updatedness>>>>,
+    GSQ: 'static + FnMut() -> GSQF,
+    GSQF: 'static
+        + Future<Output = crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>>>,
+{
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
         requests: mpsc::UnboundedReceiver<(ResponseSender, Arc<RequestWithSidecar>)>,
         event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
         update_sender: mpsc::UnboundedSender<Updates>,
-    ) -> Connection {
+        get_subscribed_objects: GSO,
+        get_subscribed_queries: GSQ,
+    ) -> Connection<GSO, GSQ> {
         Connection {
             state: State::NoValidInfo,
             last_request_id: RequestId(0),
@@ -160,8 +170,8 @@ impl Connection {
                 .expect("Time is obviously ill-set"),
             next_ping: None,
             next_pong_deadline: None,
-            subscribed_objects: HashMap::new(),
-            subscribed_queries: HashMap::new(),
+            get_subscribed_objects,
+            get_subscribed_queries,
         }
     }
 
@@ -242,22 +252,35 @@ impl Connection {
                                 // Re-subscribe to the previously subscribed queries and objects
                                 // Start with subscribed objects, so that we easily tell the server what we already know about them.
                                 // Only then re-subscribe to queries, this way the server can answer AlreadySubscribed whenever relevant.
-                                // TODO(api): stop tracking any subscription information here, and instead just re-ask the LocalDb for
-                                // what to re-subscribe on upon reconnection?
-                                if !self.subscribed_objects.is_empty() {
+                                let subscribed_objects = match (self.get_subscribed_objects)().await {
+                                    Ok(s) => s,
+                                    Err(err) => {
+                                        tracing::error!(?err, "failed listing subscribed objects upon reconnection");
+                                        self.state = self.state.disconnect();
+                                        continue;
+                                    }
+                                };
+                                let subscribed_queries = match (self.get_subscribed_queries)().await {
+                                    Ok(s) => s,
+                                    Err(err) => {
+                                        tracing::error!(?err, "failed listing subscribed objects upon reconnection");
+                                        self.state = self.state.disconnect();
+                                        continue;
+                                    }
+                                };
+                                if !subscribed_objects.is_empty() {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
                                     self.handle_request(
                                         request_id,
                                         Arc::new(RequestWithSidecar {
-                                            request: Arc::new(Request::GetSubscribe(self.subscribed_objects.clone())),
+                                            request: Arc::new(Request::GetSubscribe(subscribed_objects)),
                                             sidecar: Vec::new(),
                                         }),
                                         responses_sender,
                                     ).await;
                                     crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
-                                let subscribed_queries = self.subscribed_queries.clone(); // TODO(low): we can certainly avoid this clone
                                 for (query_id, (query, type_id, have_all_until)) in subscribed_queries {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
@@ -436,30 +459,6 @@ impl Connection {
         request: Arc<RequestWithSidecar>,
         sender: ResponseSender,
     ) {
-        match &*request.request {
-            Request::GetSubscribe(object_ids) => {
-                self.subscribed_objects
-                    .extend(object_ids.iter().map(|(id, t)| (*id, *t)));
-            }
-            Request::QuerySubscribe {
-                query_id,
-                type_id,
-                query,
-                only_updated_since,
-            } => {
-                self.subscribed_queries
-                    .insert(*query_id, (query.clone(), *type_id, *only_updated_since));
-            }
-            Request::Unsubscribe(object_ids) => {
-                for object_id in object_ids {
-                    self.subscribed_objects.remove(object_id);
-                }
-            }
-            Request::UnsubscribeQuery(query_id) => {
-                self.subscribed_queries.remove(query_id);
-            }
-            _ => (),
-        }
         let message = ClientMessage {
             request_id,
             request: request.request.clone(),
@@ -473,16 +472,6 @@ impl Connection {
     async fn handle_connected_message(&mut self, message: ServerMessage) {
         match message {
             ServerMessage::Updates(updates) => {
-                // Update our local subscription information
-                for update in updates.data.iter() {
-                    if let Some(updated) = self.subscribed_objects.get_mut(&update.object_id) {
-                        *updated = Some(updates.now_have_all_until);
-                    }
-                    // TODO(api): somehow keep track of now_have_all_until for each subscribed query
-                    // TODO(api): make sure we track subscribed_objects properly, after an object newly starts matching a subscribed query.
-                }
-
-                // And send the update
                 if let Err(err) = self.update_sender.send(updates).await {
                     tracing::error!(?err, "failed sending updates");
                 }
@@ -492,40 +481,8 @@ impl Connection {
                 response,
                 last_response,
             } => {
-                if let Some((request, sender, already_sent)) =
-                    self.pending_requests.get_mut(&request_id)
+                if let Some((_, sender, already_sent)) = self.pending_requests.get_mut(&request_id)
                 {
-                    // Update our local subscription information and fetch the sidecar
-                    match &*request.request {
-                        Request::GetSubscribe(_) => {
-                            if let ResponsePart::Objects { data, .. } = &response {
-                                for maybe_object in data {
-                                    match maybe_object {
-                                        MaybeObject::AlreadySubscribed(_) => (),
-                                        MaybeObject::NotYetSubscribed(o) => {
-                                            self.subscribed_objects
-                                                .insert(o.object_id, Some(o.now_have_all_until));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Request::QuerySubscribe { query_id, .. } => {
-                            if let ResponsePart::Objects {
-                                now_have_all_until, ..
-                            } = &response
-                            {
-                                if let Some(subscription_info) =
-                                    self.subscribed_queries.get_mut(query_id)
-                                {
-                                    subscription_info.2 = *now_have_all_until;
-                                }
-                            }
-                        }
-                        _ => (),
-                    };
-
-                    // And send the response
                     if let ResponsePart::Binaries(num_bins) = &response {
                         // The request was binary retrieval. We should remember that and send the binary frames as they come.
                         let State::Connected {

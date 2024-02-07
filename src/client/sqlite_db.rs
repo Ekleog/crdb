@@ -1,9 +1,9 @@
 use crate::{
-    api::UploadId, db_trait::Db, error::ResultExt, fts, messages::Upload, BinPtr, EventId, Object,
-    ObjectId, Query, Updatedness,
+    api::UploadId, db_trait::Db, error::ResultExt, fts, ids::QueryId, messages::Upload, BinPtr,
+    EventId, Object, ObjectId, Query, TypeId, Updatedness,
 };
 use anyhow::Context;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use super::ClientStorageInfo;
 
@@ -64,6 +64,18 @@ impl SqliteDb {
     }
 
     pub async fn remove_everything(&self) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn get_subscribed_objects(
+        self: Arc<Self>,
+    ) -> crate::Result<HashMap<ObjectId, Option<Updatedness>>> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn get_subscribed_queries(
+        self: Arc<Self>,
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>> {
         unimplemented!() // TODO(sqlite)
     }
 }
