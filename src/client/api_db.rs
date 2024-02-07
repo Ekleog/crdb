@@ -26,15 +26,13 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub fn new<GSO, GSQ, GSOF, GSQF, GSQI>(
+    pub fn new<GSO, GSQ, GSQI>(
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
     ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
     where
-        GSO: 'static + Send + FnMut() -> GSOF,
-        GSOF: 'static + Send + Future<Output = HashMap<ObjectId, Option<Updatedness>>>,
-        GSQ: 'static + Send + FnMut() -> GSQF,
-        GSQF: 'static + Send + Future<Output = GSQI>,
+        GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
+        GSQ: 'static + Send + FnMut() -> GSQI,
         GSQI: 'static + Send + Iterator<Item = (QueryId, Arc<Query>, TypeId, Option<Updatedness>)>,
     {
         let (update_sender, update_receiver) = mpsc::unbounded();

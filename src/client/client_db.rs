@@ -41,8 +41,8 @@ impl ClientDb {
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
         let (api, updates_receiver) = ApiDb::new(
-            || async move { unimplemented!() },   // TODO(api)
-            || async move { std::iter::empty() }, // TODO(api)
+            || unimplemented!(),   // TODO(api)
+            || std::iter::empty(), // TODO(api)
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
