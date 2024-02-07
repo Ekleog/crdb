@@ -35,7 +35,7 @@ struct SnapshotMeta {
     is_latest: Option<usize>,   // So, use None for "false" and Some(1) for "true"
     normalizer_version: i32,
     snapshot_version: i32,
-    have_all_until: Option<Updatedness>,
+    have_all_until: Option<Updatedness>, // This value is always up-to-date on the latest snapshot
     is_locked: Option<usize>, // Only set on creation snapshot, Some(1) if locked and Some(0) if not
     required_binaries: Vec<BinPtr>,
 }
@@ -966,7 +966,44 @@ impl IndexedDb {
     pub async fn get_subscribed_objects(
         self: Arc<Self>,
     ) -> crate::Result<HashMap<ObjectId, Option<Updatedness>>> {
-        unimplemented!() // TODO(api)
+        // TODO(test): fuzz this, and all other LocalDb functions
+        // TODO(test): fuzz connection handling
+        let zero_id = TypeId::from_u128(0).to_js_string();
+        let max_id = TypeId::from_u128(u128::MAX).to_js_string();
+        self.db
+            .transaction(&["snapshots_meta"])
+            .run(|transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving snapshots_meta object store")?;
+                let latest_type_object = snapshots_meta
+                    .index("latest_type_object")
+                    .wrap_context("opening 'latest_type_object' snapshot index")?;
+                let mut cursor = latest_type_object
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&JsValue::from(1), &zero_id, &zero_id])
+                            ..=&**Array::from_iter([&JsValue::from(1), &max_id, &max_id]),
+                    )
+                    .wrap_context("limiting cursor to only latest snapshots")?
+                    .open()
+                    .await
+                    .wrap_context("opening cursor over all latest objects")?;
+                let mut res = HashMap::new();
+                while let Some(snapshot_meta_js) = cursor.value() {
+                    let snapshot_meta =
+                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
+                            .wrap_context("deserializing snapshot metadata")?;
+                    res.insert(snapshot_meta.object_id, snapshot_meta.have_all_until);
+                    cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next object in the database")?;
+                }
+                Ok(res)
+            })
+            .await
+            .wrap_context("listing subscribed objects")
     }
 
     pub async fn get_subscribed_queries(
