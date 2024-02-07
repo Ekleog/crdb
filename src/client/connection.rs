@@ -143,7 +143,7 @@ pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
 impl<GSO, GSQ, GSOF, GSQF, GSQI> Connection<GSO, GSQ>
 where
     GSO: 'static + FnMut() -> GSOF,
-    GSOF: 'static + Future<Output = Arc<HashMap<ObjectId, Option<Updatedness>>>>,
+    GSOF: 'static + Future<Output = HashMap<ObjectId, Option<Updatedness>>>,
     GSQ: 'static + FnMut() -> GSQF,
     GSQF: 'static + Future<Output = GSQI>,
     GSQI: 'static + Iterator<Item = (QueryId, Arc<Query>, TypeId, Option<Updatedness>)>,
