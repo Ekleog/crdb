@@ -29,7 +29,7 @@ pub enum Request {
     DisconnectSession(SessionRef),
     GetTime,
     // Map from object to the only_updated_since information we want on it
-    GetSubscribe(HashMap<ObjectId, Option<Updatedness>>),
+    GetSubscribe(Arc<HashMap<ObjectId, Option<Updatedness>>>),
     QuerySubscribe {
         query_id: QueryId,
         type_id: TypeId,

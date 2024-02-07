@@ -32,7 +32,7 @@ impl ApiDb {
     ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
     where
         GSO: 'static + Send + FnMut() -> GSOF,
-        GSOF: 'static + Send + Future<Output = HashMap<ObjectId, Option<Updatedness>>>,
+        GSOF: 'static + Send + Future<Output = Arc<HashMap<ObjectId, Option<Updatedness>>>>,
         GSQ: 'static + Send + FnMut() -> GSQF,
         GSQF: 'static + Send + Future<Output = GSQI>,
         GSQI: 'static + Send + Iterator<Item = (QueryId, Arc<Query>, TypeId, Option<Updatedness>)>,
@@ -258,7 +258,7 @@ impl ApiDb {
     pub async fn get_subscribe(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
         let mut object_ids = HashMap::new();
         object_ids.insert(object_id, None); // We do not know about this object yet, so None
-        let request = Arc::new(Request::GetSubscribe(object_ids));
+        let request = Arc::new(Request::GetSubscribe(Arc::new(object_ids)));
         let mut response = self.request(Arc::new(RequestWithSidecar {
             request,
             sidecar: Vec::new(),
