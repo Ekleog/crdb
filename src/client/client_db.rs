@@ -10,7 +10,11 @@ use crate::{
     BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, Updatedness,
 };
 use futures::{channel::mpsc, StreamExt};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::sync::{broadcast, oneshot, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -18,6 +22,7 @@ pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
+    subscribed_objects: Arc<Mutex<HashMap<ObjectId, Option<Updatedness>>>>,
     error_sender: mpsc::UnboundedSender<crate::Error>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
@@ -36,17 +41,22 @@ impl ClientDb {
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
         let (api, updates_receiver) = ApiDb::new(
-            || async move { unimplemented!() }, // TODO(api)
+            || async move { unimplemented!() },   // TODO(api)
             || async move { std::iter::empty() }, // TODO(api)
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
+        let subscribed_objects = db_bypass
+            .get_subscribed_objects()
+            .await
+            .wrap_context("listing subscribed objects")?;
         // TODO(api): ObjectDoesNotExist as response to the startup GetSubscribe means that our user lost read access while offline; handle it properly
         // TODO(client): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
             api,
             db,
             db_bypass,
+            subscribed_objects: Arc::new(Mutex::new(subscribed_objects)),
             error_sender,
             updates_broadcastee,
             vacuum_guard: Arc::new(RwLock::new(())),
