@@ -35,7 +35,10 @@ impl ClientDb {
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
-        let (api, updates_receiver) = ApiDb::new(Arc::downgrade(&db_bypass));
+        let (api, updates_receiver) = ApiDb::new(
+            || async move { unimplemented!() }, // TODO(api)
+            || async move { std::iter::empty() }, // TODO(api)
+        );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
         // TODO(api): ObjectDoesNotExist as response to the startup GetSubscribe means that our user lost read access while offline; handle it properly

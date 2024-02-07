@@ -1,16 +1,13 @@
-use super::{
-    connection::{
-        Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
-        ResponseSender,
-    },
-    LocalDb,
+use super::connection::{
+    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+    ResponseSender,
 };
 use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
     messages::{MaybeObject, ObjectData, Request, ResponsePart, Updates, Upload},
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, Updatedness,
+    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, stream, StreamExt};
@@ -18,7 +15,7 @@ use std::{
     collections::{HashMap, HashSet},
     future::Future,
     iter,
-    sync::{Arc, RwLock, Weak},
+    sync::{Arc, RwLock},
 };
 use tokio::sync::oneshot;
 
@@ -29,7 +26,17 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub fn new(local_db: Weak<LocalDb>) -> (ApiDb, mpsc::UnboundedReceiver<Updates>) {
+    pub fn new<GSO, GSQ, GSOF, GSQF, GSQI>(
+        get_subscribed_objects: GSO,
+        get_subscribed_queries: GSQ,
+    ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
+    where
+        GSO: 'static + Send + FnMut() -> GSOF,
+        GSOF: 'static + Send + Future<Output = HashMap<ObjectId, Option<Updatedness>>>,
+        GSQ: 'static + Send + FnMut() -> GSQF,
+        GSQF: 'static + Send + Future<Output = GSQI>,
+        GSQI: 'static + Send + Iterator<Item = (QueryId, Arc<Query>, TypeId, Option<Updatedness>)>,
+    {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let (connection, commands) = mpsc::unbounded();
@@ -40,15 +47,8 @@ impl ApiDb {
                 requests_receiver,
                 connection_event_cb.clone(),
                 update_sender,
-                move || {
-                    let local_db = local_db.upgrade().expect("Connection outlived ClientDb");
-                    async move {
-                        local_db.get_subscribed_objects().await.unwrap() // TODO(api)
-                    }
-                },
-                move || async move {
-                    std::iter::empty() // TODO(api)
-                },
+                get_subscribed_objects,
+                get_subscribed_queries,
             )
             .run(),
         );
