@@ -40,23 +40,28 @@ impl ClientDb {
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
+        let subscribed_objects = Arc::new(Mutex::new(
+            db_bypass
+                .get_subscribed_objects()
+                .await
+                .wrap_context("listing subscribed objects")?,
+        ));
         let (api, updates_receiver) = ApiDb::new(
-            || unimplemented!(),   // TODO(api)
+            {
+                let subscribed_objects = subscribed_objects.clone();
+                move || subscribed_objects.lock().unwrap().clone()
+            },
             || std::iter::empty(), // TODO(api)
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
-        let subscribed_objects = db_bypass
-            .get_subscribed_objects()
-            .await
-            .wrap_context("listing subscribed objects")?;
         // TODO(api): ObjectDoesNotExist as response to the startup GetSubscribe means that our user lost read access while offline; handle it properly
         // TODO(client): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
             api,
             db,
             db_bypass,
-            subscribed_objects: Arc::new(Mutex::new(subscribed_objects)),
+            subscribed_objects,
             error_sender,
             updates_broadcastee,
             vacuum_guard: Arc::new(RwLock::new(())),
