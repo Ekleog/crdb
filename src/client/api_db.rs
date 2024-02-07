@@ -42,10 +42,12 @@ impl ApiDb {
                 update_sender,
                 move || {
                     let local_db = local_db.upgrade().expect("Connection outlived ClientDb");
-                    local_db.get_subscribed_objects()
+                    async move {
+                        local_db.get_subscribed_objects().await.unwrap() // TODO(api)
+                    }
                 },
                 move || async move {
-                    unimplemented!() // TODO(api)
+                    std::iter::empty() // TODO(api)
                 },
             )
             .run(),

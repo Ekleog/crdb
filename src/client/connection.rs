@@ -140,13 +140,13 @@ pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
     get_subscribed_queries: GetSubscribedQueries,
 }
 
-impl<GSO, GSQ, GSOF, GSQF> Connection<GSO, GSQ>
+impl<GSO, GSQ, GSOF, GSQF, GSQI> Connection<GSO, GSQ>
 where
     GSO: 'static + FnMut() -> GSOF,
-    GSOF: 'static + Future<Output = crate::Result<HashMap<ObjectId, Option<Updatedness>>>>,
+    GSOF: 'static + Future<Output = HashMap<ObjectId, Option<Updatedness>>>,
     GSQ: 'static + FnMut() -> GSQF,
-    GSQF: 'static
-        + Future<Output = crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>)>>>,
+    GSQF: 'static + Future<Output = GSQI>,
+    GSQI: 'static + Iterator<Item = (QueryId, Arc<Query>, TypeId, Option<Updatedness>)>,
 {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
@@ -252,22 +252,8 @@ where
                                 // Re-subscribe to the previously subscribed queries and objects
                                 // Start with subscribed objects, so that we easily tell the server what we already know about them.
                                 // Only then re-subscribe to queries, this way the server can answer AlreadySubscribed whenever relevant.
-                                let subscribed_objects = match (self.get_subscribed_objects)().await {
-                                    Ok(s) => s,
-                                    Err(err) => {
-                                        tracing::error!(?err, "failed listing subscribed objects upon reconnection");
-                                        self.state = self.state.disconnect();
-                                        continue;
-                                    }
-                                };
-                                let subscribed_queries = match (self.get_subscribed_queries)().await {
-                                    Ok(s) => s,
-                                    Err(err) => {
-                                        tracing::error!(?err, "failed listing subscribed objects upon reconnection");
-                                        self.state = self.state.disconnect();
-                                        continue;
-                                    }
-                                };
+                                let subscribed_objects = (self.get_subscribed_objects)().await;
+                                let subscribed_queries = (self.get_subscribed_queries)().await;
                                 if !subscribed_objects.is_empty() {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
@@ -281,7 +267,7 @@ where
                                     ).await;
                                     crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
-                                for (query_id, (query, type_id, have_all_until)) in subscribed_queries {
+                                for (query_id, query, type_id, have_all_until) in subscribed_queries {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
                                     self.handle_request(
