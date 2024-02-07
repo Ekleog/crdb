@@ -6,8 +6,8 @@ use std::time::Duration;
 mod fuzz_sessions;
 mod fuzz_two_threads;
 
-const CHECK_NAMED_LOCKS_FOR: Duration = Duration::from_millis(3000);
-const MAYBE_LOCK_TIMEOUT: Duration = Duration::from_millis(3000);
+const CHECK_NAMED_LOCKS_FOR: Duration = Duration::from_millis(500);
+const MAYBE_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
