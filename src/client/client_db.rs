@@ -105,6 +105,10 @@ impl ClientDb {
                         let object_id = u.object_id;
                         let type_id = u.type_id;
                         // TODO(api): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
+                        // TODO(api): How to deal with the case where a query is Importance::Lock, new objects are locked, and then the objects
+                        // stop matching the query? In particular, should the objects be unlocked? This will probably require adding a new field
+                        // to the database, remembering whether the object was locked for a query or by explicit request from the user, so that
+                        // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
                         match &u.data {
                             UpdateData::Creation {
                                 created_at,
