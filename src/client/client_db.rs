@@ -12,7 +12,7 @@ use crate::{
 };
 use futures::{channel::mpsc, StreamExt};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map, HashMap, HashSet},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -442,13 +442,26 @@ impl ClientDb {
         if importance >= Importance::Subscribe {
             // TODO(client): first make sure to wait until the current upload queue is empty, so that
             // any newly-created object/event makes its way through to the server before querying
-            let only_updated_since = self
-                .subscribed_queries
-                .lock()
-                .unwrap()
-                .entry(query_id)
-                .or_insert_with(|| (query.clone(), *T::type_ulid(), None, importance.into()))
-                .2;
+            let only_updated_since = {
+                let mut subscribed_queries = self.subscribed_queries.lock().unwrap();
+                let entry = subscribed_queries.entry(query_id);
+                match entry {
+                    hash_map::Entry::Occupied(mut o) => {
+                        if !o.get().3 .0 && importance >= Importance::Lock {
+                            // Increasing the lock behavior. Re-subscribe from scratch
+                            o.insert((query.clone(), *T::type_ulid(), None, importance.into()));
+                            None
+                        } else {
+                            // The query was already locked enough. Just proceed.
+                            o.get().2
+                        }
+                    }
+                    hash_map::Entry::Vacant(v) => {
+                        v.insert((query.clone(), *T::type_ulid(), None, importance.into()));
+                        None
+                    }
+                }
+            };
             self.api
                 .query_subscribe::<T>(QueryId::now(), only_updated_since, query)
                 .then({
