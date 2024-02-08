@@ -104,12 +104,11 @@ impl ClientDb {
                     for u in updates.data {
                         let object_id = u.object_id;
                         let type_id = u.type_id;
-                        // TODO(api): make sure that incoming Updates properly bumps the database-recorded queries' now_have_all_until
                         // TODO(api): How to deal with the case where a query is Importance::Lock, new objects are locked, and then the objects
                         // stop matching the query? In particular, should the objects be unlocked? This will probably require adding a new field
                         // to the database, remembering whether the object was locked for a query or by explicit request from the user, so that
                         // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
-                        match &u.data {
+                        let res = match &u.data {
                             UpdateData::Creation {
                                 created_at,
                                 snapshot_version,
@@ -118,7 +117,7 @@ impl ClientDb {
                                 // TODO(client): decide how to expose locking all of a query's results, including new objects
                                 // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
                                 // TODO(api): for MissingBinaries submission, have a proper upload reorderer that requests each binary only once
-                                let res = C::recreate(
+                                C::recreate(
                                     &*local_db,
                                     type_id,
                                     object_id,
@@ -128,22 +127,7 @@ impl ClientDb {
                                     Some(updates.now_have_all_until),
                                     false,
                                 )
-                                .await;
-                                match res {
-                                    Ok(()) => {
-                                        subscribed_objects
-                                            .lock()
-                                            .unwrap()
-                                            .insert(object_id, Some(updates.now_have_all_until));
-                                    }
-                                    Err(err) => {
-                                        tracing::error!(
-                                            ?err,
-                                            ?object_id,
-                                            "failed creating received object in internal db"
-                                        );
-                                    }
-                                }
+                                .await
                             }
                             UpdateData::Event { event_id, data } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including objects that start
@@ -160,24 +144,13 @@ impl ClientDb {
                                 )
                                 .await;
                                 match res {
-                                    Ok(()) => {
-                                        subscribed_objects
-                                            .lock()
-                                            .unwrap()
-                                            .insert(object_id, Some(updates.now_have_all_until));
-                                    }
                                     Err(crate::Error::ObjectDoesNotExist(o)) if o == object_id => {
                                         // DO NOT re-fetch object when receiving an event not in cache for it.
                                         // Without this, users would risk unsubscribing from an object, then receiving
                                         // an event on this object (as a race condition), and then staying subscribed.
+                                        continue;
                                     }
-                                    Err(err) => {
-                                        tracing::error!(
-                                            ?err,
-                                            ?object_id,
-                                            "failed submitting received event to internal db"
-                                        );
-                                    }
+                                    res => res,
                                 }
                             }
                             UpdateData::LostReadRights => {
@@ -189,6 +162,26 @@ impl ClientDb {
                                         "failed removing object for which we lost read rights"
                                     );
                                 }
+                                Ok(None) // TODO(api): should have some way to identify which queries this object was in?
+                            }
+                        };
+                        match res {
+                            Ok(res) => {
+                                subscribed_objects
+                                    .lock()
+                                    .unwrap()
+                                    .insert(object_id, Some(updates.now_have_all_until));
+                                if let Some(_res) = res {
+                                    // TODO(api): track subscribed_queries' have_all_until
+                                    // TODO(api): also track which objects are matching which queries, to be able to know when an object stops matching a query
+                                }
+                            }
+                            Err(err) => {
+                                tracing::error!(
+                                    ?err,
+                                    ?object_id,
+                                    "failed creating received object in internal db"
+                                );
                             }
                         }
                         // TODO(client): give out update broadcasters for each individual query the user subscribed to

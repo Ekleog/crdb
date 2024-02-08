@@ -19,7 +19,7 @@ pub trait ApiConfig: crate::private::Sealed {
         object: &serde_json::Value,
         updatedness: Option<Updatedness>,
         force_lock: bool,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<Option<serde_json::Value>>>;
 
     fn submit<D: Db>(
         db: &D,
@@ -29,7 +29,7 @@ pub trait ApiConfig: crate::private::Sealed {
         event: &serde_json::Value,
         updatedness: Option<Updatedness>,
         force_lock: bool,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    ) -> impl CrdbFuture<Output = crate::Result<Option<serde_json::Value>>>;
 }
 
 #[doc(hidden)]
@@ -58,13 +58,18 @@ macro_rules! generate_api {
                 object: &crdb::serde_json::Value,
                 updatedness: Option<crdb::Updatedness>,
                 force_lock: bool,
-            ) -> crdb::Result<()> {
+            ) -> crdb::Result<Option<crdb::serde_json::Value>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let _ = snapshot_version;
                         let object = <$object as crdb::serde::Deserialize>::deserialize(object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        return db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), updatedness, force_lock).await.map(|_| ());
+                        let res = db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), updatedness, force_lock).await?;
+                        let Some(res) = res else {
+                            return Ok(None);
+                        };
+                        let res = crdb::serde_json::to_value(&res).wrap_context("serializing object")?;
+                        return Ok(Some(res));
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
@@ -78,12 +83,17 @@ macro_rules! generate_api {
                 event: &crdb::serde_json::Value,
                 updatedness: Option<crdb::Updatedness>,
                 force_lock: bool,
-            ) -> crdb::Result<()> {
+            ) -> crdb::Result<Option<crdb::serde_json::Value>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = <<$object as crdb::Object>::Event as serde::Deserialize>::deserialize(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
-                        return db.submit::<$object>(object_id, event_id, crdb::Arc::new(event), updatedness, force_lock).await.map(|_| ());
+                        let res = db.submit::<$object>(object_id, event_id, crdb::Arc::new(event), updatedness, force_lock).await?;
+                        let Some(res) = res else {
+                            return Ok(None);
+                        };
+                        let res = crdb::serde_json::to_value(&res).wrap_context("serializing object")?;
+                        return Ok(Some(res));
                     }
                 )*
                 Err(crdb::Error::TypeDoesNotExist(type_id))
