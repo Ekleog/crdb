@@ -239,9 +239,10 @@ impl ClientDb {
     }
 
     pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
-        // TODO(client): automatically call `api.unsubscribe` when `vacuum` removes an object
+        // TODO(client): automatically call `api.unsubscribe` when `vacuum` removes an object, and remove from subscribed_objects
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
+            self.subscribed_objects.lock().unwrap().remove(object_id);
         }
         self.api.unsubscribe(object_ids);
         Ok(())
@@ -264,6 +265,12 @@ impl ClientDb {
                 importance >= Importance::Lock,
             )
             .await?;
+        if importance >= Importance::Subscribe {
+            self.subscribed_objects
+                .lock()
+                .unwrap()
+                .insert(object_id, None);
+        }
         self.api.create(
             object_id,
             created_at,
@@ -291,6 +298,8 @@ impl ClientDb {
                 importance >= Importance::Lock,
             )
             .await?;
+        // The object must already be subscribed, in order for event submission to be successful.
+        // So, there is no need to manually subscribe again.
         self.api.submit::<T, _>(
             object,
             event_id,
@@ -368,6 +377,10 @@ impl ClientDb {
             Err(e) => return Err(e),
         }
         if importance >= Importance::Subscribe {
+            self.subscribed_objects
+                .lock()
+                .unwrap()
+                .insert(object_id, None);
             let res = self.api.get_subscribe(object_id).await?;
             Self::locally_create_all::<T>(&self.db, importance >= Importance::Lock, res).await?;
             Ok(self.db.get_latest::<T>(false, object_id).await?) // Already locked just above
@@ -412,13 +425,16 @@ impl ClientDb {
                 .query_subscribe::<T>(QueryId::now(), only_updated_since, query)
                 .then({
                     let db = self.db.clone();
+                    let subscribed_objects = self.subscribed_objects.clone();
+                    let lock = importance >= Importance::Lock;
                     move |data| {
                         let db = db.clone();
-                        let lock = importance >= Importance::Lock;
+                        let subscribed_objects = subscribed_objects.clone();
                         async move {
                             let object_id = match data? {
                                 MaybeObject::NotYetSubscribed(data) => {
                                     let object_id = data.object_id;
+                                    subscribed_objects.lock().unwrap().insert(object_id, None);
                                     Self::locally_create_all::<T>(&db, lock, data).await?;
                                     object_id
                                 }
