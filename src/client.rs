@@ -15,5 +15,16 @@ pub use indexed_db::IndexedDb as LocalDb;
 #[cfg(not(target_arch = "wasm32"))]
 pub use sqlite_db::SqliteDb as LocalDb;
 
+use crate::Importance;
+
 #[derive(Clone, Copy, Debug)]
 pub struct ShouldLock(pub bool);
+
+impl From<Importance> for ShouldLock {
+    fn from(i: Importance) -> ShouldLock {
+        match i {
+            Importance::Latest | Importance::Subscribe => ShouldLock(false),
+            Importance::Lock => ShouldLock(true),
+        }
+    }
+}

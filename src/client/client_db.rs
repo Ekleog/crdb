@@ -436,12 +436,19 @@ impl ClientDb {
     pub fn query_remote<T: Object>(
         &self,
         importance: Importance,
-        only_updated_since: Option<Updatedness>,
+        query_id: QueryId,
         query: Arc<Query>,
     ) -> impl '_ + CrdbStream<Item = crate::Result<Arc<T>>> {
         if importance >= Importance::Subscribe {
             // TODO(client): first make sure to wait until the current upload queue is empty, so that
             // any newly-created object/event makes its way through to the server before querying
+            let only_updated_since = self
+                .subscribed_queries
+                .lock()
+                .unwrap()
+                .entry(query_id)
+                .or_insert_with(|| (query.clone(), *T::type_ulid(), None, importance.into()))
+                .2;
             self.api
                 .query_subscribe::<T>(QueryId::now(), only_updated_since, query)
                 .then({

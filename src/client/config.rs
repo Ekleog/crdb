@@ -106,19 +106,20 @@ macro_rules! generate_client {
                     self.db.query_local::<$object>(importance, query)
                 }
 
-                // TODO(low): does this user-exposed function really need `ignore_not_modified_on_server_since`?
-                // Can we not hide it by subscribing not only to individual objects, but to Query's so that crdb
-                // itself could handle that internally? Or maybe even just by fetching all objects that are
-                // readable and were created since the last connection upon login?
+                /// Note that it is assumed here that the same QueryId will always be associated with the same Query.
+                /// In particular, this means that when bumping an Object's snapshot_version and adjusting the queries accordingly,
+                /// you should change the QueryId, as well as unsubscribe/resubscribe on startup so that the database gets updated.
+                ///
+                /// `query_id` is ignored when `importance` is `Latest`.
                 pub fn [< query_ $name _remote >](
                     &self,
                     importance: crdb::Importance,
-                    only_updated_since: Option<crdb::Updatedness>, // TODO(client): should not expose this to the user
+                    query_id: crdb::QueryId,
                     query: crdb::Arc<crdb::Query>,
                 ) -> impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>> {
                     self.db.query_remote::<$object>(
                         importance,
-                        only_updated_since,
+                        query_id,
                         query,
                     )
                 }
