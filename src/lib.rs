@@ -81,8 +81,8 @@ pub mod crdb_internal {
         messages::{Update, UpdateData, Updates},
         object::{parse_snapshot, CanDoCallbacks},
         private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object,
-        ObjectId, Query, Result, SerializableError, SessionToken, Timestamp, TypeId, Updatedness,
-        User,
+        ObjectId, Query, QueryId, Result, SerializableError, SessionToken, Timestamp, TypeId,
+        Updatedness, User,
     };
     pub use anyhow;
     pub use futures::{self, channel::mpsc, future, stream, Stream};

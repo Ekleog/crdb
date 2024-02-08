@@ -263,6 +263,12 @@ impl ClientDb {
         Ok(())
     }
 
+    pub async fn unsubscribe_query(&self, query_id: QueryId) -> crate::Result<()> {
+        self.subscribed_queries.lock().unwrap().remove(&query_id);
+        self.api.unsubscribe_query(query_id);
+        Ok(())
+    }
+
     pub async fn create<T: Object>(
         &self,
         importance: Importance,

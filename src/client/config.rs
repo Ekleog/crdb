@@ -65,6 +65,10 @@ macro_rules! generate_client {
                 self.db.unsubscribe(set)
             }
 
+            pub fn unsubscribe_query(&self, query: crdb::QueryId) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
+                self.db.unsubscribe_query(query)
+            }
+
             pub fn listen_for_updates(&self) -> crdb::tokio::sync::broadcast::Receiver<crdb::ObjectId> {
                 self.db.listen_for_updates()
             }

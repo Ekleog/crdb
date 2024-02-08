@@ -99,6 +99,14 @@ impl ApiDb {
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
+    pub fn unsubscribe_query(&self, query_id: QueryId) {
+        self.request(Arc::new(RequestWithSidecar {
+            request: Arc::new(Request::UnsubscribeQuery(query_id)),
+            sidecar: Vec::new(),
+        }));
+        // Ignore the response from the server, we don't care enough to wait for it
+    }
+
     async fn error_catcher(
         future: impl Future<Output = crate::Result<()>>,
         result_sender: oneshot::Sender<crate::Result<()>>,
