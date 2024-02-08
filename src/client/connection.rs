@@ -1,3 +1,4 @@
+use super::ShouldLock;
 use crate::{
     ids::QueryId,
     messages::{
@@ -139,11 +140,11 @@ pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
     get_subscribed_queries: GetSubscribedQueries,
 }
 
-impl<GSO, GSQ, GSQI> Connection<GSO, GSQ>
+impl<GSO, GSQ> Connection<GSO, GSQ>
 where
     GSO: 'static + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
-    GSQ: 'static + FnMut() -> GSQI,
-    GSQI: 'static + Iterator<Item = (QueryId, Arc<Query>, TypeId, Option<Updatedness>)>,
+    GSQ: 'static
+        + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
 {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
@@ -264,7 +265,7 @@ where
                                     ).await;
                                     crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
-                                for (query_id, query, type_id, have_all_until) in subscribed_queries {
+                                for (query_id, (query, type_id, have_all_until, _)) in subscribed_queries {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
                                     self.handle_request(

@@ -60,7 +60,10 @@ impl ClientDb {
                 let subscribed_objects = subscribed_objects.clone();
                 move || subscribed_objects.lock().unwrap().clone()
             },
-            || std::iter::empty(), // TODO(api)
+            {
+                let subscribed_queries = subscribed_queries.clone();
+                move || subscribed_queries.lock().unwrap().clone()
+            },
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();

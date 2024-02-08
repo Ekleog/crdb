@@ -1,6 +1,9 @@
-use super::connection::{
-    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
-    ResponseSender,
+use super::{
+    connection::{
+        Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+        ResponseSender,
+    },
+    ShouldLock,
 };
 use crate::{
     db_trait::Db,
@@ -26,14 +29,15 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub fn new<GSO, GSQ, GSQI>(
+    pub fn new<GSO, GSQ>(
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
     ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
     where
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
-        GSQ: 'static + Send + FnMut() -> GSQI,
-        GSQI: 'static + Send + Iterator<Item = (QueryId, Arc<Query>, TypeId, Option<Updatedness>)>,
+        GSQ: 'static
+            + Send
+            + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
