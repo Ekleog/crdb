@@ -1,4 +1,4 @@
-use super::{connection::ConnectionEvent, ApiDb, LocalDb};
+use super::{connection::ConnectionEvent, ApiDb, LocalDb, ShouldLock};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
@@ -7,7 +7,8 @@ use crate::{
     ids::QueryId,
     messages::{MaybeObject, ObjectData, UpdateData, Updates},
     object::parse_snapshot_ref,
-    BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, Updatedness,
+    BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, TypeId,
+    Updatedness,
 };
 use futures::{channel::mpsc, StreamExt};
 use std::{
@@ -23,6 +24,8 @@ pub struct ClientDb {
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
     subscribed_objects: Arc<Mutex<HashMap<ObjectId, Option<Updatedness>>>>,
+    subscribed_queries:
+        Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>, // TODO(api): also send all writes to LocalDb
     error_sender: mpsc::UnboundedSender<crate::Error>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
@@ -46,6 +49,12 @@ impl ClientDb {
                 .await
                 .wrap_context("listing subscribed objects")?,
         ));
+        let subscribed_queries = Arc::new(Mutex::new(
+            db_bypass
+                .get_subscribed_queries()
+                .await
+                .wrap_context("listing subscribed queries")?,
+        ));
         let (api, updates_receiver) = ApiDb::new(
             {
                 let subscribed_objects = subscribed_objects.clone();
@@ -62,6 +71,7 @@ impl ClientDb {
             db,
             db_bypass,
             subscribed_objects,
+            subscribed_queries,
             error_sender,
             updates_broadcastee,
             vacuum_guard: Arc::new(RwLock::new(())),
