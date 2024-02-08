@@ -113,6 +113,7 @@ impl ClientDb {
                             } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including new objects
                                 // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
+                                // TODO(api): for MissingBinaries submission, have a proper upload reorderer that requests each binary only once
                                 let res = C::recreate(
                                     &*local_db,
                                     type_id,
@@ -161,6 +162,11 @@ impl ClientDb {
                                             .unwrap()
                                             .insert(object_id, Some(updates.now_have_all_until));
                                     }
+                                    Err(crate::Error::ObjectDoesNotExist(o)) if o == object_id => {
+                                        // DO NOT re-fetch object when receiving an event not in cache for it.
+                                        // Without this, users would risk unsubscribing from an object, then receiving
+                                        // an event on this object (as a race condition), and then staying subscribed.
+                                    }
                                     Err(err) => {
                                         tracing::error!(
                                             ?err,
@@ -169,10 +175,6 @@ impl ClientDb {
                                         );
                                     }
                                 }
-                                // TODO(client): avoid tracing::error! when below comment holds
-                                // DO NOT re-fetch object when receiving an event not in cache for it.
-                                // Without this, users would risk unsubscribing from an object, then receiving
-                                // an event on this object (as a race condition), and then staying subscribed.
                             }
                             UpdateData::LostReadRights => {
                                 subscribed_objects.lock().unwrap().remove(&object_id);
