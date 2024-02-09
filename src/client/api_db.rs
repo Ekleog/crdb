@@ -33,7 +33,6 @@ impl ApiDb {
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
         binary_getter: Arc<D>,
-        error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
     where
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
@@ -62,7 +61,6 @@ impl ApiDb {
             upload_resender_receiver,
             requests,
             binary_getter,
-            error_sender,
         ));
         (
             ApiDb {
@@ -115,7 +113,6 @@ impl ApiDb {
         )>,
         connection: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
         binary_getter: Arc<D>,
-        _error_sender: mpsc::UnboundedSender<crate::Error>,
     ) {
         // The below loop is split into two sub parts: all that is just sent once, and all that requires
         // re-sending if there were missing binaries

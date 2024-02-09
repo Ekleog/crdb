@@ -37,9 +37,8 @@ impl ClientDb {
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
-    ) -> anyhow::Result<(ClientDb, mpsc::UnboundedReceiver<crate::Error>)> {
+    ) -> anyhow::Result<ClientDb> {
         C::check_ulids();
-        let (error_sender, error_receiver) = mpsc::unbounded();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
@@ -76,7 +75,6 @@ impl ClientDb {
                 move || subscribed_queries.lock().unwrap().clone()
             },
             db.clone(),
-            error_sender,
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
@@ -94,7 +92,7 @@ impl ClientDb {
         };
         this.setup_watchers::<C>(updates_receiver, updates_broadcaster);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
-        Ok((this, error_receiver))
+        Ok(this)
     }
 
     pub fn listen_for_updates(&self) -> broadcast::Receiver<ObjectId> {
