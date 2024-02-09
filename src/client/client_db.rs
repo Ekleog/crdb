@@ -198,7 +198,9 @@ impl ClientDb {
                         match res {
                             Ok(None) => {
                                 // Lost access to the object
-                                if let Some((_, queries)) = subscribed_objects.lock().unwrap().remove(&object_id) {
+                                if let Some((_, queries)) =
+                                    subscribed_objects.lock().unwrap().remove(&object_id)
+                                {
                                     let mut subscribed_queries = subscribed_queries.lock().unwrap();
                                     for q in queries {
                                         if let Some(query) = subscribed_queries.get_mut(&q) {
@@ -209,12 +211,21 @@ impl ClientDb {
                             }
                             Ok(Some(None)) => {
                                 // No change in the object's latest_snapshot
-                                let mut subscribed_objects = subscribed_objects.lock().unwrap();
-                                let Some(entry) = subscribed_objects.get_mut(&object_id) else {
-                                    tracing::error!("no change in object for which we received an object, but we were not subscribed to it yet?");
-                                    continue;
+                                let queries = {
+                                    let mut subscribed_objects = subscribed_objects.lock().unwrap();
+                                    let Some(entry) = subscribed_objects.get_mut(&object_id) else {
+                                        tracing::error!("no change in object for which we received an object, but we were not subscribed to it yet?");
+                                        continue;
+                                    };
+                                    entry.0 = Some(updates.now_have_all_until);
+                                    entry.1.clone()
                                 };
-                                entry.0 = Some(updates.now_have_all_until);
+                                let mut subscribed_queries = subscribed_queries.lock().unwrap();
+                                for q in queries {
+                                    if let Some(query) = subscribed_queries.get_mut(&q) {
+                                        query.2 = Some(updates.now_have_all_until);
+                                    }
+                                }
                             }
                             Ok(Some(Some(res))) => {
                                 // Something changed in the object's latest_snapshot
