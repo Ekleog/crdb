@@ -15,7 +15,7 @@ use crate::{
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, pin_mut, stream, StreamExt};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     future::Future,
     iter,
     sync::{Arc, RwLock},
@@ -114,7 +114,7 @@ impl ApiDb {
             mpsc::UnboundedSender<ResponsePartWithSidecar>,
         )>,
         connection: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
-        _binary_getter: Arc<D>,
+        binary_getter: Arc<D>,
         _error_sender: mpsc::UnboundedSender<crate::Error>,
     ) {
         // The below loop is split into three sub parts: session-related requests, upload submission, and query submission.
@@ -132,23 +132,116 @@ impl ApiDb {
                 .unwrap_or(false)
             {
                 let (request, sender) = requests.next().await.unwrap();
-                if connection
-                    .unbounded_send((
-                        sender,
-                        Arc::new(RequestWithSidecar {
-                            request,
-                            sidecar: Vec::new(),
-                        }),
-                    ))
-                    .is_err()
-                {
-                    // Connection was closed by dropping the Command channel
-                    return;
-                }
+                let _ = connection.unbounded_send((
+                    sender,
+                    Arc::new(RequestWithSidecar {
+                        request,
+                        sidecar: Vec::new(),
+                    }),
+                ));
             }
 
-            // Then, handle uploads. We start them
-            // TODO(api)
+            // Then, handle uploads. We start them all, and resend them with the missing binaries until we're successfully done.
+            let mut upload_reqs = VecDeque::new();
+            while requests
+                .as_mut()
+                .peek()
+                .await
+                .map(|(r, _)| r.kind() == RequestKind::Upload)
+                .unwrap_or(false)
+            {
+                let (request, final_sender) = requests.next().await.unwrap();
+                let (sender, receiver) = mpsc::unbounded();
+                upload_reqs.push_back((
+                    Arc::new(RequestWithSidecar {
+                        request,
+                        sidecar: Vec::new(),
+                    }),
+                    Some(final_sender),
+                    sender,
+                    receiver,
+                ));
+            }
+            while !upload_reqs.is_empty() {
+                // First, submit all requests
+                for (request, _, sender, _) in upload_reqs.iter() {
+                    let _ = connection.unbounded_send((sender.clone(), request.clone()));
+                }
+
+                // Then, wait for them all to finish, listing the missing binaries
+                // The successful or non-retryable requests get removed from upload_reqs here, by setting their final_sender to None
+                let mut missing_binaries = HashSet::new();
+                for (_, final_sender, _, receiver) in upload_reqs.iter_mut() {
+                    match receiver.next().await {
+                        None => return, // Connection was dropped
+                        Some(ResponsePartWithSidecar {
+                            sidecar: Some(_), ..
+                        }) => {
+                            tracing::error!("got response to upload that had a sidecar");
+                            continue;
+                        }
+                        Some(ResponsePartWithSidecar { response, .. }) => match response {
+                            ResponsePart::Success => {
+                                let _ = final_sender.take().unwrap().unbounded_send(
+                                    ResponsePartWithSidecar {
+                                        response,
+                                        sidecar: None,
+                                    },
+                                );
+                            }
+                            ResponsePart::Error(crate::SerializableError::MissingBinaries(
+                                bins,
+                            )) => {
+                                missing_binaries.extend(bins);
+                            }
+                            ResponsePart::Error(crate::SerializableError::ObjectDoesNotExist(
+                                _,
+                            )) if !missing_binaries.is_empty() => {
+                                // Do nothing, and retry on the next round: this can happen if eg. object creation failed due to a missing binary
+                                // If there was no missing binary yet, it means that there was no previous upload that we could retry.
+                                // As such, in that situation, fall through to the next Error handling, and send the error back to the user.
+                            }
+                            ResponsePart::Error(_) => {
+                                let _ = final_sender.take().unwrap().unbounded_send(
+                                    ResponsePartWithSidecar {
+                                        response,
+                                        sidecar: None,
+                                    },
+                                );
+                            }
+                            _ => {
+                                tracing::error!(
+                                    ?response,
+                                    "Unexpected response to upload submission"
+                                );
+                                continue;
+                            }
+                        },
+                    }
+                }
+                upload_reqs.retain(|(_, final_sender, _, _)| final_sender.is_some());
+
+                // Were there missing binaries? If yes, prepend them to the list of requests to retry, and upload them this way.
+                if !missing_binaries.is_empty() {
+                    let (sender, receiver) = mpsc::unbounded();
+                    let (final_sender, _) = mpsc::unbounded();
+                    let binary_getter = binary_getter.clone();
+                    let binaries = stream::iter(missing_binaries.into_iter())
+                        .map(move |b| {
+                            let binary_getter = binary_getter.clone();
+                            async move { binary_getter.get_binary(b).await }
+                        })
+                        .buffer_unordered(16) // TODO(low): is 16 a good number?
+                        .filter_map(|res| async move { res.ok().and_then(|o| o) })
+                        .collect::<Vec<Arc<[u8]>>>()
+                        .await;
+                    let request = Arc::new(RequestWithSidecar {
+                        request: Arc::new(Request::UploadBinaries(binaries.len())),
+                        sidecar: binaries,
+                    });
+                    upload_reqs.push_front((request, Some(final_sender), sender, receiver));
+                }
+            }
 
             // Finally, handle queries
             // TODO(api)
