@@ -13,10 +13,11 @@ use crate::{
 use futures::{channel::mpsc, StreamExt};
 use std::{
     collections::{hash_map, HashMap, HashSet},
+    future::Future,
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::{broadcast, oneshot, RwLock};
+use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
 pub struct ClientDb {
@@ -26,7 +27,6 @@ pub struct ClientDb {
     subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>,
-    error_sender: mpsc::UnboundedSender<crate::Error>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
@@ -75,6 +75,8 @@ impl ClientDb {
                 let subscribed_queries = subscribed_queries.clone();
                 move || subscribed_queries.lock().unwrap().clone()
             },
+            db.clone(),
+            error_sender,
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
@@ -86,7 +88,6 @@ impl ClientDb {
             db_bypass,
             subscribed_objects,
             subscribed_queries,
-            error_sender,
             updates_broadcastee,
             vacuum_guard: Arc::new(RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
@@ -374,7 +375,7 @@ impl ClientDb {
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
-    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         // TODO(client): validate permissions to create the object, to fail early
         let val = self
             .db
@@ -406,8 +407,6 @@ impl ClientDb {
             created_at,
             object,
             importance >= Importance::Subscribe,
-            self.db.clone(),
-            self.error_sender.clone(),
         )
     }
 
@@ -417,7 +416,7 @@ impl ClientDb {
         object: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
-    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         // TODO(client): validate permissions to submit the event, to fail early
         self.db
             .submit::<T>(
@@ -431,14 +430,8 @@ impl ClientDb {
         // The object must already be subscribed, in order for event submission to be successful.
         // So, there is no need to manually subscribe again.
         // TODO(low): consider introducing a ManuallyUpdated importance level, that would make this statement wrong?
-        self.api.submit::<T, _>(
-            object,
-            event_id,
-            event,
-            importance >= Importance::Subscribe,
-            self.db.clone(),
-            self.error_sender.clone(),
-        )
+        self.api
+            .submit::<T>(object, event_id, event, importance >= Importance::Subscribe)
     }
 
     /// Returns the latest snapshot for the object described by `data`

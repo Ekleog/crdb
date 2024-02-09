@@ -78,7 +78,7 @@ macro_rules! generate_client {
                     &self,
                     importance: crdb::Importance,
                     object: crdb::Arc<$object>,
-                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, crdb::oneshot::Receiver<crdb::Result<()>>)>> {
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>>)>> {
                     async move {
                         let id = self.ulid.lock().unwrap().generate();
                         let id = id.expect("Failed to generate ulid for object creation");
@@ -92,7 +92,7 @@ macro_rules! generate_client {
                     importance: crdb::Importance,
                     object: crdb::DbPtr<$object>,
                     event: crdb::Arc<<$object as crdb::Object>::Event>,
-                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::oneshot::Receiver<crdb::Result<()>>>> {
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>>>> {
                     let id = self.ulid.lock().unwrap().generate();
                     let id = id.expect("Failed to generate ulid for event submission");
                     self.db.submit::<$object>(importance, object.to_object_id(), crdb::EventId(id), event)

@@ -20,24 +20,27 @@ use std::{
     iter,
     sync::{Arc, RwLock},
 };
-use tokio::sync::oneshot;
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
-    requests: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
+    upload_resender:
+        mpsc::UnboundedSender<(Arc<Request>, mpsc::UnboundedSender<ResponsePartWithSidecar>)>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
 }
 
 impl ApiDb {
-    pub fn new<GSO, GSQ>(
+    pub fn new<GSO, GSQ, D>(
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
+        binary_getter: Arc<D>,
+        error_sender: mpsc::UnboundedSender<crate::Error>,
     ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
     where
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
             + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
+        D: 'static + Db,
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
@@ -54,10 +57,17 @@ impl ApiDb {
             )
             .run(),
         );
+        let (upload_resender, upload_resender_receiver) = mpsc::unbounded();
+        crate::spawn(Self::upload_resender(
+            upload_resender_receiver,
+            requests,
+            binary_getter,
+            error_sender,
+        ));
         (
             ApiDb {
                 connection,
-                requests,
+                upload_resender,
                 connection_event_cb,
             },
             update_receiver,
@@ -80,48 +90,37 @@ impl ApiDb {
             .expect("connection cannot go away before sender does")
     }
 
-    fn request(
-        &self,
-        request: Arc<RequestWithSidecar>,
-    ) -> mpsc::UnboundedReceiver<ResponsePartWithSidecar> {
+    fn request(&self, request: Arc<Request>) -> mpsc::UnboundedReceiver<ResponsePartWithSidecar> {
         let (sender, response) = mpsc::unbounded();
-        self.requests
-            .unbounded_send((sender, request))
+        self.upload_resender
+            .unbounded_send((request, sender))
             .expect("connection cannot go away before sender does");
         response
     }
 
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {
-        self.request(Arc::new(RequestWithSidecar {
-            request: Arc::new(Request::Unsubscribe(object_ids)),
-            sidecar: Vec::new(),
-        }));
+        self.request(Arc::new(Request::Unsubscribe(object_ids)));
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
     pub fn unsubscribe_query(&self, query_id: QueryId) {
-        self.request(Arc::new(RequestWithSidecar {
-            request: Arc::new(Request::UnsubscribeQuery(query_id)),
-            sidecar: Vec::new(),
-        }));
+        self.request(Arc::new(Request::UnsubscribeQuery(query_id)));
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
-    async fn error_catcher(
-        future: impl Future<Output = crate::Result<()>>,
-        result_sender: oneshot::Sender<crate::Result<()>>,
-        error_sender: mpsc::UnboundedSender<crate::Error>,
+    async fn upload_resender<D: Db>(
+        _uploads: mpsc::UnboundedReceiver<(
+            Arc<Request>,
+            mpsc::UnboundedSender<ResponsePartWithSidecar>,
+        )>,
+        _requests: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
+        _binary_getter: Arc<D>,
+        _error_sender: mpsc::UnboundedSender<crate::Error>,
     ) {
-        let res = future.await;
-        if let Err(res) = result_sender.send(res) {
-            // Failed sending to the result sender, send to error sender if required
-            if let Err(err) = res {
-                // If no one is listening on the error receiver, then too bad the user will never know of the error
-                let _ = error_sender.unbounded_send(err);
-            }
-        }
+        unimplemented!() // TODO(api)
     }
 
+    #[allow(dead_code)] // TODO(api): remove once the above is implemented
     async fn auto_resender_with_binaries<D: Db>(
         request: Arc<Request>,
         requests: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
@@ -211,15 +210,39 @@ impl ApiDb {
         }
     }
 
-    pub fn create<T: Object, D: Db>(
+    async fn expect_one_result(
+        mut receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
+    ) -> crate::Result<()> {
+        match receiver.next().await {
+            None => Err(crate::Error::Other(anyhow!(
+                "Connection did not return any answer to query"
+            ))),
+            Some(ResponsePartWithSidecar {
+                sidecar: Some(_), ..
+            }) => Err(crate::Error::Other(anyhow!(
+                "Connection returned sidecar while we expected a simple result"
+            ))),
+            Some(ResponsePartWithSidecar { response, .. }) => match response {
+                ResponsePart::Success => Ok(()),
+                ResponsePart::Error(err) => Err(err.into()),
+                ResponsePart::Sessions(_)
+                | ResponsePart::CurrentTime(_)
+                | ResponsePart::Objects { .. }
+                | ResponsePart::Snapshots { .. }
+                | ResponsePart::Binaries(_) => Err(crate::Error::Other(anyhow!(
+                    "Connection returned unexpected answer while expecting a simple result"
+                ))),
+            },
+        }
+    }
+
+    pub fn create<T: Object>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         subscribe: bool,
-        binary_getter: Arc<D>,
-        error_sender: mpsc::UnboundedSender<crate::Error>,
-    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         let request = Arc::new(Request::Upload(Upload::Object {
             object_id,
             type_id: *T::type_ulid(),
@@ -229,24 +252,20 @@ impl ApiDb {
                 .wrap_context("serializing object for sending to api")?,
             subscribe,
         }));
-        let (result_sender, result_receiver) = oneshot::channel();
-        crate::spawn(Self::error_catcher(
-            Self::auto_resender_with_binaries(request, self.requests.clone(), binary_getter),
-            result_sender,
-            error_sender,
-        ));
-        Ok(result_receiver)
+        let (result_sender, result_receiver) = mpsc::unbounded();
+        self.upload_resender
+            .unbounded_send((request, result_sender))
+            .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
+        Ok(Self::expect_one_result(result_receiver))
     }
 
-    pub fn submit<T: Object, D: Db>(
+    pub fn submit<T: Object>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         subscribe: bool,
-        binary_getter: Arc<D>,
-        error_sender: mpsc::UnboundedSender<crate::Error>,
-    ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         let request = Arc::new(Request::Upload(Upload::Event {
             object_id,
             type_id: *T::type_ulid(),
@@ -256,23 +275,18 @@ impl ApiDb {
             ),
             subscribe,
         }));
-        let (result_sender, result_receiver) = oneshot::channel();
-        crate::spawn(Self::error_catcher(
-            Self::auto_resender_with_binaries(request, self.requests.clone(), binary_getter),
-            result_sender,
-            error_sender,
-        ));
-        Ok(result_receiver)
+        let (result_sender, result_receiver) = mpsc::unbounded();
+        self.upload_resender
+            .unbounded_send((request, result_sender))
+            .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
+        Ok(Self::expect_one_result(result_receiver))
     }
 
     pub async fn get_subscribe(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
         let mut object_ids = HashMap::new();
         object_ids.insert(object_id, None); // We do not know about this object yet, so None
         let request = Arc::new(Request::GetSubscribe(object_ids));
-        let mut response = self.request(Arc::new(RequestWithSidecar {
-            request,
-            sidecar: Vec::new(),
-        }));
+        let mut response = self.request(request);
         match response.next().await {
             None => Err(crate::Error::Other(anyhow!(
                 "Connection-handling thread went out before ApiDb"
@@ -301,14 +315,11 @@ impl ApiDb {
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
     ) -> impl CrdbStream<Item = crate::Result<(MaybeObject, Option<Updatedness>)>> {
-        let request = Arc::new(RequestWithSidecar {
-            request: Arc::new(Request::QuerySubscribe {
-                query_id,
-                type_id: *T::type_ulid(),
-                query,
-                only_updated_since,
-            }),
-            sidecar: Vec::new(),
+        let request = Arc::new(Request::QuerySubscribe {
+            query_id,
+            type_id: *T::type_ulid(),
+            query,
+            only_updated_since,
         });
         self.request(request).flat_map(move |response| {
             match response.response {
@@ -341,10 +352,7 @@ impl ApiDb {
         let mut binary_ids = HashSet::new();
         binary_ids.insert(binary_id);
         let request = Arc::new(Request::GetBinaries(binary_ids));
-        let mut response = self.request(Arc::new(RequestWithSidecar {
-            request,
-            sidecar: Vec::new(),
-        }));
+        let mut response = self.request(request);
         match response.next().await {
             None => Err(crate::Error::Other(anyhow!(
                 "Connection-handling thread went out before ApiDb"
