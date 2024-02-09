@@ -116,7 +116,7 @@ macro_rules! generate_client {
                     importance: crdb::Importance,
                     query_id: crdb::QueryId,
                     query: crdb::Arc<crdb::Query>,
-                ) -> impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>> {
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     self.db.query_remote::<$object>(
                         importance,
                         query_id,

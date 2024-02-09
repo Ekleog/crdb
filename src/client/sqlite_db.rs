@@ -3,7 +3,10 @@ use crate::{
     EventId, Object, ObjectId, Query, TypeId, Updatedness,
 };
 use anyhow::Context;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use super::{ClientStorageInfo, ShouldLock};
 
@@ -77,6 +80,27 @@ impl SqliteDb {
         &self,
     ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>
     {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn subscribe_query(
+        &self,
+        _query_id: QueryId,
+        _query: Arc<Query>,
+        _lock: ShouldLock,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn unsubscribe_query(&self, _query_id: QueryId) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite)
+    }
+
+    pub async fn update_queries(
+        &self,
+        _queries: &HashSet<QueryId>,
+        _now_have_all_until: Updatedness,
+    ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
 }

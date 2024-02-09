@@ -25,7 +25,7 @@ pub struct ClientDb {
     db_bypass: Arc<LocalDb>,
     subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
     subscribed_queries:
-        Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>, // TODO(api): also send all writes to LocalDb
+        Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>,
     error_sender: mpsc::UnboundedSender<crate::Error>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
@@ -198,9 +198,18 @@ impl ClientDb {
                         match res {
                             Ok(None) => {
                                 // Lost access to the object
-                                if let Some((_, queries)) =
-                                    subscribed_objects.lock().unwrap().remove(&object_id)
-                                {
+                                let prev = subscribed_objects.lock().unwrap().remove(&object_id);
+                                if let Some((_, queries)) = prev {
+                                    if let Err(err) = local_db
+                                        .update_queries(&queries, updates.now_have_all_until)
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            ?err,
+                                            ?queries,
+                                            "failed updating now_have_all_until for queries"
+                                        );
+                                    }
                                     let mut subscribed_queries = subscribed_queries.lock().unwrap();
                                     for q in queries {
                                         if let Some(query) = subscribed_queries.get_mut(&q) {
@@ -220,6 +229,16 @@ impl ClientDb {
                                     entry.0 = Some(updates.now_have_all_until);
                                     entry.1.clone()
                                 };
+                                if let Err(err) = local_db
+                                    .update_queries(&queries, updates.now_have_all_until)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        ?err,
+                                        ?queries,
+                                        "failed updating now_have_all_until for queries"
+                                    );
+                                }
                                 let mut subscribed_queries = subscribed_queries.lock().unwrap();
                                 for q in queries {
                                     if let Some(query) = subscribed_queries.get_mut(&q) {
@@ -241,6 +260,16 @@ impl ClientDb {
                                     )
                                 {
                                     queries.extend(queries_before);
+                                }
+                                if let Err(err) = local_db
+                                    .update_queries(&queries, updates.now_have_all_until)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        ?err,
+                                        ?queries,
+                                        "failed updating now_have_all_until for queries"
+                                    );
                                 }
                                 let mut subscribed_queries = subscribed_queries.lock().unwrap();
                                 for q in queries {
@@ -336,7 +365,7 @@ impl ClientDb {
     pub async fn unsubscribe_query(&self, query_id: QueryId) -> crate::Result<()> {
         self.subscribed_queries.lock().unwrap().remove(&query_id);
         self.api.unsubscribe_query(query_id);
-        Ok(())
+        self.db_bypass.unsubscribe_query(query_id).await
     }
 
     pub async fn create<T: Object>(
@@ -526,12 +555,12 @@ impl ClientDb {
         })
     }
 
-    pub fn query_remote<T: Object>(
+    pub async fn query_remote<T: Object>(
         &self,
         importance: Importance,
         query_id: QueryId,
         query: Arc<Query>,
-    ) -> impl '_ + CrdbStream<Item = crate::Result<Arc<T>>> {
+    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
         if importance >= Importance::Subscribe {
             // TODO(client): first make sure to wait until the current upload queue is empty, so that
             // any newly-created object/event makes its way through to the server before querying
@@ -555,7 +584,14 @@ impl ClientDb {
                     }
                 }
             };
-            self.api
+            if only_updated_since.is_none() {
+                // Was not subscribed yet
+                self.db_bypass
+                    .subscribe_query(query_id, query.clone(), importance.into())
+                    .await?;
+            }
+            Ok(self
+                .api
                 .query_subscribe::<T>(query_id, only_updated_since, query)
                 .then({
                     let db = self.db.clone();
@@ -586,6 +622,9 @@ impl ClientDb {
                                         type_id,
                                         &res_json,
                                     );
+                                    if let Some(now_have_all_until) = updatedness {
+                                        db.update_queries(&queries, now_have_all_until).await?;
+                                    }
                                     subscribed_objects
                                         .lock()
                                         .unwrap()
@@ -603,7 +642,7 @@ impl ClientDb {
                             }
                         }
                     }
-                })
+                }))
         } else {
             unimplemented!() // TODO(client): FetchLatest
         }

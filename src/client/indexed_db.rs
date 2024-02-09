@@ -1070,6 +1070,27 @@ impl IndexedDb {
             .await
             .wrap_context("listing subscribed objects")
     }
+
+    pub async fn subscribe_query(
+        &self,
+        _query_id: QueryId,
+        _query: Arc<Query>,
+        _lock: ShouldLock,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(api)
+    }
+
+    pub async fn unsubscribe_query(&self, _query_id: QueryId) -> crate::Result<()> {
+        unimplemented!() // TODO(api)
+    }
+
+    pub async fn update_queries(
+        &self,
+        _queries: &HashSet<QueryId>,
+        _now_have_all_until: Updatedness,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(api)
+    }
 }
 
 impl Db for IndexedDb {
