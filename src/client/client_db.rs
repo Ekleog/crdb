@@ -198,8 +198,14 @@ impl ClientDb {
                         match res {
                             Ok(None) => {
                                 // Lost access to the object
-                                subscribed_objects.lock().unwrap().remove(&object_id);
-                                // TODO(api): track subscribed_queries' have_all_until
+                                if let Some((_, queries)) = subscribed_objects.lock().unwrap().remove(&object_id) {
+                                    let mut subscribed_queries = subscribed_queries.lock().unwrap();
+                                    for q in queries {
+                                        if let Some(query) = subscribed_queries.get_mut(&q) {
+                                            query.2 = Some(updates.now_have_all_until);
+                                        }
+                                    }
+                                }
                             }
                             Ok(Some(None)) => {
                                 // No change in the object's latest_snapshot
