@@ -229,16 +229,25 @@ impl ClientDb {
                             }
                             Ok(Some(Some(res))) => {
                                 // Something changed in the object's latest_snapshot
-                                // TODO(api): track subscribed_queries' have_all_until
-                                let queries = Self::queries_for(
+                                let mut queries = Self::queries_for(
                                     &subscribed_queries.lock().unwrap(),
                                     type_id,
                                     &res,
                                 );
-                                subscribed_objects
-                                    .lock()
-                                    .unwrap()
-                                    .insert(object_id, (Some(updates.now_have_all_until), queries));
+                                if let Some((_, queries_before)) =
+                                    subscribed_objects.lock().unwrap().insert(
+                                        object_id,
+                                        (Some(updates.now_have_all_until), queries.clone()),
+                                    )
+                                {
+                                    queries.extend(queries_before);
+                                }
+                                let mut subscribed_queries = subscribed_queries.lock().unwrap();
+                                for q in queries {
+                                    if let Some(query) = subscribed_queries.get_mut(&q) {
+                                        query.2 = Some(updates.now_have_all_until);
+                                    }
+                                }
                             }
                             Err(err) => {
                                 tracing::error!(
