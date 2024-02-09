@@ -192,7 +192,7 @@ impl ClientDb {
                                         "failed removing object for which we lost read rights"
                                     );
                                 }
-                                Ok(None) // TODO(api): should have some way to identify which queries this object was in?
+                                Ok(None)
                             }
                         };
                         match res {
