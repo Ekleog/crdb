@@ -146,7 +146,6 @@ impl ClientDb {
                             } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including new objects
                                 // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
-                                // TODO(api): for MissingBinaries submission, have a proper upload reorderer that requests each binary only once
                                 C::recreate(
                                     &*local_db,
                                     type_id,

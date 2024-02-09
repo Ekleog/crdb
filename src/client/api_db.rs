@@ -9,11 +9,11 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{MaybeObject, ObjectData, Request, ResponsePart, Updates, Upload},
+    messages::{MaybeObject, ObjectData, Request, RequestKind, ResponsePart, Updates, Upload},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, TypeId, Updatedness,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, future::Either, stream, StreamExt};
+use futures::{channel::mpsc, future::Either, pin_mut, stream, StreamExt};
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
@@ -109,15 +109,46 @@ impl ApiDb {
     }
 
     async fn upload_resender<D: Db>(
-        _uploads: mpsc::UnboundedReceiver<(
+        requests: mpsc::UnboundedReceiver<(
             Arc<Request>,
             mpsc::UnboundedSender<ResponsePartWithSidecar>,
         )>,
-        _requests: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
+        connection: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
         _binary_getter: Arc<D>,
         _error_sender: mpsc::UnboundedSender<crate::Error>,
     ) {
-        unimplemented!() // TODO(api)
+        // The below loop is split into three sub parts: session-related requests, upload submission, and query submission.
+        // This makes sure that all uploads have resolved before a query is submitted, while still allowing
+        // uploads and queries to resolve in parallel.
+        let requests = requests.peekable();
+        pin_mut!(requests);
+        while requests.as_mut().peek().await.is_some() {
+            // First, handle all session requests
+            while requests
+                .as_mut()
+                .peek()
+                .await
+                .map(|(r, _)| r.kind() == RequestKind::Session)
+                .unwrap_or(false)
+            {
+                let (request, sender) = requests.next().await.unwrap();
+                connection
+                    .unbounded_send((
+                        sender,
+                        Arc::new(RequestWithSidecar {
+                            request,
+                            sidecar: Vec::new(),
+                        }),
+                    ))
+                    .expect("Connection went away but the sender is still open");
+            }
+
+            // Then, handle uploads
+            // TODO(api)
+
+            // Finally, handle queries
+            // TODO(api)
+        }
     }
 
     #[allow(dead_code)] // TODO(api): remove once the above is implemented

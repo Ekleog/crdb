@@ -49,6 +49,36 @@ pub enum Request {
     UploadBinaries(usize), // There are N binaries is in the N websocket frames of type `Binary` just after this one
 }
 
+#[cfg(feature = "client")]
+#[derive(Debug, Eq, PartialEq)]
+pub enum RequestKind {
+    Session,
+    Query,
+    Upload,
+}
+
+#[cfg(feature = "client")]
+impl Request {
+    pub fn kind(&self) -> RequestKind {
+        match self {
+            Request::SetToken(_)
+            | Request::RenameSession(_)
+            | Request::CurrentSession
+            | Request::ListSessions
+            | Request::DisconnectSession(_)
+            | Request::GetTime
+            | Request::Unsubscribe(_)
+            | Request::UnsubscribeQuery(_) => RequestKind::Session,
+            Request::GetSubscribe(_)
+            | Request::QuerySubscribe { .. }
+            | Request::GetLatest(_)
+            | Request::QueryLatest { .. }
+            | Request::GetBinaries(_) => RequestKind::Query,
+            Request::Upload(_) | Request::UploadBinaries(_) => RequestKind::Upload,
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Upload {
     Object {
