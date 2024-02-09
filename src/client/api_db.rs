@@ -244,7 +244,23 @@ impl ApiDb {
             }
 
             // Finally, handle queries
-            // TODO(api)
+            while requests
+                .as_mut()
+                .peek()
+                .await
+                .map(|(r, _)| r.kind() == RequestKind::Query)
+                .unwrap_or(false)
+            {
+                let (request, sender) = requests.next().await.unwrap();
+                let _ = connection.unbounded_send((
+                    sender,
+                    Arc::new(RequestWithSidecar {
+                        request,
+                        sidecar: Vec::new(),
+                    }),
+                ));
+                // Just send the query and wait for the result, this will not need any resending.
+            }
         }
     }
 
