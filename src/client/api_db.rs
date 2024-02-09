@@ -123,7 +123,7 @@ impl ApiDb {
         let requests = requests.peekable();
         pin_mut!(requests);
         while requests.as_mut().peek().await.is_some() {
-            // First, handle all session requests
+            // First, handle all session requests. These ones, we just send and don't care about the result.
             while requests
                 .as_mut()
                 .peek()
@@ -132,7 +132,7 @@ impl ApiDb {
                 .unwrap_or(false)
             {
                 let (request, sender) = requests.next().await.unwrap();
-                connection
+                if connection
                     .unbounded_send((
                         sender,
                         Arc::new(RequestWithSidecar {
@@ -140,10 +140,14 @@ impl ApiDb {
                             sidecar: Vec::new(),
                         }),
                     ))
-                    .expect("Connection went away but the sender is still open");
+                    .is_err()
+                {
+                    // Connection was closed by dropping the Command channel
+                    return;
+                }
             }
 
-            // Then, handle uploads
+            // Then, handle uploads. We start them
             // TODO(api)
 
             // Finally, handle queries
