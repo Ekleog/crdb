@@ -9,7 +9,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{MaybeObject, ObjectData, Request, RequestKind, ResponsePart, Updates, Upload},
+    messages::{MaybeObject, ObjectData, Request, ResponsePart, Updates, Upload},
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, TypeId, Updatedness,
 };
 use anyhow::anyhow;
@@ -117,18 +117,19 @@ impl ApiDb {
         binary_getter: Arc<D>,
         _error_sender: mpsc::UnboundedSender<crate::Error>,
     ) {
-        // The below loop is split into three sub parts: session-related requests, upload submission, and query submission.
+        // The below loop is split into two sub parts: all that is just sent once, and all that requires
+        // re-sending if there were missing binaries
         // This makes sure that all uploads have resolved before a query is submitted, while still allowing
         // uploads and queries to resolve in parallel.
         let requests = requests.peekable();
         pin_mut!(requests);
         while requests.as_mut().peek().await.is_some() {
-            // First, handle all session requests. These ones, we just send and don't care about the result.
+            // First, handle all requests that require no re-sending. Just send them once and forget about them.
             while requests
                 .as_mut()
                 .peek()
                 .await
-                .map(|(r, _)| r.kind() == RequestKind::Session)
+                .map(|(r, _)| !r.is_upload())
                 .unwrap_or(false)
             {
                 let (request, sender) = requests.next().await.unwrap();
@@ -147,7 +148,7 @@ impl ApiDb {
                 .as_mut()
                 .peek()
                 .await
-                .map(|(r, _)| r.kind() == RequestKind::Upload)
+                .map(|(r, _)| r.is_upload())
                 .unwrap_or(false)
             {
                 let (request, final_sender) = requests.next().await.unwrap();
@@ -241,25 +242,6 @@ impl ApiDb {
                     });
                     upload_reqs.push_front((request, Some(final_sender), sender, receiver));
                 }
-            }
-
-            // Finally, handle queries
-            while requests
-                .as_mut()
-                .peek()
-                .await
-                .map(|(r, _)| r.kind() == RequestKind::Query)
-                .unwrap_or(false)
-            {
-                let (request, sender) = requests.next().await.unwrap();
-                let _ = connection.unbounded_send((
-                    sender,
-                    Arc::new(RequestWithSidecar {
-                        request,
-                        sidecar: Vec::new(),
-                    }),
-                ));
-                // Just send the query and wait for the result, this will not need any resending.
             }
         }
     }

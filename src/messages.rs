@@ -50,16 +50,8 @@ pub enum Request {
 }
 
 #[cfg(feature = "client")]
-#[derive(Debug, Eq, PartialEq)]
-pub enum RequestKind {
-    Session,
-    Query,
-    Upload,
-}
-
-#[cfg(feature = "client")]
 impl Request {
-    pub fn kind(&self) -> RequestKind {
+    pub fn is_upload(&self) -> bool {
         match self {
             Request::SetToken(_)
             | Request::RenameSession(_)
@@ -68,13 +60,13 @@ impl Request {
             | Request::DisconnectSession(_)
             | Request::GetTime
             | Request::Unsubscribe(_)
-            | Request::UnsubscribeQuery(_) => RequestKind::Session,
-            Request::GetSubscribe(_)
+            | Request::UnsubscribeQuery(_)
+            | Request::GetSubscribe(_)
             | Request::QuerySubscribe { .. }
             | Request::GetLatest(_)
             | Request::QueryLatest { .. }
-            | Request::GetBinaries(_) => RequestKind::Query,
-            Request::Upload(_) | Request::UploadBinaries(_) => RequestKind::Upload,
+            | Request::GetBinaries(_) => false,
+            Request::Upload(_) | Request::UploadBinaries(_) => true,
         }
     }
 }
