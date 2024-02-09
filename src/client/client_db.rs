@@ -157,6 +157,7 @@ impl ClientDb {
                                     false,
                                 )
                                 .await
+                                .map(Some)
                             }
                             UpdateData::Event { event_id, data } => {
                                 // TODO(client): decide how to expose locking all of a query's results, including objects that start
@@ -179,7 +180,7 @@ impl ClientDb {
                                         // an event on this object (as a race condition), and then staying subscribed.
                                         continue;
                                     }
-                                    res => res,
+                                    res => res.map(Some),
                                 }
                             }
                             UpdateData::LostReadRights => {
@@ -196,6 +197,11 @@ impl ClientDb {
                         };
                         match res {
                             Ok(None) => {
+                                // Lost access to the object
+                                subscribed_objects.lock().unwrap().remove(&object_id);
+                                // TODO(api): track subscribed_queries' have_all_until
+                            }
+                            Ok(Some(None)) => {
                                 // No change in the object's latest_snapshot
                                 let mut subscribed_objects = subscribed_objects.lock().unwrap();
                                 let Some(entry) = subscribed_objects.get_mut(&object_id) else {
@@ -204,7 +210,8 @@ impl ClientDb {
                                 };
                                 entry.0 = Some(updates.now_have_all_until);
                             }
-                            Ok(Some(res)) => {
+                            Ok(Some(Some(res))) => {
+                                // Something changed in the object's latest_snapshot
                                 // TODO(api): track subscribed_queries' have_all_until
                                 let queries = Self::queries_for(
                                     &subscribed_queries.lock().unwrap(),
