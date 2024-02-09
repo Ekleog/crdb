@@ -977,7 +977,7 @@ impl IndexedDb {
 
     pub async fn get_subscribed_objects(
         &self,
-    ) -> crate::Result<HashMap<ObjectId, Option<Updatedness>>> {
+    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
         // TODO(test): fuzz this, and all other LocalDb functions
         // TODO(test): fuzz connection handling
         let zero_id = TypeId::from_u128(0).to_js_string();
@@ -1006,7 +1006,14 @@ impl IndexedDb {
                     let snapshot_meta =
                         serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
                             .wrap_context("deserializing snapshot metadata")?;
-                    res.insert(snapshot_meta.object_id, snapshot_meta.have_all_until);
+                    res.insert(
+                        snapshot_meta.object_id,
+                        (
+                            snapshot_meta.type_id,
+                            serde_json::Value::Null,
+                            snapshot_meta.have_all_until,
+                        ),
+                    ); // TODO(api): actually implement
                     cursor
                         .advance(1)
                         .await

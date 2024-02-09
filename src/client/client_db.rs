@@ -23,7 +23,7 @@ pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
-    subscribed_objects: Arc<Mutex<HashMap<ObjectId, Option<Updatedness>>>>,
+    subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>, // TODO(api): also send all writes to LocalDb
     error_sender: mpsc::UnboundedSender<crate::Error>,
@@ -43,22 +43,33 @@ impl ClientDb {
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
-        let subscribed_objects = Arc::new(Mutex::new(
-            db_bypass
-                .get_subscribed_objects()
-                .await
-                .wrap_context("listing subscribed objects")?,
-        ));
-        let subscribed_queries = Arc::new(Mutex::new(
-            db_bypass
-                .get_subscribed_queries()
-                .await
-                .wrap_context("listing subscribed queries")?,
-        ));
+        let subscribed_queries = db_bypass
+            .get_subscribed_queries()
+            .await
+            .wrap_context("listing subscribed queries")?;
+        let subscribed_objects = db_bypass
+            .get_subscribed_objects()
+            .await
+            .wrap_context("listing subscribed objects")?
+            .into_iter()
+            .map(|(id, (type_id, value, updatedness))| {
+                let queries = Self::queries_for(&subscribed_queries, type_id, &value);
+                (id, (updatedness, queries))
+            })
+            .collect::<HashMap<_, _>>();
+        let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
+        let subscribed_objects = Arc::new(Mutex::new(subscribed_objects));
         let (api, updates_receiver) = ApiDb::new(
             {
                 let subscribed_objects = subscribed_objects.clone();
-                move || subscribed_objects.lock().unwrap().clone()
+                move || {
+                    subscribed_objects
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(|(id, (upd, _))| (*id, *upd))
+                        .collect()
+                }
             },
             {
                 let subscribed_queries = subscribed_queries.clone();
@@ -89,6 +100,23 @@ impl ClientDb {
         self.updates_broadcastee.resubscribe()
     }
 
+    fn queries_for(
+        subscribed_queries: &HashMap<
+            QueryId,
+            (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock),
+        >,
+        type_id: TypeId,
+        value: &serde_json::Value,
+    ) -> HashSet<QueryId> {
+        subscribed_queries
+            .iter()
+            .filter(|(_, (query, q_type_id, _, _))| {
+                type_id == *q_type_id && query.matches_json(&value)
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     fn setup_watchers<C: ApiConfig>(
         &self,
         mut updates_receiver: mpsc::UnboundedReceiver<Updates>,
@@ -99,6 +127,7 @@ impl ClientDb {
         crate::spawn({
             let local_db = self.db.clone();
             let subscribed_objects = self.subscribed_objects.clone();
+            let subscribed_queries = self.subscribed_queries.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
                     for u in updates.data {
@@ -166,15 +195,26 @@ impl ClientDb {
                             }
                         };
                         match res {
-                            Ok(res) => {
+                            Ok(None) => {
+                                // No change in the object's latest_snapshot
+                                let mut subscribed_objects = subscribed_objects.lock().unwrap();
+                                let Some(entry) = subscribed_objects.get_mut(&object_id) else {
+                                    tracing::error!("no change in object for which we received an object, but we were not subscribed to it yet?");
+                                    continue;
+                                };
+                                entry.0 = Some(updates.now_have_all_until);
+                            }
+                            Ok(Some(res)) => {
+                                // TODO(api): track subscribed_queries' have_all_until
+                                let queries = Self::queries_for(
+                                    &subscribed_queries.lock().unwrap(),
+                                    type_id,
+                                    &res,
+                                );
                                 subscribed_objects
                                     .lock()
                                     .unwrap()
-                                    .insert(object_id, Some(updates.now_have_all_until));
-                                if let Some(_res) = res {
-                                    // TODO(api): track subscribed_queries' have_all_until
-                                    // TODO(api): also track which objects are matching which queries, to be able to know when an object stops matching a query
-                                }
+                                    .insert(object_id, (Some(updates.now_have_all_until), queries));
                             }
                             Err(err) => {
                                 tracing::error!(
@@ -274,7 +314,8 @@ impl ClientDb {
         object: Arc<T>,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
         // TODO(client): validate permissions to create the object, to fail early
-        self.db
+        let val = self
+            .db
             .create(
                 object_id,
                 created_at,
@@ -284,10 +325,19 @@ impl ClientDb {
             )
             .await?;
         if importance >= Importance::Subscribe {
-            self.subscribed_objects
-                .lock()
-                .unwrap()
-                .insert(object_id, None);
+            if let Some(val) = val {
+                let val_json =
+                    serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
+                let queries = Self::queries_for(
+                    &self.subscribed_queries.lock().unwrap(),
+                    *T::type_ulid(),
+                    &val_json,
+                );
+                self.subscribed_objects
+                    .lock()
+                    .unwrap()
+                    .insert(object_id, (None, queries));
+            }
         }
         self.api.create(
             object_id,
@@ -318,6 +368,7 @@ impl ClientDb {
             .await?;
         // The object must already be subscribed, in order for event submission to be successful.
         // So, there is no need to manually subscribe again.
+        // TODO(low): consider introducing a ManuallyUpdated importance level, that would make this statement wrong?
         self.api.submit::<T, _>(
             object,
             event_id,
@@ -333,7 +384,7 @@ impl ClientDb {
         db: &CacheDb<LocalDb>,
         lock: bool,
         data: ObjectData,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<Arc<T>>> {
         if data.type_id != *T::type_ulid() {
             return Err(crate::Error::WrongType {
                 object_id: data.object_id,
@@ -342,19 +393,21 @@ impl ClientDb {
             });
         }
 
+        let mut res = None;
         if let Some((created_at, snapshot_version, snapshot_data)) = data.creation_snapshot {
             let creation_snapshot = parse_snapshot_ref::<T>(snapshot_version, &snapshot_data)
                 .wrap_context("parsing snapshot")?;
 
-            db.create::<T>(
-                data.object_id,
-                created_at,
-                Arc::new(creation_snapshot),
-                Some(data.now_have_all_until),
-                lock,
-            )
-            .await
-            .wrap_context("creating creation snapshot in local database")?;
+            res = db
+                .create::<T>(
+                    data.object_id,
+                    created_at,
+                    Arc::new(creation_snapshot),
+                    Some(data.now_have_all_until),
+                    lock,
+                )
+                .await
+                .wrap_context("creating creation snapshot in local database")?;
         } else if lock {
             db.get_latest::<T>(true, data.object_id)
                 .await
@@ -370,14 +423,14 @@ impl ClientDb {
                 .submit::<T>(data.object_id, event_id, Arc::new(event), Some(data.now_have_all_until), false)
                 .await
             {
-                Ok(_) => (),
+                Ok(r) => res = r.or(res),
                 Err(crate::Error::ObjectDoesNotExist(object_id)) // Vacuumed in-between
                     if object_id == data.object_id && !lock => (),
                 Err(err) => return Err(err).wrap_context("creating event in local database"),
             }
         }
 
-        Ok(())
+        Ok(res)
     }
 
     pub async fn get<T: Object>(
@@ -395,13 +448,23 @@ impl ClientDb {
             Err(e) => return Err(e),
         }
         if importance >= Importance::Subscribe {
+            let res = self.api.get_subscribe(object_id).await?;
+            let res = Self::locally_create_all::<T>(&self.db, importance >= Importance::Lock, res)
+                .await?;
+            let res = match res {
+                Some(res) => res,
+                None => self.db.get_latest::<T>(false, object_id).await?,
+            };
+            let queries = Self::queries_for(
+                &self.subscribed_queries.lock().unwrap(),
+                *T::type_ulid(),
+                &serde_json::to_value(&res).wrap_context("serializing latest snapshot")?,
+            );
             self.subscribed_objects
                 .lock()
                 .unwrap()
-                .insert(object_id, None);
-            let res = self.api.get_subscribe(object_id).await?;
-            Self::locally_create_all::<T>(&self.db, importance >= Importance::Lock, res).await?;
-            Ok(self.db.get_latest::<T>(false, object_id).await?) // Already locked just above
+                .insert(object_id, (None, queries));
+            Ok(res)
         } else {
             unimplemented!() // TODO(client): GetLatest
         }
@@ -464,16 +527,34 @@ impl ClientDb {
                 .then({
                     let db = self.db.clone();
                     let subscribed_objects = self.subscribed_objects.clone();
+                    let subscribed_queries = self.subscribed_queries.clone();
                     let lock = importance >= Importance::Lock;
                     move |data| {
                         let db = db.clone();
                         let subscribed_objects = subscribed_objects.clone();
+                        let subscribed_queries = subscribed_queries.clone();
                         async move {
                             let object_id = match data? {
                                 MaybeObject::NotYetSubscribed(data) => {
                                     let object_id = data.object_id;
-                                    subscribed_objects.lock().unwrap().insert(object_id, None);
-                                    Self::locally_create_all::<T>(&db, lock, data).await?;
+                                    let type_id = data.type_id;
+                                    let res = match Self::locally_create_all::<T>(&db, lock, data)
+                                        .await?
+                                    {
+                                        Some(res) => res,
+                                        None => db.get_latest::<T>(false, object_id).await?,
+                                    };
+                                    let res_json = serde_json::to_value(res)
+                                        .wrap_context("serializing latest snapshot")?;
+                                    let queries = Self::queries_for(
+                                        &subscribed_queries.lock().unwrap(),
+                                        type_id,
+                                        &res_json,
+                                    );
+                                    subscribed_objects
+                                        .lock()
+                                        .unwrap()
+                                        .insert(object_id, (None, queries));
                                     object_id
                                 }
                                 MaybeObject::AlreadySubscribed(object_id) => object_id,

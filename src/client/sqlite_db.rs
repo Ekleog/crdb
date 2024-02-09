@@ -69,7 +69,7 @@ impl SqliteDb {
 
     pub async fn get_subscribed_objects(
         &self,
-    ) -> crate::Result<HashMap<ObjectId, Option<Updatedness>>> {
+    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
         unimplemented!() // TODO(sqlite)
     }
 
