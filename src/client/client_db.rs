@@ -556,7 +556,7 @@ impl ClientDb {
                 }
             };
             self.api
-                .query_subscribe::<T>(QueryId::now(), only_updated_since, query)
+                .query_subscribe::<T>(query_id, only_updated_since, query)
                 .then({
                     let db = self.db.clone();
                     let subscribed_objects = self.subscribed_objects.clone();
@@ -567,8 +567,10 @@ impl ClientDb {
                         let subscribed_objects = subscribed_objects.clone();
                         let subscribed_queries = subscribed_queries.clone();
                         async move {
-                            let object_id = match data? {
+                            let (data, updatedness) = data?;
+                            match data {
                                 MaybeObject::NotYetSubscribed(data) => {
+                                    let now_have_all_until = data.now_have_all_until;
                                     let object_id = data.object_id;
                                     let type_id = data.type_id;
                                     let res = match Self::locally_create_all::<T>(&db, lock, data)
@@ -577,7 +579,7 @@ impl ClientDb {
                                         Some(res) => res,
                                         None => db.get_latest::<T>(false, object_id).await?,
                                     };
-                                    let res_json = serde_json::to_value(res)
+                                    let res_json = serde_json::to_value(&res)
                                         .wrap_context("serializing latest snapshot")?;
                                     let queries = Self::queries_for(
                                         &subscribed_queries.lock().unwrap(),
@@ -587,12 +589,18 @@ impl ClientDb {
                                     subscribed_objects
                                         .lock()
                                         .unwrap()
-                                        .insert(object_id, (None, queries));
-                                    object_id
+                                        .insert(object_id, (Some(now_have_all_until), queries));
+                                    if let Some(q) =
+                                        subscribed_queries.lock().unwrap().get_mut(&query_id)
+                                    {
+                                        q.2 = updatedness.or(q.2);
+                                    }
+                                    Ok(res)
                                 }
-                                MaybeObject::AlreadySubscribed(object_id) => object_id,
-                            };
-                            self.db.get_latest::<T>(lock, object_id).await
+                                MaybeObject::AlreadySubscribed(object_id) => {
+                                    self.db.get_latest::<T>(lock, object_id).await
+                                }
+                            }
                         }
                     }
                 })

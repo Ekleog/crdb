@@ -300,7 +300,7 @@ impl ApiDb {
         query_id: QueryId,
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
-    ) -> impl CrdbStream<Item = crate::Result<MaybeObject>> {
+    ) -> impl CrdbStream<Item = crate::Result<(MaybeObject, Option<Updatedness>)>> {
         let request = Arc::new(RequestWithSidecar {
             request: Arc::new(Request::QuerySubscribe {
                 query_id,
@@ -310,14 +310,26 @@ impl ApiDb {
             }),
             sidecar: Vec::new(),
         });
-        self.request(request).flat_map(|response| {
+        self.request(request).flat_map(move |response| {
             match response.response {
                 // No sidecar in answer to Request::Query
                 ResponsePart::Error(err) => Either::Left(stream::iter(iter::once(Err(err.into())))),
                 ResponsePart::Objects {
                     data,
-                    now_have_all_until: _, // TODO(api): record now_have_all_until somewhere (for queries)
-                } => Either::Right(stream::iter(data.into_iter().map(Ok))),
+                    now_have_all_until,
+                } => {
+                    let data_len = data.len();
+                    Either::Right(stream::iter(data.into_iter().enumerate().map(
+                        move |(i, d)| {
+                            let now_have_all_until = if i + 1 == data_len {
+                                now_have_all_until
+                            } else {
+                                None
+                            };
+                            Ok((d, now_have_all_until))
+                        },
+                    )))
+                }
                 resp => Either::Left(stream::iter(iter::once(Err(crate::Error::Other(anyhow!(
                     "Server gave unexpected answer to Query request: {resp:?}"
                 )))))),
