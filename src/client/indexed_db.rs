@@ -988,6 +988,9 @@ impl IndexedDb {
                 let snapshots_meta = transaction
                     .object_store("snapshots_meta")
                     .wrap_context("retrieving snapshots_meta object store")?;
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving snapshots object store")?;
                 let latest_type_object = snapshots_meta
                     .index("latest_type_object")
                     .wrap_context("opening 'latest_type_object' snapshot index")?;
@@ -1006,14 +1009,26 @@ impl IndexedDb {
                     let snapshot_meta =
                         serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
                             .wrap_context("deserializing snapshot metadata")?;
+                    let snapshot_js = snapshots
+                        .get(&snapshot_meta.snapshot_id.to_js_string())
+                        .await
+                        .wrap_context("retrieving snapshot data")?
+                        .ok_or_else(|| {
+                            crate::Error::Other(anyhow!(
+                                "no snapshot data for known snapshot metadata"
+                            ))
+                        })?;
+                    let snapshot_json =
+                        serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_js)
+                            .wrap_context("deserializing snapshot")?;
                     res.insert(
                         snapshot_meta.object_id,
                         (
                             snapshot_meta.type_id,
-                            serde_json::Value::Null,
+                            snapshot_json,
                             snapshot_meta.have_all_until,
                         ),
-                    ); // TODO(api): actually implement
+                    );
                     cursor
                         .advance(1)
                         .await
