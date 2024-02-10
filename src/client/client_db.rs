@@ -557,7 +557,7 @@ impl ClientDb {
                     data.object_id,
                     created_at,
                     Arc::new(creation_snapshot),
-                    Some(data.now_have_all_until),
+                    Some(data.now_have_all_until), // TODO(api): this is wrong, only the last op should set updatedness
                     lock,
                 )
                 .await
