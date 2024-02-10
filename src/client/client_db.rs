@@ -10,6 +10,7 @@ use crate::{
     BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, TypeId,
     Updatedness,
 };
+use anyhow::anyhow;
 use futures::{channel::mpsc, StreamExt};
 use std::{
     collections::{hash_map, HashMap, HashSet},
@@ -22,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Debug)]
 enum DataToSave {
-    Update(Update),
+    Update(Arc<Update>, Option<Updatedness>),
     Binary(Arc<[u8]>),
 }
 
@@ -99,9 +100,9 @@ impl ClientDb {
             vacuum_guard: Arc::new(RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
         };
-        this.setup_watchers::<C>(updates_receiver, updates_broadcaster);
+        this.setup_update_watcher(updates_receiver);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
-        this.setup_data_saver(data_saver_receiver);
+        this.setup_data_saver::<C>(data_saver_receiver, updates_broadcaster);
         Ok(this)
     }
 
@@ -126,178 +127,21 @@ impl ClientDb {
             .collect()
     }
 
-    fn setup_watchers<C: ApiConfig>(
-        &self,
-        mut updates_receiver: mpsc::UnboundedReceiver<Updates>,
-        updates_broadcaster: broadcast::Sender<ObjectId>,
-    ) {
+    fn setup_update_watcher(&self, mut updates_receiver: mpsc::UnboundedReceiver<Updates>) {
         // No need for a cancellation token: this task will automatically end as soon as the stream
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
         crate::spawn({
-            let local_db = self.db.clone();
-            let subscribed_objects = self.subscribed_objects.clone();
-            let subscribed_queries = self.subscribed_queries.clone();
+            let data_saver = self.data_saver.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
+                    // TODO(api): How to deal with the case where a query is Importance::Lock, new objects are locked, and then the objects
+                    // stop matching the query? In particular, should the objects be unlocked? This will probably require adding a new field
+                    // to the database, remembering whether the object was locked for a query or by explicit request from the user, so that
+                    // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
                     for u in updates.data {
-                        let object_id = u.object_id;
-                        let type_id = u.type_id;
-                        // TODO(api): How to deal with the case where a query is Importance::Lock, new objects are locked, and then the objects
-                        // stop matching the query? In particular, should the objects be unlocked? This will probably require adding a new field
-                        // to the database, remembering whether the object was locked for a query or by explicit request from the user, so that
-                        // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
-                        let res = match &u.data {
-                            UpdateData::Creation {
-                                created_at,
-                                snapshot_version,
-                                data,
-                            } => {
-                                // TODO(client): decide how to expose locking all of a query's results, including new objects
-                                // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
-                                C::recreate(
-                                    &*local_db,
-                                    type_id,
-                                    object_id,
-                                    *created_at,
-                                    *snapshot_version,
-                                    &data,
-                                    Some(updates.now_have_all_until),
-                                    false,
-                                )
-                                .await
-                                .map(Some)
-                            }
-                            UpdateData::Event { event_id, data } => {
-                                // TODO(client): decide how to expose locking all of a query's results, including objects that start
-                                // matching the query only after the initial run
-                                // TODO(api): automatically handle MissingBinaries error by requesting them from server and retrying
-                                let res = C::submit(
-                                    &*local_db,
-                                    type_id,
-                                    object_id,
-                                    *event_id,
-                                    &data,
-                                    Some(updates.now_have_all_until),
-                                    false,
-                                )
-                                .await;
-                                match res {
-                                    Err(crate::Error::ObjectDoesNotExist(o)) if o == object_id => {
-                                        // DO NOT re-fetch object when receiving an event not in cache for it.
-                                        // Without this, users would risk unsubscribing from an object, then receiving
-                                        // an event on this object (as a race condition), and then staying subscribed.
-                                        continue;
-                                    }
-                                    res => res.map(Some),
-                                }
-                            }
-                            UpdateData::LostReadRights => {
-                                subscribed_objects.lock().unwrap().remove(&object_id);
-                                if let Err(err) = local_db.remove(object_id).await {
-                                    tracing::error!(
-                                        ?err,
-                                        ?object_id,
-                                        "failed removing object for which we lost read rights"
-                                    );
-                                }
-                                Ok(None)
-                            }
-                        };
-                        match res {
-                            Ok(None) => {
-                                // Lost access to the object
-                                let prev = subscribed_objects.lock().unwrap().remove(&object_id);
-                                if let Some((_, queries)) = prev {
-                                    if let Err(err) = local_db
-                                        .update_queries(&queries, updates.now_have_all_until)
-                                        .await
-                                    {
-                                        tracing::error!(
-                                            ?err,
-                                            ?queries,
-                                            "failed updating now_have_all_until for queries"
-                                        );
-                                    }
-                                    let mut subscribed_queries = subscribed_queries.lock().unwrap();
-                                    for q in queries {
-                                        if let Some(query) = subscribed_queries.get_mut(&q) {
-                                            query.2 = Some(updates.now_have_all_until);
-                                        }
-                                    }
-                                }
-                            }
-                            Ok(Some(None)) => {
-                                // No change in the object's latest_snapshot
-                                let queries = {
-                                    let mut subscribed_objects = subscribed_objects.lock().unwrap();
-                                    let Some(entry) = subscribed_objects.get_mut(&object_id) else {
-                                        tracing::error!("no change in object for which we received an object, but we were not subscribed to it yet?");
-                                        continue;
-                                    };
-                                    entry.0 = Some(updates.now_have_all_until);
-                                    entry.1.clone()
-                                };
-                                if let Err(err) = local_db
-                                    .update_queries(&queries, updates.now_have_all_until)
-                                    .await
-                                {
-                                    tracing::error!(
-                                        ?err,
-                                        ?queries,
-                                        "failed updating now_have_all_until for queries"
-                                    );
-                                }
-                                let mut subscribed_queries = subscribed_queries.lock().unwrap();
-                                for q in queries {
-                                    if let Some(query) = subscribed_queries.get_mut(&q) {
-                                        query.2 = Some(updates.now_have_all_until);
-                                    }
-                                }
-                            }
-                            Ok(Some(Some(res))) => {
-                                // Something changed in the object's latest_snapshot
-                                let mut queries = Self::queries_for(
-                                    &subscribed_queries.lock().unwrap(),
-                                    type_id,
-                                    &res,
-                                );
-                                if let Some((_, queries_before)) =
-                                    subscribed_objects.lock().unwrap().insert(
-                                        object_id,
-                                        (Some(updates.now_have_all_until), queries.clone()),
-                                    )
-                                {
-                                    queries.extend(queries_before);
-                                }
-                                if let Err(err) = local_db
-                                    .update_queries(&queries, updates.now_have_all_until)
-                                    .await
-                                {
-                                    tracing::error!(
-                                        ?err,
-                                        ?queries,
-                                        "failed updating now_have_all_until for queries"
-                                    );
-                                }
-                                let mut subscribed_queries = subscribed_queries.lock().unwrap();
-                                for q in queries {
-                                    if let Some(query) = subscribed_queries.get_mut(&q) {
-                                        query.2 = Some(updates.now_have_all_until);
-                                    }
-                                }
-                            }
-                            Err(err) => {
-                                tracing::error!(
-                                    ?err,
-                                    ?object_id,
-                                    "failed creating received object in internal db"
-                                );
-                            }
-                        }
-                        // TODO(client): give out update broadcasters for each individual query the user subscribed to
-                        if let Err(err) = updates_broadcaster.send(object_id) {
-                            tracing::error!(?err, ?object_id, "failed broadcasting update");
-                        }
+                        data_saver
+                            .unbounded_send(DataToSave::Update(u, Some(updates.now_have_all_until)))
+                            .expect("data saver thread cannot go away");
                     }
                 }
             }
@@ -336,58 +180,218 @@ impl ClientDb {
         });
     }
 
-    fn setup_data_saver(&self, data_receiver: mpsc::UnboundedReceiver<DataToSave>) {
+    fn setup_data_saver<C: ApiConfig>(
+        &self,
+        data_receiver: mpsc::UnboundedReceiver<DataToSave>,
+        updates_broadcaster: broadcast::Sender<ObjectId>,
+    ) {
         let db_bypass = self.db_bypass.clone();
         let api = self.api.clone();
-        crate::spawn(async move { Self::data_saver(data_receiver, db_bypass, api).await });
+        let subscribed_objects = self.subscribed_objects.clone();
+        let subscribed_queries = self.subscribed_queries.clone();
+        crate::spawn(async move {
+            Self::data_saver::<C>(
+                data_receiver,
+                subscribed_objects,
+                subscribed_queries,
+                db_bypass,
+                api,
+                updates_broadcaster,
+            )
+            .await
+        });
     }
 
-    async fn data_saver(
+    async fn data_saver<C: ApiConfig>(
         mut data_receiver: mpsc::UnboundedReceiver<DataToSave>,
+        subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
+        subscribed_queries: Arc<
+            Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>,
+        >,
         db: Arc<LocalDb>,
         _api: Arc<ApiDb>,
+        updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
-        let mut data_to_reattempt = Vec::new();
-        loop {
-            tokio::select! {
-                data = data_receiver.next() => {
-                    let Some(data) = data else {
-                        break;
-                    };
-                    match Self::save_data(&db, &data).await {
-                        Ok(()) => Self::reattempt_saving(&db, &mut data_to_reattempt).await,
-                        // TODO(api): MissingBinaries, ObjectDoesNotExist
-                        Err(err) => {
-                            tracing::error!(?err, ?data, "unexpected error saving data");
-                            data_to_reattempt.push(data);
+        // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
+        while let Some(data) = data_receiver.next().await {
+            match Self::save_data::<C>(
+                &db,
+                &subscribed_objects,
+                &subscribed_queries,
+                &data,
+                &updates_broadcaster,
+            )
+            .await
+            {
+                Ok(()) => (),
+                // TODO(api): MissingBinaries, ObjectDoesNotExist
+                Err(err) => {
+                    tracing::error!(?err, ?data, "unexpected error saving data");
+                }
+            }
+        }
+    }
+
+    async fn save_data<C: ApiConfig>(
+        db: &LocalDb,
+        subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>,
+        subscribed_queries: &Mutex<
+            HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
+        >,
+        data: &DataToSave,
+        updates_broadcaster: &broadcast::Sender<ObjectId>,
+    ) -> crate::Result<()> {
+        match data {
+            DataToSave::Update(u, now_have_all_until) => {
+                Self::save_update::<C>(
+                    db,
+                    subscribed_objects,
+                    subscribed_queries,
+                    u,
+                    *now_have_all_until,
+                    updates_broadcaster,
+                )
+                .await
+            }
+            DataToSave::Binary(_bin) => unimplemented!(), // TODO(api)
+        }
+    }
+
+    async fn save_update<C: ApiConfig>(
+        db: &LocalDb,
+        subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>,
+        subscribed_queries: &Mutex<
+            HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
+        >,
+        u: &Update,
+        now_have_all_until: Option<Updatedness>,
+        updates_broadcaster: &broadcast::Sender<ObjectId>,
+    ) -> crate::Result<()> {
+        let object_id = u.object_id;
+        let type_id = u.type_id;
+        let res = match &u.data {
+            UpdateData::Creation {
+                created_at,
+                snapshot_version,
+                data,
+            } => Some(
+                C::recreate(
+                    db,
+                    type_id,
+                    object_id,
+                    *created_at,
+                    *snapshot_version,
+                    &data,
+                    now_have_all_until,
+                    false,
+                )
+                .await?,
+            ),
+            UpdateData::Event { event_id, data } => Some(
+                C::submit(
+                    &*db,
+                    type_id,
+                    object_id,
+                    *event_id,
+                    &data,
+                    now_have_all_until,
+                    false,
+                )
+                .await?,
+            ),
+            UpdateData::LostReadRights => {
+                subscribed_objects.lock().unwrap().remove(&object_id);
+                if let Err(err) = db.remove(object_id).await {
+                    tracing::error!(
+                        ?err,
+                        ?object_id,
+                        "failed removing object for which we lost read rights"
+                    );
+                }
+                None
+            }
+        };
+        match res {
+            None => {
+                // Lost access to the object
+                let prev = subscribed_objects.lock().unwrap().remove(&object_id);
+                if let Some((_, queries)) = prev {
+                    if let Some(now_have_all_until) = now_have_all_until {
+                        if let Err(err) = db.update_queries(&queries, now_have_all_until).await {
+                            tracing::error!(
+                                ?err,
+                                ?queries,
+                                "failed updating now_have_all_until for queries"
+                            );
+                        }
+                        let mut subscribed_queries = subscribed_queries.lock().unwrap();
+                        for q in queries {
+                            if let Some(query) = subscribed_queries.get_mut(&q) {
+                                query.2 = Some(now_have_all_until);
+                            }
                         }
                     }
                 }
-                // TODO(api): handle binary receive requests
             }
-        }
-    }
-
-    async fn reattempt_saving(db: &LocalDb, data_to_reattempt: &mut Vec<DataToSave>) {
-        let mut changed = true;
-        while changed {
-            changed = false;
-            let old_data_to_reattempt = std::mem::replace(&mut *data_to_reattempt, Vec::new());
-            for data in old_data_to_reattempt {
-                match Self::save_data(&db, &data).await {
-                    Ok(()) => changed = true,
-                    // TODO(api): MissingBinaries, ObjectDoesNotExist
-                    Err(err) => {
-                        tracing::error!(?err, ?data, "unexpected error saving data");
-                        data_to_reattempt.push(data);
+            Some(None) => {
+                // No change in the object's latest_snapshot
+                if let Some(now_have_all_until) = now_have_all_until {
+                    let queries = {
+                        let mut subscribed_objects = subscribed_objects.lock().unwrap();
+                        let Some(entry) = subscribed_objects.get_mut(&object_id) else {
+                            return Err(crate::Error::Other(anyhow!("no change in object for which we received an object, but we were not subscribed to it yet?")));
+                        };
+                        entry.0 = std::cmp::max(entry.0, Some(now_have_all_until));
+                        entry.1.clone()
+                    };
+                    if let Err(err) = db.update_queries(&queries, now_have_all_until).await {
+                        tracing::error!(
+                            ?err,
+                            ?queries,
+                            "failed updating now_have_all_until for queries"
+                        );
+                    }
+                    let mut subscribed_queries = subscribed_queries.lock().unwrap();
+                    for q in queries {
+                        if let Some(query) = subscribed_queries.get_mut(&q) {
+                            query.2 = std::cmp::max(query.2, Some(now_have_all_until));
+                        }
+                    }
+                }
+            }
+            Some(Some(res)) => {
+                // Something changed in the object's latest_snapshot
+                if let Some(now_have_all_until) = now_have_all_until {
+                    let mut queries =
+                        Self::queries_for(&subscribed_queries.lock().unwrap(), type_id, &res);
+                    if let Some((_, queries_before)) = subscribed_objects
+                        .lock()
+                        .unwrap()
+                        .insert(object_id, (Some(now_have_all_until), queries.clone()))
+                    {
+                        queries.extend(queries_before);
+                    }
+                    if let Err(err) = db.update_queries(&queries, now_have_all_until).await {
+                        tracing::error!(
+                            ?err,
+                            ?queries,
+                            "failed updating now_have_all_until for queries"
+                        );
+                    }
+                    let mut subscribed_queries = subscribed_queries.lock().unwrap();
+                    for q in queries {
+                        if let Some(query) = subscribed_queries.get_mut(&q) {
+                            query.2 = Some(now_have_all_until);
+                        }
                     }
                 }
             }
         }
-    }
-
-    async fn save_data(_db: &LocalDb, _data: &DataToSave) -> crate::Result<()> {
-        Ok(()) // TODO(api)
+        // TODO(client): give out update broadcasters for each individual query the user subscribed to
+        if let Err(err) = updates_broadcaster.send(object_id) {
+            tracing::error!(?err, ?object_id, "failed broadcasting update");
+        }
+        Ok(())
     }
 
     /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
