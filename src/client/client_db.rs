@@ -528,6 +528,7 @@ impl ClientDb {
         lock: bool,
         data: ObjectData,
     ) -> crate::Result<Option<Arc<T>>> {
+        // TODO(api): this should reuse the data_saver logic
         if data.type_id != *T::type_ulid() {
             return Err(crate::Error::WrongType {
                 object_id: data.object_id,
