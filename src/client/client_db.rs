@@ -579,7 +579,7 @@ impl ClientDb {
                     data.object_id,
                     created_at,
                     Arc::new(creation_snapshot),
-                    Some(data.now_have_all_until), // TODO(api): this is wrong, only the last op should set updatedness
+                    data.events.is_empty().then(|| data.now_have_all_until),
                     lock,
                 )
                 .await
@@ -590,13 +590,20 @@ impl ClientDb {
                 .wrap_context("locking object as requested")?;
         }
 
-        for (event_id, event) in data.events {
+        let events_len = data.events.len();
+        for (i, (event_id, event)) in data.events.into_iter().enumerate() {
             let event = <T::Event as serde::Deserialize>::deserialize(&*event)
                 .wrap_context("parsing event")?;
 
             // We already locked the object just above if requested
             match db
-                .submit::<T>(data.object_id, event_id, Arc::new(event), Some(data.now_have_all_until), false)
+                .submit::<T>(
+                    data.object_id,
+                    event_id,
+                    Arc::new(event),
+                    (i + 1 == events_len).then(|| data.now_have_all_until),
+                    false
+                )
                 .await
             {
                 Ok(r) => res = r.or(res),
