@@ -9,6 +9,7 @@ pub trait ApiConfig: crate::private::Sealed {
     /// Panics if there are two types with the same ULID configured
     fn check_ulids();
 
+    /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
     #[allow(clippy::too_many_arguments)] // Used only for relaying to a more specific function
     fn recreate<D: Db>(
         db: &D,
@@ -21,6 +22,7 @@ pub trait ApiConfig: crate::private::Sealed {
         force_lock: bool,
     ) -> impl CrdbFuture<Output = crate::Result<Option<serde_json::Value>>>;
 
+    /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
     fn submit<D: Db>(
         db: &D,
         type_id: TypeId,

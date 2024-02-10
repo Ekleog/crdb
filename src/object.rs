@@ -141,28 +141,6 @@ pub fn parse_snapshot<T: Object>(
     }
 }
 
-#[cfg(feature = "client")]
-pub fn parse_snapshot_ref<T: Object>(
-    snapshot_version: i32,
-    snapshot_data: &serde_json::Value,
-) -> anyhow::Result<T> {
-    if snapshot_version == T::snapshot_version() {
-        Ok(T::deserialize(snapshot_data).with_context(|| {
-            format!(
-                "parsing current snapshot version {snapshot_version} for object type {:?}",
-                T::type_ulid()
-            )
-        })?)
-    } else {
-        T::from_old_snapshot(snapshot_version, snapshot_data.clone()).with_context(|| {
-            format!(
-                "parsing old snapshot version {snapshot_version} for object type {:?}",
-                T::type_ulid()
-            )
-        })
-    }
-}
-
 #[cfg(target_arch = "wasm32")]
 pub fn parse_snapshot_js<T: Object>(
     snapshot_version: i32,
