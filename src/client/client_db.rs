@@ -21,12 +21,6 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Debug)]
-enum DataToSave {
-    Update(Arc<Update>, Option<Updatedness>),
-    Binary(Arc<[u8]>),
-}
-
 pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
@@ -34,7 +28,7 @@ pub struct ClientDb {
     subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>,
-    data_saver: mpsc::UnboundedSender<DataToSave>,
+    data_saver: mpsc::UnboundedSender<(Arc<Update>, Option<Updatedness>)>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
@@ -140,7 +134,7 @@ impl ClientDb {
                     // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
                     for u in updates.data {
                         data_saver
-                            .unbounded_send(DataToSave::Update(u, Some(updates.now_have_all_until)))
+                            .unbounded_send((u, Some(updates.now_have_all_until)))
                             .expect("data saver thread cannot go away");
                     }
                 }
@@ -182,7 +176,7 @@ impl ClientDb {
 
     fn setup_data_saver<C: ApiConfig>(
         &self,
-        data_receiver: mpsc::UnboundedReceiver<DataToSave>,
+        data_receiver: mpsc::UnboundedReceiver<(Arc<Update>, Option<Updatedness>)>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         let db_bypass = self.db_bypass.clone();
@@ -203,7 +197,7 @@ impl ClientDb {
     }
 
     async fn data_saver<C: ApiConfig>(
-        mut data_receiver: mpsc::UnboundedReceiver<DataToSave>,
+        mut data_receiver: mpsc::UnboundedReceiver<(Arc<Update>, Option<Updatedness>)>,
         subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
         subscribed_queries: Arc<
             Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>,
@@ -213,12 +207,13 @@ impl ClientDb {
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
-        while let Some(data) = data_receiver.next().await {
+        while let Some((data, now_have_all_until)) = data_receiver.next().await {
             match Self::save_data::<C>(
                 &db,
                 &subscribed_objects,
                 &subscribed_queries,
                 &data,
+                now_have_all_until,
                 &updates_broadcaster,
             )
             .await
@@ -243,6 +238,7 @@ impl ClientDb {
                         &subscribed_objects,
                         &subscribed_queries,
                         &data,
+                        now_have_all_until,
                         &updates_broadcaster,
                     )
                     .await
@@ -281,31 +277,6 @@ impl ClientDb {
     }
 
     async fn save_data<C: ApiConfig>(
-        db: &LocalDb,
-        subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>,
-        subscribed_queries: &Mutex<
-            HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
-        >,
-        data: &DataToSave,
-        updates_broadcaster: &broadcast::Sender<ObjectId>,
-    ) -> crate::Result<()> {
-        match data {
-            DataToSave::Update(u, now_have_all_until) => {
-                Self::save_update::<C>(
-                    db,
-                    subscribed_objects,
-                    subscribed_queries,
-                    u,
-                    *now_have_all_until,
-                    updates_broadcaster,
-                )
-                .await
-            }
-            DataToSave::Binary(_bin) => unimplemented!(), // TODO(api)
-        }
-    }
-
-    async fn save_update<C: ApiConfig>(
         db: &LocalDb,
         subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>,
         subscribed_queries: &Mutex<
