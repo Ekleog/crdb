@@ -21,6 +21,12 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
+enum UpdateResult {
+    LostAccess,
+    LatestUnchanged,
+    LatestChanged(serde_json::Value),
+}
+
 pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
@@ -297,31 +303,35 @@ impl ClientDb {
                 created_at,
                 snapshot_version,
                 data,
-            } => Some(
-                C::recreate(
-                    db,
-                    type_id,
-                    object_id,
-                    *created_at,
-                    *snapshot_version,
-                    &data,
-                    now_have_all_until,
-                    false,
-                )
-                .await?,
-            ),
-            UpdateData::Event { event_id, data } => Some(
-                C::submit(
-                    &*db,
-                    type_id,
-                    object_id,
-                    *event_id,
-                    &data,
-                    now_have_all_until,
-                    false,
-                )
-                .await?,
-            ),
+            } => match C::recreate(
+                db,
+                type_id,
+                object_id,
+                *created_at,
+                *snapshot_version,
+                &data,
+                now_have_all_until,
+                false,
+            )
+            .await?
+            {
+                Some(res) => UpdateResult::LatestChanged(res),
+                None => UpdateResult::LatestUnchanged,
+            },
+            UpdateData::Event { event_id, data } => match C::submit(
+                &*db,
+                type_id,
+                object_id,
+                *event_id,
+                &data,
+                now_have_all_until,
+                false,
+            )
+            .await?
+            {
+                Some(res) => UpdateResult::LatestChanged(res),
+                None => UpdateResult::LatestUnchanged,
+            },
             UpdateData::LostReadRights => {
                 subscribed_objects.lock().unwrap().remove(&object_id);
                 if let Err(err) = db.remove(object_id).await {
@@ -331,11 +341,11 @@ impl ClientDb {
                         "failed removing object for which we lost read rights"
                     );
                 }
-                None
+                UpdateResult::LostAccess
             }
         };
         match res {
-            None => {
+            UpdateResult::LostAccess => {
                 // Lost access to the object
                 let prev = subscribed_objects.lock().unwrap().remove(&object_id);
                 if let Some((_, queries)) = prev {
@@ -356,7 +366,7 @@ impl ClientDb {
                     }
                 }
             }
-            Some(None) => {
+            UpdateResult::LatestUnchanged => {
                 // No change in the object's latest_snapshot
                 if let Some(now_have_all_until) = now_have_all_until {
                     let queries = {
@@ -382,7 +392,7 @@ impl ClientDb {
                     }
                 }
             }
-            Some(Some(res)) => {
+            UpdateResult::LatestChanged(res) => {
                 // Something changed in the object's latest_snapshot
                 if let Some(now_have_all_until) = now_have_all_until {
                     let mut queries =
