@@ -18,7 +18,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, oneshot, RwLock};
 use tokio_util::sync::CancellationToken;
 
 enum UpdateResult {
@@ -34,7 +34,11 @@ pub struct ClientDb {
     subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>,
-    data_saver: mpsc::UnboundedSender<(Arc<Update>, Option<Updatedness>)>,
+    data_saver: mpsc::UnboundedSender<(
+        Arc<Update>,
+        Option<Updatedness>,
+        oneshot::Sender<crate::Result<UpdateResult>>,
+    )>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
@@ -139,9 +143,11 @@ impl ClientDb {
                     // to the database, remembering whether the object was locked for a query or by explicit request from the user, so that
                     // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
                     for u in updates.data {
+                        let (sender, _) = oneshot::channel();
                         data_saver
-                            .unbounded_send((u, Some(updates.now_have_all_until)))
+                            .unbounded_send((u, Some(updates.now_have_all_until), sender))
                             .expect("data saver thread cannot go away");
+                        // Ignore the result of saving
                     }
                 }
             }
@@ -182,7 +188,11 @@ impl ClientDb {
 
     fn setup_data_saver<C: ApiConfig>(
         &self,
-        data_receiver: mpsc::UnboundedReceiver<(Arc<Update>, Option<Updatedness>)>,
+        data_receiver: mpsc::UnboundedReceiver<(
+            Arc<Update>,
+            Option<Updatedness>,
+            oneshot::Sender<crate::Result<UpdateResult>>,
+        )>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         let db_bypass = self.db_bypass.clone();
@@ -205,7 +215,11 @@ impl ClientDb {
     }
 
     async fn data_saver<C: ApiConfig>(
-        mut data_receiver: mpsc::UnboundedReceiver<(Arc<Update>, Option<Updatedness>)>,
+        mut data_receiver: mpsc::UnboundedReceiver<(
+            Arc<Update>,
+            Option<Updatedness>,
+            oneshot::Sender<crate::Result<UpdateResult>>,
+        )>,
         subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
         subscribed_queries: Arc<
             Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>,
@@ -216,7 +230,7 @@ impl ClientDb {
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
-        while let Some((data, now_have_all_until)) = data_receiver.next().await {
+        while let Some((data, now_have_all_until, result)) = data_receiver.next().await {
             let _guard = vacuum_guard.read().await; // Do not vacuum while we're inserting new data
             match Self::save_data::<C>(
                 &db,
@@ -228,7 +242,9 @@ impl ClientDb {
             )
             .await
             {
-                Ok(()) => (),
+                Ok(res) => {
+                    let _ = result.send(Ok(res));
+                }
                 Err(crate::Error::ObjectDoesNotExist(_)) => {
                     // Ignore this error, because if we received from the server an event with an object that does not exist
                     // locally, it probably means that we recently unsubscribed from it but the server had already sent us the
@@ -243,7 +259,7 @@ impl ClientDb {
                         );
                         continue;
                     }
-                    if let Err(err) = Self::save_data::<C>(
+                    match Self::save_data::<C>(
                         &db,
                         &subscribed_objects,
                         &subscribed_queries,
@@ -253,11 +269,17 @@ impl ClientDb {
                     )
                     .await
                     {
-                        tracing::error!(
-                            ?err,
-                            ?data,
-                            "unexpected error saving data after fetching the binaries"
-                        );
+                        Ok(res) => {
+                            let _ = result.send(Ok(res));
+                        }
+                        Err(err) => {
+                            tracing::error!(
+                                ?err,
+                                ?data,
+                                "unexpected error saving data after fetching the binaries"
+                            );
+                            let _ = result.send(Err(err));
+                        }
                     }
                 }
                 Err(err) => {
@@ -295,7 +317,7 @@ impl ClientDb {
         u: &Update,
         now_have_all_until: Option<Updatedness>,
         updates_broadcaster: &broadcast::Sender<ObjectId>,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<UpdateResult> {
         let object_id = u.object_id;
         let type_id = u.type_id;
         let res = match &u.data {
@@ -344,7 +366,7 @@ impl ClientDb {
                 UpdateResult::LostAccess
             }
         };
-        match res {
+        match &res {
             UpdateResult::LostAccess => {
                 // Lost access to the object
                 let prev = subscribed_objects.lock().unwrap().remove(&object_id);
@@ -396,7 +418,7 @@ impl ClientDb {
                 // Something changed in the object's latest_snapshot
                 if let Some(now_have_all_until) = now_have_all_until {
                     let mut queries =
-                        Self::queries_for(&subscribed_queries.lock().unwrap(), type_id, &res);
+                        Self::queries_for(&subscribed_queries.lock().unwrap(), type_id, res);
                     if let Some((_, queries_before)) = subscribed_objects
                         .lock()
                         .unwrap()
@@ -424,7 +446,7 @@ impl ClientDb {
         if let Err(err) = updates_broadcaster.send(object_id) {
             tracing::error!(?err, ?object_id, "failed broadcasting update");
         }
-        Ok(())
+        Ok(res)
     }
 
     /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
