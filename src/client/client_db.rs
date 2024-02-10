@@ -5,7 +5,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{MaybeObject, ObjectData, UpdateData, Updates},
+    messages::{MaybeObject, ObjectData, Update, UpdateData, Updates},
     object::parse_snapshot_ref,
     BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, TypeId,
     Updatedness,
@@ -20,6 +20,12 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
+#[derive(Debug)]
+enum DataToSave {
+    Update(Update),
+    Binary(Arc<[u8]>),
+}
+
 pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
@@ -27,6 +33,7 @@ pub struct ClientDb {
     subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>,
+    data_saver: mpsc::UnboundedSender<DataToSave>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
@@ -78,6 +85,7 @@ impl ClientDb {
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
+        let (data_saver, data_saver_receiver) = mpsc::unbounded();
         // TODO(api): ObjectDoesNotExist as response to the startup GetSubscribe means that our user lost read access while offline; handle it properly
         // TODO(client): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
@@ -86,12 +94,14 @@ impl ClientDb {
             db_bypass,
             subscribed_objects,
             subscribed_queries,
+            data_saver,
             updates_broadcastee,
             vacuum_guard: Arc::new(RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
         };
         this.setup_watchers::<C>(updates_receiver, updates_broadcaster);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
+        this.setup_data_saver(data_saver_receiver);
         Ok(this)
     }
 
@@ -324,6 +334,60 @@ impl ClientDb {
                 }
             }
         });
+    }
+
+    fn setup_data_saver(&self, data_receiver: mpsc::UnboundedReceiver<DataToSave>) {
+        let db_bypass = self.db_bypass.clone();
+        let api = self.api.clone();
+        crate::spawn(async move { Self::data_saver(data_receiver, db_bypass, api).await });
+    }
+
+    async fn data_saver(
+        mut data_receiver: mpsc::UnboundedReceiver<DataToSave>,
+        db: Arc<LocalDb>,
+        _api: Arc<ApiDb>,
+    ) {
+        let mut data_to_reattempt = Vec::new();
+        loop {
+            tokio::select! {
+                data = data_receiver.next() => {
+                    let Some(data) = data else {
+                        break;
+                    };
+                    match Self::save_data(&db, &data).await {
+                        Ok(()) => Self::reattempt_saving(&db, &mut data_to_reattempt).await,
+                        // TODO(api): MissingBinaries, ObjectDoesNotExist
+                        Err(err) => {
+                            tracing::error!(?err, ?data, "unexpected error saving data");
+                            data_to_reattempt.push(data);
+                        }
+                    }
+                }
+                // TODO(api): handle binary receive requests
+            }
+        }
+    }
+
+    async fn reattempt_saving(db: &LocalDb, data_to_reattempt: &mut Vec<DataToSave>) {
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let old_data_to_reattempt = std::mem::replace(&mut *data_to_reattempt, Vec::new());
+            for data in old_data_to_reattempt {
+                match Self::save_data(&db, &data).await {
+                    Ok(()) => changed = true,
+                    // TODO(api): MissingBinaries, ObjectDoesNotExist
+                    Err(err) => {
+                        tracing::error!(?err, ?data, "unexpected error saving data");
+                        data_to_reattempt.push(data);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn save_data(_db: &LocalDb, _data: &DataToSave) -> crate::Result<()> {
+        Ok(()) // TODO(api)
     }
 
     /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
