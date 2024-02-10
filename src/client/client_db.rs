@@ -6,7 +6,6 @@ use crate::{
     error::ResultExt,
     ids::QueryId,
     messages::{MaybeObject, ObjectData, Update, UpdateData, Updates},
-    object::parse_snapshot_ref,
     BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, TypeId,
     Updatedness,
 };
@@ -37,6 +36,7 @@ pub struct ClientDb {
     data_saver: mpsc::UnboundedSender<(
         Arc<Update>,
         Option<Updatedness>,
+        ShouldLock,
         oneshot::Sender<crate::Result<UpdateResult>>,
     )>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
@@ -145,7 +145,12 @@ impl ClientDb {
                     for u in updates.data {
                         let (sender, _) = oneshot::channel();
                         data_saver
-                            .unbounded_send((u, Some(updates.now_have_all_until), sender))
+                            .unbounded_send((
+                                u,
+                                Some(updates.now_have_all_until),
+                                ShouldLock(false),
+                                sender,
+                            ))
                             .expect("data saver thread cannot go away");
                         // Ignore the result of saving
                     }
@@ -191,6 +196,7 @@ impl ClientDb {
         data_receiver: mpsc::UnboundedReceiver<(
             Arc<Update>,
             Option<Updatedness>,
+            ShouldLock,
             oneshot::Sender<crate::Result<UpdateResult>>,
         )>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
@@ -218,6 +224,7 @@ impl ClientDb {
         mut data_receiver: mpsc::UnboundedReceiver<(
             Arc<Update>,
             Option<Updatedness>,
+            ShouldLock,
             oneshot::Sender<crate::Result<UpdateResult>>,
         )>,
         subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
@@ -230,7 +237,7 @@ impl ClientDb {
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
-        while let Some((data, now_have_all_until, result)) = data_receiver.next().await {
+        while let Some((data, now_have_all_until, lock, result)) = data_receiver.next().await {
             let _guard = vacuum_guard.read().await; // Do not vacuum while we're inserting new data
             match Self::save_data::<C>(
                 &db,
@@ -238,6 +245,7 @@ impl ClientDb {
                 &subscribed_queries,
                 &data,
                 now_have_all_until,
+                lock,
                 &updates_broadcaster,
             )
             .await
@@ -265,6 +273,7 @@ impl ClientDb {
                         &subscribed_queries,
                         &data,
                         now_have_all_until,
+                        lock,
                         &updates_broadcaster,
                     )
                     .await
@@ -316,6 +325,7 @@ impl ClientDb {
         >,
         u: &Update,
         now_have_all_until: Option<Updatedness>,
+        lock: ShouldLock,
         updates_broadcaster: &broadcast::Sender<ObjectId>,
     ) -> crate::Result<UpdateResult> {
         let object_id = u.object_id;
@@ -333,7 +343,7 @@ impl ClientDb {
                 *snapshot_version,
                 &data,
                 now_have_all_until,
-                false,
+                lock.0,
             )
             .await?
             {
@@ -347,7 +357,7 @@ impl ClientDb {
                 *event_id,
                 &data,
                 now_have_all_until,
-                false,
+                lock.0,
             )
             .await?
             {
@@ -556,11 +566,16 @@ impl ClientDb {
 
     /// Returns the latest snapshot for the object described by `data`
     async fn locally_create_all<T: Object>(
+        data_saver: &mpsc::UnboundedSender<(
+            Arc<Update>,
+            Option<Updatedness>,
+            ShouldLock,
+            oneshot::Sender<crate::Result<UpdateResult>>,
+        )>,
         db: &CacheDb<LocalDb>,
         lock: bool,
         data: ObjectData,
-    ) -> crate::Result<Option<Arc<T>>> {
-        // TODO(api): this should reuse the data_saver logic
+    ) -> crate::Result<Option<serde_json::Value>> {
         if data.type_id != *T::type_ulid() {
             return Err(crate::Error::WrongType {
                 object_id: data.object_id,
@@ -569,47 +584,69 @@ impl ClientDb {
             });
         }
 
-        let mut res = None;
+        // First, submit object creation request
+        let mut latest_snapshot_returns =
+            Vec::with_capacity(data.events.len() + data.creation_snapshot.is_some() as usize);
         if let Some((created_at, snapshot_version, snapshot_data)) = data.creation_snapshot {
-            let creation_snapshot = parse_snapshot_ref::<T>(snapshot_version, &snapshot_data)
-                .wrap_context("parsing snapshot")?;
-
-            res = db
-                .create::<T>(
-                    data.object_id,
-                    created_at,
-                    Arc::new(creation_snapshot),
+            let (sender, receiver) = oneshot::channel();
+            latest_snapshot_returns.push(receiver);
+            data_saver
+                .unbounded_send((
+                    Arc::new(Update {
+                        object_id: data.object_id,
+                        type_id: data.type_id,
+                        data: UpdateData::Creation {
+                            created_at,
+                            snapshot_version,
+                            data: snapshot_data,
+                        },
+                    }),
                     data.events.is_empty().then(|| data.now_have_all_until),
-                    lock,
-                )
-                .await
-                .wrap_context("creating creation snapshot in local database")?;
+                    ShouldLock(lock),
+                    sender,
+                ))
+                .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
         } else if lock {
             db.get_latest::<T>(true, data.object_id)
                 .await
                 .wrap_context("locking object as requested")?;
         }
 
+        // Then, submit all the events
         let events_len = data.events.len();
         for (i, (event_id, event)) in data.events.into_iter().enumerate() {
-            let event = <T::Event as serde::Deserialize>::deserialize(&*event)
-                .wrap_context("parsing event")?;
-
             // We already locked the object just above if requested
-            match db
-                .submit::<T>(
-                    data.object_id,
-                    event_id,
-                    Arc::new(event),
+            let (sender, receiver) = oneshot::channel();
+            latest_snapshot_returns.push(receiver);
+            data_saver
+                .unbounded_send((
+                    Arc::new(Update {
+                        object_id: data.object_id,
+                        type_id: data.type_id,
+                        data: UpdateData::Event {
+                            event_id,
+                            data: event,
+                        },
+                    }),
                     (i + 1 == events_len).then(|| data.now_have_all_until),
-                    false
-                )
-                .await
-            {
-                Ok(r) => res = r.or(res),
-                Err(crate::Error::ObjectDoesNotExist(object_id)) // Vacuumed in-between
-                    if object_id == data.object_id && !lock => (),
-                Err(err) => return Err(err).wrap_context("creating event in local database"),
+                    ShouldLock(false),
+                    sender,
+                ))
+                .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
+        }
+
+        // Finally, retrieve the result
+        let mut res = None;
+        for receiver in latest_snapshot_returns {
+            if let Ok(res_data) = receiver.await {
+                match res_data {
+                    Ok(UpdateResult::LatestChanged(res_data)) => res = Some(res_data),
+                    Ok(_) => (),
+                    Err(crate::Error::ObjectDoesNotExist(o)) if o == data.object_id && !lock => {
+                        // Ignore this error, the object was just vacuumed during creation
+                    }
+                    Err(err) => return Err(err).wrap_context("creating in local database"),
+                }
             }
         }
 
@@ -632,16 +669,29 @@ impl ClientDb {
         }
         if importance >= Importance::Subscribe {
             let res = self.api.get_subscribe(object_id).await?;
-            let res = Self::locally_create_all::<T>(&self.db, importance >= Importance::Lock, res)
-                .await?;
-            let res = match res {
-                Some(res) => res,
-                None => self.db.get_latest::<T>(false, object_id).await?,
+            let res_json = Self::locally_create_all::<T>(
+                &self.data_saver,
+                &self.db,
+                importance >= Importance::Lock,
+                res,
+            )
+            .await?;
+            let (res, res_json) = match res_json {
+                Some(res_json) => (
+                    Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),
+                    res_json,
+                ),
+                None => {
+                    let res = self.db.get_latest::<T>(false, object_id).await?;
+                    let res_json =
+                        serde_json::to_value(&res).wrap_context("serializing snapshot")?;
+                    (res, res_json)
+                }
             };
             let queries = Self::queries_for(
                 &self.subscribed_queries.lock().unwrap(),
                 *T::type_ulid(),
-                &serde_json::to_value(&res).wrap_context("serializing latest snapshot")?,
+                &res_json,
             );
             self.subscribed_objects
                 .lock()
@@ -715,11 +765,13 @@ impl ClientDb {
                 .api
                 .query_subscribe::<T>(query_id, only_updated_since, query)
                 .then({
+                    let data_saver = self.data_saver.clone();
                     let db = self.db.clone();
                     let subscribed_objects = self.subscribed_objects.clone();
                     let subscribed_queries = self.subscribed_queries.clone();
                     let lock = importance >= Importance::Lock;
                     move |data| {
+                        let data_saver = data_saver.clone();
                         let db = db.clone();
                         let subscribed_objects = subscribed_objects.clone();
                         let subscribed_queries = subscribed_queries.clone();
@@ -730,14 +782,25 @@ impl ClientDb {
                                     let now_have_all_until = data.now_have_all_until;
                                     let object_id = data.object_id;
                                     let type_id = data.type_id;
-                                    let res = match Self::locally_create_all::<T>(&db, lock, data)
-                                        .await?
-                                    {
-                                        Some(res) => res,
-                                        None => db.get_latest::<T>(false, object_id).await?,
+                                    let res_json =
+                                        Self::locally_create_all::<T>(&data_saver, &db, lock, data)
+                                            .await?;
+                                    let (res, res_json) = match res_json {
+                                        Some(res_json) => (
+                                            Arc::new(
+                                                T::deserialize(&res_json)
+                                                    .wrap_context("deserializing snapshot")?,
+                                            ),
+                                            res_json,
+                                        ),
+                                        None => {
+                                            let res =
+                                                self.db.get_latest::<T>(false, object_id).await?;
+                                            let res_json = serde_json::to_value(&res)
+                                                .wrap_context("serializing snapshot")?;
+                                            (res, res_json)
+                                        }
                                     };
-                                    let res_json = serde_json::to_value(&res)
-                                        .wrap_context("serializing latest snapshot")?;
                                     let queries = Self::queries_for(
                                         &subscribed_queries.lock().unwrap(),
                                         type_id,
