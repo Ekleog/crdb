@@ -183,11 +183,13 @@ impl ClientDb {
         let api = self.api.clone();
         let subscribed_objects = self.subscribed_objects.clone();
         let subscribed_queries = self.subscribed_queries.clone();
+        let vacuum_guard = self.vacuum_guard.clone();
         crate::spawn(async move {
             Self::data_saver::<C>(
                 data_receiver,
                 subscribed_objects,
                 subscribed_queries,
+                vacuum_guard,
                 db_bypass,
                 api,
                 updates_broadcaster,
@@ -202,12 +204,14 @@ impl ClientDb {
         subscribed_queries: Arc<
             Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>,
         >,
+        vacuum_guard: Arc<RwLock<()>>,
         db: Arc<LocalDb>,
         api: Arc<ApiDb>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
         while let Some((data, now_have_all_until)) = data_receiver.next().await {
+            let _guard = vacuum_guard.read().await; // Do not vacuum while we're inserting new data
             match Self::save_data::<C>(
                 &db,
                 &subscribed_objects,
