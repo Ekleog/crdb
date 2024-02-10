@@ -224,7 +224,12 @@ impl ClientDb {
             .await
             {
                 Ok(()) => (),
-                // TODO(api): MissingBinaries, ObjectDoesNotExist
+                Err(crate::Error::ObjectDoesNotExist(_)) => {
+                    // Ignore this error, because if we received from the server an event with an object that does not exist
+                    // locally, it probably means that we recently unsubscribed from it but the server had already sent us the
+                    // update.
+                }
+                // TODO(api): MissingBinaries
                 Err(err) => {
                     tracing::error!(?err, ?data, "unexpected error saving data");
                 }
