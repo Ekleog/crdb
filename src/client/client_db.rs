@@ -142,6 +142,8 @@ impl ClientDb {
                     // stop matching the query? In particular, should the objects be unlocked? This will probably require adding a new field
                     // to the database, remembering whether the object was locked for a query or by explicit request from the user, so that
                     // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
+                    // Solution idea: have is_locked be Some(1) if object is locked for itself, Some(2) if locked for a query, and Some(3) if
+                    // both
                     for u in updates.data {
                         let (sender, _) = oneshot::channel();
                         data_saver
