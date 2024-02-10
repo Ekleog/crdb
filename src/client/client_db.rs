@@ -11,7 +11,7 @@ use crate::{
     Updatedness,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, StreamExt};
+use futures::{channel::mpsc, stream, FutureExt, StreamExt};
 use std::{
     collections::{hash_map, HashMap, HashSet},
     future::Future,
@@ -209,7 +209,7 @@ impl ClientDb {
             Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>,
         >,
         db: Arc<LocalDb>,
-        _api: Arc<ApiDb>,
+        api: Arc<ApiDb>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
@@ -229,12 +229,55 @@ impl ClientDb {
                     // locally, it probably means that we recently unsubscribed from it but the server had already sent us the
                     // update.
                 }
-                // TODO(api): MissingBinaries
+                Err(crate::Error::MissingBinaries(binary_ids)) => {
+                    if let Err(err) = Self::fetch_binaries(binary_ids, &db, &api).await {
+                        tracing::error!(
+                            ?err,
+                            ?data,
+                            "failed retrieving required binaries for data the server sent us"
+                        );
+                        continue;
+                    }
+                    if let Err(err) = Self::save_data::<C>(
+                        &db,
+                        &subscribed_objects,
+                        &subscribed_queries,
+                        &data,
+                        &updates_broadcaster,
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            ?err,
+                            ?data,
+                            "unexpected error saving data after fetching the binaries"
+                        );
+                    }
+                }
                 Err(err) => {
                     tracing::error!(?err, ?data, "unexpected error saving data");
                 }
             }
         }
+    }
+
+    async fn fetch_binaries(
+        binary_ids: Vec<BinPtr>,
+        db: &LocalDb,
+        api: &ApiDb,
+    ) -> crate::Result<()> {
+        let mut bins = stream::iter(binary_ids.into_iter())
+            .map(|binary_id| api.get_binary(binary_id).map(move |bin| (binary_id, bin)))
+            .buffer_unordered(16); // TODO(low): is 16 a good number?
+        while let Some((binary_id, bin)) = bins.next().await {
+            match bin? {
+                Some(bin) => db.create_binary(binary_id, bin).await?,
+                None => {
+                    return Err(crate::Error::Other(anyhow!("Binary {binary_id:?} was not present on server, yet server sent us data requiring it")));
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn save_data<C: ApiConfig>(
