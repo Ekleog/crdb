@@ -227,7 +227,7 @@ impl ApiDb {
                             let binary_getter = binary_getter.clone();
                             async move { binary_getter.get_binary(b).await }
                         })
-                        .buffer_unordered(16) // TODO(low): is 16 a good number?
+                        .buffer_unordered(16) // TODO(perf-low): is 16 a good number?
                         .filter_map(|res| async move { res.ok().and_then(|o| o) })
                         .collect::<Vec<Arc<[u8]>>>()
                         .await;

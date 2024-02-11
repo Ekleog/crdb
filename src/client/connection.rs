@@ -175,10 +175,10 @@ where
 
     pub async fn run(mut self) {
         loop {
-            // TODO(low): ping/pong should probably be eg. 1 minute when user is inactive, and 10s when active
+            // TODO(perf-low): ping/pong should probably be eg. 1 minute when user is inactive, and 10s when active
             tokio::select! {
                 // Retry connecting if we're looping there
-                // TODO(low): this should probably listen on network status, with eg. window.ononline, to not retry
+                // TODO(perf-low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
                 _reconnect_attempt_interval = tokio::time::sleep(RECONNECT_INTERVAL),
                     if self.is_trying_to_connect() => (),
@@ -567,7 +567,7 @@ where
                     // subscribe to (and never automatically unsubscribe from) any objects returned by subscribed
                     // queries. As such, the updates to that object will just keep coming through anyway, and the
                     // fact that they no longer match the queries should be made obvious at that point.
-                    // TODO(low): if we introduce a ManuallyUpdated subscription level, this would stop being true:
+                    // TODO(misc-med): if we introduce a ManuallyUpdated subscription level, this would stop being true:
                     // we could have subscription be handled just like locking, and objects that stop matching
                     // queries would then automatically fall back to being ManuallyUpdated
                 }

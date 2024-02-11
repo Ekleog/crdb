@@ -95,7 +95,7 @@ impl ClientDb {
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
-        // TODO(client): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
+        // TODO(client-high): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
             api,
             db,
@@ -312,7 +312,7 @@ impl ClientDb {
     ) -> crate::Result<()> {
         let mut bins = stream::iter(binary_ids.into_iter())
             .map(|binary_id| api.get_binary(binary_id).map(move |bin| (binary_id, bin)))
-            .buffer_unordered(16); // TODO(low): is 16 a good number?
+            .buffer_unordered(16); // TODO(perf-low): is 16 a good number?
         while let Some((binary_id, bin)) = bins.next().await {
             match bin? {
                 Some(bin) => db.create_binary(binary_id, bin).await?,
@@ -473,7 +473,7 @@ impl ClientDb {
                 }
             }
         }
-        // TODO(client): give out update broadcasters for each individual query the user subscribed to
+        // TODO(client-high): give out update broadcasters for each individual query the user subscribed to
         if let Err(err) = updates_broadcaster.send(object_id) {
             tracing::error!(?err, ?object_id, "failed broadcasting update");
         }
@@ -505,7 +505,7 @@ impl ClientDb {
     }
 
     pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
-        // TODO(client): automatically call `api.unsubscribe` when `vacuum` removes an object, and remove from subscribed_objects
+        // TODO(client-high): automatically call `api.unsubscribe` when `vacuum` removes an object, and remove from subscribed_objects
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
             self.subscribed_objects.lock().unwrap().remove(object_id);
@@ -516,7 +516,7 @@ impl ClientDb {
 
     pub async fn unsubscribe_query(&self, query_id: QueryId) -> crate::Result<()> {
         let objects_to_unlock = {
-            // TODO(test): fuzz that subscribed_queries/objects always stay in sync with in-database data
+            // TODO(test-high): fuzz that subscribed_queries/objects always stay in sync with in-database data
             let mut subscribed_queries = self.subscribed_queries.lock().unwrap();
             let Some((_, _, _, removed_query_lock)) = subscribed_queries.remove(&query_id) else {
                 return Ok(()); // was not subscribed to the query
@@ -555,7 +555,7 @@ impl ClientDb {
         created_at: EventId,
         object: Arc<T>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // TODO(client): validate permissions to create the object, to fail early
+        // TODO(client-med): validate permissions to create the object, to fail early
         let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
         let val = self
             .db
@@ -603,7 +603,7 @@ impl ClientDb {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // TODO(client): validate permissions to submit the event, to fail early
+        // TODO(client-med): validate permissions to submit the event, to fail early
         let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
         let val = self
             .db
@@ -640,7 +640,7 @@ impl ClientDb {
                 }
             }
         }
-        // TODO(low): consider introducing a ManuallyUpdated importance level, that would make this statement wrong?
+        // TODO(misc-med): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
         self.api.submit::<T>(
             object_id,
             event_id,
@@ -784,7 +784,7 @@ impl ClientDb {
             }
             Ok(res)
         } else {
-            unimplemented!() // TODO(client): GetLatest
+            unimplemented!() // TODO(client-high): GetLatest
         }
     }
 
@@ -830,7 +830,7 @@ impl ClientDb {
         query: Arc<Query>,
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
         if importance >= Importance::Subscribe {
-            // TODO(client): first make sure to wait until the current upload queue is empty, so that
+            // TODO(client-med): first make sure to wait until the current upload queue is empty, so that
             // any newly-created object/event makes its way through to the server before querying
             let only_updated_since = {
                 let mut subscribed_queries = self.subscribed_queries.lock().unwrap();
@@ -944,11 +944,11 @@ impl ClientDb {
                     }
                 }))
         } else {
-            unimplemented!() // TODO(client): FetchLatest
+            unimplemented!() // TODO(client-high): FetchLatest
         }
     }
 
-    // TODO(low): should the client be allowed to request a recreation?
+    // TODO(misc-low): should the client be allowed to request a recreation?
 
     pub async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         self.db.create_binary(binary_id, data.clone()).await

@@ -21,7 +21,7 @@ jobs:
       - uses: taiki-e/install-action@0dffe805566eb5f21aa682f9a43f6fbac7282dbe
         with:
           tool: just, cargo-nextest
-      # TODO(low): contribute these to taiki-e/install-action upstream?
+      # TODO(misc-low): contribute these to taiki-e/install-action upstream?
       - uses: baptiste0928/cargo-install@1cd874a5478fdca35d868ccc74640c5aabbb8f1b
         with:
           crate: sqlx-cli

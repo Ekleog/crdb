@@ -39,10 +39,10 @@ _tests = [ # internal feature, for use by wasm tests in particular and thus all 
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
-    "reord", # TODO(test): this should probably actually be used in all the builds
+    "reord", # TODO(test-low): this should probably actually be used in all the builds
 ]
 development = [
-    "reord", # TODO(test): this should probably actually be used in all the builds
+    "reord", # TODO(test-low): this should probably actually be used in all the builds
 ]
 
 [dependencies]

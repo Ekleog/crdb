@@ -30,7 +30,7 @@ impl<D: Db> CacheDb<D> {
         this
     }
 
-    // TODO(low): auto-clear binaries without waiting for a reduce_size_to call
+    // TODO(perf-high): auto-clear binaries without waiting for a reduce_size_to call
     // Probably both cache & binaries should be dealt with together by moving the
     // watermark handling to the CacheDb level. OTOH binaries are already Weak so
     // it's not a big deal
