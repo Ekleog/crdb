@@ -773,7 +773,6 @@ impl ClientDb {
 
     pub async fn query_local<T: Object>(
         &self,
-        importance: Importance, // TODO(api): this does not make sense with the new query locking logic
         query: Arc<Query>,
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
         let object_ids = self
@@ -784,7 +783,7 @@ impl ClientDb {
 
         Ok(async_stream::stream! {
             for object_id in object_ids {
-                match self.get_impl::<T>(importance.to_query_lock(), importance.to_subscribe(), object_id).await {
+                match self.get_impl::<T>(Lock::NONE, false, object_id).await {
                     Ok(res) => yield Ok(res),
                     // Ignore missing objects, they were just vacuumed between listing and getting
                     Err(crate::Error::ObjectDoesNotExist(id)) if id == object_id => continue,
