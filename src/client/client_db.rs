@@ -24,7 +24,7 @@ use tokio_util::sync::CancellationToken;
 enum UpdateResult {
     LostAccess,
     LatestUnchanged,
-    LatestChanged(serde_json::Value),
+    LatestChanged(TypeId, serde_json::Value),
 }
 
 pub struct ClientDb {
@@ -95,7 +95,6 @@ impl ClientDb {
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
-        // TODO(api): ObjectDoesNotExist as response to the startup GetSubscribe means that our user lost read access while offline; handle it properly
         // TODO(client): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
             api,
@@ -339,15 +338,15 @@ impl ClientDb {
         updates_broadcaster: &broadcast::Sender<ObjectId>,
     ) -> crate::Result<UpdateResult> {
         let object_id = u.object_id;
-        let type_id = u.type_id;
         let res = match &u.data {
             UpdateData::Creation {
+                type_id,
                 created_at,
                 snapshot_version,
                 data,
             } => match C::recreate(
                 db,
-                type_id,
+                *type_id,
                 object_id,
                 *created_at,
                 *snapshot_version,
@@ -357,12 +356,16 @@ impl ClientDb {
             )
             .await?
             {
-                Some(res) => UpdateResult::LatestChanged(res),
+                Some(res) => UpdateResult::LatestChanged(*type_id, res),
                 None => UpdateResult::LatestUnchanged,
             },
-            UpdateData::Event { event_id, data } => match C::submit(
-                &*db,
+            UpdateData::Event {
                 type_id,
+                event_id,
+                data,
+            } => match C::submit(
+                &*db,
+                *type_id,
                 object_id,
                 *event_id,
                 &data,
@@ -371,7 +374,7 @@ impl ClientDb {
             )
             .await?
             {
-                Some(res) => UpdateResult::LatestChanged(res),
+                Some(res) => UpdateResult::LatestChanged(*type_id, res),
                 None => UpdateResult::LatestUnchanged,
             },
             UpdateData::LostReadRights => {
@@ -434,11 +437,11 @@ impl ClientDb {
                     }
                 }
             }
-            UpdateResult::LatestChanged(res) => {
+            UpdateResult::LatestChanged(type_id, res) => {
                 // Something changed in the object's latest_snapshot
                 if let Some(now_have_all_until) = now_have_all_until {
                     let (mut queries, lock_after) =
-                        Self::queries_for(&subscribed_queries.lock().unwrap(), type_id, res);
+                        Self::queries_for(&subscribed_queries.lock().unwrap(), *type_id, res);
                     let lock_before = if let Some((_, queries_before, lock_before)) =
                         subscribed_objects.lock().unwrap().insert(
                             object_id,
@@ -676,8 +679,8 @@ impl ClientDb {
                 .unbounded_send((
                     Arc::new(Update {
                         object_id: data.object_id,
-                        type_id: data.type_id,
                         data: UpdateData::Creation {
+                            type_id: data.type_id,
                             created_at,
                             snapshot_version,
                             data: snapshot_data,
@@ -704,8 +707,8 @@ impl ClientDb {
                 .unbounded_send((
                     Arc::new(Update {
                         object_id: data.object_id,
-                        type_id: data.type_id,
                         data: UpdateData::Event {
+                            type_id: data.type_id,
                             event_id,
                             data: event,
                         },
@@ -722,7 +725,7 @@ impl ClientDb {
         for receiver in latest_snapshot_returns {
             if let Ok(res_data) = receiver.await {
                 match res_data {
-                    Ok(UpdateResult::LatestChanged(res_data)) => res = Some(res_data),
+                    Ok(UpdateResult::LatestChanged(_, res_data)) => res = Some(res_data),
                     Ok(_) => (),
                     Err(crate::Error::ObjectDoesNotExist(o))
                         if o == data.object_id && lock == Lock::NONE =>

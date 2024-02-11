@@ -367,9 +367,9 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                         reord::point().await;
                         notify_recreation(
                             Update {
-                                type_id,
                                 object_id,
                                 data: UpdateData::Creation {
+                                    type_id,
                                     created_at: new_created_at,
                                     snapshot_version,
                                     data: Arc::new(data),

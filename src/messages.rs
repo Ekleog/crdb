@@ -167,8 +167,8 @@ impl ObjectData {
         if let Some((created_at, snapshot_version, data)) = self.creation_snapshot {
             res.push(Arc::new(Update {
                 object_id: self.object_id,
-                type_id: self.type_id,
                 data: UpdateData::Creation {
+                    type_id: self.type_id,
                     created_at,
                     snapshot_version,
                     data,
@@ -178,8 +178,11 @@ impl ObjectData {
         for (event_id, data) in self.events.into_iter() {
             res.push(Arc::new(Update {
                 object_id: self.object_id,
-                type_id: self.type_id,
-                data: UpdateData::Event { event_id, data },
+                data: UpdateData::Event {
+                    type_id: self.type_id,
+                    event_id,
+                    data,
+                },
             }));
         }
         res
@@ -203,7 +206,6 @@ pub struct SnapshotData {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Update {
     pub object_id: ObjectId,
-    pub type_id: TypeId,
     pub data: UpdateData,
 }
 
@@ -211,11 +213,13 @@ pub struct Update {
 pub enum UpdateData {
     // Also used for re-creation events
     Creation {
+        type_id: TypeId,
         created_at: EventId,
         snapshot_version: i32,
         data: Arc<serde_json::Value>,
     },
     Event {
+        type_id: TypeId,
         event_id: EventId,
         data: Arc<serde_json::Value>,
     },

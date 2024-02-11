@@ -164,8 +164,8 @@ macro_rules! generate_server {
                             let new_update = crdb::Arc::new(crdb::UpdatesWithSnap {
                                 updates: vec![crdb::Arc::new(crdb::Update {
                                     object_id,
-                                    type_id,
                                     data: crdb::UpdateData::Creation {
+                                        type_id,
                                         created_at,
                                         snapshot_version: <$object as crdb::Object>::snapshot_version(),
                                         data: snapshot_data.clone(),
@@ -222,8 +222,8 @@ macro_rules! generate_server {
                             let new_update = crdb::Arc::new(crdb::UpdatesWithSnap {
                                 updates: vec![crdb::Arc::new(crdb::Update {
                                     object_id,
-                                    type_id,
                                     data: crdb::UpdateData::Event {
+                                        type_id,
                                         event_id,
                                         data: event_data.clone(),
                                     },

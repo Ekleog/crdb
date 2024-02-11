@@ -2,7 +2,8 @@ use crate::{
     crdb_internal::Lock,
     ids::QueryId,
     messages::{
-        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
+        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
+        UpdateData, Updates,
     },
     ObjectId, Query, SessionToken, Timestamp, TypeId, Updatedness,
 };
@@ -534,6 +535,17 @@ where
             // Ignore the sidecar here. We're not requesting any binaries so there can't be anything anyway
             match response.response {
                 ResponsePart::Error(crate::SerializableError::ConnectionLoss) => (), // too bad, let's empty the feed and try again next reconnection
+                ResponsePart::Error(crate::SerializableError::ObjectDoesNotExist(object_id)) => {
+                    // Server claimed this object doesn't exist, but we actually knew about it already
+                    // The only possible conclusion is that we lost the rights to read the object.
+                    let _ = update_sender.unbounded_send(Updates {
+                        data: vec![Arc::new(Update {
+                            object_id,
+                            data: UpdateData::LostReadRights,
+                        })],
+                        now_have_all_until: Updatedness::from_u128(0), // Placeholder: the object will be deleted locally anyway
+                    });
+                }
                 ResponsePart::Error(err) => {
                     tracing::error!(?err, "got unexpected server error upon re-subscribing");
                 }
@@ -555,6 +567,9 @@ where
                     // subscribe to (and never automatically unsubscribe from) any objects returned by subscribed
                     // queries. As such, the updates to that object will just keep coming through anyway, and the
                     // fact that they no longer match the queries should be made obvious at that point.
+                    // TODO(low): if we introduce a ManuallyUpdated subscription level, this would stop being true:
+                    // we could have subscription be handled just like locking, and objects that stop matching
+                    // queries would then automatically fall back to being ManuallyUpdated
                 }
                 response => {
                     tracing::error!(

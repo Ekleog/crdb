@@ -647,7 +647,6 @@ impl<C: ServerConfig> Server<C> {
                     Arc::new(UpdatesWithSnap {
                         updates: vec![Arc::new(Update {
                             object_id: c.object_id,
-                            type_id: c.type_id,
                             data: UpdateData::LostReadRights,
                         })],
                         new_last_snapshot: None,
