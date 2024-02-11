@@ -169,7 +169,7 @@ mod fuzz_helpers {
             Some((recreate_at, updatedness)) => {
                 let db = db
                     .vacuum(Some(recreate_at), updatedness, None, |_, _| {
-                        // TODO(test): validate that the notified recreations are the same as in memdb
+                        // TODO(test-high): validate that the notified recreations are the same as in memdb
                     })
                     .await;
                 let mem = async move {
@@ -195,7 +195,7 @@ mod fuzz_helpers {
     }
 }
 
-// TODO(test): add tests that validate that upgrading the version of objects or normalizer works fine
+// TODO(test-high): add tests that validate that upgrading the version of objects or normalizer works fine
 
 mod fuzz_simple {
     include!("../../test_utils/fuzz_simple.rs");

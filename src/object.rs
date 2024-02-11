@@ -116,7 +116,7 @@ pub trait Object:
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 
-    // TODO(low): replace this boilerplate by some serialization dark magic to auto-detect all the fields?
+    // TODO(misc-low): replace this boilerplate by some serialization dark magic to auto-detect all the fields?
     // This would be like-ish what we do for SearchableString, except we'd need some more thinking,
     // eg. a custom Serializer that'd collect only the _crdb-bin-ptr. Also we'd still need "regular"
     // serialization to be transparent, because users could query() on them.

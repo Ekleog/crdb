@@ -59,7 +59,7 @@ mod server {
 }
 
 // Stuff used by macros
-// TODO(low): verify all the stuff here is actually required (and review the whole pub crate api too)
+// TODO(misc-high): verify all the stuff here is actually required (and review the whole pub crate api too)
 #[doc(hidden)]
 pub mod crdb_internal {
     #[cfg(feature = "client")]

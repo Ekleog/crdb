@@ -28,7 +28,7 @@ enum Op {
     GetLatest {
         object: usize,
     },
-    // TODO(test): also test query
+    // TODO(test-low): also test query
     Recreate {
         object: usize,
         updatedness: Updatedness,
@@ -129,7 +129,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .await;
         }
         Op::Remove { object } => {
-            let _object = object; // TODO(test): implement for non-postgres databases
+            let _object = object; // TODO(test-low): implement for non-postgres databases
         }
         Op::Vacuum {
             recreate_at: None,
@@ -243,7 +243,7 @@ fn fuzz_checking_locks() {
         })
 }
 
-// TODO(test): These fuzzers do not check anything, just non-crash/deadlock. We should have fuzzers that:
+// TODO(test-med): These fuzzers do not check anything, just non-crash/deadlock. We should have fuzzers that:
 // - make sure that one thread does not submit to an object without creating it before
 // - make sure that if two threads create an object it's with the same initial value
 // - make sure that if two threads submit an event it's with the same value

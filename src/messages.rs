@@ -12,7 +12,7 @@ use std::{
 )]
 pub struct RequestId(pub u64);
 
-// TODO(low): review what all the (de)serialized JSON for all the types defined here looks like
+// TODO(misc-med): review what all the (de)serialized JSON for all the types defined here looks like
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ClientMessage {
     pub request_id: RequestId,
@@ -21,7 +21,7 @@ pub struct ClientMessage {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Request {
-    // TODO(client): make sure all these request types are properly exposed to the user.
+    // TODO(client-med): make sure all these request types are properly exposed to the user.
     SetToken(SessionToken),
     RenameSession(String),
     CurrentSession,
@@ -128,7 +128,7 @@ pub enum ResponsePart {
         // Set only in answer to a Query, this is the max of the Updatedness of all the returned objects.
         // This is only set in the last ResponsePart of the query request, to make sure if connection cuts
         // the client will not wrongfully assume having already received everything.
-        // TODO(low): Server would have better perf if this were actually the max updatedness it's guaranteed
+        // TODO(perf-low): Server would have better perf if this were actually the max updatedness it's guaranteed
         // to have answered. This way, clients would ask queries with a higher only_updated_since, and thus
         // postgresql would be able to filter more lines faster.
         now_have_all_until: Option<Updatedness>,
@@ -152,7 +152,7 @@ pub enum MaybeObject {
 pub struct ObjectData {
     pub object_id: ObjectId,
     pub type_id: TypeId,
-    // TODO(low): expose some API to make it easy for client writers to notice they're getting snapshots
+    // TODO(misc-low): expose some API to make it easy for client writers to notice they're getting snapshots
     // with versions higher than what their current code version supports, to suggest an upgrade
     pub creation_snapshot: Option<(EventId, i32, Arc<serde_json::Value>)>,
     pub events: BTreeMap<EventId, Arc<serde_json::Value>>,

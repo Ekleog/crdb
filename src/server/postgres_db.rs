@@ -30,7 +30,7 @@ pub struct PostgresDb<Config: ServerConfig> {
     db: sqlx::PgPool,
     cache_db: Weak<CacheDb<PostgresDb<Config>>>,
     event_locks: LockPool<EventId>,
-    // TODO(low): make into a RwLockPool, which locks the snapshot fields
+    // TODO(perf-high): make into a RwLockPool, which locks the snapshot fields
     // create and submit take a write(), get and update_users_who_can_read
     // take a read(). This should significantly improve performance
     object_locks: LockPool<ObjectId>,
@@ -280,8 +280,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         kill_sessions_older_than: Option<Timestamp>,
         mut notify_recreation: impl FnMut(Update, HashSet<User>),
     ) -> crate::Result<()> {
-        // TODO(low): do not vacuum away binaries that have been uploaded less than an hour ago
-        // TODO(low): also keep an "upload time" field on events, and allow fetching just the new events for an object
+        // TODO(perf-high): do not vacuum away binaries that have been uploaded less than an hour ago
         if let Some(t) = kill_sessions_older_than {
             // Discard all sessions that were last active too long ago
             reord::point().await;
@@ -603,7 +602,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         };
 
         // Remove the request to update
-        // TODO(low): Consider switching to serializable transactions only and discarding locking. This would
+        // TODO(misc-low): Consider switching to serializable transactions only and discarding locking. This would
         // remove the requirement on `Object::users_who_can_read` that `.get()` must always be called in the same
         // order. Maybe make serializable transactions a feature of this crate? If not we should at least provide
         // an easy way for users to fuzz their Object implementation for these deadlock conditions
@@ -637,7 +636,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })?;
         reord::point().await;
 
-        // TODO(low): there must be some libstd function to compute the two at once?
+        // TODO(perf-low): there must be some libstd function to compute the two at once?
         // but symmetric_difference doesn't seem to indicate which set the value came from
         let lost_read = users_who_can_read_before
             .difference(&users_who_can_read_after)
@@ -1740,7 +1739,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(transaction)
     }
 
-    // TODO(test): introduce in server-side fuzzer
+    // TODO(test-high): introduce in server-side fuzzer
     pub async fn get_all(
         &self,
         transaction: &mut sqlx::PgConnection,
@@ -1898,7 +1897,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             }
             Either::Right(Some(_snapshot_id)) => {
                 // Was already present, but had a task ongoing to update the rdeps
-                // TODO(low): this will duplicate the work done by the other create call
+                // TODO(perf-high): this will duplicate the work done by the other create call
                 self.update_rdeps(object_id, &*cache_db)
                     .await
                     .wrap_with_context(|| {
@@ -1943,7 +1942,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             }
             Either::Right(Some(_snapshot_id)) => {
                 // Was already present, but had a task ongoing to update the rdeps
-                // TODO(low): this will duplicate the work done by the other create call
+                // TODO(perf-high): this will duplicate the work done by the other create call
                 self.update_rdeps(object_id, &*cache_db)
                     .await
                     .wrap_with_context(|| {

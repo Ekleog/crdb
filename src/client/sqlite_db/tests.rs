@@ -1,4 +1,4 @@
-#![allow(unused_variables, dead_code, unused_imports)] // TODO(sqlite): remove
+#![allow(unused_variables, dead_code, unused_imports)] // TODO(sqlite-high): remove
 
 use super::SqliteDb;
 use crate::{

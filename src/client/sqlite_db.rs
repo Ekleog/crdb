@@ -217,7 +217,7 @@ impl Db for SqliteDb {
         updatedness: Option<Updatedness>,
         force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
-        unimplemented!() // TODO(sqlite): implement
+        unimplemented!() // TODO(sqlite-high): implement
     }
 
     async fn get_latest<T: Object>(
@@ -225,7 +225,7 @@ impl Db for SqliteDb {
         lock: Lock,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
-        unimplemented!() // TODO(sqlite): implement
+        unimplemented!() // TODO(sqlite-high): implement
     }
 
     async fn recreate<T: Object>(
@@ -236,18 +236,18 @@ impl Db for SqliteDb {
         updatedness: Option<Updatedness>,
         force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
-        unimplemented!() // TODO(sqlite): implement
+        unimplemented!() // TODO(sqlite-high): implement
     }
 
     async fn remove(&self, _object_id: ObjectId) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite): implement
+        unimplemented!() // TODO(sqlite-high): implement
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite): implement
+        unimplemented!() // TODO(sqlite-high): implement
     }
 
     async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
-        unimplemented!() // TODO(sqlite): implement
+        unimplemented!() // TODO(sqlite-high): implement
     }
 }

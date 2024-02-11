@@ -21,7 +21,7 @@ pub enum Query {
     Any(Vec<Query>),
     Not(Box<Query>),
 
-    // TODO(low): this could be useful?
+    // TODO(misc-low): this could be useful?
     // Any/all the values in the array at JsonPathItem must match Query
     // AnyIn(Vec<JsonPathItem>, Box<Query>),
     // AllIn(Vec<JsonPathItem>, Box<Query>),

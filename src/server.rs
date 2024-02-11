@@ -145,7 +145,7 @@ impl<C: ServerConfig> Server<C> {
                                     senders.retain(|sender| {
                                         sender.send((updatedness, updates.clone())).is_ok()
                                     });
-                                    // TODO(low): remove the entry from the hashmap altogether if it becomes empty
+                                    // TODO(perf-med): remove the entry from the hashmap altogether if it becomes empty
                                 }
                             }
                         }
@@ -261,7 +261,7 @@ impl<C: ServerConfig> Server<C> {
                         break;
                     };
                     let sess = conn.session.as_ref().unwrap();
-                    // TODO(low): batch updates across messages if there are lots of pending updates?
+                    // TODO(perf-high): make sure the size of update messages is both as batched as possible and not too big
                     let mut data = Vec::new();
                     for (object_id, updates) in update.iter() {
                         if sess.is_subscribed_to(*object_id, updates.new_last_snapshot.as_deref()) {
@@ -318,7 +318,7 @@ impl<C: ServerConfig> Server<C> {
         }
         let msg = serde_json::from_str::<ClientMessage>(msg)
             .wrap_context("deserializing client message")?;
-        // TODO(low): We could parallelize requests here, and not just pipeline them. However, we need to be
+        // TODO(perf-med): We could parallelize requests here, and not just pipeline them. However, we need to be
         // careful about not sending updates about subscribed objects before the objects themselves, so it is
         // nontrivial. Do this only after thinking well about what could happen.
         match &*msg.request {
@@ -349,7 +349,7 @@ impl<C: ServerConfig> Server<C> {
                     });
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
-            // TODO(client): expose RenameSession & co to end-user
+            // TODO(client-med): expose RenameSession & co to end-user
             Request::RenameSession(name) => {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
@@ -709,7 +709,7 @@ impl<C: ServerConfig> Server<C> {
                 }
             }
         });
-        let objects = stream::iter(objects).buffer_unordered(16); // TODO(low): is 16 a good number?
+        let objects = stream::iter(objects).buffer_unordered(16); // TODO(perf-low): is 16 a good number?
         pin_mut!(objects);
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
@@ -717,7 +717,7 @@ impl<C: ServerConfig> Server<C> {
         // resumption after a connection loss, while not sending one message per mini-object.
         while let Some(object) = objects.next().await {
             if size_of_message >= 1024 * 1024 {
-                // TODO(low): is 1MiB a good number?
+                // TODO(perf-low): is 1MiB a good number?
                 let data = std::mem::replace(&mut current_data, Vec::new());
                 size_of_message = 0;
                 Self::send(
@@ -799,7 +799,7 @@ impl<C: ServerConfig> Server<C> {
             }
         });
         let snapshots = stream::iter(snapshots)
-            .buffer_unordered(16) // TODO(low): is 16 a good number?
+            .buffer_unordered(16) // TODO(perf-low): is 16 a good number?
             .filter_map(|res| async move {
                 match res {
                     Ok(object) => Some(Ok(object)),
@@ -814,7 +814,7 @@ impl<C: ServerConfig> Server<C> {
         // resumption after a connection loss, while not sending one message per mini-object.
         while let Some(snapshot) = snapshots.next().await {
             if size_of_message >= 1024 * 1024 {
-                // TODO(low): is 1MiB a good number?
+                // TODO(perf-low): is 1MiB a good number?
                 let data = std::mem::replace(&mut current_data, Vec::new());
                 size_of_message = 0;
                 Self::send(
@@ -859,7 +859,7 @@ impl<C: ServerConfig> Server<C> {
                 .get_binary(binary_id)
                 .map(move |r| (binary_id, r))
         });
-        let binaries = stream::iter(binaries).buffer_unordered(16); // TODO(low): is 16 a good number?
+        let binaries = stream::iter(binaries).buffer_unordered(16); // TODO(perf-low): is 16 a good number?
         pin_mut!(binaries);
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
@@ -867,7 +867,7 @@ impl<C: ServerConfig> Server<C> {
         // many binaries as possible before any potential error (in particular missing-binary).
         while let Some((binary_id, binary)) = binaries.next().await {
             if size_of_message >= 1024 * 1024 {
-                // TODO(low): is 1MiB a good number?
+                // TODO(perf-low): is 1MiB a good number?
                 size_of_message = 0;
                 Self::send_binaries_msg(
                     &mut conn.socket,
@@ -1007,7 +1007,7 @@ impl<C: ServerConfig> Server<C> {
             .await;
 
         // Arc where appropriate
-        // TODO(low): this could probably be done without copying by having &muts to the underlying Arc at creation time
+        // TODO(perf-low): this could probably be done without copying by having &muts to the underlying Arc at creation time
         let updates = updates.into_iter().map(|(k, v)| (k, Arc::new(v))).collect();
 
         // Submit the updates

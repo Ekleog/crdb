@@ -147,9 +147,9 @@ macro_rules! make_fuzzer_stuffs {
                     object_id: usize,
                     lock: u8,
                 },
-                // TODO(test): also test GetAll
-                // TODO(test): also test query subscription / locking for client db's
-                // TODO(client): introduce get_local, to fetch the answers to query_local that might have been vacuumed since
+                // TODO(test-high): also test GetAll
+                // TODO(test-high): also test query subscription / locking for client db's
+                // TODO(client-med): introduce get_local, to fetch the answers to query_local that might have been vacuumed since
                 [< Query $name >] {
                     user: User,
                     only_updated_since: Option<Updatedness>,

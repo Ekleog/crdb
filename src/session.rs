@@ -21,7 +21,7 @@ pub struct Session {
     pub user_id: User,
     pub session_ref: SessionRef,
     pub session_name: String,
-    // TODO(low): get rid of Timestamp struct, these should be replaced with SystemTime and are almost the last remaining uses
+    // TODO(misc-high): get rid of Timestamp struct, these should be replaced with SystemTime and are almost the last remaining uses
     pub login_time: Timestamp,
     pub last_active: Timestamp,
     pub expiration_time: Option<Timestamp>,

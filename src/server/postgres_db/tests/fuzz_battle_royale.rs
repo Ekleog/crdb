@@ -151,10 +151,10 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .await;
         }
         Op::GetSimple { object, at } => {
-            // TODO(test): test when there's something actually tested
+            // TODO(test-low): test when there's something actually tested
         }
         Op::QuerySimple { .. } => {
-            // TODO(test): when there's something actually tested
+            // TODO(test-low): when there's something actually tested
             // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreateSimple { object, time } => {
@@ -209,7 +209,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 };
         }
         Op::QueryPerms { .. } => {
-            // TODO(test): when there's something actually tested
+            // TODO(test-low): when there's something actually tested
             // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreatePerms { object, time } => {
@@ -266,7 +266,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             };
         }
         Op::QueryDelegatePerms { .. } => {
-            // TODO(test): when there's something actually tested
+            // TODO(test-low): when there's something actually tested
             // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreateDelegatePerms { object, time } => {
@@ -323,7 +323,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 };
         }
         Op::QueryFull { .. } => {
-            // TODO(test): when there's something actually tested
+            // TODO(test-low): when there's something actually tested
             // run_query::<TestObjectSimple>(&db, &s.mem, *user, None, q).await?;
         }
         Op::RecreateFull { object, time } => {
@@ -337,7 +337,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
             let _pg = db.recreate::<TestObjectFull, _>(o, *time, db).await;
         }
         Op::Remove { object } => {
-            let _object = object; // TODO(test): implement for non-postgres databases
+            let _object = object; // TODO(test-low): implement for non-postgres databases
         }
         Op::CreateBinary { data, fake_id } => {
             let id = fake_id.unwrap_or_else(|| crate::hash_binary(&data));
