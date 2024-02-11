@@ -512,8 +512,38 @@ impl ClientDb {
     }
 
     pub async fn unsubscribe_query(&self, query_id: QueryId) -> crate::Result<()> {
-        self.subscribed_queries.lock().unwrap().remove(&query_id);
-        // TODO(api): update query lock for subscribed_objects
+        let lock_changes_to_apply = {
+            // TODO(test): fuzz that subscribed_queries/objects always stay in sync with in-database data
+            let mut subscribed_queries = self.subscribed_queries.lock().unwrap();
+            let Some((_, _, _, removed_query_lock)) = subscribed_queries.remove(&query_id) else {
+                return Ok(()); // was not subscribed to the query
+            };
+            let mut subscribed_objects = self.subscribed_objects.lock().unwrap();
+            let mut lock_changes_to_apply = Vec::new();
+            for (object_id, (_, queries, query_lock)) in subscribed_objects.iter_mut() {
+                let did_remove = queries.remove(&query_id);
+                if did_remove && removed_query_lock != Lock::NONE {
+                    let old_query_lock = *query_lock;
+                    *query_lock = Lock::NONE;
+                    for q in queries.iter() {
+                        *query_lock |= subscribed_queries
+                            .get(q)
+                            .expect("object is subscribed to a non-subscribed queries")
+                            .3;
+                    }
+                    if *query_lock != old_query_lock {
+                        lock_changes_to_apply.push((*object_id, old_query_lock, *query_lock));
+                    }
+                }
+            }
+            lock_changes_to_apply
+        };
+        for (object_id, old_locks, new_locks) in lock_changes_to_apply {
+            self.db
+                .change_locks(old_locks, new_locks, object_id)
+                .await
+                .wrap_context("updating queries lock")?;
+        }
         self.api.unsubscribe_query(query_id);
         self.db_bypass.unsubscribe_query(query_id).await
     }
