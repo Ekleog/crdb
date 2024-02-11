@@ -129,21 +129,16 @@ impl Db for SqliteDb {
         updatedness: Option<Updatedness>,
         lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
-        reord::point().await;
         let mut t = self
             .db
             .begin()
             .await
             .wrap_context("acquiring sqlite transaction")?;
 
-        // TODO(sqlite): add reord lock over whole database
-
-        reord::point().await;
         // Object ID uniqueness is enforced by the `snapshot_creations` unique index
         let type_id = *T::type_ulid();
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
-        reord::point().await;
         let affected = sqlx::query(
             "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8)
                          ON CONFLICT DO NOTHING",
@@ -162,7 +157,6 @@ impl Db for SqliteDb {
         .rows_affected();
         if affected != 1 {
             // Check for equality with pre-existing
-            reord::point().await;
             let affected = sqlx::query(
                 "
                     SELECT snapshot_id FROM snapshots
@@ -186,12 +180,10 @@ impl Db for SqliteDb {
             if affected != 1 {
                 return Err(crate::Error::EventAlreadyExists(created_at));
             }
-            reord::point().await;
             return Ok(None);
         }
 
         // We just inserted. Check that no event existed at this id
-        reord::point().await;
         let affected = sqlx::query("SELECT event_id FROM events WHERE event_id = $1")
             .bind(created_at)
             .fetch_all(&mut *t)
@@ -199,12 +191,10 @@ impl Db for SqliteDb {
             .wrap_with_context(|| format!("checking that no event existed with this id yet"))?
             .len();
         if affected != 0 {
-            reord::point().await;
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
         for binary_id in object.required_binaries() {
-            reord::point().await;
             sqlx::query("INSERT INTO snapshots_binaries VALUES ($1, $2)")
                 .bind(created_at)
                 .bind(binary_id)
@@ -213,11 +203,9 @@ impl Db for SqliteDb {
                 .wrap_with_context(|| format!("marking {created_at:?} as using {binary_id:?}"))?;
         }
 
-        reord::point().await;
         t.commit()
             .await
             .wrap_with_context(|| format!("committing transaction that created {object_id:?}"))?;
-        reord::point().await;
         Ok(Some(object))
     }
 
