@@ -122,7 +122,7 @@ macro_rules! generate_server {
                         let Some((new_created_at, data)) = call_on.recreate_impl::<$object, C>(object_id, event_id, updatedness, cb).await? else {
                             return Ok(None);
                         };
-                        let users_who_can_read = cb.get_latest::<$object>(false, object_id)
+                        let users_who_can_read = cb.get_latest::<$object>(crdb::Lock::NONE, object_id)
                             .await
                             .wrap_context("retrieving latest snapshot after recreation")?
                             .users_who_can_read(cb)
@@ -198,7 +198,7 @@ macro_rules! generate_server {
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::Arc::new(<<$object as crdb::Object>::Event as crdb::serde::Deserialize>::deserialize(&*event_data)
                             .wrap_context("parsing uploaded snapshot data")?);
-                        let object = call_on.get_latest::<$object>(true, object_id).await
+                        let object = call_on.get_latest::<$object>(crdb::Lock::OBJECT, object_id).await
                             .wrap_context("retrieving requested object id")?;
                         let can_apply = object.can_apply(user, object_id, &event, call_on).await.wrap_context("checking whether user can apply submitted event")?;
                         if !can_apply {

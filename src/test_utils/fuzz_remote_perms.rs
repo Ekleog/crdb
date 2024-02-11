@@ -4,7 +4,7 @@ use super::fuzz_helpers::{
         self,
         crdb_internal::{
             test_utils::{self, *},
-            BinPtr, Db, DbPtr, EventId, ObjectId, Query, ResultExt, Updatedness, User,
+            BinPtr, Db, DbPtr, EventId, Lock, ObjectId, Query, ResultExt, Updatedness, User,
         },
         make_fuzzer_stuffs,
     },
@@ -35,11 +35,11 @@ async fn regression_get_with_wrong_type_did_not_fail() {
                     Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
                 ))),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             GetLatestDelegator {
                 object_id: 0,
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -60,7 +60,7 @@ async fn regression_changing_remote_objects_did_not_refresh_perms() {
                     DbPtr::from_string("00000000000000000000000000").unwrap(),
                 )),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             CreatePerm {
                 object_id: ObjectId(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -69,7 +69,7 @@ async fn regression_changing_remote_objects_did_not_refresh_perms() {
                     Ulid::from_string("00000002004G0004007G054MJJ").unwrap(),
                 ))),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -89,7 +89,7 @@ async fn regression_self_referencing_object_deadlocks() {
                 DbPtr::from_string("00008000000030000000000000").unwrap(),
             )),
             updatedness: Some(Updatedness::from_u128(1)),
-            lock: true,
+            lock: Lock::OBJECT.bits(),
         }]),
     )
     .await;
@@ -109,7 +109,7 @@ async fn regression_submit_wrong_type_ignores_failure() {
                     DbPtr::from_string("0000062VK4C5S68QV3DXQ6CAG7").unwrap(),
                 )),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             SubmitPerm {
                 object_id: 0,
@@ -118,7 +118,7 @@ async fn regression_submit_wrong_type_ignores_failure() {
                     Ulid::from_string("00000000000000000000000000").unwrap(),
                 ))),
                 updatedness: Some(Updatedness::from_u128(1)),
-                force_lock: true,
+                force_lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -138,7 +138,7 @@ async fn regression_postgres_not_null_was_null() {
                     Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap(),
                 ))),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::QueryPerm {
                 user: User(Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap()),
@@ -164,14 +164,14 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_nothing_to_do() {
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectPerms(USER_ID_1)),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::RecreateDelegator {
                 object_id: 0,
                 new_created_at: EVENT_ID_2,
                 object: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
                 updatedness: Some(Updatedness::from_u128(1)),
-                force_lock: true,
+                force_lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -189,21 +189,21 @@ async fn regression_indexeddb_did_not_check_recreation_type_on_stuff_to_do() {
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectPerms(USER_ID_1)),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::SubmitPerm {
                 object_id: 0,
                 event_id: EVENT_ID_2,
                 event: Arc::new(TestEventPerms::Set(USER_ID_2)),
                 updatedness: Some(Updatedness::from_u128(1)),
-                force_lock: true,
+                force_lock: Lock::OBJECT.bits(),
             },
             Op::RecreateDelegator {
                 object_id: 0,
                 new_created_at: EVENT_ID_3,
                 object: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
                 updatedness: Some(Updatedness::from_u128(1)),
-                force_lock: true,
+                force_lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -221,7 +221,7 @@ async fn regression_memdb_vacuum_updated_updatedness_even_without_any_change() {
                 created_at: EVENT_ID_1,
                 object: Arc::new(TestObjectPerms(USER_ID_1)),
                 updatedness: Some(UPDATEDNESS_1),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::Vacuum {
                 recreate_at: Some((EVENT_ID_2, UPDATEDNESS_3)),
@@ -251,7 +251,7 @@ async fn regression_cache_db_returned_early_error_of_the_wrong_kind() {
                 updatedness: Some(Updatedness(
                     Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
                 )),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::SubmitDelegator {
                 object_id: 0,
@@ -262,7 +262,7 @@ async fn regression_cache_db_returned_early_error_of_the_wrong_kind() {
                 updatedness: Some(Updatedness(
                     Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
                 )),
-                force_lock: true,
+                force_lock: Lock::OBJECT.bits(),
             },
             Op::Vacuum {
                 recreate_at: Some((
@@ -279,7 +279,7 @@ async fn regression_cache_db_returned_early_error_of_the_wrong_kind() {
                 updatedness: Some(Updatedness(
                     Ulid::from_string("33CDHP6RV3CDHP6RWXKJE9JRV3").unwrap(),
                 )),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
         ]),
     )

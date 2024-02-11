@@ -134,18 +134,18 @@ macro_rules! make_fuzzer_stuffs {
                     created_at: EventId,
                     object: Arc<$object>,
                     updatedness: Option<Updatedness>,
-                    lock: bool,
+                    lock: u8,
                 },
                 [< Submit $name >] {
                     object_id: usize,
                     event_id: EventId,
                     event: Arc<$event>,
                     updatedness: Option<Updatedness>,
-                    force_lock: bool,
+                    force_lock: u8,
                 },
                 [< GetLatest $name >] {
                     object_id: usize,
-                    lock: bool,
+                    lock: u8,
                 },
                 // TODO(test): also test GetAll
                 // TODO(client): introduce get_local, to fetch the answers to query_local that might have been vacuumed since
@@ -159,7 +159,7 @@ macro_rules! make_fuzzer_stuffs {
                     new_created_at: EventId,
                     object: Arc<$object>,
                     updatedness: Option<Updatedness>,
-                    force_lock: bool,
+                    force_lock: u8,
                 },
             )*
             CreateBinary {
@@ -170,7 +170,7 @@ macro_rules! make_fuzzer_stuffs {
                 binary_id: usize,
             },
             Remove { object_id: usize },
-            Unlock { object_id: usize },
+            Unlock { unlock: u8, object_id: usize },
             Vacuum { recreate_at: Option<(EventId, Updatedness)> },
         }
 
@@ -183,13 +183,16 @@ macro_rules! make_fuzzer_stuffs {
                             created_at,
                             object,
                             updatedness,
-                            mut lock,
+                            lock,
                         } => {
+                            let mut lock = Lock::from_bits_truncate(*lock);
                             let updatedness = s.updatedness(updatedness);
                             let mut object = object.clone();
                             Arc::make_mut(&mut object).standardize(*object_id);
                             s.add_object(*object_id);
-                            lock |= s.is_server;
+                            if s.is_server {
+                                lock |= Lock::OBJECT;
+                            }
                             let db = db
                                 .create(*object_id, *created_at, object.clone(), updatedness, lock)
                                 .await;
@@ -206,23 +209,24 @@ macro_rules! make_fuzzer_stuffs {
                             updatedness,
                             force_lock,
                         } => {
+                            let force_lock = Lock::from_bits_truncate(*force_lock);
                             let updatedness = s.updatedness(updatedness);
                             let object_id = s.object(*object_id);
                             let db = db
-                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, *force_lock)
+                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, force_lock)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, *force_lock)
+                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, force_lock)
                                 .await;
                             cmp(db, mem)?;
                         }
                         Op::[< GetLatest $name >] {
                             object_id,
-                            mut lock,
+                            lock,
                         } => {
+                            let lock = Lock::from_bits_truncate(*lock);
                             let object_id = s.object(*object_id);
-                            lock |= s.is_server;
                             let db = db
                                 .get_latest::<$object>(lock, object_id)
                                 .await
@@ -245,6 +249,7 @@ macro_rules! make_fuzzer_stuffs {
                             force_lock,
                         } => {
                             if !s.is_server {
+                                let force_lock = Lock::from_bits_truncate(*force_lock);
                                 let updatedness = s.updatedness(updatedness);
                                 let object_id = s.object(*object_id);
                                 let mut object = object.clone();
@@ -255,7 +260,7 @@ macro_rules! make_fuzzer_stuffs {
                                         *new_created_at,
                                         object.clone(),
                                         updatedness,
-                                        *force_lock,
+                                        force_lock,
                                     )
                                     .await;
                                 let mem = s
@@ -265,7 +270,7 @@ macro_rules! make_fuzzer_stuffs {
                                         *new_created_at,
                                         object.clone(),
                                         updatedness,
-                                        *force_lock,
+                                        force_lock,
                                     )
                                     .await;
                                 cmp(db, mem)?;
@@ -300,11 +305,12 @@ macro_rules! make_fuzzer_stuffs {
                             cmp(db, mem)?;
                         }
                     }
-                    Op::Unlock { object_id } => {
+                    Op::Unlock { unlock, object_id } => {
                         if !s.is_server {
+                            let unlock = Lock::from_bits_truncate(*unlock);
                             let object_id = s.object(*object_id);
-                            let db = db.unlock(object_id).await;
-                            let mem = s.mem_db.unlock(object_id).await;
+                            let db = db.unlock(unlock, object_id).await;
+                            let mem = s.mem_db.unlock(unlock, object_id).await;
                             cmp(db, mem)?;
                         }
                     }

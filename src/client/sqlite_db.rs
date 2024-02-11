@@ -1,6 +1,11 @@
 use crate::{
-    api::UploadId, db_trait::Db, error::ResultExt, fts, ids::QueryId, messages::Upload, BinPtr,
-    EventId, Object, ObjectId, Query, TypeId, Updatedness,
+    api::UploadId,
+    db_trait::{Db, Lock},
+    error::ResultExt,
+    fts,
+    ids::QueryId,
+    messages::Upload,
+    BinPtr, EventId, Object, ObjectId, Query, TypeId, Updatedness,
 };
 use anyhow::Context;
 use std::{
@@ -8,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use super::{ClientStorageInfo, ShouldLock};
+use super::ClientStorageInfo;
 
 #[cfg(test)]
 mod tests;
@@ -38,7 +43,7 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite): implement
     }
 
-    pub async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
+    pub async fn unlock(&self, _unlock: Lock, _object_id: ObjectId) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
 
@@ -78,8 +83,7 @@ impl SqliteDb {
 
     pub async fn get_subscribed_queries(
         &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>
-    {
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
         unimplemented!() // TODO(sqlite)
     }
 
@@ -87,7 +91,7 @@ impl SqliteDb {
         &self,
         _query_id: QueryId,
         _query: Arc<Query>,
-        _lock: ShouldLock,
+        _lock: bool,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
@@ -113,7 +117,7 @@ impl Db for SqliteDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: bool,
+        lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         reord::point().await;
         let mut t = self
@@ -141,7 +145,7 @@ impl Db for SqliteDb {
         .bind(snapshot_version)
         .bind(object_json)
         .bind(updatedness)
-        .bind(lock)
+        .bind(lock.bits())
         .execute(&mut *t)
         .await
         .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
@@ -213,14 +217,14 @@ impl Db for SqliteDb {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite): implement
     }
 
     async fn get_latest<T: Object>(
         &self,
-        lock: bool,
+        lock: Lock,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         unimplemented!() // TODO(sqlite): implement
@@ -232,7 +236,7 @@ impl Db for SqliteDb {
         new_created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite): implement
     }

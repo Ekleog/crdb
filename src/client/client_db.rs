@@ -1,7 +1,8 @@
-use super::{connection::ConnectionEvent, ApiDb, LocalDb, ShouldLock};
+use super::{connection::ConnectionEvent, ApiDb, LocalDb};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
+    crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
@@ -32,11 +33,11 @@ pub struct ClientDb {
     db_bypass: Arc<LocalDb>,
     subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
     subscribed_queries:
-        Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>>,
+        Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>>,
     data_saver: mpsc::UnboundedSender<(
         Arc<Update>,
         Option<Updatedness>,
-        ShouldLock,
+        Lock,
         oneshot::Sender<crate::Result<UpdateResult>>,
     )>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
@@ -115,10 +116,7 @@ impl ClientDb {
     }
 
     fn queries_for(
-        subscribed_queries: &HashMap<
-            QueryId,
-            (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock),
-        >,
+        subscribed_queries: &HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
         type_id: TypeId,
         value: &serde_json::Value,
     ) -> HashSet<QueryId> {
@@ -150,7 +148,7 @@ impl ClientDb {
                             .unbounded_send((
                                 u,
                                 Some(updates.now_have_all_until),
-                                ShouldLock(false),
+                                Lock::NONE,
                                 sender,
                             ))
                             .expect("data saver thread cannot go away");
@@ -198,7 +196,7 @@ impl ClientDb {
         data_receiver: mpsc::UnboundedReceiver<(
             Arc<Update>,
             Option<Updatedness>,
-            ShouldLock,
+            Lock,
             oneshot::Sender<crate::Result<UpdateResult>>,
         )>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
@@ -226,12 +224,12 @@ impl ClientDb {
         mut data_receiver: mpsc::UnboundedReceiver<(
             Arc<Update>,
             Option<Updatedness>,
-            ShouldLock,
+            Lock,
             oneshot::Sender<crate::Result<UpdateResult>>,
         )>,
         subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
         subscribed_queries: Arc<
-            Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>,
+            Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
         >,
         vacuum_guard: Arc<RwLock<()>>,
         db: Arc<LocalDb>,
@@ -323,11 +321,11 @@ impl ClientDb {
         db: &LocalDb,
         subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>,
         subscribed_queries: &Mutex<
-            HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
+            HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
         >,
         u: &Update,
         now_have_all_until: Option<Updatedness>,
-        lock: ShouldLock,
+        lock: Lock,
         updates_broadcaster: &broadcast::Sender<ObjectId>,
     ) -> crate::Result<UpdateResult> {
         let object_id = u.object_id;
@@ -345,7 +343,7 @@ impl ClientDb {
                 *snapshot_version,
                 &data,
                 now_have_all_until,
-                lock.0,
+                lock,
             )
             .await?
             {
@@ -359,7 +357,7 @@ impl ClientDb {
                 *event_id,
                 &data,
                 now_have_all_until,
-                lock.0,
+                lock,
             )
             .await?
             {
@@ -482,7 +480,7 @@ impl ClientDb {
     }
 
     pub async fn unlock(&self, ptr: ObjectId) -> crate::Result<()> {
-        self.db.unlock(ptr).await
+        self.db.unlock(Lock::OBJECT, ptr).await
     }
 
     pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
@@ -516,7 +514,7 @@ impl ClientDb {
                 created_at,
                 object.clone(),
                 None, // Locally-created object, has no updatedness yet
-                importance >= Importance::Lock,
+                importance.to_object_lock(),
             )
             .await?;
         if importance >= Importance::Subscribe {
@@ -556,7 +554,7 @@ impl ClientDb {
                 event_id,
                 event.clone(),
                 None, // Locally-submitted event, has no updatedness yet
-                importance >= Importance::Lock,
+                importance.to_object_lock(),
             )
             .await?;
         // The object must already be subscribed, in order for event submission to be successful.
@@ -571,11 +569,11 @@ impl ClientDb {
         data_saver: &mpsc::UnboundedSender<(
             Arc<Update>,
             Option<Updatedness>,
-            ShouldLock,
+            Lock,
             oneshot::Sender<crate::Result<UpdateResult>>,
         )>,
         db: &CacheDb<LocalDb>,
-        lock: bool,
+        lock: Lock,
         data: ObjectData,
     ) -> crate::Result<Option<serde_json::Value>> {
         if data.type_id != *T::type_ulid() {
@@ -604,12 +602,12 @@ impl ClientDb {
                         },
                     }),
                     data.events.is_empty().then(|| data.now_have_all_until),
-                    ShouldLock(lock),
+                    lock,
                     sender,
                 ))
                 .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
-        } else if lock {
-            db.get_latest::<T>(true, data.object_id)
+        } else if lock != Lock::NONE {
+            db.get_latest::<T>(lock, data.object_id)
                 .await
                 .wrap_context("locking object as requested")?;
         }
@@ -631,7 +629,7 @@ impl ClientDb {
                         },
                     }),
                     (i + 1 == events_len).then(|| data.now_have_all_until),
-                    ShouldLock(false),
+                    Lock::NONE,
                     sender,
                 ))
                 .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
@@ -644,7 +642,9 @@ impl ClientDb {
                 match res_data {
                     Ok(UpdateResult::LatestChanged(res_data)) => res = Some(res_data),
                     Ok(_) => (),
-                    Err(crate::Error::ObjectDoesNotExist(o)) if o == data.object_id && !lock => {
+                    Err(crate::Error::ObjectDoesNotExist(o))
+                        if o == data.object_id && lock == Lock::NONE =>
+                    {
                         // Ignore this error, the object was just vacuumed during creation
                     }
                     Err(err) => return Err(err).wrap_context("creating in local database"),
@@ -655,36 +655,28 @@ impl ClientDb {
         Ok(res)
     }
 
-    pub async fn get<T: Object>(
+    async fn get_impl<T: Object>(
         &self,
-        importance: Importance,
+        lock: Lock,
+        subscribe: bool,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
-        match self
-            .db
-            .get_latest::<T>(importance >= Importance::Lock, object_id)
-            .await
-        {
+        match self.db.get_latest::<T>(lock, object_id).await {
             Ok(r) => return Ok(r),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
-        if importance >= Importance::Subscribe {
+        if subscribe {
             let res = self.api.get_subscribe(object_id).await?;
-            let res_json = Self::locally_create_all::<T>(
-                &self.data_saver,
-                &self.db,
-                importance >= Importance::Lock,
-                res,
-            )
-            .await?;
+            let res_json =
+                Self::locally_create_all::<T>(&self.data_saver, &self.db, lock, res).await?;
             let (res, res_json) = match res_json {
                 Some(res_json) => (
                     Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),
                     res_json,
                 ),
                 None => {
-                    let res = self.db.get_latest::<T>(false, object_id).await?;
+                    let res = self.db.get_latest::<T>(Lock::NONE, object_id).await?;
                     let res_json =
                         serde_json::to_value(&res).wrap_context("serializing snapshot")?;
                     (res, res_json)
@@ -705,6 +697,19 @@ impl ClientDb {
         }
     }
 
+    pub async fn get<T: Object>(
+        &self,
+        importance: Importance,
+        object_id: ObjectId,
+    ) -> crate::Result<Arc<T>> {
+        self.get_impl(
+            importance.to_object_lock(),
+            importance.to_subscribe(),
+            object_id,
+        )
+        .await
+    }
+
     pub async fn query_local<T: Object>(
         &self,
         importance: Importance,
@@ -718,7 +723,7 @@ impl ClientDb {
 
         Ok(async_stream::stream! {
             for object_id in object_ids {
-                match self.get::<T>(importance, object_id).await {
+                match self.get_impl::<T>(importance.to_query_lock(), importance.to_subscribe(), object_id).await {
                     Ok(res) => yield Ok(res),
                     // Ignore missing objects, they were just vacuumed between listing and getting
                     Err(crate::Error::ObjectDoesNotExist(id)) if id == object_id => continue,
@@ -742,9 +747,11 @@ impl ClientDb {
                 let entry = subscribed_queries.entry(query_id);
                 match entry {
                     hash_map::Entry::Occupied(mut o) => {
-                        if !o.get().3 .0 && importance >= Importance::Lock {
+                        if !o.get().3.contains(Lock::FOR_QUERIES) && importance >= Importance::Lock
+                        {
                             // Increasing the lock behavior. Re-subscribe from scratch
-                            o.insert((query.clone(), *T::type_ulid(), None, importance.into()));
+                            o.get_mut().3 |= Lock::FOR_QUERIES;
+                            o.get_mut().2 = None; // Force have_all_until to 0 as previous stuff could have been vacuumed
                             None
                         } else {
                             // The query was already locked enough. Just proceed.
@@ -752,7 +759,12 @@ impl ClientDb {
                         }
                     }
                     hash_map::Entry::Vacant(v) => {
-                        v.insert((query.clone(), *T::type_ulid(), None, importance.into()));
+                        v.insert((
+                            query.clone(),
+                            *T::type_ulid(),
+                            None,
+                            importance.to_query_lock(),
+                        ));
                         None
                     }
                 }
@@ -760,7 +772,7 @@ impl ClientDb {
             if only_updated_since.is_none() {
                 // Was not subscribed yet
                 self.db_bypass
-                    .subscribe_query(query_id, query.clone(), importance.into())
+                    .subscribe_query(query_id, query.clone(), importance >= Importance::Lock)
                     .await?;
             }
             Ok(self
@@ -771,7 +783,7 @@ impl ClientDb {
                     let db = self.db.clone();
                     let subscribed_objects = self.subscribed_objects.clone();
                     let subscribed_queries = self.subscribed_queries.clone();
-                    let lock = importance >= Importance::Lock;
+                    let lock = importance.to_query_lock();
                     move |data| {
                         let data_saver = data_saver.clone();
                         let db = db.clone();
@@ -796,8 +808,10 @@ impl ClientDb {
                                             res_json,
                                         ),
                                         None => {
-                                            let res =
-                                                self.db.get_latest::<T>(false, object_id).await?;
+                                            let res = self
+                                                .db
+                                                .get_latest::<T>(Lock::NONE, object_id)
+                                                .await?;
                                             let res_json = serde_json::to_value(&res)
                                                 .wrap_context("serializing snapshot")?;
                                             (res, res_json)

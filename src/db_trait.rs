@@ -4,6 +4,25 @@ use crate::{
 };
 use std::sync::Arc;
 
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct Lock: u8 {
+        const NONE = 0;
+        const OBJECT = 0b01;
+        const FOR_QUERIES = 0b10;
+    }
+}
+
+impl Lock {
+    #[allow(dead_code)] // TODO(sqlite): remove once sqlite makes use of this too
+    pub(crate) fn from_query_lock(b: bool) -> Lock {
+        match b {
+            true => Lock::FOR_QUERIES,
+            false => Lock::NONE,
+        }
+    }
+}
+
 pub trait Db: 'static + CrdbSend + CrdbSync {
     /// Returns the new latest snapshot if it actually changed
     ///
@@ -15,7 +34,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: bool,
+        lock: Lock,
     ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 
     /// Returns the new latest snapshot if it actually changed
@@ -28,12 +47,12 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 
     fn get_latest<T: Object>(
         &self,
-        lock: bool,
+        lock: Lock,
         object_id: ObjectId,
     ) -> impl CrdbFuture<Output = crate::Result<Arc<T>>>;
 
@@ -49,7 +68,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         new_created_at: EventId,
         creation_value: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
 
     fn remove(&self, object_id: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;

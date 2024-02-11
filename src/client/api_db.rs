@@ -1,11 +1,9 @@
-use super::{
-    connection::{
-        Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
-        ResponseSender,
-    },
-    ShouldLock,
+use super::connection::{
+    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+    ResponseSender,
 };
 use crate::{
+    crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
@@ -38,7 +36,7 @@ impl ApiDb {
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
-            + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
+            + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
         D: 'static + Db,
     {
         let (update_sender, update_receiver) = mpsc::unbounded();

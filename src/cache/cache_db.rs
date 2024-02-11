@@ -1,5 +1,8 @@
 use super::{BinariesCache, ObjectCache};
-use crate::{db_trait::Db, hash_binary, BinPtr, DynSized, EventId, Object, ObjectId, Updatedness};
+use crate::{
+    db_trait::{Db, Lock},
+    hash_binary, BinPtr, DynSized, EventId, Object, ObjectId, Updatedness,
+};
 use std::{
     ops::Deref,
     sync::{Arc, RwLock},
@@ -40,7 +43,7 @@ impl<D: Db> Db for CacheDb<D> {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: bool,
+        lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         self.cache.write().unwrap().remove(&object_id);
         let res = self
@@ -59,7 +62,7 @@ impl<D: Db> Db for CacheDb<D> {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
@@ -73,7 +76,7 @@ impl<D: Db> Db for CacheDb<D> {
 
     async fn get_latest<T: Object>(
         &self,
-        lock: bool,
+        lock: Lock,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         if let Some(res) = self.cache.read().unwrap().get(&object_id) {
@@ -93,7 +96,7 @@ impl<D: Db> Db for CacheDb<D> {
         new_created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db

@@ -1,3 +1,6 @@
+#[cfg(feature = "client")]
+use crate::db_trait::Lock;
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Importance {
     /// Only care about fetching the latest value once
@@ -11,6 +14,29 @@ pub enum Importance {
 
     /// Always keep this locally and up-to-date
     Lock,
+}
+
+#[cfg(feature = "client")]
+impl Importance {
+    pub(crate) fn to_object_lock(&self) -> Lock {
+        if *self >= Importance::Lock {
+            Lock::OBJECT
+        } else {
+            Lock::NONE
+        }
+    }
+
+    pub(crate) fn to_query_lock(&self) -> Lock {
+        if *self >= Importance::Lock {
+            Lock::FOR_QUERIES
+        } else {
+            Lock::NONE
+        }
+    }
+
+    pub(crate) fn to_subscribe(&self) -> bool {
+        *self >= Importance::Subscribe
+    }
 }
 
 impl Ord for Importance {

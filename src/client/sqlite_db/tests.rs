@@ -2,7 +2,7 @@
 
 use super::SqliteDb;
 use crate::{
-    db_trait::Db,
+    db_trait::{Db, Lock},
     test_utils::{
         self, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
         OBJECT_ID_1, OBJECT_ID_2,
@@ -22,7 +22,7 @@ async fn smoke_test(db: sqlx::SqlitePool) {
         EVENT_ID_1,
         Arc::new(TestObjectSimple::stub_1()),
         Some(Updatedness::from_u128(1)),
-        true,
+        Lock::OBJECT,
     )
     .await
     .expect("creating test object 1 failed");

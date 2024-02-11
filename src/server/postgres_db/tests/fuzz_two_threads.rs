@@ -1,5 +1,6 @@
 use super::{TmpDb, CHECK_NAMED_LOCKS_FOR, MAYBE_LOCK_TIMEOUT};
 use crate::{
+    crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
     server::postgres_db::PostgresDb,
@@ -71,7 +72,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                     *created_at,
                     object.clone(),
                     Some(*updatedness),
-                    true,
+                    Lock::OBJECT,
                 )
                 .await;
         }
@@ -89,7 +90,13 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db
-                .submit::<TestObjectFull>(o, *event_id, event.clone(), Some(*updatedness), true)
+                .submit::<TestObjectFull>(
+                    o,
+                    *event_id,
+                    event.clone(),
+                    Some(*updatedness),
+                    Lock::OBJECT,
+                )
                 .await;
         }
         Op::GetLatest { object } => {
@@ -101,7 +108,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg: crate::Result<Arc<TestObjectFull>> = db
-                .get_latest::<TestObjectFull>(true, o)
+                .get_latest::<TestObjectFull>(Lock::OBJECT, o)
                 .await
                 .wrap_context(&format!("getting {o:?} in database"));
         }

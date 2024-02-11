@@ -1,7 +1,9 @@
 use super::{eq, FullObject};
 use crate::{
-    db_trait::Db, error::ResultExt, BinPtr, CanDoCallbacks, CrdbStream, DynSized, Event, EventId,
-    Object, ObjectId, Query, Timestamp, TypeId, Updatedness, User,
+    db_trait::{Db, Lock},
+    error::ResultExt,
+    BinPtr, CanDoCallbacks, CrdbStream, DynSized, Event, EventId, Object, ObjectId, Query,
+    Timestamp, TypeId, Updatedness, User,
 };
 use futures::{stream, Stream, StreamExt};
 use std::{
@@ -13,8 +15,8 @@ use tokio::sync::Mutex;
 struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
     events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
-    // The bool is whether the object is locked, and the set the required_binaries
-    objects: HashMap<ObjectId, (TypeId, bool, HashSet<BinPtr>, FullObject)>,
+    // The set is the list of required_binaries
+    objects: HashMap<ObjectId, (TypeId, Lock, HashSet<BinPtr>, FullObject)>,
     binaries: HashMap<BinPtr, Arc<[u8]>>,
     is_server: bool,
 }
@@ -47,7 +49,7 @@ impl MemDb {
         Ok(())
     }
 
-    async fn get<T: Object>(&self, lock: bool, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(&self, lock: Lock, object_id: ObjectId) -> crate::Result<FullObject> {
         match self.0.lock().await.objects.get_mut(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
             Some((ty, _, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
@@ -106,9 +108,9 @@ impl MemDb {
             .collect::<crate::Result<Vec<ObjectId>>>()
     }
 
-    pub async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
+    pub async fn unlock(&self, unlock: Lock, object_id: ObjectId) -> crate::Result<()> {
         if let Some((_, locked, _, _)) = self.0.lock().await.objects.get_mut(&object_id) {
-            *locked = false;
+            *locked -= unlock;
         }
         // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
         Ok(())
@@ -117,7 +119,8 @@ impl MemDb {
     pub async fn vacuum(&self) -> crate::Result<()> {
         let mut this = self.0.lock().await;
         let this = &mut *this; // get a real, splittable borrow
-        this.objects.retain(|_, (_, locked, _, _)| *locked);
+        this.objects
+            .retain(|_, (_, locked, _, _)| *locked != Lock::NONE);
         this.binaries
             .retain(|b, _| this.objects.values().any(|(_, _, req, _)| req.contains(b)));
         Ok(())
@@ -160,7 +163,7 @@ impl Db for MemDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: bool,
+        lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 
@@ -218,7 +221,7 @@ impl Db for MemDb {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
         match this.objects.get(&object_id) {
@@ -279,7 +282,7 @@ impl Db for MemDb {
 
     async fn get_latest<T: Object>(
         &self,
-        lock: bool,
+        lock: Lock,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         let res = self.get::<T>(lock, object_id).await?;
@@ -293,7 +296,7 @@ impl Db for MemDb {
         new_created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 

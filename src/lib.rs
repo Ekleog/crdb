@@ -75,7 +75,7 @@ pub mod crdb_internal {
     pub use crate::{
         api::ApiConfig,
         cache::ObjectCache,
-        db_trait::Db,
+        db_trait::{Db, Lock},
         error::ResultExt,
         hash_binary,
         messages::{Update, UpdateData, Updates},

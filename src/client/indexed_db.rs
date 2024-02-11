@@ -1,7 +1,12 @@
 use crate::{
-    api::UploadId, client::ClientStorageInfo, client::ShouldLock, db_trait::Db, error::ResultExt,
-    fts, messages::Upload, object::parse_snapshot_js, BinPtr, DbPtr, Event, EventId, Object,
-    ObjectId, Query, QueryId, TypeId, Updatedness,
+    api::UploadId,
+    client::ClientStorageInfo,
+    db_trait::{Db, Lock},
+    error::ResultExt,
+    fts,
+    messages::Upload,
+    object::parse_snapshot_js,
+    BinPtr, DbPtr, Event, EventId, Object, ObjectId, Query, QueryId, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{future, TryFutureExt};
@@ -36,7 +41,9 @@ struct SnapshotMeta {
     normalizer_version: i32,
     snapshot_version: i32,
     have_all_until: Option<Updatedness>, // This value is always up-to-date on the latest snapshot
-    is_locked: Option<usize>, // Only set on creation snapshot, Some(1) if locked and Some(0) if not
+    // Only set on creation snapshot. Bitset: Some(1) if locked for the object itself, Some(2) if
+    // locked for some (set of) queries that are locked, Some(3) if both
+    is_locked: Option<u8>,
     required_binaries: Vec<BinPtr>,
 }
 
@@ -321,7 +328,7 @@ impl IndexedDb {
         Ok(objects)
     }
 
-    pub async fn unlock(&self, object_id: ObjectId) -> crate::Result<()> {
+    pub async fn unlock(&self, unlock: Lock, object_id: ObjectId) -> crate::Result<()> {
         let object_id_js = object_id.to_js_string();
 
         let res = self
@@ -348,14 +355,23 @@ impl IndexedDb {
 
                 let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
                     .wrap_context("deserializing snapshot metadata")?;
-                snapshot_meta.is_locked = Some(0);
-                let snapshot_js = serde_wasm_bindgen::to_value(&snapshot_meta)
-                    .wrap_context("reserializing snapshot metadata")?;
+                let old_is_locked = snapshot_meta.is_locked;
+                snapshot_meta.is_locked = Some(
+                    (old_is_locked
+                        .map(Lock::from_bits_truncate)
+                        .unwrap_or(Lock::NONE)
+                        - unlock)
+                        .bits(),
+                );
 
-                snapshots_meta
-                    .put(&snapshot_js)
-                    .await
-                    .wrap_context("saving the unlocked creation snapshot metadata")?;
+                if old_is_locked != snapshot_meta.is_locked {
+                    let snapshot_js = serde_wasm_bindgen::to_value(&snapshot_meta)
+                        .wrap_context("reserializing snapshot metadata")?;
+                    snapshots_meta
+                        .put(&snapshot_js)
+                        .await
+                        .wrap_context("saving the unlocked creation snapshot metadata")?;
+                }
 
                 Ok(())
             })
@@ -839,7 +855,7 @@ impl IndexedDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: bool,
+        lock: Lock,
     ) -> Result<Option<Arc<T>>, indexed_db::Error<crate::Error>> {
         let new_snapshot_meta = SnapshotMeta {
             snapshot_id: created_at,
@@ -850,7 +866,7 @@ impl IndexedDb {
             normalizer_version: fts::normalizer_version(),
             snapshot_version: T::snapshot_version(),
             have_all_until: updatedness,
-            is_locked: Some(lock as usize),
+            is_locked: Some(lock.bits()),
             required_binaries: object.required_binaries(),
         };
         let object_id_js = object_id.to_js_string();
@@ -894,7 +910,7 @@ impl IndexedDb {
             // Ignore a few fields in comparison below
             old_meta.is_latest = Some(1);
             old_meta.have_all_until = updatedness;
-            old_meta.is_locked = Some(lock as usize);
+            old_meta.is_locked = Some(lock.bits());
             if old_meta != new_snapshot_meta {
                 return Err(crate::Error::ObjectAlreadyExists(object_id).into());
             }
@@ -1042,8 +1058,7 @@ impl IndexedDb {
 
     pub async fn get_subscribed_queries(
         &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>>
-    {
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
         self.db
             .transaction(&["snapshots_meta"])
             .run(|transaction| async move {
@@ -1061,7 +1076,12 @@ impl IndexedDb {
                             .wrap_context("deserializing query metadata")?;
                         Ok((
                             q.query_id,
-                            (q.query, q.type_id, q.have_all_until, ShouldLock(q.lock)),
+                            (
+                                q.query,
+                                q.type_id,
+                                q.have_all_until,
+                                Lock::from_query_lock(q.lock),
+                            ),
                         ))
                     })
                     .collect();
@@ -1075,7 +1095,7 @@ impl IndexedDb {
         &self,
         _query_id: QueryId,
         _query: Arc<Query>,
-        _lock: ShouldLock,
+        _lock: bool,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(api)
     }
@@ -1100,7 +1120,7 @@ impl Db for IndexedDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: bool,
+        lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
@@ -1118,7 +1138,7 @@ impl Db for IndexedDb {
             })
             .await
             .wrap_with_context(|| format!("running creation transaction for {object_id:?}"));
-        if res.is_ok() && !lock {
+        if res.is_ok() && lock == Lock::NONE {
             self.objects_unlocked_this_run
                 .set(self.objects_unlocked_this_run.get() + 1);
         }
@@ -1131,7 +1151,7 @@ impl Db for IndexedDb {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let new_event_meta = EventMeta {
             event_id,
@@ -1246,8 +1266,9 @@ impl Db for IndexedDb {
                         }
 
                         // The old snapshot and data were the same, we just need to lock the object if requested
-                        if force_lock && creation_snapshot.is_locked != Some(1) {
-                            creation_snapshot.is_locked = Some(1);
+                        let old_is_locked = creation_snapshot.is_locked;
+                        creation_snapshot.is_locked = Some((old_is_locked.map(Lock::from_bits_truncate).unwrap_or(Lock::NONE) | force_lock).bits());
+                        if old_is_locked != creation_snapshot.is_locked {
                             let creation_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot)
                                 .wrap_context("serializing snapshot metadata")?;
                             snapshots_meta.put(&creation_snapshot_js)
@@ -1263,8 +1284,9 @@ impl Db for IndexedDb {
                 }
 
                 // Lock the object if requested to
-                if force_lock && creation_snapshot.is_locked != Some(1) {
-                    creation_snapshot.is_locked = Some(1);
+                let old_is_locked = creation_snapshot.is_locked;
+                creation_snapshot.is_locked = Some((old_is_locked.map(Lock::from_bits_truncate).unwrap_or(Lock::NONE) | force_lock).bits());
+                if old_is_locked != creation_snapshot.is_locked {
                     let creation_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot)
                         .wrap_context("serializing snapshot metadata")?;
                     snapshots_meta.put(&creation_snapshot_js)
@@ -1396,7 +1418,7 @@ impl Db for IndexedDb {
 
     async fn get_latest<T: Object>(
         &self,
-        lock: bool,
+        lock: Lock,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         let object_id_js = object_id.to_js_string();
@@ -1404,7 +1426,7 @@ impl Db for IndexedDb {
         let mut transaction =
             self.db
                 .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"]);
-        if lock {
+        if lock != Lock::NONE {
             transaction = transaction.rw();
         }
         transaction
@@ -1447,8 +1469,15 @@ impl Db for IndexedDb {
                 }
 
                 // Rewrite the creation snapshot if needed
-                if lock && creation_snapshot_meta.is_locked != Some(1) {
-                    creation_snapshot_meta.is_locked = Some(1);
+                let old_is_locked = creation_snapshot_meta.is_locked;
+                creation_snapshot_meta.is_locked = Some(
+                    (old_is_locked
+                        .map(Lock::from_bits_truncate)
+                        .unwrap_or(Lock::NONE)
+                        | lock)
+                        .bits(),
+                );
+                if old_is_locked != creation_snapshot_meta.is_locked {
                     let new_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot_meta)
                         .wrap_context("serializing snapshot metadata")?;
                     snapshots_meta
@@ -1516,7 +1545,7 @@ impl Db for IndexedDb {
         new_created_at: EventId,
         mut object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let object_id_js = object_id.to_js_string();
         let type_id_js = T::type_ulid().to_js_string();
@@ -1696,7 +1725,14 @@ impl Db for IndexedDb {
                     normalizer_version: fts::normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     have_all_until: updatedness,
-                    is_locked: force_lock.then(|| 1).or(creation_meta.is_locked),
+                    is_locked: Some(
+                        (creation_meta
+                            .is_locked
+                            .map(Lock::from_bits_truncate)
+                            .unwrap_or(Lock::NONE)
+                            | force_lock)
+                            .bits(),
+                    ),
                     required_binaries: required_binaries.clone(),
                 };
                 let new_creation_snapshot_meta_js =

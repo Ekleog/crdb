@@ -47,6 +47,7 @@ development = [
 
 [dependencies]
 anyhow = "1.0"
+bitflags = "2.4"
 chrono = "0.4.31"
 deepsize = "0.2.0"
 educe = "0.5.9"

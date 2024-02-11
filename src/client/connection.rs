@@ -1,5 +1,5 @@
-use super::ShouldLock;
 use crate::{
+    crdb_internal::Lock,
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Updates,
@@ -143,8 +143,7 @@ pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
 impl<GSO, GSQ> Connection<GSO, GSQ>
 where
     GSO: 'static + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
-    GSQ: 'static
-        + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, ShouldLock)>,
+    GSQ: 'static + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
 {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,

@@ -22,7 +22,10 @@ CREATE TABLE snapshots (
     -- Whether we need to keep the object in the database, because the
     -- user explicitly required it. Meaningfully set only on the
     -- is_creation snapshot, values on other snapshots are ignored.
-    is_locked BOOLEAN NOT NULL
+    -- This is a bitset: value 0 means unlocked, 1 means locked for the
+    -- object itself, 2 means locked for some locked query, and 3 means
+    -- locked for both
+    is_locked INTEGER NOT NULL
 );
 
 CREATE TABLE snapshots_binaries (

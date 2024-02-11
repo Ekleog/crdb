@@ -1,4 +1,7 @@
-use crate::{BinPtr, CrdbFuture, CrdbSend, CrdbSync, Db, DbPtr, ObjectId, ResultExt, TypeId, User};
+use crate::{
+    db_trait::Lock, BinPtr, CrdbFuture, CrdbSend, CrdbSync, Db, DbPtr, ObjectId, ResultExt, TypeId,
+    User,
+};
 use anyhow::Context;
 #[cfg(doc)]
 use std::collections::{BTreeMap, HashMap};
@@ -17,7 +20,7 @@ impl<D: Db> private::Sealed for D {}
 
 impl<D: Db> CanDoCallbacks for D {
     async fn get<T: Object>(&self, object_id: DbPtr<T>) -> crate::Result<Arc<T>> {
-        self.get_latest::<T>(false, ObjectId(object_id.id))
+        self.get_latest::<T>(Lock::NONE, ObjectId(object_id.id))
             .await
             .wrap_with_context(|| format!("requesting {object_id:?} from database"))
     }

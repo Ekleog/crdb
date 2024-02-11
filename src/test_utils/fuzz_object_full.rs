@@ -2,7 +2,7 @@ use super::fuzz_helpers::{
     self,
     crdb::{
         self,
-        crdb_internal::{Db, ResultExt},
+        crdb_internal::{Db, Lock, ResultExt},
         fts::SearchableString,
         make_fuzzer_stuffs,
         test_utils::{self, *},
@@ -52,7 +52,7 @@ async fn regression_postgres_and_indexeddb_considered_missing_binaries_the_other
                 users: BTreeSet::new(),
             }),
             updatedness: Some(Updatedness::from_u128(1)),
-            lock: true,
+            lock: Lock::OBJECT.bits(),
         }]),
     )
     .await;
@@ -75,14 +75,14 @@ async fn regression_postgres_crashed_on_null_byte_in_string() {
                     users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             SubmitFull {
                 object_id: 0,
                 event_id: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                 event: Arc::new(TestEventFull::Rename(String::from("bar\0foo"))),
                 updatedness: Some(Updatedness::from_u128(1)),
-                force_lock: true,
+                force_lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -138,7 +138,7 @@ async fn regression_stack_overflow() {
                     users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::CreateFull {
                 object_id: OBJECT_ID_2,
@@ -150,7 +150,7 @@ async fn regression_stack_overflow() {
                     users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: false,
+                lock: 0,
             },
         ]),
     )
@@ -173,7 +173,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::RecreateFull {
                 object_id: 0,
@@ -185,7 +185,7 @@ async fn regression_indexeddb_recreate_did_not_check_for_null_bytes_in_string() 
                     users: BTreeSet::new(),
                 }),
                 updatedness: Some(Updatedness::from_u128(1)),
-                force_lock: true,
+                force_lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -208,7 +208,7 @@ async fn regression_creating_missing_object_did_not_refresh_perms() {
                     bins: vec![],
                     users: BTreeSet::new(),
                 }),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::CreateFull {
                 object_id: OBJECT_ID_2,
@@ -220,7 +220,7 @@ async fn regression_creating_missing_object_did_not_refresh_perms() {
                     bins: vec![],
                     users: [USER_ID_1].into_iter().collect(),
                 }),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
         ]),
     )
@@ -246,7 +246,7 @@ async fn regression_serde_serializes_hashmap_order_at_random() {
                         .into_iter()
                         .collect(),
                 }),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::CreateFull {
                 object_id: OBJECT_ID_1,
@@ -260,7 +260,7 @@ async fn regression_serde_serializes_hashmap_order_at_random() {
                         .into_iter()
                         .collect(),
                 }),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::CreateFull {
                 object_id: OBJECT_ID_1,
@@ -274,7 +274,7 @@ async fn regression_serde_serializes_hashmap_order_at_random() {
                         .into_iter()
                         .collect(),
                 }),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::CreateFull {
                 object_id: OBJECT_ID_1,
@@ -288,7 +288,7 @@ async fn regression_serde_serializes_hashmap_order_at_random() {
                         .into_iter()
                         .collect(),
                 }),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
             Op::CreateFull {
                 object_id: OBJECT_ID_1,
@@ -302,7 +302,7 @@ async fn regression_serde_serializes_hashmap_order_at_random() {
                         .into_iter()
                         .collect(),
                 }),
-                lock: true,
+                lock: Lock::OBJECT.bits(),
             },
         ]),
     )

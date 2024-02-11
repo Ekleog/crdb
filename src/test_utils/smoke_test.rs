@@ -9,7 +9,7 @@ macro_rules! smoke_test {
     ) => {
         use std::sync::Arc;
         use $crate::{
-            crdb_internal::{test_utils::*, Db},
+            crdb_internal::{test_utils::*, Db, Lock},
             Query, Updatedness,
         };
 
@@ -24,7 +24,7 @@ macro_rules! smoke_test {
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
             next_updatedness(),
-            true,
+            Lock::OBJECT,
         )
         .await
         .expect("creating test object 1 failed");
@@ -35,7 +35,7 @@ macro_rules! smoke_test {
             EVENT_ID_2,
             Arc::new(TestObjectSimple::stub_2()),
             next_updatedness(),
-            true,
+            Lock::OBJECT,
         )
         .await
         .expect_err("creating duplicate test object 1 spuriously worked");
@@ -46,7 +46,7 @@ macro_rules! smoke_test {
             EVENT_ID_1,
             Arc::new(TestObjectSimple::stub_1()),
             next_updatedness(),
-            true,
+            Lock::OBJECT,
         )
         .await
         .expect("creating exact copy test object 1 failed");
@@ -57,7 +57,7 @@ macro_rules! smoke_test {
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
             next_updatedness(),
-            false,
+            Lock::NONE,
         )
         .await
         .expect("clearing object 1 failed");
@@ -68,7 +68,7 @@ macro_rules! smoke_test {
             EVENT_ID_3,
             Arc::new(TestEventSimple::Clear),
             next_updatedness(),
-            true,
+            Lock::OBJECT,
         )
         .await
         .expect("submitting duplicate event failed");
@@ -79,7 +79,7 @@ macro_rules! smoke_test {
             EVENT_ID_3,
             Arc::new(TestEventSimple::Set(b"foo".to_vec())),
             next_updatedness(),
-            true,
+            Lock::OBJECT,
         )
         .await
         .expect_err("submitting duplicate event with different contents worked");
@@ -87,7 +87,7 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             Vec::<u8>::new(),
-            $db.get_latest::<TestObjectSimple>(false, OBJECT_ID_1)
+            $db.get_latest::<TestObjectSimple>(Lock::NONE, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
                 .0
@@ -97,7 +97,7 @@ macro_rules! smoke_test {
             EVENT_ID_2,
             Arc::new(TestEventSimple::Set(b"bar".to_vec())),
             next_updatedness(),
-            false,
+            Lock::NONE,
         )
         .await
         .expect("submitting event failed");
@@ -105,7 +105,7 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             Vec::<u8>::new(),
-            $db.get_latest::<TestObjectSimple>(true, OBJECT_ID_1)
+            $db.get_latest::<TestObjectSimple>(Lock::OBJECT, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
                 .0
@@ -115,7 +115,7 @@ macro_rules! smoke_test {
             EVENT_ID_4,
             Arc::new(TestEventSimple::Set(b"baz".to_vec())),
             next_updatedness(),
-            true,
+            Lock::OBJECT,
         )
         .await
         .expect("submitting event failed");
@@ -123,7 +123,7 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert_eq!(
             b"baz".to_vec(),
-            $db.get_latest::<TestObjectSimple>(false, OBJECT_ID_1)
+            $db.get_latest::<TestObjectSimple>(Lock::NONE, OBJECT_ID_1)
                 .await
                 .expect("getting object 1")
                 .0

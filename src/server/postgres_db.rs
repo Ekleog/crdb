@@ -1,6 +1,7 @@
 use super::ServerConfig;
 use crate::{
     cache::CacheDb,
+    crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
     fts,
@@ -1713,7 +1714,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     #[cfg(feature = "_tests")]
     #[allow(dead_code)] // Used by fuzzers
-    async fn unlock(&self, _object_id: ObjectId) -> crate::Result<()> {
+    async fn unlock(&self, _unlock: Lock, _object_id: ObjectId) -> crate::Result<()> {
         panic!()
     }
 
@@ -1956,7 +1957,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        _lock: bool,
+        _lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let updatedness =
             updatedness.expect("Called PostgresDb::create without specifying updatedness");
@@ -1972,7 +1973,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        _force_lock: bool,
+        _force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         let updatedness =
             updatedness.expect("Called PostgresDb::create without specifying updatedness");
@@ -1984,7 +1985,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
 
     async fn get_latest<T: Object>(
         &self,
-        _lock: bool,
+        _lock: Lock,
         object_id: ObjectId,
     ) -> crate::Result<Arc<T>> {
         reord::point().await;
@@ -2035,7 +2036,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         _new_created_at: EventId,
         _data: Arc<T>,
         _updatedness: Option<Updatedness>,
-        _force_lock: bool,
+        _force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
         panic!("Tried recreating {object_id:?} on the server, but server is supposed to only ever be the one to make recreations!")
     }

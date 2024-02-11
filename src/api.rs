@@ -1,4 +1,7 @@
-use crate::{db_trait::Db, CrdbFuture, EventId, ObjectId, TypeId, Updatedness};
+use crate::{
+    db_trait::{Db, Lock},
+    CrdbFuture, EventId, ObjectId, TypeId, Updatedness,
+};
 
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct UploadId(pub i64);
@@ -19,7 +22,7 @@ pub trait ApiConfig: crate::private::Sealed {
         snapshot_version: i32,
         object: &serde_json::Value,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> impl CrdbFuture<Output = crate::Result<Option<serde_json::Value>>>;
 
     /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
@@ -30,7 +33,7 @@ pub trait ApiConfig: crate::private::Sealed {
         event_id: EventId,
         event: &serde_json::Value,
         updatedness: Option<Updatedness>,
-        force_lock: bool,
+        force_lock: Lock,
     ) -> impl CrdbFuture<Output = crate::Result<Option<serde_json::Value>>>;
 }
 
@@ -59,7 +62,7 @@ macro_rules! generate_api {
                 snapshot_version: i32,
                 object: &crdb::serde_json::Value,
                 updatedness: Option<crdb::Updatedness>,
-                force_lock: bool,
+                force_lock: crdb::Lock,
             ) -> crdb::Result<Option<crdb::serde_json::Value>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -84,7 +87,7 @@ macro_rules! generate_api {
                 event_id: crdb::EventId,
                 event: &crdb::serde_json::Value,
                 updatedness: Option<crdb::Updatedness>,
-                force_lock: bool,
+                force_lock: crdb::Lock,
             ) -> crdb::Result<Option<crdb::serde_json::Value>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
