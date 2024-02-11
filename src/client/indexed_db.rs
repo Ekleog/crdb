@@ -1066,7 +1066,7 @@ impl IndexedDb {
         &self,
     ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
         self.db
-            .transaction(&["snapshots_meta"])
+            .transaction(&["queries_meta"])
             .run(|transaction| async move {
                 let queries_meta = transaction
                     .object_store("queries_meta")
@@ -1099,11 +1099,35 @@ impl IndexedDb {
 
     pub async fn subscribe_query(
         &self,
-        _query_id: QueryId,
-        _query: Arc<Query>,
-        _lock: bool,
+        query_id: QueryId,
+        query: Arc<Query>,
+        type_id: TypeId,
+        lock: bool,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(api)
+        let new_query = QueryMeta {
+            query_id,
+            query,
+            type_id,
+            lock,
+            have_all_until: None,
+        };
+        let new_query_js =
+            serde_wasm_bindgen::to_value(&new_query).wrap_context("serializing query metadata")?;
+        self.db
+            .transaction(&["queries_meta"])
+            .rw()
+            .run(|transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                queries_meta
+                    .put(&new_query_js)
+                    .await
+                    .wrap_context("inserting the new query")?;
+                Ok(())
+            })
+            .await
+            .wrap_context("subscribing to query")
     }
 
     pub async fn unsubscribe_query(

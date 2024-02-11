@@ -96,6 +96,7 @@ impl SqliteDb {
         &self,
         _query_id: QueryId,
         _query: Arc<Query>,
+        _type_id: TypeId,
         _lock: bool,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)

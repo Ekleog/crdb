@@ -862,7 +862,12 @@ impl ClientDb {
             if only_updated_since.is_none() {
                 // Was not subscribed yet
                 self.db_bypass
-                    .subscribe_query(query_id, query.clone(), importance >= Importance::Lock)
+                    .subscribe_query(
+                        query_id,
+                        query.clone(),
+                        *T::type_ulid(),
+                        importance >= Importance::Lock,
+                    )
                     .await?;
             }
             Ok(self
