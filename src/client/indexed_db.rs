@@ -1197,10 +1197,43 @@ impl IndexedDb {
 
     pub async fn update_queries(
         &self,
-        _queries: &HashSet<QueryId>,
-        _now_have_all_until: Updatedness,
+        queries: &HashSet<QueryId>,
+        now_have_all_until: Updatedness,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(api)
+        let queries = queries.clone();
+        self.db
+            .transaction(&["queries_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                for query_id in queries {
+                    let Some(query_meta_js) = queries_meta
+                        .get(&query_id.to_js_string())
+                        .await
+                        .wrap_context("fetching existing query metadata")?
+                    else {
+                        tracing::error!(
+                            ?query_id,
+                            "query supposed to get updated does not actually exist"
+                        );
+                        continue;
+                    };
+                    let mut query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
+                        .wrap_context("deserializing query metadata")?;
+                    query_meta.have_all_until = Some(now_have_all_until);
+                    let query_meta_js = serde_wasm_bindgen::to_value(&query_meta)
+                        .wrap_context("reserializing query metadata")?;
+                    queries_meta
+                        .put(&query_meta_js)
+                        .await
+                        .wrap_context("saving updated query metadata")?;
+                }
+                Ok(())
+            })
+            .await
+            .wrap_context("subscribing to query")
     }
 }
 
