@@ -1132,10 +1132,67 @@ impl IndexedDb {
 
     pub async fn unsubscribe_query(
         &self,
-        _query_id: QueryId,
-        _objects_to_unlock: Vec<ObjectId>,
+        query_id: QueryId,
+        objects_to_unlock: Vec<ObjectId>,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(api)
+        let query_id_js = query_id.to_js_string();
+        self.db
+            .transaction(&["queries_meta", "snapshots_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving snapshots_meta object store")?;
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving creation_object index")?;
+
+                queries_meta
+                    .delete(&query_id_js)
+                    .await
+                    .wrap_context("removing the unsubscribed query")?;
+                for object_id in objects_to_unlock {
+                    let Some(snapshot_meta_js) = creation_object
+                        .get(&**Array::from_iter([
+                            &JsValue::from(1),
+                            &object_id.to_js_string(),
+                        ]))
+                        .await
+                        .wrap_context("fetching existing snapshot metadata")?
+                    else {
+                        tracing::error!(
+                            ?object_id,
+                            "object supposed to get unlocked does not actually exist"
+                        );
+                        continue;
+                    };
+                    let mut snapshot_meta =
+                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
+                            .wrap_context("deserializing snapshot metadata")?;
+                    let old_is_locked = snapshot_meta.is_locked;
+                    snapshot_meta.is_locked = Some(
+                        (old_is_locked
+                            .map(Lock::from_bits_truncate)
+                            .unwrap_or(Lock::NONE)
+                            - Lock::FOR_QUERIES)
+                            .bits(),
+                    );
+                    if old_is_locked != snapshot_meta.is_locked {
+                        let snapshot_meta_js = serde_wasm_bindgen::to_value(&snapshot_meta)
+                            .wrap_context("serializing snapshot metadata")?;
+                        snapshots_meta
+                            .put(&snapshot_meta_js)
+                            .await
+                            .wrap_context("saving unlocked-for-queries snapshot")?;
+                    }
+                }
+                Ok(())
+            })
+            .await
+            .wrap_context("subscribing to query")
     }
 
     pub async fn update_queries(
