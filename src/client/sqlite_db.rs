@@ -101,7 +101,11 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite)
     }
 
-    pub async fn unsubscribe_query(&self, _query_id: QueryId) -> crate::Result<()> {
+    pub async fn unsubscribe_query(
+        &self,
+        _query_id: QueryId,
+        _objects_to_unlock: Vec<ObjectId>,
+    ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
 
