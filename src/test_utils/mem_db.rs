@@ -108,9 +108,15 @@ impl MemDb {
             .collect::<crate::Result<Vec<ObjectId>>>()
     }
 
-    pub async fn unlock(&self, unlock: Lock, object_id: ObjectId) -> crate::Result<()> {
+    pub async fn change_locks(
+        &self,
+        unlock: Lock,
+        then_lock: Lock,
+        object_id: ObjectId,
+    ) -> crate::Result<()> {
         if let Some((_, locked, _, _)) = self.0.lock().await.objects.get_mut(&object_id) {
             *locked -= unlock;
+            *locked |= then_lock;
         }
         // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
         Ok(())

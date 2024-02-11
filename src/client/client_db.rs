@@ -31,7 +31,10 @@ pub struct ClientDb {
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
-    subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
+    // The `Lock` here is ONLY the accumulated queries lock for this object! The object lock is
+    // handled directly in the database only.
+    subscribed_objects:
+        Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>>,
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>>,
     data_saver: mpsc::UnboundedSender<(
@@ -64,9 +67,9 @@ impl ClientDb {
             .await
             .wrap_context("listing subscribed objects")?
             .into_iter()
-            .map(|(id, (type_id, value, updatedness))| {
-                let queries = Self::queries_for(&subscribed_queries, type_id, &value);
-                (id, (updatedness, queries))
+            .map(|(object_id, (type_id, value, updatedness))| {
+                let (queries, lock) = Self::queries_for(&subscribed_queries, type_id, &value);
+                (object_id, (updatedness, queries, lock))
             })
             .collect::<HashMap<_, _>>();
         let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
@@ -79,7 +82,7 @@ impl ClientDb {
                         .lock()
                         .unwrap()
                         .iter()
-                        .map(|(id, (upd, _))| (*id, *upd))
+                        .map(|(id, (upd, _, _))| (*id, *upd))
                         .collect()
                 }
             },
@@ -119,14 +122,23 @@ impl ClientDb {
         subscribed_queries: &HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
         type_id: TypeId,
         value: &serde_json::Value,
-    ) -> HashSet<QueryId> {
-        subscribed_queries
-            .iter()
-            .filter(|(_, (query, q_type_id, _, _))| {
-                type_id == *q_type_id && query.matches_json(&value)
-            })
-            .map(|(id, _)| *id)
-            .collect()
+    ) -> (HashSet<QueryId>, Lock) {
+        let mut lock = Lock::NONE;
+        (
+            subscribed_queries
+                .iter()
+                .filter(|(_, (query, q_type_id, _, query_lock))| {
+                    if type_id == *q_type_id && query.matches_json(&value) {
+                        lock |= *query_lock;
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .map(|(id, _)| *id)
+                .collect(),
+            lock,
+        )
     }
 
     fn setup_update_watcher(&self, mut updates_receiver: mpsc::UnboundedReceiver<Updates>) {
@@ -136,12 +148,6 @@ impl ClientDb {
             let data_saver = self.data_saver.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
-                    // TODO(api): How to deal with the case where a query is Importance::Lock, new objects are locked, and then the objects
-                    // stop matching the query? In particular, should the objects be unlocked? This will probably require adding a new field
-                    // to the database, remembering whether the object was locked for a query or by explicit request from the user, so that
-                    // the two could be (un)locked independently, and the object vacuumed-out iff they're both unlocked.
-                    // Solution idea: have is_locked be Some(1) if object is locked for itself, Some(2) if locked for a query, and Some(3) if
-                    // both
                     for u in updates.data {
                         let (sender, _) = oneshot::channel();
                         data_saver
@@ -227,7 +233,9 @@ impl ClientDb {
             Lock,
             oneshot::Sender<crate::Result<UpdateResult>>,
         )>,
-        subscribed_objects: Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>>,
+        subscribed_objects: Arc<
+            Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>,
+        >,
         subscribed_queries: Arc<
             Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
         >,
@@ -319,7 +327,9 @@ impl ClientDb {
 
     async fn save_data<C: ApiConfig>(
         db: &LocalDb,
-        subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>)>>,
+        subscribed_objects: &Mutex<
+            HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>,
+        >,
         subscribed_queries: &Mutex<
             HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
         >,
@@ -380,7 +390,7 @@ impl ClientDb {
             UpdateResult::LostAccess => {
                 // Lost access to the object
                 let prev = subscribed_objects.lock().unwrap().remove(&object_id);
-                if let Some((_, queries)) = prev {
+                if let Some((_, queries, _)) = prev {
                     if let Some(now_have_all_until) = now_have_all_until {
                         if let Err(err) = db.update_queries(&queries, now_have_all_until).await {
                             tracing::error!(
@@ -427,14 +437,22 @@ impl ClientDb {
             UpdateResult::LatestChanged(res) => {
                 // Something changed in the object's latest_snapshot
                 if let Some(now_have_all_until) = now_have_all_until {
-                    let mut queries =
+                    let (mut queries, lock_after) =
                         Self::queries_for(&subscribed_queries.lock().unwrap(), type_id, res);
-                    if let Some((_, queries_before)) = subscribed_objects
-                        .lock()
-                        .unwrap()
-                        .insert(object_id, (Some(now_have_all_until), queries.clone()))
-                    {
+                    let lock_before = if let Some((_, queries_before, lock_before)) =
+                        subscribed_objects.lock().unwrap().insert(
+                            object_id,
+                            (Some(now_have_all_until), queries.clone(), lock_after),
+                        ) {
                         queries.extend(queries_before);
+                        lock_before
+                    } else {
+                        Lock::NONE
+                    };
+                    if lock_before != lock_after {
+                        db.change_locks(lock_before, lock_after, object_id)
+                            .await
+                            .wrap_context("updating query locking status")?;
                     }
                     if let Err(err) = db.update_queries(&queries, now_have_all_until).await {
                         tracing::error!(
@@ -480,7 +498,7 @@ impl ClientDb {
     }
 
     pub async fn unlock(&self, ptr: ObjectId) -> crate::Result<()> {
-        self.db.unlock(Lock::OBJECT, ptr).await
+        self.db.change_locks(Lock::OBJECT, Lock::NONE, ptr).await
     }
 
     pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
@@ -495,6 +513,7 @@ impl ClientDb {
 
     pub async fn unsubscribe_query(&self, query_id: QueryId) -> crate::Result<()> {
         self.subscribed_queries.lock().unwrap().remove(&query_id);
+        // TODO(api): update query lock for subscribed_objects
         self.api.unsubscribe_query(query_id);
         self.db_bypass.unsubscribe_query(query_id).await
     }
@@ -507,6 +526,7 @@ impl ClientDb {
         object: Arc<T>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         // TODO(client): validate permissions to create the object, to fail early
+        let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
         let val = self
             .db
             .create(
@@ -521,7 +541,7 @@ impl ClientDb {
             if let Some(val) = val {
                 let val_json =
                     serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
-                let queries = Self::queries_for(
+                let (queries, lock) = Self::queries_for(
                     &self.subscribed_queries.lock().unwrap(),
                     *T::type_ulid(),
                     &val_json,
@@ -529,7 +549,13 @@ impl ClientDb {
                 self.subscribed_objects
                     .lock()
                     .unwrap()
-                    .insert(object_id, (None, queries));
+                    .insert(object_id, (None, queries, lock));
+                if lock != Lock::NONE {
+                    self.db
+                        .change_locks(Lock::NONE, lock, object_id)
+                        .await
+                        .wrap_context("updating queries locks")?;
+                }
             }
         }
         self.api.create(
@@ -543,25 +569,54 @@ impl ClientDb {
     pub async fn submit<T: Object>(
         &self,
         importance: Importance,
-        object: ObjectId,
+        object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
         // TODO(client): validate permissions to submit the event, to fail early
-        self.db
+        let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
+        let val = self
+            .db
             .submit::<T>(
-                object,
+                object_id,
                 event_id,
                 event.clone(),
                 None, // Locally-submitted event, has no updatedness yet
                 importance.to_object_lock(),
             )
             .await?;
-        // The object must already be subscribed, in order for event submission to be successful.
-        // So, there is no need to manually subscribe again.
+        if importance >= Importance::Subscribe {
+            if let Some(val) = val {
+                let val_json =
+                    serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
+                let (queries, lock_after) = Self::queries_for(
+                    &self.subscribed_queries.lock().unwrap(),
+                    *T::type_ulid(),
+                    &val_json,
+                );
+                let (_, _, lock_before) = self
+                    .subscribed_objects
+                    .lock()
+                    .unwrap()
+                    .insert(object_id, (None, queries, lock_after))
+                    .ok_or_else(|| {
+                        crate::Error::Other(anyhow!("Submitted event to non-subscribed object"))
+                    })?;
+                if lock_before != lock_after {
+                    self.db
+                        .change_locks(lock_before, lock_after, object_id)
+                        .await
+                        .wrap_context("updating queries locks")?;
+                }
+            }
+        }
         // TODO(low): consider introducing a ManuallyUpdated importance level, that would make this statement wrong?
-        self.api
-            .submit::<T>(object, event_id, event, importance >= Importance::Subscribe)
+        self.api.submit::<T>(
+            object_id,
+            event_id,
+            event,
+            importance >= Importance::Subscribe,
+        )
     }
 
     /// Returns the latest snapshot for the object described by `data`
@@ -682,7 +737,7 @@ impl ClientDb {
                     (res, res_json)
                 }
             };
-            let queries = Self::queries_for(
+            let (queries, lock_after) = Self::queries_for(
                 &self.subscribed_queries.lock().unwrap(),
                 *T::type_ulid(),
                 &res_json,
@@ -690,7 +745,13 @@ impl ClientDb {
             self.subscribed_objects
                 .lock()
                 .unwrap()
-                .insert(object_id, (None, queries));
+                .insert(object_id, (None, queries, lock_after));
+            if lock_after != Lock::NONE {
+                self.db
+                    .change_locks(Lock::NONE, lock_after, object_id)
+                    .await
+                    .wrap_context("updating queries lock")?;
+            }
             Ok(res)
         } else {
             unimplemented!() // TODO(client): GetLatest
@@ -712,7 +773,7 @@ impl ClientDb {
 
     pub async fn query_local<T: Object>(
         &self,
-        importance: Importance,
+        importance: Importance, // TODO(api): this does not make sense with the new query locking logic
         query: Arc<Query>,
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
         let object_ids = self
@@ -817,7 +878,7 @@ impl ClientDb {
                                             (res, res_json)
                                         }
                                     };
-                                    let queries = Self::queries_for(
+                                    let (queries, lock_after) = Self::queries_for(
                                         &subscribed_queries.lock().unwrap(),
                                         type_id,
                                         &res_json,
@@ -825,10 +886,15 @@ impl ClientDb {
                                     if let Some(now_have_all_until) = updatedness {
                                         db.update_queries(&queries, now_have_all_until).await?;
                                     }
-                                    subscribed_objects
-                                        .lock()
-                                        .unwrap()
-                                        .insert(object_id, (Some(now_have_all_until), queries));
+                                    if lock_after != lock {
+                                        db.change_locks(Lock::NONE, lock_after, object_id)
+                                            .await
+                                            .wrap_context("updating queries lock")?;
+                                    }
+                                    subscribed_objects.lock().unwrap().insert(
+                                        object_id,
+                                        (Some(now_have_all_until), queries, lock_after),
+                                    );
                                     if let Some(q) =
                                         subscribed_queries.lock().unwrap().get_mut(&query_id)
                                     {

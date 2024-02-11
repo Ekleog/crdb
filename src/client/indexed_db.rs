@@ -328,7 +328,12 @@ impl IndexedDb {
         Ok(objects)
     }
 
-    pub async fn unlock(&self, unlock: Lock, object_id: ObjectId) -> crate::Result<()> {
+    pub async fn change_locks(
+        &self,
+        unlock: Lock,
+        then_lock: Lock,
+        object_id: ObjectId,
+    ) -> crate::Result<()> {
         let object_id_js = object_id.to_js_string();
 
         let res = self
@@ -357,10 +362,11 @@ impl IndexedDb {
                     .wrap_context("deserializing snapshot metadata")?;
                 let old_is_locked = snapshot_meta.is_locked;
                 snapshot_meta.is_locked = Some(
-                    (old_is_locked
+                    ((old_is_locked
                         .map(Lock::from_bits_truncate)
                         .unwrap_or(Lock::NONE)
                         - unlock)
+                        | then_lock)
                         .bits(),
                 );
 

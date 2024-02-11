@@ -1714,7 +1714,12 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
     #[cfg(feature = "_tests")]
     #[allow(dead_code)] // Used by fuzzers
-    async fn unlock(&self, _unlock: Lock, _object_id: ObjectId) -> crate::Result<()> {
+    async fn change_locks(
+        &self,
+        _unlock: Lock,
+        _then_lock: Lock,
+        _object_id: ObjectId,
+    ) -> crate::Result<()> {
         panic!()
     }
 

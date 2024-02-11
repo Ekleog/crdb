@@ -43,7 +43,12 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite): implement
     }
 
-    pub async fn unlock(&self, _unlock: Lock, _object_id: ObjectId) -> crate::Result<()> {
+    pub async fn change_locks(
+        &self,
+        _unlock: Lock,
+        _then_lock: Lock,
+        _object_id: ObjectId,
+    ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite)
     }
 

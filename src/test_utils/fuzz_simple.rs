@@ -622,8 +622,9 @@ async fn regression_memdb_unlocking_of_nonexistent_object_had_wrong_error_messag
     let cluster = setup();
     fuzz_impl(
         &cluster,
-        Arc::new(vec![Op::Unlock {
+        Arc::new(vec![Op::ChangeLocks {
             unlock: Lock::OBJECT.bits(),
+            then_lock: 0,
             object_id: 0,
         }]),
     )

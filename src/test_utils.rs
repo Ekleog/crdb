@@ -170,7 +170,7 @@ macro_rules! make_fuzzer_stuffs {
                 binary_id: usize,
             },
             Remove { object_id: usize },
-            Unlock { unlock: u8, object_id: usize },
+            ChangeLocks { unlock: u8, then_lock: u8, object_id: usize },
             Vacuum { recreate_at: Option<(EventId, Updatedness)> },
         }
 
@@ -305,12 +305,13 @@ macro_rules! make_fuzzer_stuffs {
                             cmp(db, mem)?;
                         }
                     }
-                    Op::Unlock { unlock, object_id } => {
+                    Op::ChangeLocks { unlock, then_lock, object_id } => {
                         if !s.is_server {
                             let unlock = Lock::from_bits_truncate(*unlock);
+                            let then_lock = Lock::from_bits_truncate(*then_lock);
                             let object_id = s.object(*object_id);
-                            let db = db.unlock(unlock, object_id).await;
-                            let mem = s.mem_db.unlock(unlock, object_id).await;
+                            let db = db.change_locks(unlock, then_lock, object_id).await;
+                            let mem = s.mem_db.change_locks(unlock, then_lock, object_id).await;
                             cmp(db, mem)?;
                         }
                     }
