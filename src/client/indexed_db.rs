@@ -259,8 +259,8 @@ impl IndexedDb {
         let type_id_js = T::type_ulid().to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
         let max_id = EventId::from_u128(u128::MAX).to_js_string();
-        // TODO(low): look into setting up indexes and allowing the user to use them?
-        // TODO(low): think a lot about splitting this transaction to be able to return a real stream by
+        // TODO(perf-low): look into setting up indexes and allowing the user to use them?
+        // TODO(perf-low): think a lot about splitting this transaction to be able to return a real stream by
         // using cursors? The difficulty will be that another task could clobber the latest index
         // during that time.
 
@@ -444,7 +444,7 @@ impl IndexedDb {
                     .open()
                     .await
                     .wrap_context("listing unlocked objects")?;
-                // TODO(low): could trigger all deletion requests in parallel and only wait for them
+                // TODO(perf-med): could trigger all deletion requests in parallel and only wait for them
                 // all before listing still-required binaries, for performance
                 while let Some(s) = to_remove.value() {
                     let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
@@ -547,7 +547,7 @@ impl IndexedDb {
     }
 
     pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
-        // TODO(test): fuzz upload-queue behavior
+        // TODO(test-high): fuzz upload-queue behavior
         self.db
             .transaction(&["upload_queue_meta"])
             .run(move |transaction| async move {
@@ -882,7 +882,7 @@ impl IndexedDb {
         let new_snapshot_js = serde_wasm_bindgen::to_value(&*object)
             .wrap_with_context(|| format!("serializing {object_id:?}"))?;
         let required_binaries = object.required_binaries();
-        // TODO(low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+        // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
         crate::check_strings(&serde_json::to_value(&*object).wrap_context("serializing to json")?)?;
 
         let snapshots = transaction
@@ -1000,8 +1000,8 @@ impl IndexedDb {
     pub async fn get_subscribed_objects(
         &self,
     ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
-        // TODO(test): fuzz this, and all other LocalDb functions
-        // TODO(test): fuzz connection handling
+        // TODO(test-high): fuzz this, and all other LocalDb functions
+        // TODO(test-high): fuzz connection handling
         let zero_id = TypeId::from_u128(0).to_js_string();
         let max_id = TypeId::from_u128(u128::MAX).to_js_string();
         self.db
@@ -1348,7 +1348,7 @@ impl Db for IndexedDb {
                     .into());
                 }
 
-                // TODO(low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+                // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
                 crate::check_strings(&serde_json::to_value(&*event).wrap_context("serializing to json")?)?;
 
                 // Insert the event metadata, checking for collisions
@@ -1570,7 +1570,6 @@ impl Db for IndexedDb {
                     .wrap_context("retrieving 'latest_type_object' index")?;
 
                 // Figure out the creation snapshot to validate input
-                // TODO(low): this could do with a simple latest_object index
                 let creation_snapshot_meta_js = creation_object
                     .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
                     .await
@@ -1754,7 +1753,7 @@ impl Db for IndexedDb {
                     .into());
                 }
 
-                // TODO(low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+                // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
                 crate::check_strings(
                     &serde_json::to_value(&*object).wrap_context("serializing to json")?,
                 )?;

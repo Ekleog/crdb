@@ -36,11 +36,11 @@ impl SqliteDb {
     }
 
     pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn query<T: Object>(&self, _query: Arc<Query>) -> crate::Result<Vec<ObjectId>> {
-        unimplemented!() // TODO(sqlite): implement
+        unimplemented!() // TODO(sqlite-high): implement
     }
 
     pub async fn change_locks(
@@ -49,19 +49,19 @@ impl SqliteDb {
         _then_lock: Lock,
         _object_id: ObjectId,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn vacuum(&self) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn get_upload(&self, _upload_id: UploadId) -> crate::Result<Upload> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn enqueue_upload(
@@ -69,27 +69,27 @@ impl SqliteDb {
         _upload: Upload,
         _required_binaries: Vec<BinPtr>,
     ) -> crate::Result<UploadId> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn remove_everything(&self) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn get_subscribed_objects(
         &self,
     ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn get_subscribed_queries(
         &self,
     ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn subscribe_query(
@@ -99,7 +99,7 @@ impl SqliteDb {
         _type_id: TypeId,
         _lock: bool,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn unsubscribe_query(
@@ -107,7 +107,7 @@ impl SqliteDb {
         _query_id: QueryId,
         _objects_to_unlock: Vec<ObjectId>,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     pub async fn update_queries(
@@ -115,11 +115,11 @@ impl SqliteDb {
         _queries: &HashSet<QueryId>,
         _now_have_all_until: Updatedness,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite)
+        unimplemented!() // TODO(sqlite-high)
     }
 }
 
-#[allow(unused_variables)] // TODO(sqlite): remove
+#[allow(unused_variables)] // TODO(sqlite-high): remove
 impl Db for SqliteDb {
     async fn create<T: Object>(
         &self,
