@@ -467,8 +467,6 @@ impl<C: ServerConfig> Server<C> {
                     )
                     .await
                     .wrap_context("listing objects matching query")?;
-                // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
-                // So, setting `None` here is the right thing to do.
                 self.send_snapshots(
                     conn,
                     msg.request_id,
@@ -744,12 +742,24 @@ impl<C: ServerConfig> Server<C> {
                 )
                 .await?;
             }
-            let object = match object {
-                Ok(object) => object,
+            match object {
+                Ok(object) => {
+                    size_of_message += size_as_json(&object)?;
+                    current_data.push(object);
+                }
+                Err(err @ crate::Error::ObjectDoesNotExist(_)) => {
+                    Self::send(
+                        &mut conn.socket,
+                        &ServerMessage::Response {
+                            request_id,
+                            response: ResponsePart::Error(err.into()),
+                            last_response: false,
+                        },
+                    )
+                    .await?;
+                }
                 Err(err) => return Self::send_res(&mut conn.socket, request_id, Err(err)).await,
-            };
-            size_of_message += size_as_json(&object)?;
-            current_data.push(object);
+            }
         }
         Self::send_res(
             &mut conn.socket,
