@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Install cargo dependencies
-      - uses: taiki-e/install-action@0dffe805566eb5f21aa682f9a43f6fbac7282dbe
+      - uses: taiki-e/install-action@5794068c211bc8f5f4514b7c3f03d6adbe66f1b7
         with:
           tool: just, cargo-nextest
       # TODO(misc-low): contribute these to taiki-e/install-action upstream?
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@0dffe805566eb5f21aa682f9a43f6fbac7282dbe
+      - uses: taiki-e/install-action@5794068c211bc8f5f4514b7c3f03d6adbe66f1b7
         with:
           tool: just
       - run: just clippy
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@0dffe805566eb5f21aa682f9a43f6fbac7282dbe
+      - uses: taiki-e/install-action@5794068c211bc8f5f4514b7c3f03d6adbe66f1b7
         with:
           tool: just, cargo-udeps
       - run: just udeps
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@0dffe805566eb5f21aa682f9a43f6fbac7282dbe
+      - uses: taiki-e/install-action@5794068c211bc8f5f4514b7c3f03d6adbe66f1b7
         with:
           tool: just
       - run: just doc
