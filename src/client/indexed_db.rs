@@ -2106,9 +2106,44 @@ impl Db for IndexedDb {
             .db
             .transaction(&["snapshots_meta", "snapshots"])
             .rw()
-            .run(|_transaction| async move {
-                // TODO(client-high)
-                Ok(0)
+            .run(|transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving snapshots_meta object store")?;
+                let mut cursor = snapshots_meta
+                    .cursor()
+                    .open()
+                    .await
+                    .wrap_context("opening cursor over all snapshots")?;
+                let mut num_errors = 0;
+                while let Some(snapshot_meta_js) = cursor.value() {
+                    let snapshot_meta =
+                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
+                            .wrap_context("deserializing snapshot metadata")?;
+                    if snapshot_meta.type_id == *T::type_ulid()
+                        && (snapshot_meta.snapshot_version < T::snapshot_version()
+                            || snapshot_meta.normalizer_version < fts::normalizer_version())
+                    {
+                        let snapshot_id = snapshot_meta.snapshot_id;
+                        if let Err(err) =
+                            reencode_snapshot(&transaction, snapshot_meta.snapshot_id).await
+                        {
+                            let type_id = *T::type_ulid();
+                            tracing::error!(
+                                ?err,
+                                ?snapshot_id,
+                                ?type_id,
+                                "failed reencoding snapshot to latest version"
+                            );
+                            num_errors += 1;
+                        }
+                    }
+                    cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("advancing cursor to next item")?;
+                }
+                Ok(num_errors)
             })
             .await
             .wrap_with_context(|| format!("reencoding old versions of type {:?}", T::type_ulid()));
@@ -2120,6 +2155,13 @@ impl Db for IndexedDb {
             }
         }
     }
+}
+
+async fn reencode_snapshot(
+    _transaction: &indexed_db::Transaction<crate::Error>,
+    _snapshot_id: EventId,
+) -> crate::Result<()> {
+    unimplemented!() // TODO(client-high)
 }
 
 async fn check_required_binaries(
