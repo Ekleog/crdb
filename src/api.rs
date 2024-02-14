@@ -12,6 +12,8 @@ pub trait ApiConfig: crate::private::Sealed {
     /// Panics if there are two types with the same ULID configured
     fn check_ulids();
 
+    fn reencode_old_versions<D: Db>(call_on: &D) -> impl '_ + CrdbFuture<Output = usize>;
+
     /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
     #[allow(clippy::too_many_arguments)] // Used only for relaying to a more specific function
     fn recreate<D: Db>(
@@ -52,6 +54,14 @@ macro_rules! generate_api {
                         panic!("Type ULID {u:?} was used multiple times!");
                     }
                 }
+            }
+
+            async fn reencode_old_versions<D: crdb::Db>(call_on: &D) -> usize {
+                let mut num_errors = 0;
+                $(
+                    num_errors += call_on.reencode_old_versions::<$object>().await;
+                )*
+                num_errors
             }
 
             async fn recreate<D: crdb::Db>(

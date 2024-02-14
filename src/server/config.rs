@@ -12,8 +12,6 @@ use std::{collections::HashSet, sync::Arc};
 pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
     type ApiConfig: ApiConfig;
 
-    fn reencode_old_versions(call_on: &PostgresDb<Self>) -> impl '_ + CrdbFuture<Output = usize>;
-
     fn get_users_who_can_read<'a, C: CanDoCallbacks>(
         call_on: &'a PostgresDb<Self>,
         object_id: ObjectId,
@@ -79,14 +77,6 @@ macro_rules! generate_server {
 
         impl crdb::ServerConfig for $name {
             type ApiConfig = $api_config;
-
-            async fn reencode_old_versions(call_on: &crdb::PostgresDb<Self>) -> usize {
-                let mut num_errors = 0;
-                $(
-                    num_errors += call_on.reencode_old_versions::<$object>().await;
-                )*
-                num_errors
-            }
 
             async fn get_users_who_can_read<'a, C: crdb::CanDoCallbacks>(
                 call_on: &'a crdb::PostgresDb<Self>,

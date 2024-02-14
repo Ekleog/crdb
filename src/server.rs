@@ -100,7 +100,7 @@ impl<C: ServerConfig> Server<C> {
         // Start the upgrading task
         let upgrade_handle = tokio::task::spawn({
             let postgres_db = postgres_db.clone();
-            async move { C::reencode_old_versions(&postgres_db).await }
+            async move { C::ApiConfig::reencode_old_versions(&*postgres_db).await }
         });
 
         // Setup the update reorderer task
