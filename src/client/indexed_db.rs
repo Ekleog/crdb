@@ -2125,8 +2125,12 @@ impl Db for IndexedDb {
                             || snapshot_meta.normalizer_version < fts::normalizer_version())
                     {
                         let snapshot_id = snapshot_meta.snapshot_id;
-                        if let Err(err) =
-                            reencode_snapshot(&transaction, snapshot_meta.snapshot_id).await
+                        if let Err(err) = reencode_snapshot::<T>(
+                            &transaction,
+                            snapshot_meta.snapshot_id,
+                            snapshot_meta.snapshot_version,
+                        )
+                        .await
                         {
                             let type_id = *T::type_ulid();
                             tracing::error!(
@@ -2157,11 +2161,35 @@ impl Db for IndexedDb {
     }
 }
 
-async fn reencode_snapshot(
-    _transaction: &indexed_db::Transaction<crate::Error>,
-    _snapshot_id: EventId,
+async fn reencode_snapshot<T: Object>(
+    transaction: &indexed_db::Transaction<crate::Error>,
+    snapshot_id: EventId,
+    snapshot_version: i32,
 ) -> crate::Result<()> {
-    unimplemented!() // TODO(client-high)
+    let snapshot_id_js = snapshot_id.to_js_string();
+    let snapshots = transaction
+        .object_store("snapshots")
+        .wrap_context("retrieving 'snapshots' object store")?;
+    let snapshot_js = snapshots
+        .get(&snapshot_id_js)
+        .await
+        .wrap_context("fetching snapshot to update")?
+        .ok_or_else(|| {
+            crate::Error::Other(anyhow!(
+                "Snapshot {snapshot_id:?} does not exist despite having associated metadata"
+            ))
+        })?;
+    let snapshot_json = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_js)
+        .wrap_context("deserializing indexeddb data as json-value")?;
+    let value = T::from_old_snapshot(snapshot_version, snapshot_json)
+        .wrap_context("parsing old snapshot")?;
+    let new_snapshot_js =
+        serde_wasm_bindgen::to_value(&value).wrap_context("serializing snapshot data")?;
+    snapshots
+        .put_kv(&snapshot_id_js, &new_snapshot_js)
+        .await
+        .wrap_context("updating saved snapshot data")?;
+    Ok(())
 }
 
 async fn check_required_binaries(
