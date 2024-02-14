@@ -240,6 +240,7 @@ impl ClientDb {
         let subscribed_objects = self.subscribed_objects.clone();
         let subscribed_queries = self.subscribed_queries.clone();
         let vacuum_guard = self.vacuum_guard.clone();
+        let query_updates_broadcasters = self.query_updates_broadcastees.clone();
         crate::spawn(async move {
             Self::data_saver::<C>(
                 data_receiver,
@@ -249,6 +250,7 @@ impl ClientDb {
                 db_bypass,
                 api,
                 updates_broadcaster,
+                query_updates_broadcasters,
             )
             .await
         });
@@ -271,6 +273,9 @@ impl ClientDb {
         db: Arc<LocalDb>,
         api: Arc<ApiDb>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
+        query_updates_broadcasters: Arc<
+            Mutex<HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>>,
+        >,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
         while let Some((data, now_have_all_until, lock, result)) = data_receiver.next().await {
@@ -283,6 +288,7 @@ impl ClientDb {
                 now_have_all_until,
                 lock,
                 &updates_broadcaster,
+                &query_updates_broadcasters,
             )
             .await
             {
@@ -311,6 +317,7 @@ impl ClientDb {
                         now_have_all_until,
                         lock,
                         &updates_broadcaster,
+                        &query_updates_broadcasters,
                     )
                     .await
                     {
@@ -365,6 +372,9 @@ impl ClientDb {
         now_have_all_until: Option<Updatedness>,
         lock: Lock,
         updates_broadcaster: &broadcast::Sender<ObjectId>,
+        _query_updates_broadcasters: &Mutex<
+            HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>,
+        >,
     ) -> crate::Result<UpdateResult> {
         let object_id = u.object_id;
         let res = match &u.data {
