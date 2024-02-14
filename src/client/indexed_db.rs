@@ -2102,7 +2102,23 @@ impl Db for IndexedDb {
 
     /// Returns the number of errors that happened while re-encoding
     async fn reencode_old_versions<T: Object>(&self) -> usize {
-        unimplemented!() // TODO(client-high)
+        let res = self
+            .db
+            .transaction(&["snapshots_meta", "snapshots"])
+            .rw()
+            .run(|_transaction| async move {
+                // TODO(client-high)
+                Ok(0)
+            })
+            .await
+            .wrap_with_context(|| format!("reencoding old versions of type {:?}", T::type_ulid()));
+        match res {
+            Ok(num_errs) => num_errs,
+            Err(err) => {
+                tracing::error!(?err, type_id=?T::type_ulid(), "failed running transaction to reencode all objects");
+                1
+            }
+        }
     }
 }
 
