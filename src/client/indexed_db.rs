@@ -2099,6 +2099,11 @@ impl Db for IndexedDb {
             .wrap_context("recovering Uint8Array from stored data")?;
         Ok(Some(ary.to_vec().into_boxed_slice().into()))
     }
+
+    /// Returns the number of errors that happened while re-encoding
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        unimplemented!() // TODO(client-high)
+    }
 }
 
 async fn check_required_binaries(

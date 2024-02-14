@@ -376,4 +376,8 @@ impl Db for MemDb {
     async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
         Ok(self.0.lock().await.binaries.get(&binary_id).cloned())
     }
+
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        unimplemented!() // TODO(test-med): should test it with the to-do multiple-versions object type
+    }
 }

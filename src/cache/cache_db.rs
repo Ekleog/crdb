@@ -139,6 +139,11 @@ impl<D: Db> Db for CacheDb<D> {
             .insert(binary_id, Arc::downgrade(&res));
         Ok(Some(res))
     }
+
+    /// Returns the number of errors that happened while re-encoding
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        self.db.reencode_old_versions::<T>().await
+    }
 }
 
 impl<D: Db> Deref for CacheDb<D> {

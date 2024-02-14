@@ -83,4 +83,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         &self,
         binary_id: BinPtr,
     ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<[u8]>>>>;
+
+    /// Returns the number of errors that happened while re-encoding
+    fn reencode_old_versions<T: Object>(&self) -> impl CrdbFuture<Output = usize>;
 }

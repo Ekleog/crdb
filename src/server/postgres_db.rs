@@ -231,44 +231,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(())
     }
 
-    pub async fn reencode_old_versions<T: Object>(&self) -> usize {
-        let mut num_errors = 0;
-        let mut old_snapshots = sqlx::query(
-            "
-                SELECT object_id, snapshot_id
-                FROM snapshots
-                WHERE type_id = $1
-                AND (snapshot_version < $2 OR normalizer_version < $3)
-            ",
-        )
-        .bind(T::type_ulid())
-        .bind(T::snapshot_version())
-        .bind(fts::normalizer_version())
-        .fetch(&self.db);
-        while let Some(s) = old_snapshots.next().await {
-            let s = match s {
-                Ok(s) => s,
-                Err(err) => {
-                    num_errors += 1;
-                    tracing::error!(?err, "failed retrieving one snapshot for upgrade");
-                    continue;
-                }
-            };
-            let object_id = ObjectId::from_uuid(s.get(0));
-            let snapshot_id = EventId::from_uuid(s.get(1));
-            if let Err(err) = self.reencode::<T>(object_id, snapshot_id).await {
-                num_errors += 1;
-                tracing::error!(
-                    ?err,
-                    ?object_id,
-                    ?snapshot_id,
-                    "failed reencoding snapshot with newer version",
-                );
-            }
-        }
-        num_errors
-    }
-
     /// Cleans up and optimizes up the database
     ///
     /// After running this, the database will reject any new change that would happen before
@@ -2074,6 +2036,45 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         .await
         .wrap_with_context(|| format!("getting {binary_id:?} from database"))?
         .map(|res| res.data.into_boxed_slice().into()))
+    }
+
+    /// Returns the number of errors that happened while re-encoding
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        let mut num_errors = 0;
+        let mut old_snapshots = sqlx::query(
+            "
+                SELECT object_id, snapshot_id
+                FROM snapshots
+                WHERE type_id = $1
+                AND (snapshot_version < $2 OR normalizer_version < $3)
+            ",
+        )
+        .bind(T::type_ulid())
+        .bind(T::snapshot_version())
+        .bind(fts::normalizer_version())
+        .fetch(&self.db);
+        while let Some(s) = old_snapshots.next().await {
+            let s = match s {
+                Ok(s) => s,
+                Err(err) => {
+                    num_errors += 1;
+                    tracing::error!(?err, "failed retrieving one snapshot for upgrade");
+                    continue;
+                }
+            };
+            let object_id = ObjectId::from_uuid(s.get(0));
+            let snapshot_id = EventId::from_uuid(s.get(1));
+            if let Err(err) = self.reencode::<T>(object_id, snapshot_id).await {
+                num_errors += 1;
+                tracing::error!(
+                    ?err,
+                    ?object_id,
+                    ?snapshot_id,
+                    "failed reencoding snapshot with newer version",
+                );
+            }
+        }
+        num_errors
     }
 }
 

@@ -250,4 +250,9 @@ impl Db for SqliteDb {
     async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
         unimplemented!() // TODO(sqlite-high): implement
     }
+
+    /// Returns the number of errors that happened while re-encoding
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        unimplemented!() // TODO(sqlite-high)
+    }
 }
