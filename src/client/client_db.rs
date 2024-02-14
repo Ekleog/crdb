@@ -7,8 +7,8 @@ use crate::{
     error::ResultExt,
     ids::QueryId,
     messages::{MaybeObject, ObjectData, Update, UpdateData, Updates},
-    BinPtr, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken, TypeId,
-    Updatedness,
+    BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken,
+    TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, stream, FutureExt, StreamExt};
@@ -53,7 +53,7 @@ impl ClientDb {
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
-    ) -> anyhow::Result<ClientDb> {
+    ) -> anyhow::Result<(ClientDb, impl CrdbFuture<Output = usize>)> {
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
@@ -95,7 +95,6 @@ impl ClientDb {
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
-        // TODO(client-high): reencode all snapshots to latest version (FTS normalizer & snapshot_version) upon bootup
         let this = ClientDb {
             api,
             db,
@@ -110,7 +109,18 @@ impl ClientDb {
         this.setup_update_watcher(updates_receiver);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
         this.setup_data_saver::<C>(data_saver_receiver, updates_broadcaster);
-        Ok(this)
+        let (upgrade_finished_sender, upgrade_finished) = oneshot::channel();
+        crate::spawn({
+            let db = this.db_bypass.clone();
+            async move {
+                let num_errors = C::reencode_old_versions(&*db).await;
+                let _ = upgrade_finished_sender.send(num_errors);
+            }
+        });
+        Ok((
+            this,
+            upgrade_finished.map(|res| res.expect("upgrade task was killed")),
+        ))
     }
 
     pub fn listen_for_updates(&self) -> broadcast::Receiver<ObjectId> {
