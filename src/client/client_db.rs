@@ -44,9 +44,13 @@ pub struct ClientDb {
         oneshot::Sender<crate::Result<UpdateResult>>,
     )>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
+    query_updates_broadcastees:
+        Arc<Mutex<HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>>>,
     vacuum_guard: Arc<RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
 }
+
+const BROADCAST_CHANNEL_SIZE: usize = 64;
 
 impl ClientDb {
     pub async fn new<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
@@ -55,7 +59,7 @@ impl ClientDb {
         vacuum_schedule: ClientVacuumSchedule<F>,
     ) -> anyhow::Result<(ClientDb, impl CrdbFuture<Output = usize>)> {
         C::check_ulids();
-        let (updates_broadcaster, updates_broadcastee) = broadcast::channel(64);
+        let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
         let subscribed_queries = db_bypass
@@ -72,6 +76,12 @@ impl ClientDb {
                 (object_id, (updatedness, queries, lock))
             })
             .collect::<HashMap<_, _>>();
+        let query_updates_broadcastees = Arc::new(Mutex::new(
+            subscribed_queries
+                .keys()
+                .map(|&q| (q, broadcast::channel(BROADCAST_CHANNEL_SIZE)))
+                .collect(),
+        ));
         let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
         let subscribed_objects = Arc::new(Mutex::new(subscribed_objects));
         let (api, updates_receiver) = ApiDb::new(
@@ -103,6 +113,7 @@ impl ClientDb {
             subscribed_queries,
             data_saver,
             updates_broadcastee,
+            query_updates_broadcastees,
             vacuum_guard: Arc::new(RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
         };
@@ -123,8 +134,16 @@ impl ClientDb {
         ))
     }
 
-    pub fn listen_for_updates(&self) -> broadcast::Receiver<ObjectId> {
+    pub fn listen_for_all_updates(&self) -> broadcast::Receiver<ObjectId> {
         self.updates_broadcastee.resubscribe()
+    }
+
+    pub fn listen_for_updates_on(&self, q: QueryId) -> Option<broadcast::Receiver<ObjectId>> {
+        self.query_updates_broadcastees
+            .lock()
+            .unwrap()
+            .get(&q)
+            .map(|(_, recv)| recv.resubscribe())
     }
 
     fn queries_for(

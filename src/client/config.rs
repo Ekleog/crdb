@@ -69,8 +69,12 @@ macro_rules! generate_client {
                 self.db.unsubscribe_query(query)
             }
 
-            pub fn listen_for_updates(&self) -> crdb::tokio::sync::broadcast::Receiver<crdb::ObjectId> {
-                self.db.listen_for_updates()
+            pub fn listen_for_all_updates(&self) -> crdb::tokio::sync::broadcast::Receiver<crdb::ObjectId> {
+                self.db.listen_for_all_updates()
+            }
+
+            pub fn listen_for_updates_on(&self, query_id: crdb::QueryId) -> Option<crdb::tokio::sync::broadcast::Receiver<crdb::ObjectId>> {
+                self.db.listen_for_updates_on(query_id)
             }
 
             $(crdb::paste! {
