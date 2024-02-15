@@ -390,7 +390,10 @@ impl IndexedDb {
         res
     }
 
-    pub async fn vacuum(&self) -> crate::Result<()> {
+    pub async fn vacuum(
+        &self,
+        mut notify_removals: impl 'static + FnMut(ObjectId),
+    ) -> crate::Result<()> {
         let zero_id = ObjectId::from_u128(0).to_js_string();
         let max_id = ObjectId::from_u128(u128::MAX).to_js_string();
 
@@ -505,6 +508,9 @@ impl IndexedDb {
                             .await
                             .wrap_context("going to next to-remove event")?;
                     }
+
+                    // Notify the removal
+                    notify_removals(object_id);
 
                     // Continue
                     to_remove

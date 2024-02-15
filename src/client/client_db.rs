@@ -206,7 +206,12 @@ impl ClientDb {
                     Ok(storage_info) => {
                         if (vacuum_schedule.filter)(storage_info) {
                             let _lock = vacuum_guard.write().await;
-                            if let Err(err) = db_bypass.vacuum().await {
+                            if let Err(err) = db_bypass
+                                .vacuum(|_| {
+                                    unimplemented!() // TODO(client-high)
+                                })
+                                .await
+                            {
                                 tracing::error!(?err, "error occurred while vacuuming");
                             }
                         }
