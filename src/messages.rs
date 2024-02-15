@@ -21,7 +21,7 @@ pub struct ClientMessage {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Request {
-    // TODO(client-med): make sure all these request types are properly exposed to the user.
+    // TODO(client-high): make sure all these request types are properly exposed to the user.
     SetToken(SessionToken),
     RenameSession(String),
     CurrentSession,
@@ -152,7 +152,7 @@ pub enum MaybeObject {
 pub struct ObjectData {
     pub object_id: ObjectId,
     pub type_id: TypeId,
-    // TODO(misc-low): expose some API to make it easy for client writers to notice they're getting snapshots
+    // TODO(misc-med): expose some API to make it easy for client writers to notice they're getting snapshots
     // with versions higher than what their current code version supports, to suggest an upgrade
     pub creation_snapshot: Option<(EventId, i32, Arc<serde_json::Value>)>,
     pub events: BTreeMap<EventId, Arc<serde_json::Value>>,

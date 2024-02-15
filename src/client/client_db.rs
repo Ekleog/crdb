@@ -652,7 +652,7 @@ impl ClientDb {
         created_at: EventId,
         object: Arc<T>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // TODO(client-med): validate permissions to create the object, to fail early
+        // TODO(client-high): validate permissions to create the object, to fail early
         let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
         let val = self
             .db
@@ -700,7 +700,7 @@ impl ClientDb {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // TODO(client-med): validate permissions to submit the event, to fail early
+        // TODO(client-high): validate permissions to submit the event, to fail early
         let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
         let val = self
             .db
@@ -930,7 +930,7 @@ impl ClientDb {
         query: Arc<Query>,
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
         if importance >= Importance::Subscribe {
-            // TODO(client-med): first make sure to wait until the current upload queue is empty, so that
+            // TODO(client-high): first make sure to wait until the current upload queue is empty, so that
             // any newly-created object/event makes its way through to the server before querying
             self.query_updates_broadcastees
                 .lock()
