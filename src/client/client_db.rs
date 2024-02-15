@@ -9,7 +9,7 @@ use crate::{
     messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates},
     object::parse_snapshot_ref,
     BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken,
-    TypeId, Updatedness,
+    TypeId, Updatedness, User,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
@@ -19,7 +19,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::{broadcast, oneshot, RwLock};
+use tokio::sync::{broadcast, oneshot};
 use tokio_util::sync::CancellationToken;
 
 enum UpdateResult {
@@ -29,6 +29,7 @@ enum UpdateResult {
 }
 
 pub struct ClientDb {
+    user: User,
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
@@ -47,7 +48,7 @@ pub struct ClientDb {
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     query_updates_broadcastees:
         Arc<Mutex<HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>>>,
-    vacuum_guard: Arc<RwLock<()>>,
+    vacuum_guard: Arc<tokio::sync::RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
 }
 
@@ -55,6 +56,7 @@ const BROADCAST_CHANNEL_SIZE: usize = 64;
 
 impl ClientDb {
     pub async fn new<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
+        user: User,
         local_db: &str,
         cache_watermark: usize,
         vacuum_schedule: ClientVacuumSchedule<F>,
@@ -107,6 +109,7 @@ impl ClientDb {
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
         let this = ClientDb {
+            user,
             api,
             db,
             db_bypass,
@@ -115,7 +118,7 @@ impl ClientDb {
             data_saver,
             updates_broadcastee,
             query_updates_broadcastees,
-            vacuum_guard: Arc::new(RwLock::new(())),
+            vacuum_guard: Arc::new(tokio::sync::RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
         };
         this.setup_update_watcher(updates_receiver);
@@ -289,7 +292,7 @@ impl ClientDb {
         subscribed_queries: Arc<
             Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
         >,
-        vacuum_guard: Arc<RwLock<()>>,
+        vacuum_guard: Arc<tokio::sync::RwLock<()>>,
         db: Arc<LocalDb>,
         api: Arc<ApiDb>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
@@ -580,6 +583,9 @@ impl ClientDb {
         self.api.on_connection_event(cb)
     }
 
+    /// Note: The fact that `token` is actually a token for the `user` passed at creation of this [`ClientDb`]
+    /// is not actually checked, and is assumed to be true. Providing the wrong `user` may lead to object creations
+    /// or event submissions being spuriously rejected locally, but will not allow them to succeed remotely anyway.
     pub fn login(&self, url: Arc<String>, token: SessionToken) {
         self.api.login(url, token)
     }

@@ -9,12 +9,13 @@ macro_rules! generate_client {
 
         impl $client_db {
             pub fn connect<F: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool>(
+                user: crdb::User,
                 local_db: String,
                 cache_watermark: usize,
                 vacuum_schedule: crdb::ClientVacuumSchedule<F>,
             ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<($client_db, impl crdb::CrdbFuture<Output = usize>)>> {
                 async move {
-                    let (db, upgrade_handle) = crdb::ClientDb::new::<$api_config, F>(&local_db, cache_watermark, vacuum_schedule).await?;
+                    let (db, upgrade_handle) = crdb::ClientDb::new::<$api_config, F>(user, &local_db, cache_watermark, vacuum_schedule).await?;
                     Ok(($client_db {
                         db,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
