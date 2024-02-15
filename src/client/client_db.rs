@@ -658,7 +658,13 @@ impl ClientDb {
         created_at: EventId,
         object: Arc<T>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // TODO(client-high): validate permissions to create the object, to fail early
+        if !object
+            .can_create(self.user, object_id, &*self.db)
+            .await
+            .wrap_context("checking whether object creation seems to be allowed locally")?
+        {
+            return Err(crate::Error::Forbidden);
+        }
         let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
         let val = self
             .db
