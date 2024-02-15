@@ -935,7 +935,8 @@ impl ClientDb {
             self.query_updates_broadcastees
                 .lock()
                 .unwrap()
-                .insert(query_id, broadcast::channel(BROADCAST_CHANNEL_SIZE));
+                .entry(query_id)
+                .or_insert_with(|| broadcast::channel(BROADCAST_CHANNEL_SIZE));
             let only_updated_since = {
                 let mut subscribed_queries = self.subscribed_queries.lock().unwrap();
                 let entry = subscribed_queries.entry(query_id);
