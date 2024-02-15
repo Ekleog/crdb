@@ -372,7 +372,7 @@ impl ClientDb {
         now_have_all_until: Option<Updatedness>,
         lock: Lock,
         updates_broadcaster: &broadcast::Sender<ObjectId>,
-        _query_updates_broadcasters: &Mutex<
+        query_updates_broadcasters: &Mutex<
             HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>,
         >,
     ) -> crate::Result<UpdateResult> {
@@ -442,8 +442,20 @@ impl ClientDb {
                             );
                         }
                         let mut subscribed_queries = subscribed_queries.lock().unwrap();
-                        for q in queries {
-                            if let Some(query) = subscribed_queries.get_mut(&q) {
+                        for query_id in queries {
+                            if let Some((sender, _)) =
+                                query_updates_broadcasters.lock().unwrap().get(&query_id)
+                            {
+                                if let Err(err) = sender.send(object_id) {
+                                    tracing::error!(
+                                        ?err,
+                                        ?query_id,
+                                        ?object_id,
+                                        "failed broadcasting query update"
+                                    );
+                                }
+                            }
+                            if let Some(query) = subscribed_queries.get_mut(&query_id) {
                                 query.2 = Some(now_have_all_until);
                             }
                         }
@@ -469,8 +481,20 @@ impl ClientDb {
                         );
                     }
                     let mut subscribed_queries = subscribed_queries.lock().unwrap();
-                    for q in queries {
-                        if let Some(query) = subscribed_queries.get_mut(&q) {
+                    for query_id in queries {
+                        if let Some((sender, _)) =
+                            query_updates_broadcasters.lock().unwrap().get(&query_id)
+                        {
+                            if let Err(err) = sender.send(object_id) {
+                                tracing::error!(
+                                    ?err,
+                                    ?query_id,
+                                    ?object_id,
+                                    "failed broadcasting query update"
+                                );
+                            }
+                        }
+                        if let Some(query) = subscribed_queries.get_mut(&query_id) {
                             query.2 = std::cmp::max(query.2, Some(now_have_all_until));
                         }
                     }
@@ -504,15 +528,27 @@ impl ClientDb {
                         );
                     }
                     let mut subscribed_queries = subscribed_queries.lock().unwrap();
-                    for q in queries {
-                        if let Some(query) = subscribed_queries.get_mut(&q) {
+                    for query_id in queries {
+                        if let Some((sender, _)) =
+                            query_updates_broadcasters.lock().unwrap().get(&query_id)
+                        {
+                            if let Err(err) = sender.send(object_id) {
+                                tracing::error!(
+                                    ?err,
+                                    ?query_id,
+                                    ?object_id,
+                                    "failed broadcasting query update"
+                                );
+                            }
+                        }
+                        if let Some(query) = subscribed_queries.get_mut(&query_id) {
                             query.2 = Some(now_have_all_until);
                         }
                     }
                 }
             }
         }
-        // TODO(client-high): give out update broadcasters for each individual query the user subscribed to
+        // TODO(client-high): make sure to keep query_updates_broadcasters up-to-date with each subscribed query id
         if let Err(err) = updates_broadcaster.send(object_id) {
             tracing::error!(?err, ?object_id, "failed broadcasting update");
         }
