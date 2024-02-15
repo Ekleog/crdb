@@ -712,8 +712,15 @@ impl ClientDb {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        // TODO(client-high): validate permissions to submit the event, to fail early
         let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
+        let object = self.db.get_latest::<T>(Lock::NONE, object_id).await?;
+        if !object
+            .can_apply(self.user, object_id, &event, &*self.db)
+            .await
+            .wrap_context("checking whether object creation seems to be allowed locally")?
+        {
+            return Err(crate::Error::Forbidden);
+        }
         let val = self
             .db
             .submit::<T>(
