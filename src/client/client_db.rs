@@ -200,20 +200,34 @@ impl ClientDb {
     ) {
         let db_bypass = self.db_bypass.clone();
         let vacuum_guard = self.vacuum_guard.clone();
+        let subscribed_objects = self.subscribed_objects.clone();
+        let api = self.api.clone();
         crate::spawn(async move {
             loop {
                 match db_bypass.storage_info().await {
                     Ok(storage_info) => {
                         if (vacuum_schedule.filter)(storage_info) {
                             let _lock = vacuum_guard.write().await;
+                            let to_unsubscribe = Arc::new(Mutex::new(HashSet::new()));
                             if let Err(err) = db_bypass
-                                .vacuum(|_| {
-                                    unimplemented!() // TODO(client-high)
+                                .vacuum({
+                                    let to_unsubscribe = to_unsubscribe.clone();
+                                    move |object_id| {
+                                        to_unsubscribe.lock().unwrap().insert(object_id);
+                                    }
                                 })
                                 .await
                             {
                                 tracing::error!(?err, "error occurred while vacuuming");
                             }
+                            let mut to_unsubscribe = to_unsubscribe.lock().unwrap();
+                            {
+                                let mut subscribed_objects = subscribed_objects.lock().unwrap();
+                                for object_id in to_unsubscribe.iter() {
+                                    subscribed_objects.remove(object_id);
+                                }
+                            }
+                            api.unsubscribe(std::mem::replace(&mut to_unsubscribe, HashSet::new()));
                         }
                     }
                     Err(err) => tracing::error!(
@@ -584,7 +598,6 @@ impl ClientDb {
     }
 
     pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
-        // TODO(client-high): automatically call `api.unsubscribe` when `vacuum` removes an object, and remove from subscribed_objects
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
             self.subscribed_objects.lock().unwrap().remove(object_id);
