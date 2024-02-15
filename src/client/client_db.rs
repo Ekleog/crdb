@@ -548,7 +548,6 @@ impl ClientDb {
                 }
             }
         }
-        // TODO(client-high): make sure to keep query_updates_broadcasters up-to-date with each subscribed query id
         if let Err(err) = updates_broadcaster.send(object_id) {
             tracing::error!(?err, ?object_id, "failed broadcasting update");
         }
@@ -590,6 +589,10 @@ impl ClientDb {
     }
 
     pub async fn unsubscribe_query(&self, query_id: QueryId) -> crate::Result<()> {
+        self.query_updates_broadcastees
+            .lock()
+            .unwrap()
+            .remove(&query_id);
         let objects_to_unlock = {
             // TODO(test-high): fuzz that subscribed_queries/objects always stay in sync with in-database data
             let mut subscribed_queries = self.subscribed_queries.lock().unwrap();
@@ -907,6 +910,10 @@ impl ClientDb {
         if importance >= Importance::Subscribe {
             // TODO(client-med): first make sure to wait until the current upload queue is empty, so that
             // any newly-created object/event makes its way through to the server before querying
+            self.query_updates_broadcastees
+                .lock()
+                .unwrap()
+                .insert(query_id, broadcast::channel(BROADCAST_CHANNEL_SIZE));
             let only_updated_since = {
                 let mut subscribed_queries = self.subscribed_queries.lock().unwrap();
                 let entry = subscribed_queries.entry(query_id);
