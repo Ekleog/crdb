@@ -247,6 +247,10 @@ impl ApiDb {
     async fn expect_one_result(
         mut receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
     ) -> crate::Result<()> {
+        // TODO(client-high): Also have an MPSC queue to which all errors are pushed. This will make it possible for the
+        // user to be notified of errors upon uploading events that were enqueued for upload in a previous run but could
+        // not resolve then.
+        // TODO(client-high): Roll back the local-db updates upon error returned from server
         match receiver.next().await {
             None => Err(crate::Error::Other(anyhow!(
                 "Connection did not return any answer to query"
