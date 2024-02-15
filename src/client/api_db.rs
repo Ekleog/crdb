@@ -409,7 +409,6 @@ impl ApiDb {
         })
     }
 
-    #[allow(dead_code)] // TODO(client-high)
     pub fn query_latest<T: Object>(
         &self,
         only_updated_since: Option<Updatedness>,

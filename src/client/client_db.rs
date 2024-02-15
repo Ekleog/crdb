@@ -6,13 +6,13 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{MaybeObject, ObjectData, Update, UpdateData, Updates},
+    messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates},
     object::parse_snapshot_ref,
     BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken,
     TypeId, Updatedness,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, stream, FutureExt, StreamExt};
+use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
 use std::{
     collections::{hash_map, HashMap, HashSet},
     future::Future,
@@ -975,81 +975,104 @@ impl ClientDb {
                     )
                     .await?;
             }
-            Ok(self
-                .api
-                .query_subscribe::<T>(query_id, only_updated_since, query)
-                .then({
-                    let data_saver = self.data_saver.clone();
-                    let db = self.db.clone();
-                    let subscribed_objects = self.subscribed_objects.clone();
-                    let subscribed_queries = self.subscribed_queries.clone();
-                    let lock = importance.to_query_lock();
-                    move |data| {
-                        let data_saver = data_saver.clone();
-                        let db = db.clone();
-                        let subscribed_objects = subscribed_objects.clone();
-                        let subscribed_queries = subscribed_queries.clone();
-                        async move {
-                            let (data, updatedness) = data?;
-                            match data {
-                                MaybeObject::NotYetSubscribed(data) => {
-                                    let now_have_all_until = data.now_have_all_until;
-                                    let object_id = data.object_id;
-                                    let type_id = data.type_id;
-                                    let res_json =
-                                        Self::locally_create_all::<T>(&data_saver, &db, lock, data)
-                                            .await?;
-                                    let (res, res_json) = match res_json {
-                                        Some(res_json) => (
-                                            Arc::new(
-                                                T::deserialize(&res_json)
-                                                    .wrap_context("deserializing snapshot")?,
+            Ok(Either::Left(
+                self.api
+                    .query_subscribe::<T>(query_id, only_updated_since, query)
+                    .then({
+                        let data_saver = self.data_saver.clone();
+                        let db = self.db.clone();
+                        let subscribed_objects = self.subscribed_objects.clone();
+                        let subscribed_queries = self.subscribed_queries.clone();
+                        let lock = importance.to_query_lock();
+                        move |data| {
+                            let data_saver = data_saver.clone();
+                            let db = db.clone();
+                            let subscribed_objects = subscribed_objects.clone();
+                            let subscribed_queries = subscribed_queries.clone();
+                            async move {
+                                let (data, updatedness) = data?;
+                                match data {
+                                    MaybeObject::NotYetSubscribed(data) => {
+                                        let now_have_all_until = data.now_have_all_until;
+                                        let object_id = data.object_id;
+                                        let type_id = data.type_id;
+                                        let res_json = Self::locally_create_all::<T>(
+                                            &data_saver,
+                                            &db,
+                                            lock,
+                                            data,
+                                        )
+                                        .await?;
+                                        let (res, res_json) = match res_json {
+                                            Some(res_json) => (
+                                                Arc::new(
+                                                    T::deserialize(&res_json)
+                                                        .wrap_context("deserializing snapshot")?,
+                                                ),
+                                                res_json,
                                             ),
-                                            res_json,
-                                        ),
-                                        None => {
-                                            let res = self
-                                                .db
-                                                .get_latest::<T>(Lock::NONE, object_id)
-                                                .await?;
-                                            let res_json = serde_json::to_value(&res)
-                                                .wrap_context("serializing snapshot")?;
-                                            (res, res_json)
+                                            None => {
+                                                let res = self
+                                                    .db
+                                                    .get_latest::<T>(Lock::NONE, object_id)
+                                                    .await?;
+                                                let res_json = serde_json::to_value(&res)
+                                                    .wrap_context("serializing snapshot")?;
+                                                (res, res_json)
+                                            }
+                                        };
+                                        let (queries, lock_after) = Self::queries_for(
+                                            &subscribed_queries.lock().unwrap(),
+                                            type_id,
+                                            &res_json,
+                                        );
+                                        if let Some(now_have_all_until) = updatedness {
+                                            db.update_queries(&queries, now_have_all_until).await?;
                                         }
-                                    };
-                                    let (queries, lock_after) = Self::queries_for(
-                                        &subscribed_queries.lock().unwrap(),
-                                        type_id,
-                                        &res_json,
-                                    );
-                                    if let Some(now_have_all_until) = updatedness {
-                                        db.update_queries(&queries, now_have_all_until).await?;
+                                        if lock_after != lock {
+                                            db.change_locks(Lock::NONE, lock_after, object_id)
+                                                .await
+                                                .wrap_context("updating queries lock")?;
+                                        }
+                                        subscribed_objects.lock().unwrap().insert(
+                                            object_id,
+                                            (Some(now_have_all_until), queries, lock_after),
+                                        );
+                                        if let Some(q) =
+                                            subscribed_queries.lock().unwrap().get_mut(&query_id)
+                                        {
+                                            q.2 = updatedness.or(q.2);
+                                        }
+                                        Ok(res)
                                     }
-                                    if lock_after != lock {
-                                        db.change_locks(Lock::NONE, lock_after, object_id)
-                                            .await
-                                            .wrap_context("updating queries lock")?;
+                                    MaybeObject::AlreadySubscribed(object_id) => {
+                                        self.db.get_latest::<T>(lock, object_id).await
                                     }
-                                    subscribed_objects.lock().unwrap().insert(
-                                        object_id,
-                                        (Some(now_have_all_until), queries, lock_after),
-                                    );
-                                    if let Some(q) =
-                                        subscribed_queries.lock().unwrap().get_mut(&query_id)
-                                    {
-                                        q.2 = updatedness.or(q.2);
-                                    }
-                                    Ok(res)
-                                }
-                                MaybeObject::AlreadySubscribed(object_id) => {
-                                    self.db.get_latest::<T>(lock, object_id).await
                                 }
                             }
                         }
-                    }
-                }))
+                    }),
+            ))
         } else {
-            unimplemented!() // TODO(client-high): FetchLatest
+            // TODO(client-med): should we somehow expose only_updated_since / now_have_all_until?
+            Ok(Either::Right(self.api.query_latest::<T>(None, query).then(
+                {
+                    move |data| async move {
+                        let (data, _now_have_all_until) = data?;
+                        match data {
+                            MaybeSnapshot::NotSubscribed(data) => {
+                                let res =
+                                    parse_snapshot_ref::<T>(data.snapshot_version, &data.snapshot)
+                                        .wrap_context("deserializing server-returned snapshot")?;
+                                Ok(Arc::new(res))
+                            }
+                            MaybeSnapshot::AlreadySubscribed(object_id) => {
+                                self.db.get_latest::<T>(Lock::NONE, object_id).await
+                            }
+                        }
+                    }
+                },
+            )))
         }
     }
 
