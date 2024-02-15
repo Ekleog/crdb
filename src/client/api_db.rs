@@ -7,7 +7,10 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{MaybeObject, ObjectData, Request, ResponsePart, Updates, Upload},
+    messages::{
+        MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
+        Upload,
+    },
     BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, TypeId, Updatedness,
 };
 use anyhow::anyhow;
@@ -333,7 +336,34 @@ impl ApiDb {
                     }
                 }
                 _ => Err(crate::Error::Other(anyhow!(
-                    "Unexpected response to get request: {:?}",
+                    "Unexpected response to get-subscribe request: {:?}",
+                    response.response
+                ))),
+            },
+        }
+    }
+
+    pub async fn get_latest(&self, object_id: ObjectId) -> crate::Result<SnapshotData> {
+        let mut object_ids = HashSet::new();
+        object_ids.insert(object_id);
+        let request = Arc::new(Request::GetLatest(object_ids));
+        let mut response = self.request(request);
+        match response.next().await {
+            None => Err(crate::Error::Other(anyhow!(
+                "Connection-handling thread went out before ApiDb"
+            ))),
+            Some(response) => match response.response {
+                ResponsePart::Error(err) => Err(err.into()),
+                ResponsePart::Snapshots { mut data, .. } if data.len() == 1 => {
+                    match data.pop().unwrap() {
+                        MaybeSnapshot::AlreadySubscribed(_) => Err(crate::Error::Other(anyhow!(
+                            "Server unexpectedly told us we already know unknown {object_id:?}"
+                        ))),
+                        MaybeSnapshot::NotSubscribed(res) => Ok(res),
+                    }
+                }
+                _ => Err(crate::Error::Other(anyhow!(
+                    "Unexpected response to get-latest request: {:?}",
                     response.response
                 ))),
             },

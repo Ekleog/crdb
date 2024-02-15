@@ -7,6 +7,7 @@ use crate::{
     error::ResultExt,
     ids::QueryId,
     messages::{MaybeObject, ObjectData, Update, UpdateData, Updates},
+    object::parse_snapshot_ref,
     BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken,
     TypeId, Updatedness,
 };
@@ -880,7 +881,10 @@ impl ClientDb {
             }
             Ok(res)
         } else {
-            unimplemented!() // TODO(client-high): GetLatest
+            let res = self.api.get_latest(object_id).await?;
+            let res = parse_snapshot_ref::<T>(res.snapshot_version, &res.snapshot)
+                .wrap_context("deserializing server-returned snapshot")?;
+            Ok(Arc::new(res))
         }
     }
 
