@@ -78,7 +78,7 @@ pub mod crdb_internal {
         db_trait::{Db, Lock},
         error::ResultExt,
         hash_binary,
-        messages::{Update, UpdateData, Updates},
+        messages::{Request, Update, UpdateData, Updates},
         object::{parse_snapshot, CanDoCallbacks},
         private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object,
         ObjectId, Query, QueryId, Result, SerializableError, SessionToken, Timestamp, TypeId,

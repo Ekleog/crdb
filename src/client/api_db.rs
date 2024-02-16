@@ -26,6 +26,7 @@ pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
     upload_resender:
         mpsc::UnboundedSender<(Arc<Request>, mpsc::UnboundedSender<ResponsePartWithSidecar>)>,
+    error_sender: mpsc::UnboundedSender<(Arc<Request>, crate::Error)>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
 }
 
@@ -34,7 +35,11 @@ impl ApiDb {
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
         binary_getter: Arc<D>,
-    ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
+    ) -> (
+        ApiDb,
+        mpsc::UnboundedReceiver<Updates>,
+        mpsc::UnboundedReceiver<(Arc<Request>, crate::Error)>,
+    )
     where
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
@@ -63,13 +68,16 @@ impl ApiDb {
             requests,
             binary_getter,
         ));
+        let (error_sender, error_receiver) = mpsc::unbounded();
         (
             ApiDb {
                 connection,
                 upload_resender,
+                error_sender,
                 connection_event_cb,
             },
             update_receiver,
+            error_receiver,
         )
     }
 
@@ -244,32 +252,57 @@ impl ApiDb {
         }
     }
 
-    async fn expect_one_result(
+    async fn handle_upload_response(
+        request: Arc<Request>,
         mut receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
+        error_sender: mpsc::UnboundedSender<(Arc<Request>, crate::Error)>,
     ) -> crate::Result<()> {
-        // TODO(client-high): Also have an MPSC queue to which all errors are pushed. This will make it possible for the
-        // user to be notified of errors upon uploading events that were enqueued for upload in a previous run but could
-        // not resolve then.
         // TODO(client-high): Roll back the local-db updates upon error returned from server
+        // TODO(client-med): should `request` be an `Upload` rather than just a less-explicit `Request`
         match receiver.next().await {
-            None => Err(crate::Error::Other(anyhow!(
-                "Connection did not return any answer to query"
-            ))),
+            None => {
+                let _ = error_sender.unbounded_send((
+                    request,
+                    crate::Error::Other(anyhow!("Connection did not return any answer to query")),
+                ));
+                Err(crate::Error::Other(anyhow!(
+                    "Connection did not return any answer to query"
+                )))
+            }
             Some(ResponsePartWithSidecar {
                 sidecar: Some(_), ..
-            }) => Err(crate::Error::Other(anyhow!(
-                "Connection returned sidecar while we expected a simple result"
-            ))),
+            }) => {
+                let _ = error_sender.unbounded_send((
+                    request,
+                    crate::Error::Other(anyhow!(
+                        "Connection returned sidecar while we expected a simple result"
+                    )),
+                ));
+                Err(crate::Error::Other(anyhow!(
+                    "Connection returned sidecar while we expected a simple result"
+                )))
+            }
             Some(ResponsePartWithSidecar { response, .. }) => match response {
                 ResponsePart::Success => Ok(()),
-                ResponsePart::Error(err) => Err(err.into()),
+                ResponsePart::Error(err) => {
+                    let _ = error_sender.unbounded_send((request, err.clone().into()));
+                    Err(err.into())
+                }
                 ResponsePart::Sessions(_)
                 | ResponsePart::CurrentTime(_)
                 | ResponsePart::Objects { .. }
                 | ResponsePart::Snapshots { .. }
-                | ResponsePart::Binaries(_) => Err(crate::Error::Other(anyhow!(
-                    "Connection returned unexpected answer while expecting a simple result"
-                ))),
+                | ResponsePart::Binaries(_) => {
+                    let _ = error_sender.unbounded_send((
+                        request,
+                        crate::Error::Other(anyhow!(
+                            "Connection returned unexpected answer while expecting a simple result"
+                        )),
+                    ));
+                    Err(crate::Error::Other(anyhow!(
+                        "Connection returned unexpected answer while expecting a simple result"
+                    )))
+                }
             },
         }
     }
@@ -292,9 +325,13 @@ impl ApiDb {
         }));
         let (result_sender, result_receiver) = mpsc::unbounded();
         self.upload_resender
-            .unbounded_send((request, result_sender))
+            .unbounded_send((request.clone(), result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
-        Ok(Self::expect_one_result(result_receiver))
+        Ok(Self::handle_upload_response(
+            request,
+            result_receiver,
+            self.error_sender.clone(),
+        ))
     }
 
     pub fn submit<T: Object>(
@@ -315,9 +352,13 @@ impl ApiDb {
         }));
         let (result_sender, result_receiver) = mpsc::unbounded();
         self.upload_resender
-            .unbounded_send((request, result_sender))
+            .unbounded_send((request.clone(), result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
-        Ok(Self::expect_one_result(result_receiver))
+        Ok(Self::handle_upload_response(
+            request,
+            result_receiver,
+            self.error_sender.clone(),
+        ))
     }
 
     pub async fn get_subscribe(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
