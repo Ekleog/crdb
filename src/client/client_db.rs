@@ -670,18 +670,18 @@ impl ClientDb {
         {
             return Err(crate::Error::Forbidden);
         }
-        let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
-        let val = self
-            .db
-            .create(
-                object_id,
-                created_at,
-                object.clone(),
-                None, // Locally-created object, has no updatedness yet
-                importance.to_object_lock(),
-            )
-            .await?;
         if importance >= Importance::Subscribe {
+            let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
+            let val = self
+                .db
+                .create(
+                    object_id,
+                    created_at,
+                    object.clone(),
+                    None, // Locally-created object, has no updatedness yet
+                    importance.to_object_lock(),
+                )
+                .await?;
             if let Some(val) = val {
                 let val_json =
                     serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
