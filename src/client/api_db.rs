@@ -257,8 +257,7 @@ impl ApiDb {
         mut receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
         error_sender: mpsc::UnboundedSender<(Arc<Request>, crate::Error)>,
     ) -> crate::Result<()> {
-        // TODO(client-high): Roll back the local-db updates upon error returned from server
-        // TODO(client-med): should `request` be an `Upload` rather than just a less-explicit `Request`
+        // TODO(client-med): should `request` be an `Upload` rather than just a less-explicit `Request`?
         match receiver.next().await {
             None => {
                 let _ = error_sender.unbounded_send((

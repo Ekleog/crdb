@@ -702,12 +702,19 @@ impl ClientDb {
                 }
             }
         }
-        self.api.create(
+        let remote_fut = self.api.create(
             object_id,
             created_at,
             object,
             importance >= Importance::Subscribe,
-        )
+        )?;
+        Ok(async move {
+            let res = remote_fut.await;
+            if res.is_err() {
+                unimplemented!() // TODO(client-high): rollback object creation
+            }
+            res
+        })
     }
 
     pub async fn submit<T: Object>(
@@ -762,12 +769,19 @@ impl ClientDb {
             }
         }
         // TODO(misc-med): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
-        self.api.submit::<T>(
+        let remote_fut = self.api.submit::<T>(
             object_id,
             event_id,
             event,
             importance >= Importance::Subscribe,
-        )
+        )?;
+        Ok(async move {
+            let res = remote_fut.await;
+            if res.is_err() {
+                unimplemented!() // TODO(client-high): rollback object creation
+            }
+            res
+        })
     }
 
     /// Returns the latest snapshot for the object described by `data`
