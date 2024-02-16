@@ -712,6 +712,11 @@ impl ClientDb {
         Ok({
             let db = self.db.clone();
             async move {
+                // TODO(client-high): should this auto-local-removal actually happen? there's always the possibility of an internal
+                // server error that'd be recoverable? but probably permission-denied would be more likely, though ulid-conflict would
+                // likely be the least likely
+                // TODO(client-high): if it should actually happen it should be in the error receiver and not here, because we'd
+                // miss errors upon after-reboot submission otherwise
                 let res = remote_fut.await;
                 if let Err(remote_err) = &res {
                     if let Err(local_err) = db.remove(object_id).await {
