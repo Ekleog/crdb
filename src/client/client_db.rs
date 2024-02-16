@@ -671,6 +671,7 @@ impl ClientDb {
             return Err(crate::Error::Forbidden);
         }
         if importance >= Importance::Subscribe {
+            // TODO(client-high): this should also be executed if a subscribed query would cause the object to be subscribed upon
             let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
             let val = self
                 .db
@@ -708,12 +709,21 @@ impl ClientDb {
             object,
             importance >= Importance::Subscribe,
         )?;
-        Ok(async move {
-            let res = remote_fut.await;
-            if res.is_err() {
-                unimplemented!() // TODO(client-high): rollback object creation
+        Ok({
+            let db = self.db.clone();
+            async move {
+                let res = remote_fut.await;
+                if let Err(remote_err) = &res {
+                    if let Err(local_err) = db.remove(object_id).await {
+                        tracing::error!(
+                            ?local_err,
+                            ?remote_err,
+                            "failed removing the object locally after remote submission failed"
+                        );
+                    }
+                }
+                res
             }
-            res
         })
     }
 
