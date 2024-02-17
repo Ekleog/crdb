@@ -95,6 +95,7 @@ impl ClientDb {
         let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
         let subscribed_objects = Arc::new(Mutex::new(subscribed_objects));
         let (api, updates_receiver) = ApiDb::new(
+            db_bypass.clone(),
             {
                 let subscribed_objects = subscribed_objects.clone();
                 move || {

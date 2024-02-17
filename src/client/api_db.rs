@@ -1,6 +1,9 @@
-use super::connection::{
-    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
-    ResponseSender,
+use super::{
+    connection::{
+        Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+        ResponseSender,
+    },
+    LocalDb,
 };
 use crate::{
     crdb_internal::Lock,
@@ -32,6 +35,7 @@ pub enum OnError {
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
+    upload_queue: Arc<LocalDb>,
     upload_resender:
         mpsc::UnboundedSender<(Arc<Request>, mpsc::UnboundedSender<ResponsePartWithSidecar>)>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
@@ -39,6 +43,7 @@ pub struct ApiDb {
 
 impl ApiDb {
     pub fn new<GSO, GSQ, BG, EH, EHF>(
+        upload_queue: Arc<LocalDb>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
         binary_getter: Arc<BG>,
@@ -70,6 +75,7 @@ impl ApiDb {
         );
         let (upload_resender, upload_resender_receiver) = mpsc::unbounded();
         crate::spawn(Self::upload_resender(
+            upload_queue.clone(),
             upload_resender_receiver,
             requests,
             binary_getter,
@@ -77,6 +83,7 @@ impl ApiDb {
         ));
         (
             ApiDb {
+                upload_queue,
                 connection,
                 upload_resender,
                 connection_event_cb,
@@ -120,6 +127,7 @@ impl ApiDb {
     }
 
     async fn upload_resender<BG, EH, EHF>(
+        upload_queue: Arc<LocalDb>,
         requests: mpsc::UnboundedReceiver<(
             Arc<Request>,
             mpsc::UnboundedSender<ResponsePartWithSidecar>,
