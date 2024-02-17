@@ -72,6 +72,9 @@ pub trait Object:
         unimplemented!()
     }
 
+    // TODO(misc-high): this and below should return crate::Result, and wrap_context should be exposed
+    // This would make it easier for the user to understand where the error is coming from, eg. if can_create
+    // dereferences a non-existing DbPtr or one with the wrong type
     fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,

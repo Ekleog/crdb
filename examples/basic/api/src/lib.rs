@@ -1,6 +1,6 @@
-use std::collections::HashSet;
-
+use anyhow::Context;
 use crdb::{fts::SearchableString, BinPtr, CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
+use std::collections::{BTreeSet, HashSet};
 use ulid::Ulid;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -13,7 +13,7 @@ pub struct AuthInfo {
 pub struct Item {
     owner: User,
     text: SearchableString,
-    tags: Vec<DbPtr<Tag>>,
+    tags: BTreeSet<DbPtr<Tag>>,
     file: Option<BinPtr>,
 }
 
@@ -32,10 +32,19 @@ impl crdb::Object for Item {
     async fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
-        self_id: ObjectId,
+        _self_id: ObjectId,
         db: &'a C,
     ) -> anyhow::Result<bool> {
-        unimplemented!()
+        if user != self.owner {
+            return Ok(false);
+        }
+        for tag in self.tags.iter() {
+            let tag = db.get(*tag).await.context("fetching tag")?;
+            if !tag.users_who_can_edit.contains(&user) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
@@ -74,8 +83,8 @@ impl crdb::Event for ItemEvent {
 #[derive(Clone, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
 pub struct Tag {
     name: String,
-    users_who_can_read: HashSet<User>,
-    users_who_can_edit: HashSet<User>,
+    users_who_can_read: BTreeSet<User>,
+    users_who_can_edit: BTreeSet<User>,
 }
 
 #[allow(unused_variables)]
