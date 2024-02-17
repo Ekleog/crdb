@@ -63,6 +63,10 @@ macro_rules! generate_client {
                 self.db.list_sessions()
             }
 
+            pub fn disconnect_session(&self, session_ref: crdb::SessionRef) -> crdb::tokio::sync::oneshot::Receiver<crdb::Result<()>> {
+                self.db.disconnect_session(session_ref)
+            }
+
             /// Pauses the vacuum until the returned mutex guard is dropped
             pub fn pause_vacuum(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::tokio::sync::RwLockReadGuard<'_, ()>> {
                 self.db.pause_vacuum()

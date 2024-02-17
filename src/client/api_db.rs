@@ -15,8 +15,8 @@ use crate::{
         MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
         Upload,
     },
-    BinPtr, CrdbFuture, CrdbStream, Event, EventId, Object, ObjectId, Query, Session, SessionToken,
-    TypeId, Updatedness,
+    BinPtr, CrdbFuture, CrdbStream, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
+    SessionToken, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, pin_mut, stream, StreamExt};
@@ -26,7 +26,7 @@ use std::{
     iter,
     sync::{Arc, Mutex, RwLock},
 };
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 #[non_exhaustive]
 pub enum OnError {
@@ -191,6 +191,31 @@ impl ApiDb {
                 response.response
             ))),
         }
+    }
+
+    pub fn disconnect_session(
+        &self,
+        session_ref: SessionRef,
+    ) -> oneshot::Receiver<crate::Result<()>> {
+        let mut response_receiver = self.request(Arc::new(Request::DisconnectSession(session_ref)));
+        let (sender, receiver) = oneshot::channel();
+        crate::spawn(async move {
+            let Some(response) = response_receiver.next().await else {
+                let _ = sender.send(Err(crate::Error::Other(anyhow!(
+                    "Connection thread went down too ealy"
+                ))));
+                return;
+            };
+            let _ = match response.response {
+                ResponsePart::Success => sender.send(Ok(())),
+                ResponsePart::Error(err) => sender.send(Err(err.into())),
+                _ => sender.send(Err(crate::Error::Other(anyhow!(
+                    "Unexpected server response to DisconnectSession: {:?}",
+                    response.response
+                )))),
+            };
+        });
+        receiver
     }
 
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {

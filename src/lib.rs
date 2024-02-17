@@ -83,7 +83,8 @@ pub mod crdb_internal {
         private,
         session::Session,
         BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object, ObjectId, Query,
-        QueryId, Result, SerializableError, SessionToken, Timestamp, TypeId, Updatedness, User,
+        QueryId, Result, SerializableError, SessionRef, SessionToken, Timestamp, TypeId,
+        Updatedness, User,
     };
     pub use anyhow;
     pub use futures::{self, channel::mpsc, future, stream, Stream};

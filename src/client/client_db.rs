@@ -9,7 +9,7 @@ use crate::{
     messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
     object::parse_snapshot_ref,
     BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, Session,
-    SessionToken, TypeId, Updatedness, User,
+    SessionRef, SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
@@ -620,6 +620,13 @@ impl ClientDb {
 
     pub async fn list_sessions(&self) -> crate::Result<Vec<Session>> {
         self.api.list_sessions().await
+    }
+
+    pub fn disconnect_session(
+        &self,
+        session_ref: SessionRef,
+    ) -> oneshot::Receiver<crate::Result<()>> {
+        self.api.disconnect_session(session_ref)
     }
 
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
