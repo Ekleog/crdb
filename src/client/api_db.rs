@@ -24,8 +24,9 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     future::Future,
     iter,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
 };
+use tokio::sync::watch;
 
 #[non_exhaustive]
 pub enum OnError {
@@ -36,6 +37,8 @@ pub enum OnError {
 
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
+    upload_queue_watcher_sender: Arc<Mutex<watch::Sender<Vec<UploadId>>>>,
+    upload_queue_watcher_receiver: watch::Receiver<Vec<UploadId>>,
     upload_queue: Arc<LocalDb>,
     upload_resender: mpsc::UnboundedSender<(
         Option<UploadId>,
@@ -106,15 +109,25 @@ impl ApiDb {
                 .unbounded_send((Some(upload_id), request, sender))
                 .expect("connection cannot go away before apidb does");
         }
+        let (upload_queue_watcher_sender, upload_queue_watcher_receiver) =
+            watch::channel(Vec::new());
+        let upload_queue_watcher_sender = Arc::new(Mutex::new(upload_queue_watcher_sender));
         Ok((
             ApiDb {
                 upload_queue,
+                upload_queue_watcher_sender,
+                upload_queue_watcher_receiver,
                 connection,
                 upload_resender: upload_resender_sender,
                 connection_event_cb,
             },
             update_receiver,
         ))
+    }
+
+    pub fn watch_upload_queue(&self) -> watch::Receiver<Vec<UploadId>> {
+        self.upload_queue_watcher_receiver.clone()
+        // TODO(client-high): actually use upload_queue_watcher_sender
     }
 
     pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {

@@ -73,7 +73,7 @@ pub mod crdb_internal {
     #[cfg(feature = "_tests")]
     pub use crate::test_utils;
     pub use crate::{
-        api::ApiConfig,
+        api::{ApiConfig, UploadId},
         cache::ObjectCache,
         db_trait::{Db, Lock},
         error::ResultExt,

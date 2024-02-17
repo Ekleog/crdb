@@ -47,6 +47,10 @@ macro_rules! generate_client {
                 self.db.logout()
             }
 
+            pub fn watch_upload_queue(&self) -> crdb::tokio::sync::watch::Receiver<Vec<crdb::UploadId>> {
+                self.db.watch_upload_queue()
+            }
+
             /// Pauses the vacuum until the returned mutex guard is dropped
             pub fn pause_vacuum(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::tokio::sync::RwLockReadGuard<'_, ()>> {
                 self.db.pause_vacuum()

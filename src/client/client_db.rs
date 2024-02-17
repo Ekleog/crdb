@@ -1,6 +1,6 @@
 use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb};
 use crate::{
-    api::ApiConfig,
+    api::{ApiConfig, UploadId},
     cache::CacheDb,
     crdb_internal::Lock,
     db_trait::Db,
@@ -19,7 +19,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::{broadcast, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 enum UpdateResult {
@@ -604,6 +604,10 @@ impl ClientDb {
         self.api.logout();
         self.db.remove_everything().await?;
         Ok(())
+    }
+
+    pub fn watch_upload_queue(&self) -> watch::Receiver<Vec<UploadId>> {
+        self.api.watch_upload_queue()
     }
 
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
