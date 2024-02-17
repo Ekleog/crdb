@@ -6,6 +6,7 @@ use super::{
     LocalDb,
 };
 use crate::{
+    api::UploadId,
     crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
@@ -14,7 +15,7 @@ use crate::{
         MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
         Upload,
     },
-    BinPtr, CrdbFuture, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, TypeId,
+    BinPtr, CrdbFuture, CrdbStream, Event, EventId, Object, ObjectId, Query, SessionToken, TypeId,
     Updatedness,
 };
 use anyhow::anyhow;
@@ -36,8 +37,11 @@ pub enum OnError {
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
     upload_queue: Arc<LocalDb>,
-    upload_resender:
-        mpsc::UnboundedSender<(Arc<Request>, mpsc::UnboundedSender<ResponsePartWithSidecar>)>,
+    upload_resender: mpsc::UnboundedSender<(
+        Option<UploadId>,
+        Arc<Request>,
+        mpsc::UnboundedSender<ResponsePartWithSidecar>,
+    )>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
 }
 
@@ -111,7 +115,7 @@ impl ApiDb {
     fn request(&self, request: Arc<Request>) -> mpsc::UnboundedReceiver<ResponsePartWithSidecar> {
         let (sender, response) = mpsc::unbounded();
         self.upload_resender
-            .unbounded_send((request, sender))
+            .unbounded_send((None, request, sender))
             .expect("connection cannot go away before sender does");
         response
     }
@@ -129,6 +133,7 @@ impl ApiDb {
     async fn upload_resender<BG, EH, EHF>(
         upload_queue: Arc<LocalDb>,
         requests: mpsc::UnboundedReceiver<(
+            Option<UploadId>,
             Arc<Request>,
             mpsc::UnboundedSender<ResponsePartWithSidecar>,
         )>,
@@ -152,10 +157,11 @@ impl ApiDb {
                 .as_mut()
                 .peek()
                 .await
-                .map(|(r, _)| !r.is_upload())
+                .map(|(upload_id, _, _)| upload_id.is_none())
                 .unwrap_or(false)
             {
-                let (request, sender) = requests.next().await.unwrap();
+                let (upload_id, request, sender) = requests.next().await.unwrap();
+                assert!(upload_id.is_none(), "non-upload should not have an id");
                 let _ = connection.unbounded_send((
                     sender,
                     Arc::new(RequestWithSidecar {
@@ -171,12 +177,14 @@ impl ApiDb {
                 .as_mut()
                 .peek()
                 .await
-                .map(|(r, _)| r.is_upload())
+                .map(|(upload_id, _, _)| upload_id.is_some())
                 .unwrap_or(false)
             {
-                let (request, final_sender) = requests.next().await.unwrap();
+                let (upload_id, request, final_sender) = requests.next().await.unwrap();
+                let upload_id = upload_id.unwrap();
                 let (sender, receiver) = mpsc::unbounded();
                 upload_reqs.push_back((
+                    upload_id,
                     Arc::new(RequestWithSidecar {
                         request,
                         sidecar: Vec::new(),
@@ -186,9 +194,17 @@ impl ApiDb {
                     receiver,
                 ));
             }
+            let mut upload_missing_binaries = None;
             while !upload_reqs.is_empty() {
+                // Before anything, attempt to upload the missing binaries if we're at least at the second loop turn
+                // Ignore the result of uploading the binaries, as it's just a prerequisite for the other uploads here
+                if let Some(upload_missing_binaries) = upload_missing_binaries.take() {
+                    let (sender, _) = mpsc::unbounded();
+                    let _ = connection.unbounded_send((sender, upload_missing_binaries));
+                }
+
                 // First, submit all requests
-                for (request, _, sender, _) in upload_reqs.iter() {
+                for (_, request, _, sender, _) in upload_reqs.iter() {
                     let _ = connection.unbounded_send((sender.clone(), request.clone()));
                 }
 
@@ -196,7 +212,7 @@ impl ApiDb {
                 // The successful or non-retryable requests get removed from upload_reqs here, by setting their final_sender to None
                 // TODO(client-high): should remove the upload from upload queue here
                 let mut missing_binaries = HashSet::new();
-                for (request, final_sender, _, receiver) in upload_reqs.iter_mut() {
+                for (upload_id, request, final_sender, _, receiver) in upload_reqs.iter_mut() {
                     match receiver.next().await {
                         None => return, // Connection was dropped
                         Some(ResponsePartWithSidecar {
@@ -260,12 +276,10 @@ impl ApiDb {
                         },
                     }
                 }
-                upload_reqs.retain(|(_, final_sender, _, _)| final_sender.is_some());
+                upload_reqs.retain(|(_, _, final_sender, _, _)| final_sender.is_some());
 
                 // Were there missing binaries? If yes, prepend them to the list of requests to retry, and upload them this way.
                 if !missing_binaries.is_empty() {
-                    let (sender, receiver) = mpsc::unbounded();
-                    let (final_sender, _) = mpsc::unbounded();
                     let binary_getter = binary_getter.clone();
                     let binaries = stream::iter(missing_binaries.into_iter())
                         .map(move |b| {
@@ -276,11 +290,10 @@ impl ApiDb {
                         .filter_map(|res| async move { res.ok().and_then(|o| o) })
                         .collect::<Vec<Arc<[u8]>>>()
                         .await;
-                    let request = Arc::new(RequestWithSidecar {
+                    upload_missing_binaries = Some(Arc::new(RequestWithSidecar {
                         request: Arc::new(Request::UploadBinaries(binaries.len())),
                         sidecar: binaries,
-                    });
-                    upload_reqs.push_front((request, Some(final_sender), sender, receiver));
+                    }));
                 }
             }
         }
@@ -312,14 +325,15 @@ impl ApiDb {
         }
     }
 
-    pub fn create<T: Object>(
+    pub async fn create<T: Object>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,
         subscribe: bool,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        let request = Arc::new(Request::Upload(Upload::Object {
+        let required_binaries = object.required_binaries();
+        let upload = Upload::Object {
             object_id,
             type_id: *T::type_ulid(),
             created_at,
@@ -329,22 +343,29 @@ impl ApiDb {
                     .wrap_context("serializing object for sending to api")?,
             ),
             subscribe,
-        }));
+        };
+        let request = Arc::new(Request::Upload(upload.clone()));
         let (result_sender, result_receiver) = mpsc::unbounded();
+        let upload_id = self
+            .upload_queue
+            .enqueue_upload(upload, required_binaries)
+            .await
+            .wrap_context("enqueuing upload")?;
         self.upload_resender
-            .unbounded_send((request, result_sender))
+            .unbounded_send((Some(upload_id), request, result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
         Ok(Self::handle_upload_response(result_receiver))
     }
 
-    pub fn submit<T: Object>(
+    pub async fn submit<T: Object>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<T::Event>,
         subscribe: bool,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
-        let request = Arc::new(Request::Upload(Upload::Event {
+        let required_binaries = event.required_binaries();
+        let upload = Upload::Event {
             object_id,
             type_id: *T::type_ulid(),
             event_id,
@@ -352,10 +373,16 @@ impl ApiDb {
                 serde_json::to_value(event).wrap_context("serializing event for sending to api")?,
             ),
             subscribe,
-        }));
+        };
+        let request = Arc::new(Request::Upload(upload.clone()));
         let (result_sender, result_receiver) = mpsc::unbounded();
+        let upload_id = self
+            .upload_queue
+            .enqueue_upload(upload, required_binaries)
+            .await
+            .wrap_context("enqueuing upload")?;
         self.upload_resender
-            .unbounded_send((request, result_sender))
+            .unbounded_send((Some(upload_id), request, result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
         Ok(Self::handle_upload_response(result_receiver))
     }

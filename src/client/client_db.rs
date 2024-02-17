@@ -707,12 +707,14 @@ impl ClientDb {
                 }
             }
         }
-        self.api.create(
-            object_id,
-            created_at,
-            object,
-            importance >= Importance::Subscribe,
-        )
+        self.api
+            .create(
+                object_id,
+                created_at,
+                object,
+                importance >= Importance::Subscribe,
+            )
+            .await
     }
 
     pub async fn submit<T: Object>(
@@ -767,12 +769,14 @@ impl ClientDb {
             }
         }
         // TODO(misc-med): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
-        self.api.submit::<T>(
-            object_id,
-            event_id,
-            event,
-            importance >= Importance::Subscribe,
-        )
+        self.api
+            .submit::<T>(
+                object_id,
+                event_id,
+                event,
+                importance >= Importance::Subscribe,
+            )
+            .await
     }
 
     /// Returns the latest snapshot for the object described by `data`
