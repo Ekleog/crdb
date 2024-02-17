@@ -3,6 +3,11 @@
 # TODO(misc-low): introduce `doc` again here after figuring out why it always restarts at unicode-ident despite the cache
 all *ARGS: fmt (test ARGS) clippy udeps
 
+run-example-basic-server *ARGS:
+    createdb basic-crdb || true
+    sqlx migrate run --source src/server/migrations/ --database-url "postgres:///basic-crdb"
+    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo run -p basic-server -- {{ARGS}}
+
 fmt:
     cargo fmt
     cd examples/basic && cargo fmt

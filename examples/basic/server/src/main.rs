@@ -4,7 +4,7 @@ use std::str::FromStr;
 // Make sure that the code works fine with multi-threading enabled
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
-    let db_url = "basic-crdb";
+    let db_url = "postgres:///basic-crdb";
     let db = crdb::sqlx::postgres::PgPoolOptions::new()
         .max_connections(50)
         .connect(&db_url)
@@ -22,6 +22,6 @@ async fn main() -> anyhow::Result<()> {
         .recreate_older_than(std::time::Duration::from_secs(5 * 60)),
     )
     .await
-    .unwrap();
+    .context("creating crdb server")?;
     Ok(())
 }
