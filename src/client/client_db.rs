@@ -934,6 +934,22 @@ impl ClientDb {
         .await
     }
 
+    pub async fn get_local<T: Object>(
+        &self,
+        importance: Importance,
+        object_id: ObjectId,
+    ) -> crate::Result<Option<Arc<T>>> {
+        match self
+            .db
+            .get_latest::<T>(importance.to_object_lock(), object_id)
+            .await
+        {
+            Ok(res) => Ok(Some(res)),
+            Err(crate::Error::ObjectDoesNotExist(o)) if o == object_id => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
     pub async fn query_local<T: Object>(
         &self,
         query: Arc<Query>,

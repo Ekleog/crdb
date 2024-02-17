@@ -121,6 +121,10 @@ macro_rules! generate_client {
                     self.db.get::<$object>(importance, object.to_object_id())
                 }
 
+                pub fn [< get_ $name _local >](&self, importance: crdb::Importance, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<Option<crdb::Arc<$object>>>> {
+                    self.db.get_local::<$object>(importance, object.to_object_id())
+                }
+
                 pub fn [< query_ $name _local >](&self, query: crdb::Arc<crdb::Query>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
                     self.db.query_local::<$object>(query)
                 }
