@@ -251,7 +251,7 @@ impl Db for SqliteDb {
         _object_id: ObjectId,
         _event_id: EventId,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(test-high)
+        unimplemented!() // TODO(sqlite-high)
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
