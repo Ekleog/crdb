@@ -349,7 +349,6 @@ impl<C: ServerConfig> Server<C> {
                     });
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
-            // TODO(client-high): expose RenameSession & co to end-user
             Request::RenameSession(name) => {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),

@@ -21,7 +21,6 @@ pub struct ClientMessage {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum Request {
-    // TODO(client-high): make sure all these request types are properly exposed to the user.
     SetToken(SessionToken),
     RenameSession(String),
     CurrentSession,
