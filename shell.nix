@@ -8,7 +8,7 @@ pkgs.stdenv.mkDerivation {
       cargo-bolero
       cargo-nextest
       cargo-udeps
-      chromedriver
+      # chromedriver # Use geckodriver for local tests, as chromedriver is used in CI
       geckodriver
       just
       niv
