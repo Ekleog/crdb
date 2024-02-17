@@ -509,7 +509,13 @@ async fn upload_resender<BG, EH, EHF>(
                             };
                             match error_handler((*upload).clone(), (*err).clone().into()).await {
                                 OnError::Rollback => {
-                                    unimplemented!() // TODO(client-high): remove upload from local db
+                                    if let Err(err) = undo_upload(&upload_queue, upload).await {
+                                        tracing::error!(?err, ?upload, "failed undoing upload");
+                                    }
+                                    if let Err(err) = upload_queue.upload_finished(*upload_id).await
+                                    {
+                                        tracing::error!(?err, "failed dequeuing upload");
+                                    }
                                 }
                                 OnError::KeepLocal => {
                                     // Do not remove the upload from the queue, so that it gets attempted again upon next
@@ -552,6 +558,20 @@ async fn upload_resender<BG, EH, EHF>(
                     sidecar: binaries,
                 }));
             }
+        }
+    }
+}
+
+async fn undo_upload(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+    match upload {
+        Upload::Object { object_id, .. } => local_db.remove(*object_id).await,
+        Upload::Event {
+            object_id,
+            type_id,
+            event_id,
+            ..
+        } => {
+            unimplemented!() // TODO(client-high): implement
         }
     }
 }
