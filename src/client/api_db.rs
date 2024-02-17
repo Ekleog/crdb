@@ -573,6 +573,14 @@ async fn undo_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate
             type_id,
             event_id,
             ..
-        } => C::remove_event(local_db, *type_id, *object_id, *event_id).await,
+        } => match C::remove_event(local_db, *type_id, *object_id, *event_id).await {
+            Err(crate::Error::EventTooEarly { .. }) => {
+                // EventTooEarly means that the object has been recreated since the event was submitted
+                // In turn, this means that the server has pushed a re-creation update that was accepted
+                // As such, the event was already undone, by application of the update
+                Ok(())
+            }
+            res => res,
+        },
     }
 }
