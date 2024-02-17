@@ -89,7 +89,5 @@ async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(db): State<Arc<crdb::Server<ServerConfig>>>,
 ) -> Result<axum::response::Response, String> {
-    Ok(ws.on_upgrade(move |sock| async move {
-        unimplemented!() // TODO(example-high)
-    }))
+    Ok(ws.on_upgrade(move |sock| async move { db.answer(sock).await }))
 }
