@@ -316,6 +316,15 @@ impl<C: ServerConfig> Server<C> {
         {
             return Err(crate::Error::ProtocolViolation);
         }
+        if let Some(sess) = &conn.session {
+            // TODO(perf-low): do not mark the session as active upon each incoming message? we don't really need to
+            // mark the session as active every 10 seconds / 1 minute, yet that's the frequency at which the clients
+            // send GetTime in order to detect disconnection
+            self.postgres_db
+                .mark_session_active(sess.token, Timestamp::now())
+                .await
+                .wrap_context("marking session as active")?;
+        }
         let msg = serde_json::from_str::<ClientMessage>(msg)
             .wrap_context("deserializing client message")?;
         // TODO(perf-med): We could parallelize requests here, and not just pipeline them. However, we need to be
