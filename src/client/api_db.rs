@@ -514,26 +514,55 @@ async fn upload_resender<C, BG, EH, EHF>(
                                     if let Err(err) = undo_upload::<C>(&upload_queue, upload).await
                                     {
                                         tracing::error!(?err, ?upload, "failed undoing upload");
-                                    }
-                                    if let Err(err) = upload_queue.upload_finished(*upload_id).await
+                                    } else if let Err(err) =
+                                        upload_queue.upload_finished(*upload_id).await
                                     {
                                         tracing::error!(?err, "failed dequeuing upload");
+                                    } else {
+                                        let _ = final_sender.take().unwrap().unbounded_send(
+                                            ResponsePartWithSidecar {
+                                                response,
+                                                sidecar: None,
+                                            },
+                                        );
                                     }
                                 }
                                 OnError::KeepLocal => {
                                     // Do not remove the upload from the queue, so that it gets attempted again upon next
-                                    // bootup
+                                    // bootup. But do take the final_sender, so that we do not end up infinite-looping here.
+                                    let _ = final_sender.take().unwrap().unbounded_send(
+                                        ResponsePartWithSidecar {
+                                            response,
+                                            sidecar: None,
+                                        },
+                                    );
                                 }
-                                OnError::ReplaceWith(_) => {
-                                    unimplemented!() // TODO(client-high): replace upload in upload queue and local db
+                                OnError::ReplaceWith(new_upload) => {
+                                    if let Err(err) = undo_upload::<C>(&upload_queue, upload).await
+                                    {
+                                        tracing::error!(?err, ?upload, "failed undoing upload");
+                                    } else if let Err(err) =
+                                        do_upload::<C>(&upload_queue, &new_upload).await
+                                    {
+                                        tracing::error!(
+                                            ?err,
+                                            ?new_upload,
+                                            "failed doing replacement upload"
+                                        );
+                                    } else if let Err(err) =
+                                        upload_queue.upload_finished(*upload_id).await
+                                    {
+                                        tracing::error!(?err, "failed dequeuing upload");
+                                    } else {
+                                        let _ = final_sender.take().unwrap().unbounded_send(
+                                            ResponsePartWithSidecar {
+                                                response,
+                                                sidecar: None,
+                                            },
+                                        );
+                                    }
                                 }
                             }
-                            let _ = final_sender.take().unwrap().unbounded_send(
-                                ResponsePartWithSidecar {
-                                    response,
-                                    sidecar: None,
-                                },
-                            );
                         }
                         _ => {
                             tracing::error!(?response, "Unexpected response to upload submission");
@@ -583,4 +612,8 @@ async fn undo_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate
             res => res,
         },
     }
+}
+
+async fn do_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+    unimplemented!() // TODO(client-high)
 }
