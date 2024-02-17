@@ -3,6 +3,12 @@ use std::collections::HashSet;
 use crdb::{CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
 use ulid::Ulid;
 
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct AuthInfo {
+    pub user: User,
+    pub pass: String,
+}
+
 #[derive(
     Clone, Default, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize,
 )]
