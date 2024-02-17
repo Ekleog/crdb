@@ -675,46 +675,44 @@ impl ClientDb {
         {
             return Err(crate::Error::Forbidden);
         }
-        if importance >= Importance::Subscribe {
-            // TODO(client-high): this should also be executed if a subscribed query would cause the object to be subscribed upon
-            let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
-            let val = self
-                .db
-                .create(
-                    object_id,
-                    created_at,
-                    object.clone(),
-                    None, // Locally-created object, has no updatedness yet
-                    importance.to_object_lock(),
-                )
-                .await?;
-            if let Some(val) = val {
-                let val_json =
-                    serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
-                let (queries, lock) = Self::queries_for(
-                    &self.subscribed_queries.lock().unwrap(),
-                    *T::type_ulid(),
-                    &val_json,
-                );
+        let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
+        let val = self
+            .db
+            .create(
+                object_id,
+                created_at,
+                object.clone(),
+                None, // Locally-created object, has no updatedness yet
+                importance.to_object_lock(),
+            )
+            .await?;
+        let do_subscribe = if let Some(val) = val {
+            let val_json =
+                serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
+            let (queries, lock) = Self::queries_for(
+                &self.subscribed_queries.lock().unwrap(),
+                *T::type_ulid(),
+                &val_json,
+            );
+            let do_subscribe = importance >= Importance::Subscribe || lock != Lock::NONE;
+            if do_subscribe {
                 self.subscribed_objects
                     .lock()
                     .unwrap()
                     .insert(object_id, (None, queries, lock));
-                if lock != Lock::NONE {
-                    self.db
-                        .change_locks(Lock::NONE, lock, object_id)
-                        .await
-                        .wrap_context("updating queries locks")?;
-                }
             }
-        }
+            if lock != Lock::NONE {
+                self.db
+                    .change_locks(Lock::NONE, lock, object_id)
+                    .await
+                    .wrap_context("updating queries locks")?;
+            }
+            do_subscribe
+        } else {
+            importance >= Importance::Subscribe
+        };
         self.api
-            .create(
-                object_id,
-                created_at,
-                object,
-                importance >= Importance::Subscribe,
-            )
+            .create(object_id, created_at, object, do_subscribe)
             .await
     }
 
@@ -734,6 +732,7 @@ impl ClientDb {
         {
             return Err(crate::Error::Forbidden);
         }
+        // TODO(client-high): also fixup similarly to create
         let val = self
             .db
             .submit::<T>(
