@@ -17,7 +17,6 @@ pub struct Item {
     file: Option<BinPtr>,
 }
 
-#[allow(unused_variables)]
 impl crdb::Object for Item {
     type Event = ItemEvent;
 
@@ -68,10 +67,17 @@ impl crdb::Object for Item {
         &'a self,
         db: &'a C,
     ) -> anyhow::Result<HashSet<User>> {
-        unimplemented!()
+        let mut res = HashSet::new();
+        res.insert(self.owner);
+        for tag in self.tags.iter() {
+            let tag = db.get(*tag).await.context("fetching tag")?;
+            res.extend(tag.users_who_can_read.iter().copied());
+            res.extend(tag.users_who_can_edit.iter().copied());
+        }
+        Ok(res)
     }
 
-    fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event) {
+    fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
         unimplemented!()
     }
 
@@ -102,7 +108,6 @@ pub struct Tag {
     users_who_can_edit: BTreeSet<User>,
 }
 
-#[allow(unused_variables)]
 impl crdb::Object for Tag {
     type Event = TagEvent;
 
