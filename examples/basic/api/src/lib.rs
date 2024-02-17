@@ -82,11 +82,21 @@ impl crdb::Object for Item {
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
         match event {
-            ItemEvent::SetOwner(user) => self.owner = *user,
-            ItemEvent::SetText(_) => todo!(),
-            ItemEvent::AddTag(_) => todo!(),
-            ItemEvent::RmTag(_) => todo!(),
-            ItemEvent::SetFile(_) => todo!(),
+            ItemEvent::SetOwner(user) => {
+                self.owner = *user;
+            }
+            ItemEvent::SetText(text) => {
+                self.text = SearchableString::from(text);
+            }
+            ItemEvent::AddTag(tag) => {
+                self.tags.insert(*tag);
+            }
+            ItemEvent::RmTag(tag) => {
+                self.tags.remove(tag);
+            }
+            ItemEvent::SetFile(file) => {
+                self.file = *file;
+            }
         }
     }
 
