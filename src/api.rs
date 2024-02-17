@@ -14,6 +14,15 @@ pub trait ApiConfig: 'static + crate::private::Sealed {
 
     fn reencode_old_versions<D: Db>(call_on: &D) -> impl '_ + CrdbFuture<Output = usize>;
 
+    fn create<D: Db>(
+        db: &D,
+        type_id: TypeId,
+        object_id: ObjectId,
+        created_at: EventId,
+        snapshot_version: i32,
+        object: &serde_json::Value,
+    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+
     /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
     #[allow(clippy::too_many_arguments)] // Used only for relaying to a more specific function
     fn recreate<D: Db>(
@@ -71,6 +80,25 @@ macro_rules! generate_api {
                 num_errors
             }
 
+            async fn create<D: crdb::Db>(
+                db: &D,
+                type_id: crdb::TypeId,
+                object_id: crdb::ObjectId,
+                created_at: crdb::EventId,
+                snapshot_version: i32,
+                object: &crdb::serde_json::Value,
+            ) -> crdb::Result<()> {
+                $(
+                    if type_id == *<$object as crdb::Object>::type_ulid() {
+                        let object = crdb::parse_snapshot_ref::<$object>(snapshot_version, object)
+                            .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
+                        db.create::<$object>(object_id, created_at, crdb::Arc::new(object), None, crdb::Lock::NONE).await?;
+                        return Ok(());
+                    }
+                )*
+                Err(crdb::Error::TypeDoesNotExist(type_id))
+            }
+
             async fn recreate<D: crdb::Db>(
                 db: &D,
                 type_id: crdb::TypeId,
@@ -83,8 +111,7 @@ macro_rules! generate_api {
             ) -> crdb::Result<Option<crdb::serde_json::Value>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let _ = snapshot_version;
-                        let object = <$object as crdb::serde::Deserialize>::deserialize(object)
+                        let object = crdb::parse_snapshot_ref::<$object>(snapshot_version, object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
                         let res = db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), updatedness, force_lock).await?;
                         let Some(res) = res else {

@@ -615,5 +615,41 @@ async fn undo_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate
 }
 
 async fn do_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
-    unimplemented!() // TODO(client-high)
+    match upload {
+        Upload::Object {
+            object_id,
+            type_id,
+            created_at,
+            snapshot_version,
+            object,
+            ..
+        } => {
+            C::create(
+                local_db,
+                *type_id,
+                *object_id,
+                *created_at,
+                *snapshot_version,
+                object,
+            )
+            .await
+        }
+        Upload::Event {
+            object_id,
+            type_id,
+            event_id,
+            event,
+            ..
+        } => C::submit(
+            local_db,
+            *type_id,
+            *object_id,
+            *event_id,
+            event,
+            None,
+            Lock::NONE,
+        )
+        .await
+        .map(|_| ()),
+    }
 }
