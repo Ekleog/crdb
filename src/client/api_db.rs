@@ -223,6 +223,9 @@ impl ApiDb {
                         }
                         Some(ResponsePartWithSidecar { response, .. }) => match response {
                             ResponsePart::Success => {
+                                if let Err(err) = upload_queue.upload_finished(*upload_id).await {
+                                    tracing::error!(?err, "failed dequeuing upload");
+                                }
                                 let _ = final_sender.take().unwrap().unbounded_send(
                                     ResponsePartWithSidecar {
                                         response,
