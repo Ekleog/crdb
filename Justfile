@@ -33,10 +33,10 @@ test-standalone *ARGS: (test-crate-standalone ARGS) (test-example-basic ARGS)
 make-test-db:
     dropdb crdb-test || true
     createdb crdb-test
-    sqlx migrate run --source src/server/migrations/ --database-url "postgres:///crdb-test?host=/run/postgresql"
+    sqlx migrate run --source src/server/migrations/ --database-url "postgres:///crdb-test"
 
 rebuild-offline-queries: make-test-db
-    cargo sqlx prepare --database-url "postgres:///crdb-test?host=/run/postgresql" -- --all-features --tests
+    cargo sqlx prepare --database-url "postgres:///crdb-test" -- --all-features --tests
 
 list-todo-types:
     rg 'TODO\(' | grep -v Justfile | sed 's/^.*TODO(//;s/).*$//' | sort | uniq -c || true
