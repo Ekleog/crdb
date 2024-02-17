@@ -154,6 +154,11 @@ impl ApiDb {
         response
     }
 
+    pub fn rename_session(&self, name: String) {
+        self.request(Arc::new(Request::RenameSession(name)));
+        // Ignore the response from the server
+    }
+
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {
         self.request(Arc::new(Request::Unsubscribe(object_ids)));
         // Ignore the response from the server, we don't care enough to wait for it

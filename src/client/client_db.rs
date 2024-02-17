@@ -610,6 +610,10 @@ impl ClientDb {
         self.api.watch_upload_queue()
     }
 
+    pub fn rename_session(&self, name: String) {
+        self.api.rename_session(name)
+    }
+
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
         self.vacuum_guard.read().await
     }

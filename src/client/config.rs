@@ -51,6 +51,10 @@ macro_rules! generate_client {
                 self.db.watch_upload_queue()
             }
 
+            pub fn rename_session(&self, name: String) {
+                self.db.rename_session(name)
+            }
+
             /// Pauses the vacuum until the returned mutex guard is dropped
             pub fn pause_vacuum(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::tokio::sync::RwLockReadGuard<'_, ()>> {
                 self.db.pause_vacuum()
