@@ -732,7 +732,6 @@ impl ClientDb {
         {
             return Err(crate::Error::Forbidden);
         }
-        // TODO(client-high): also fixup similarly to create
         let val = self
             .db
             .submit::<T>(
