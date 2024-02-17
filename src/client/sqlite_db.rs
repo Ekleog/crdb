@@ -63,7 +63,7 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    pub async fn get_upload(&self, _upload_id: UploadId) -> crate::Result<Upload> {
+    pub async fn get_upload(&self, _upload_id: UploadId) -> crate::Result<Option<Upload>> {
         unimplemented!() // TODO(sqlite-high)
     }
 

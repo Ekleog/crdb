@@ -94,7 +94,12 @@ impl ApiDb {
             let upload = upload_queue
                 .get_upload(upload_id)
                 .await
-                .wrap_context("retrieving upload")?;
+                .wrap_context("retrieving upload")?
+                .ok_or_else(|| {
+                    crate::Error::Other(anyhow!(
+                        "Upload vanished from queue while doing the initial read"
+                    ))
+                })?;
             let request = Arc::new(Request::Upload(upload));
             let (sender, _) = mpsc::unbounded(); // Ignore the response
             upload_resender_sender

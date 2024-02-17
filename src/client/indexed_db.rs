@@ -575,20 +575,22 @@ impl IndexedDb {
             .wrap_context("listing upload queue")
     }
 
-    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Upload> {
+    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Option<Upload>> {
         self.db
             .transaction(&["upload_queue"])
             .run(move |transaction| async move {
-                let res = transaction
+                let Some(res) = transaction
                     .object_store("upload_queue")
                     .wrap_context("retrieving 'upload_queue' object store")?
                     .get(&JsValue::from(upload_id.0))
                     .await
                     .wrap_context("fetching data from upload_queue store")?
-                    .ok_or_else(|| indexed_db::Error::DoesNotExist)?;
+                else {
+                    return Ok(None);
+                };
                 let res = serde_wasm_bindgen::from_value::<Upload>(res)
                     .wrap_context("deserializing data")?;
-                Ok(res)
+                Ok(Some(res))
             })
             .await
             .wrap_with_context(|| format!("retrieving data for {upload_id:?}"))
