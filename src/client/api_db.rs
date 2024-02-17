@@ -177,6 +177,22 @@ impl ApiDb {
         }
     }
 
+    pub async fn list_sessions(&self) -> crate::Result<Vec<Session>> {
+        let response = self
+            .request(Arc::new(Request::CurrentSession))
+            .next()
+            .await
+            .ok_or_else(|| crate::Error::Other(anyhow!("Connection thread went down too early")))?;
+        match response.response {
+            ResponsePart::Sessions(sessions) => Ok(sessions),
+            ResponsePart::Error(err) => Err(err.into()),
+            _ => Err(crate::Error::Other(anyhow!(
+                "Unexpected server response to ListSessions: {:?}",
+                response.response
+            ))),
+        }
+    }
+
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {
         self.request(Arc::new(Request::Unsubscribe(object_ids)));
         // Ignore the response from the server, we don't care enough to wait for it

@@ -618,6 +618,10 @@ impl ClientDb {
         self.api.current_session().await
     }
 
+    pub async fn list_sessions(&self) -> crate::Result<Vec<Session>> {
+        self.api.list_sessions().await
+    }
+
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
         self.vacuum_guard.read().await
     }
