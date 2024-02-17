@@ -82,7 +82,11 @@ impl crdb::Object for Item {
     }
 
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
-        unimplemented!()
+        if let Some(f) = &self.file {
+            vec![*f]
+        } else {
+            Vec::new()
+        }
     }
 }
 
