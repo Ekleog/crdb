@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crdb::{CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
+use crdb::{fts::SearchableString, BinPtr, CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
 use ulid::Ulid;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -9,17 +9,20 @@ pub struct AuthInfo {
     pub pass: String,
 }
 
-#[derive(
-    Clone, Default, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize,
-)]
-pub struct Foo;
+#[derive(Clone, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
+pub struct Item {
+    owner: User,
+    text: SearchableString,
+    tags: Vec<DbPtr<Tag>>,
+    file: Option<BinPtr>,
+}
 
 #[allow(unused_variables)]
-impl crdb::Object for Foo {
-    type Event = FooEvent;
+impl crdb::Object for Item {
+    type Event = ItemEvent;
 
     fn type_ulid() -> &'static TypeId {
-        static ID: TypeId = TypeId(match Ulid::from_string("01HJFF7CPZH8X0YXG2V0K4M1GA") {
+        static ID: TypeId = TypeId(match Ulid::from_string("01HPVWYMX443M3NRJRXF8NBMGT") {
             Ok(id) => id,
             Err(_) => panic!(),
         });
@@ -60,9 +63,70 @@ impl crdb::Object for Foo {
 }
 
 #[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
-pub enum FooEvent {}
+pub enum ItemEvent {}
 
-impl crdb::Event for FooEvent {
+impl crdb::Event for ItemEvent {
+    fn required_binaries(&self) -> Vec<crdb::BinPtr> {
+        Vec::new()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
+pub struct Tag {
+    name: String,
+    users_who_can_read: Vec<User>,
+    users_who_can_edit: Vec<User>,
+}
+
+#[allow(unused_variables)]
+impl crdb::Object for Tag {
+    type Event = TagEvent;
+
+    fn type_ulid() -> &'static TypeId {
+        static ID: TypeId = TypeId(match Ulid::from_string("01HPVX2YZ0ZXJWWJDN6GYS096H") {
+            Ok(id) => id,
+            Err(_) => panic!(),
+        });
+        &ID
+    }
+
+    async fn can_create<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        self_id: ObjectId,
+        db: &'a C,
+    ) -> anyhow::Result<bool> {
+        unimplemented!()
+    }
+    async fn can_apply<'a, C: CanDoCallbacks>(
+        &'a self,
+        user: User,
+        _self_id: ObjectId,
+        _event: &'a Self::Event,
+        _db: &'a C,
+    ) -> anyhow::Result<bool> {
+        unimplemented!()
+    }
+    async fn users_who_can_read<'a, C: CanDoCallbacks>(
+        &'a self,
+        _db: &'a C,
+    ) -> anyhow::Result<HashSet<User>> {
+        unimplemented!()
+    }
+
+    fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
+        unimplemented!()
+    }
+
+    fn required_binaries(&self) -> Vec<crdb::BinPtr> {
+        Vec::new()
+    }
+}
+
+#[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
+pub enum TagEvent {}
+
+impl crdb::Event for TagEvent {
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
         Vec::new()
     }
@@ -74,7 +138,8 @@ crdb::db! {
         server_config: ServerConfig,
         client_db: Db,
         objects: {
-            foo: super::Foo,
+            item: super::Item,
+            tag: super::Tag,
         },
     }
 }
