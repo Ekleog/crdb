@@ -210,7 +210,6 @@ impl ApiDb {
 
                 // Then, wait for them all to finish, listing the missing binaries
                 // The successful or non-retryable requests get removed from upload_reqs here, by setting their final_sender to None
-                // TODO(client-high): should remove the upload from upload queue here
                 let mut missing_binaries = HashSet::new();
                 for (upload_id, request, final_sender, _, receiver) in upload_reqs.iter_mut() {
                     match receiver.next().await {
