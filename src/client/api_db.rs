@@ -6,7 +6,7 @@ use super::{
     LocalDb,
 };
 use crate::{
-    api::UploadId,
+    api::{ApiConfig, UploadId},
     crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
@@ -46,7 +46,7 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub async fn new<GSO, GSQ, BG, EH, EHF>(
+    pub async fn new<C, GSO, GSQ, BG, EH, EHF>(
         upload_queue: Arc<LocalDb>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
@@ -54,6 +54,7 @@ impl ApiDb {
         error_handler: EH,
     ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
     where
+        C: ApiConfig,
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
@@ -78,7 +79,7 @@ impl ApiDb {
             .run(),
         );
         let (upload_resender_sender, upload_resender_receiver) = mpsc::unbounded();
-        crate::spawn(upload_resender(
+        crate::spawn(upload_resender::<C, _, _, _>(
             upload_queue.clone(),
             upload_resender_receiver,
             requests,
@@ -391,7 +392,7 @@ impl ApiDb {
     }
 }
 
-async fn upload_resender<BG, EH, EHF>(
+async fn upload_resender<C, BG, EH, EHF>(
     upload_queue: Arc<LocalDb>,
     requests: mpsc::UnboundedReceiver<(
         Option<UploadId>,
@@ -402,6 +403,7 @@ async fn upload_resender<BG, EH, EHF>(
     binary_getter: Arc<BG>,
     error_handler: EH,
 ) where
+    C: ApiConfig,
     BG: Db,
     EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
     EHF: 'static + CrdbFuture<Output = OnError>,
@@ -509,7 +511,8 @@ async fn upload_resender<BG, EH, EHF>(
                             };
                             match error_handler((*upload).clone(), (*err).clone().into()).await {
                                 OnError::Rollback => {
-                                    if let Err(err) = undo_upload(&upload_queue, upload).await {
+                                    if let Err(err) = undo_upload::<C>(&upload_queue, upload).await
+                                    {
                                         tracing::error!(?err, ?upload, "failed undoing upload");
                                     }
                                     if let Err(err) = upload_queue.upload_finished(*upload_id).await
@@ -562,7 +565,7 @@ async fn upload_resender<BG, EH, EHF>(
     }
 }
 
-async fn undo_upload(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+async fn undo_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
     match upload {
         Upload::Object { object_id, .. } => local_db.remove(*object_id).await,
         Upload::Event {
@@ -570,8 +573,6 @@ async fn undo_upload(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
             type_id,
             event_id,
             ..
-        } => {
-            unimplemented!() // TODO(client-high): implement
-        }
+        } => C::remove_event(local_db, *type_id, *object_id, *event_id).await,
     }
 }

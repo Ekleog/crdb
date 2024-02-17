@@ -84,6 +84,13 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         binary_id: BinPtr,
     ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<[u8]>>>>;
 
+    // TODO(test-high): introduce in db fuzzers
+    fn remove_event<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+
     /// Returns the number of errors that happened while re-encoding
     fn reencode_old_versions<T: Object>(&self) -> impl CrdbFuture<Output = usize>;
 }

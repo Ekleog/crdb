@@ -2011,6 +2011,14 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         panic!("Tried removing {object_id:?} from server, but server is supposed to always keep all the history!")
     }
 
+    async fn remove_event<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+    ) -> crate::Result<()> {
+        panic!("Tried removing {event_id:?} on {object_id:?} from server, but server is supposed to always keep all the history!")
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));

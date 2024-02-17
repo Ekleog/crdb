@@ -365,6 +365,14 @@ impl Db for MemDb {
         Ok(())
     }
 
+    async fn remove_event<T: Object>(
+        &self,
+        _object_id: ObjectId,
+        _event_id: EventId,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         if binary_id != crate::hash_binary(&data) {
             return Err(crate::Error::BinaryHashMismatch(binary_id));

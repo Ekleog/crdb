@@ -2053,6 +2053,14 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("removing {object_id:?}"))
     }
 
+    async fn remove_event<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(client-high)
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         if crate::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));

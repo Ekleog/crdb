@@ -113,6 +113,15 @@ impl<D: Db> Db for CacheDb<D> {
         self.db.remove(object_id).await
     }
 
+    async fn remove_event<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+    ) -> crate::Result<()> {
+        self.cache.write().unwrap().remove(&object_id);
+        self.db.remove_event::<T>(object_id, event_id).await
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         debug_assert!(
             binary_id == hash_binary(&*data),

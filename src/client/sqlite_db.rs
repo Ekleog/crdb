@@ -246,6 +246,14 @@ impl Db for SqliteDb {
         unimplemented!() // TODO(sqlite-high): implement
     }
 
+    async fn remove_event<T: Object>(
+        &self,
+        _object_id: ObjectId,
+        _event_id: EventId,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
+
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high): implement
     }
