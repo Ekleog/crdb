@@ -7,23 +7,29 @@ macro_rules! generate_client {
             ulid: crdb::Mutex<crdb::ulid::Generator>,
         }
 
-        impl $client_db {
-            pub fn connect<F: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool>(
+        impl $client_db
+        {
+            pub fn connect<EH, EHF, CVS>(
                 user: crdb::User,
                 local_db: String,
                 cache_watermark: usize,
-                vacuum_schedule: crdb::ClientVacuumSchedule<F>,
+                error_handler: EH,
+                vacuum_schedule: crdb::ClientVacuumSchedule<CVS>,
             ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<(
-                    $client_db,
-                    impl crdb::CrdbFuture<Output = usize>,
-                    crdb::mpsc::UnboundedReceiver<(crdb::Arc<crdb::Request>, crdb::Error)>
-            )>> {
+                $client_db,
+                impl crdb::CrdbFuture<Output = usize>,
+            )>>
+            where
+                EH: 'static + Send + Sync + Fn(crdb::Upload, crdb::Error) -> EHF,
+                EHF: 'static + crdb::CrdbFuture<Output = crdb::OnError>,
+                CVS: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool,
+            {
                 async move {
-                    let (db, upgrade_handle, error_receiver) = crdb::ClientDb::new::<$api_config, F>(user, &local_db, cache_watermark, vacuum_schedule).await?;
+                    let (db, upgrade_handle) = crdb::ClientDb::new::<$api_config, EH, EHF, CVS>(user, &local_db, cache_watermark, error_handler, vacuum_schedule).await?;
                     Ok(($client_db {
                         db,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
-                    }, upgrade_handle, error_receiver))
+                    }, upgrade_handle))
                 }
             }
 

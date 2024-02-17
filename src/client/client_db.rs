@@ -1,4 +1,4 @@
-use super::{connection::ConnectionEvent, ApiDb, LocalDb};
+use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb};
 use crate::{
     api::ApiConfig,
     cache::CacheDb,
@@ -6,7 +6,7 @@ use crate::{
     db_trait::Db,
     error::ResultExt,
     ids::QueryId,
-    messages::{MaybeObject, MaybeSnapshot, ObjectData, Request, Update, UpdateData, Updates},
+    messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
     object::parse_snapshot_ref,
     BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken,
     TypeId, Updatedness, User,
@@ -55,16 +55,19 @@ pub struct ClientDb {
 const BROADCAST_CHANNEL_SIZE: usize = 64;
 
 impl ClientDb {
-    pub async fn new<C: ApiConfig, F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
+    pub async fn new<C: ApiConfig, EH, EHF, VS>(
         user: User,
         local_db: &str,
         cache_watermark: usize,
-        vacuum_schedule: ClientVacuumSchedule<F>,
-    ) -> anyhow::Result<(
-        ClientDb,
-        impl CrdbFuture<Output = usize>,
-        mpsc::UnboundedReceiver<(Arc<Request>, crate::Error)>,
-    )> {
+        error_handler: EH,
+        vacuum_schedule: ClientVacuumSchedule<VS>,
+    ) -> anyhow::Result<(ClientDb, impl CrdbFuture<Output = usize>)>
+    where
+        C: ApiConfig,
+        EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
+        EHF: 'static + CrdbFuture<Output = OnError>,
+        VS: 'static + Send + Fn(ClientStorageInfo) -> bool,
+    {
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
@@ -91,7 +94,7 @@ impl ClientDb {
         ));
         let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
         let subscribed_objects = Arc::new(Mutex::new(subscribed_objects));
-        let (api, updates_receiver, error_receiver) = ApiDb::new(
+        let (api, updates_receiver) = ApiDb::new(
             {
                 let subscribed_objects = subscribed_objects.clone();
                 move || {
@@ -108,6 +111,7 @@ impl ClientDb {
                 move || subscribed_queries.lock().unwrap().clone()
             },
             db.clone(),
+            error_handler,
         );
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
@@ -139,7 +143,6 @@ impl ClientDb {
         Ok((
             this,
             upgrade_finished.map(|res| res.expect("upgrade task was killed")),
-            error_receiver,
         ))
     }
 

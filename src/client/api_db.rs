@@ -11,7 +11,8 @@ use crate::{
         MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
         Upload,
     },
-    BinPtr, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, TypeId, Updatedness,
+    BinPtr, CrdbFuture, CrdbStream, EventId, Object, ObjectId, Query, SessionToken, TypeId,
+    Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, pin_mut, stream, StreamExt};
@@ -22,30 +23,35 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+#[non_exhaustive]
+pub enum OnError {
+    Rollback,
+    KeepLocal,
+    ReplaceWith(Upload),
+}
+
 pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
     upload_resender:
         mpsc::UnboundedSender<(Arc<Request>, mpsc::UnboundedSender<ResponsePartWithSidecar>)>,
-    error_sender: mpsc::UnboundedSender<(Arc<Request>, crate::Error)>,
     connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
 }
 
 impl ApiDb {
-    pub fn new<GSO, GSQ, D>(
+    pub fn new<GSO, GSQ, BG, EH, EHF>(
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
-        binary_getter: Arc<D>,
-    ) -> (
-        ApiDb,
-        mpsc::UnboundedReceiver<Updates>,
-        mpsc::UnboundedReceiver<(Arc<Request>, crate::Error)>,
-    )
+        binary_getter: Arc<BG>,
+        error_handler: EH,
+    ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
     where
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
             + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
-        D: 'static + Db,
+        BG: 'static + Db,
+        EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
+        EHF: 'static + CrdbFuture<Output = OnError>,
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
@@ -67,17 +73,15 @@ impl ApiDb {
             upload_resender_receiver,
             requests,
             binary_getter,
+            error_handler,
         ));
-        let (error_sender, error_receiver) = mpsc::unbounded();
         (
             ApiDb {
                 connection,
                 upload_resender,
-                error_sender,
                 connection_event_cb,
             },
             update_receiver,
-            error_receiver,
         )
     }
 
@@ -115,14 +119,19 @@ impl ApiDb {
         // Ignore the response from the server, we don't care enough to wait for it
     }
 
-    async fn upload_resender<D: Db>(
+    async fn upload_resender<BG, EH, EHF>(
         requests: mpsc::UnboundedReceiver<(
             Arc<Request>,
             mpsc::UnboundedSender<ResponsePartWithSidecar>,
         )>,
         connection: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
-        binary_getter: Arc<D>,
-    ) {
+        binary_getter: Arc<BG>,
+        error_handler: EH,
+    ) where
+        BG: Db,
+        EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
+        EHF: 'static + CrdbFuture<Output = OnError>,
+    {
         // The below loop is split into two sub parts: all that is just sent once, and all that requires
         // re-sending if there were missing binaries
         // This makes sure that all uploads have resolved before a query is submitted, while still allowing
@@ -209,6 +218,7 @@ impl ApiDb {
                                 // As such, in that situation, fall through to the next Error handling, and send the error back to the user.
                             }
                             ResponsePart::Error(_) => {
+                                // TODO(client-high): use error_handler here to actually decide what to do with the local db
                                 let _ = final_sender.take().unwrap().unbounded_send(
                                     ResponsePartWithSidecar {
                                         response,
@@ -253,55 +263,27 @@ impl ApiDb {
     }
 
     async fn handle_upload_response(
-        request: Arc<Request>,
         mut receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
-        error_sender: mpsc::UnboundedSender<(Arc<Request>, crate::Error)>,
     ) -> crate::Result<()> {
-        // TODO(client-med): should `request` be an `Upload` rather than just a less-explicit `Request`?
         match receiver.next().await {
-            None => {
-                let _ = error_sender.unbounded_send((
-                    request,
-                    crate::Error::Other(anyhow!("Connection did not return any answer to query")),
-                ));
-                Err(crate::Error::Other(anyhow!(
-                    "Connection did not return any answer to query"
-                )))
-            }
+            None => Err(crate::Error::Other(anyhow!(
+                "Connection did not return any answer to query"
+            ))),
             Some(ResponsePartWithSidecar {
                 sidecar: Some(_), ..
-            }) => {
-                let _ = error_sender.unbounded_send((
-                    request,
-                    crate::Error::Other(anyhow!(
-                        "Connection returned sidecar while we expected a simple result"
-                    )),
-                ));
-                Err(crate::Error::Other(anyhow!(
-                    "Connection returned sidecar while we expected a simple result"
-                )))
-            }
+            }) => Err(crate::Error::Other(anyhow!(
+                "Connection returned sidecar while we expected a simple result"
+            ))),
             Some(ResponsePartWithSidecar { response, .. }) => match response {
                 ResponsePart::Success => Ok(()),
-                ResponsePart::Error(err) => {
-                    let _ = error_sender.unbounded_send((request, err.clone().into()));
-                    Err(err.into())
-                }
+                ResponsePart::Error(err) => Err(err.into()),
                 ResponsePart::Sessions(_)
                 | ResponsePart::CurrentTime(_)
                 | ResponsePart::Objects { .. }
                 | ResponsePart::Snapshots { .. }
-                | ResponsePart::Binaries(_) => {
-                    let _ = error_sender.unbounded_send((
-                        request,
-                        crate::Error::Other(anyhow!(
-                            "Connection returned unexpected answer while expecting a simple result"
-                        )),
-                    ));
-                    Err(crate::Error::Other(anyhow!(
-                        "Connection returned unexpected answer while expecting a simple result"
-                    )))
-                }
+                | ResponsePart::Binaries(_) => Err(crate::Error::Other(anyhow!(
+                    "Connection returned unexpected answer while expecting a simple result"
+                ))),
             },
         }
     }
@@ -326,13 +308,9 @@ impl ApiDb {
         }));
         let (result_sender, result_receiver) = mpsc::unbounded();
         self.upload_resender
-            .unbounded_send((request.clone(), result_sender))
+            .unbounded_send((request, result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
-        Ok(Self::handle_upload_response(
-            request,
-            result_receiver,
-            self.error_sender.clone(),
-        ))
+        Ok(Self::handle_upload_response(result_receiver))
     }
 
     pub fn submit<T: Object>(
@@ -353,13 +331,9 @@ impl ApiDb {
         }));
         let (result_sender, result_receiver) = mpsc::unbounded();
         self.upload_resender
-            .unbounded_send((request.clone(), result_sender))
+            .unbounded_send((request, result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
-        Ok(Self::handle_upload_response(
-            request,
-            result_receiver,
-            self.error_sender.clone(),
-        ))
+        Ok(Self::handle_upload_response(result_receiver))
     }
 
     pub async fn get_subscribe(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
