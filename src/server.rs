@@ -226,6 +226,25 @@ impl<C: ServerConfig> Server<C> {
         Ok((this, upgrade_handle))
     }
 
+    pub async fn login_session(
+        &self,
+        user_id: User,
+        session_name: String,
+        expiration_time: Option<Timestamp>,
+    ) -> crate::Result<(SessionToken, SessionRef)> {
+        let now = Timestamp::now();
+        self.postgres_db
+            .login_session(Session {
+                user_id,
+                session_ref: SessionRef::now(),
+                session_name,
+                login_time: now,
+                last_active: now,
+                expiration_time,
+            })
+            .await
+    }
+
     pub async fn answer(&self, socket: WebSocket) {
         let mut conn = ConnectionState {
             socket,

@@ -10,6 +10,7 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use tower_http::trace::TraceLayer;
 
 const SERVER_ADDR: &str = "127.0.0.1:3000";
+const PASSWORD: &str = "hunter2";
 const CACHE_SIZE: usize = 32 * 1024 * 1024;
 const RECREATE_OLDER_THAN: Duration = Duration::from_secs(5 * 60);
 const KILL_SESSIONS_OLDER_THAN: Duration = Duration::from_secs(24 * 3600);
@@ -65,11 +66,23 @@ async fn main() -> anyhow::Result<()> {
         .context("serving axum webserver")
 }
 
+fn err_to_string(err: anyhow::Error) -> String {
+    format!("{err:?}")
+}
+
 pub async fn login(
     State(db): State<Arc<crdb::Server<ServerConfig>>>,
     Json(data): Json<AuthInfo>,
 ) -> Result<Json<SessionToken>, String> {
-    unimplemented!() // TODO(example-high)
+    if data.pass != PASSWORD {
+        return Err("Wrong password".into());
+    }
+    let (token, _) = db
+        .login_session(data.user, "new session".into(), None)
+        .await
+        .context("logging session in")
+        .map_err(err_to_string)?;
+    Ok(Json(token))
 }
 
 async fn websocket_handler(

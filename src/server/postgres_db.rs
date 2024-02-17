@@ -95,6 +95,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     }
 
     pub async fn resume_session(&self, token: SessionToken) -> crate::Result<Session> {
+        // TODO(server-high): actually implement expiration_time validation
         let res = sqlx::query!(
             "SELECT * FROM sessions WHERE session_token = $1",
             token as SessionToken
