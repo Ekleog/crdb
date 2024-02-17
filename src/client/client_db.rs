@@ -706,33 +706,12 @@ impl ClientDb {
                 }
             }
         }
-        let remote_fut = self.api.create(
+        self.api.create(
             object_id,
             created_at,
             object,
             importance >= Importance::Subscribe,
-        )?;
-        Ok({
-            let db = self.db.clone();
-            async move {
-                // TODO(client-high): should this auto-local-removal actually happen? there's always the possibility of an internal
-                // server error that'd be recoverable? but probably permission-denied would be more likely, though ulid-conflict would
-                // likely be the least likely
-                // TODO(client-high): if it should actually happen it should be in the error receiver and not here, because we'd
-                // miss errors upon after-reboot submission otherwise
-                let res = remote_fut.await;
-                if let Err(remote_err) = &res {
-                    if let Err(local_err) = db.remove(object_id).await {
-                        tracing::error!(
-                            ?local_err,
-                            ?remote_err,
-                            "failed removing the object locally after remote submission failed"
-                        );
-                    }
-                }
-                res
-            }
-        })
+        )
     }
 
     pub async fn submit<T: Object>(
@@ -787,19 +766,12 @@ impl ClientDb {
             }
         }
         // TODO(misc-med): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
-        let remote_fut = self.api.submit::<T>(
+        self.api.submit::<T>(
             object_id,
             event_id,
             event,
             importance >= Importance::Subscribe,
-        )?;
-        Ok(async move {
-            let res = remote_fut.await;
-            if res.is_err() {
-                unimplemented!() // TODO(client-high): rollback object creation
-            }
-            res
-        })
+        )
     }
 
     /// Returns the latest snapshot for the object described by `data`
