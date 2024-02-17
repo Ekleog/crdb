@@ -962,11 +962,16 @@ impl ClientDb {
         query_id: QueryId,
         query: Arc<Query>,
     ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
+        // First make sure to wait until the current upload queue is empty, so that any newly-created
+        // object/event makes its way through to the server before querying.
+        let mut upload_queue_watcher = self.watch_upload_queue();
+        while !upload_queue_watcher.borrow_and_update().is_empty() {
+            upload_queue_watcher
+                .changed()
+                .await
+                .expect("ApiDb was dropped before ClientDb");
+        }
         if importance >= Importance::Subscribe {
-            // TODO(client-high): First make sure to wait until the current upload queue is empty, so that
-            // any newly-created object/event makes its way through to the server before querying. This will
-            // be done by adding an mpsc queue, that gets a new item upon each enqueue/dequeue to the upload
-            // queue
             self.query_updates_broadcastees
                 .lock()
                 .unwrap()
