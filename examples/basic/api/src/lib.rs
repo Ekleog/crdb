@@ -74,8 +74,8 @@ impl crdb::Event for ItemEvent {
 #[derive(Clone, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
 pub struct Tag {
     name: String,
-    users_who_can_read: Vec<User>,
-    users_who_can_edit: Vec<User>,
+    users_who_can_read: HashSet<User>,
+    users_who_can_edit: HashSet<User>,
 }
 
 #[allow(unused_variables)]
@@ -93,10 +93,10 @@ impl crdb::Object for Tag {
     async fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
-        self_id: ObjectId,
-        db: &'a C,
+        _self_id: ObjectId,
+        _db: &'a C,
     ) -> anyhow::Result<bool> {
-        unimplemented!()
+        Ok(self.users_who_can_edit.contains(&user))
     }
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
@@ -105,17 +105,38 @@ impl crdb::Object for Tag {
         _event: &'a Self::Event,
         _db: &'a C,
     ) -> anyhow::Result<bool> {
-        unimplemented!()
+        Ok(self.users_who_can_edit.contains(&user))
     }
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         _db: &'a C,
     ) -> anyhow::Result<HashSet<User>> {
-        unimplemented!()
+        Ok(self
+            .users_who_can_read
+            .iter()
+            .copied()
+            .chain(self.users_who_can_edit.iter().copied())
+            .collect())
     }
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
-        unimplemented!()
+        match event {
+            TagEvent::Rename(name) => {
+                self.name = name.clone();
+            }
+            TagEvent::AddReader(user) => {
+                self.users_who_can_read.insert(*user);
+            }
+            TagEvent::RmReader(user) => {
+                self.users_who_can_read.remove(user);
+            }
+            TagEvent::AddEditor(user) => {
+                self.users_who_can_edit.insert(*user);
+            }
+            TagEvent::RmEditor(user) => {
+                self.users_who_can_edit.remove(user);
+            }
+        }
     }
 
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
@@ -124,7 +145,13 @@ impl crdb::Object for Tag {
 }
 
 #[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
-pub enum TagEvent {}
+pub enum TagEvent {
+    Rename(String),
+    AddReader(User),
+    RmReader(User),
+    AddEditor(User),
+    RmEditor(User),
+}
 
 impl crdb::Event for TagEvent {
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
