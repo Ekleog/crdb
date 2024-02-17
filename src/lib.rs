@@ -79,7 +79,7 @@ pub mod crdb_internal {
         error::ResultExt,
         hash_binary,
         messages::{Request, Update, UpdateData, Updates},
-        object::{parse_snapshot, CanDoCallbacks},
+        object::{parse_snapshot, parse_snapshot_ref, CanDoCallbacks},
         private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object,
         ObjectId, Query, QueryId, Result, SerializableError, SessionToken, Timestamp, TypeId,
         Updatedness, User,

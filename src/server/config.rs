@@ -41,7 +41,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         object_id: ObjectId,
         created_at: EventId,
         snapshot_version: i32,
-        snapshot: serde_json::Value,
+        snapshot: Arc<serde_json::Value>,
         cb: &'a C,
     ) -> impl 'a
            + CrdbFuture<
@@ -134,13 +134,13 @@ macro_rules! generate_server {
                 object_id: crdb::ObjectId,
                 created_at: crdb::EventId,
                 snapshot_version: i32,
-                snapshot: crdb::serde_json::Value,
+                snapshot: crdb::Arc<crdb::serde_json::Value>,
                 cb: &'a C,
             ) -> crdb::Result<Option<(crdb::Arc<crdb::UpdatesWithSnap>, crdb::HashSet<crdb::User>, Vec<crdb::ReadPermsChanges>)>> {
                 use crdb::Object as _;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let object = crdb::Arc::new(crdb::parse_snapshot::<$object>(snapshot_version, snapshot)
+                        let object = crdb::Arc::new(crdb::parse_snapshot_ref::<$object>(snapshot_version, &*snapshot)
                             .wrap_context("parsing uploaded snapshot data")?);
                         let can_create = object.can_create(user, object_id, cb).await.wrap_context("checking whether user can create submitted object")?;
                         if !can_create {

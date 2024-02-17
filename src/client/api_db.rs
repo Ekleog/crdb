@@ -318,8 +318,10 @@ impl ApiDb {
             type_id: *T::type_ulid(),
             created_at,
             snapshot_version: T::snapshot_version(),
-            object: serde_json::to_value(object)
-                .wrap_context("serializing object for sending to api")?,
+            object: Arc::new(
+                serde_json::to_value(object)
+                    .wrap_context("serializing object for sending to api")?,
+            ),
             subscribe,
         }));
         let (result_sender, result_receiver) = mpsc::unbounded();

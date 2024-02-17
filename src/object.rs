@@ -144,7 +144,6 @@ pub fn parse_snapshot<T: Object>(
     }
 }
 
-#[cfg(feature = "client")]
 pub fn parse_snapshot_ref<T: Object>(
     snapshot_version: i32,
     snapshot_data: &serde_json::Value,

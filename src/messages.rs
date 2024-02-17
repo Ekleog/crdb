@@ -78,7 +78,7 @@ pub enum Upload {
         type_id: TypeId,
         created_at: EventId,
         snapshot_version: i32,
-        object: serde_json::Value,
+        object: Arc<serde_json::Value>,
         subscribe: bool,
     },
     Event {
