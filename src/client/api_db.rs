@@ -89,11 +89,14 @@ impl ApiDb {
             binary_getter,
             error_handler,
         ));
-        for upload_id in upload_queue
+        let all_uploads = upload_queue
             .list_uploads()
             .await
-            .wrap_context("listing upload queue")?
-        {
+            .wrap_context("listing upload queue")?;
+        let (upload_queue_watcher_sender, upload_queue_watcher_receiver) =
+            watch::channel(all_uploads.clone());
+        let upload_queue_watcher_sender = Arc::new(Mutex::new(upload_queue_watcher_sender));
+        for upload_id in all_uploads {
             let upload = upload_queue
                 .get_upload(upload_id)
                 .await
@@ -109,9 +112,6 @@ impl ApiDb {
                 .unbounded_send((Some(upload_id), request, sender))
                 .expect("connection cannot go away before apidb does");
         }
-        let (upload_queue_watcher_sender, upload_queue_watcher_receiver) =
-            watch::channel(Vec::new());
-        let upload_queue_watcher_sender = Arc::new(Mutex::new(upload_queue_watcher_sender));
         Ok((
             ApiDb {
                 upload_queue,
