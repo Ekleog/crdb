@@ -962,7 +962,7 @@ impl ClientDb {
 
         Ok(async_stream::stream! {
             for object_id in object_ids {
-                match self.get_impl::<T>(Lock::NONE, false, object_id).await {
+                match self.db.get_latest::<T>(Lock::NONE, object_id).await {
                     Ok(res) => yield Ok(res),
                     // Ignore missing objects, they were just vacuumed between listing and getting
                     Err(crate::Error::ObjectDoesNotExist(id)) if id == object_id => continue,
