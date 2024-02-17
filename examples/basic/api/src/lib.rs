@@ -49,11 +49,14 @@ impl crdb::Object for Item {
         &'a self,
         user: User,
         _self_id: ObjectId,
-        _event: &'a Self::Event,
+        event: &'a Self::Event,
         db: &'a C,
     ) -> anyhow::Result<bool> {
         if user == self.owner {
             return Ok(true);
+        }
+        if matches!(event, ItemEvent::SetOwner(_)) {
+            return Ok(false);
         }
         for tag in self.tags.iter() {
             let tag = db.get(*tag).await.context("fetching tag")?;
@@ -78,7 +81,13 @@ impl crdb::Object for Item {
     }
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
-        unimplemented!()
+        match event {
+            ItemEvent::SetOwner(user) => self.owner = *user,
+            ItemEvent::SetText(_) => todo!(),
+            ItemEvent::AddTag(_) => todo!(),
+            ItemEvent::RmTag(_) => todo!(),
+            ItemEvent::SetFile(_) => todo!(),
+        }
     }
 
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
