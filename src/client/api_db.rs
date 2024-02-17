@@ -81,14 +81,6 @@ impl ApiDb {
             )
             .run(),
         );
-        let (upload_resender_sender, upload_resender_receiver) = mpsc::unbounded();
-        crate::spawn(upload_resender::<C, _, _, _>(
-            upload_queue.clone(),
-            upload_resender_receiver,
-            requests,
-            binary_getter,
-            error_handler,
-        ));
         let all_uploads = upload_queue
             .list_uploads()
             .await
@@ -96,6 +88,15 @@ impl ApiDb {
         let (upload_queue_watcher_sender, upload_queue_watcher_receiver) =
             watch::channel(all_uploads.clone());
         let upload_queue_watcher_sender = Arc::new(Mutex::new(upload_queue_watcher_sender));
+        let (upload_resender_sender, upload_resender_receiver) = mpsc::unbounded();
+        crate::spawn(upload_resender::<C, _, _, _>(
+            upload_queue.clone(),
+            upload_resender_receiver,
+            requests,
+            upload_queue_watcher_sender.clone(),
+            binary_getter,
+            error_handler,
+        ));
         for upload_id in all_uploads {
             let upload = upload_queue
                 .get_upload(upload_id)
@@ -127,7 +128,6 @@ impl ApiDb {
 
     pub fn watch_upload_queue(&self) -> watch::Receiver<Vec<UploadId>> {
         self.upload_queue_watcher_receiver.clone()
-        // TODO(client-high): actually use upload_queue_watcher_sender
     }
 
     pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {
@@ -216,6 +216,15 @@ impl ApiDb {
             .enqueue_upload(upload, required_binaries)
             .await
             .wrap_context("enqueuing upload")?;
+        let upload_list = self
+            .upload_queue
+            .list_uploads()
+            .await
+            .wrap_context("listing uploads")?;
+        self.upload_queue_watcher_sender
+            .lock()
+            .unwrap()
+            .send_replace(upload_list);
         self.upload_resender
             .unbounded_send((Some(upload_id), request, result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
@@ -246,6 +255,15 @@ impl ApiDb {
             .enqueue_upload(upload, required_binaries)
             .await
             .wrap_context("enqueuing upload")?;
+        let upload_list = self
+            .upload_queue
+            .list_uploads()
+            .await
+            .wrap_context("listing uploads")?;
+        self.upload_queue_watcher_sender
+            .lock()
+            .unwrap()
+            .send_replace(upload_list);
         self.upload_resender
             .unbounded_send((Some(upload_id), request, result_sender))
             .map_err(|_| crate::Error::Other(anyhow!("Upload resender went out too early")))?;
@@ -418,6 +436,7 @@ async fn upload_resender<C, BG, EH, EHF>(
         mpsc::UnboundedSender<ResponsePartWithSidecar>,
     )>,
     connection: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
+    upload_queue_watcher_sender: Arc<Mutex<watch::Sender<Vec<UploadId>>>>,
     binary_getter: Arc<BG>,
     error_handler: EH,
 ) where
@@ -505,13 +524,29 @@ async fn upload_resender<C, BG, EH, EHF>(
                         ResponsePart::Success => {
                             if let Err(err) = upload_queue.upload_finished(*upload_id).await {
                                 tracing::error!(?err, "failed dequeuing upload");
+                            } else {
+                                match upload_queue
+                                    .list_uploads()
+                                    .await
+                                    .wrap_context("listing uploads")
+                                {
+                                    Err(err) => {
+                                        tracing::error!(?err, "failed listing upload queue");
+                                    }
+                                    Ok(upload_list) => {
+                                        upload_queue_watcher_sender
+                                            .lock()
+                                            .unwrap()
+                                            .send_replace(upload_list);
+                                    }
+                                }
+                                let _ = final_sender.take().unwrap().unbounded_send(
+                                    ResponsePartWithSidecar {
+                                        response,
+                                        sidecar: None,
+                                    },
+                                );
                             }
-                            let _ = final_sender.take().unwrap().unbounded_send(
-                                ResponsePartWithSidecar {
-                                    response,
-                                    sidecar: None,
-                                },
-                            );
                         }
                         ResponsePart::Error(crate::SerializableError::MissingBinaries(bins)) => {
                             missing_binaries.extend(bins);
@@ -537,6 +572,24 @@ async fn upload_resender<C, BG, EH, EHF>(
                                     {
                                         tracing::error!(?err, "failed dequeuing upload");
                                     } else {
+                                        match upload_queue
+                                            .list_uploads()
+                                            .await
+                                            .wrap_context("listing uploads")
+                                        {
+                                            Err(err) => {
+                                                tracing::error!(
+                                                    ?err,
+                                                    "failed listing upload queue"
+                                                );
+                                            }
+                                            Ok(upload_list) => {
+                                                upload_queue_watcher_sender
+                                                    .lock()
+                                                    .unwrap()
+                                                    .send_replace(upload_list);
+                                            }
+                                        }
                                         let _ = final_sender.take().unwrap().unbounded_send(
                                             ResponsePartWithSidecar {
                                                 response,
@@ -572,6 +625,24 @@ async fn upload_resender<C, BG, EH, EHF>(
                                     {
                                         tracing::error!(?err, "failed dequeuing upload");
                                     } else {
+                                        match upload_queue
+                                            .list_uploads()
+                                            .await
+                                            .wrap_context("listing uploads")
+                                        {
+                                            Err(err) => {
+                                                tracing::error!(
+                                                    ?err,
+                                                    "failed listing upload queue"
+                                                );
+                                            }
+                                            Ok(upload_list) => {
+                                                upload_queue_watcher_sender
+                                                    .lock()
+                                                    .unwrap()
+                                                    .send_replace(upload_list);
+                                            }
+                                        }
                                         let _ = final_sender.take().unwrap().unbounded_send(
                                             ResponsePartWithSidecar {
                                                 response,
