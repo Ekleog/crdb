@@ -19,7 +19,8 @@ async fn main() -> anyhow::Result<()> {
             crdb::cron::Schedule::from_str("0 */2 * * * * *").unwrap(),
             crdb::chrono::Utc,
         )
-        .recreate_older_than(std::time::Duration::from_secs(5 * 60)),
+        .recreate_older_than(std::time::Duration::from_secs(5 * 60))
+        .kill_sessions_older_than(std::time::Duration::from_secs(24 * 3600)),
     )
     .await
     .context("creating crdb server")?;
