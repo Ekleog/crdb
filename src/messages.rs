@@ -65,13 +65,14 @@ impl Request {
             | Request::QuerySubscribe { .. }
             | Request::GetLatest(_)
             | Request::QueryLatest { .. }
-            | Request::GetBinaries(_) => false,
-            Request::Upload(_) | Request::UploadBinaries(_) => true,
+            | Request::GetBinaries(_)
+            | Request::UploadBinaries(_) => false,
+            Request::Upload(_) => true,
         }
     }
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub enum Upload {
     Object {
         object_id: ObjectId,

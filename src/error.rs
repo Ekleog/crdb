@@ -65,7 +65,7 @@ pub enum Error {
     Other(anyhow::Error),
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, thiserror::Error)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, thiserror::Error)]
 #[non_exhaustive]
 pub enum SerializableError {
     #[error("Missing binary pointers: {0:?}")]

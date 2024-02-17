@@ -186,8 +186,9 @@ impl ApiDb {
 
                 // Then, wait for them all to finish, listing the missing binaries
                 // The successful or non-retryable requests get removed from upload_reqs here, by setting their final_sender to None
+                // TODO(client-high): should remove the upload from upload queue here
                 let mut missing_binaries = HashSet::new();
-                for (_, final_sender, _, receiver) in upload_reqs.iter_mut() {
+                for (request, final_sender, _, receiver) in upload_reqs.iter_mut() {
                     match receiver.next().await {
                         None => return, // Connection was dropped
                         Some(ResponsePartWithSidecar {
@@ -217,8 +218,23 @@ impl ApiDb {
                                 // If there was no missing binary yet, it means that there was no previous upload that we could retry.
                                 // As such, in that situation, fall through to the next Error handling, and send the error back to the user.
                             }
-                            ResponsePart::Error(_) => {
-                                // TODO(client-high): use error_handler here to actually decide what to do with the local db
+                            ResponsePart::Error(ref err) => {
+                                let Request::Upload(upload) = &*request.request else {
+                                    panic!("is_upload == true but does not match Upload");
+                                };
+                                match error_handler((*upload).clone(), (*err).clone().into()).await
+                                {
+                                    OnError::Rollback => {
+                                        unimplemented!() // TODO(client-high): remove upload from local db
+                                    }
+                                    OnError::KeepLocal => {
+                                        // Do not remove the upload from the queue, so that it gets attempted again upon next
+                                        // bootup
+                                    }
+                                    OnError::ReplaceWith(_) => {
+                                        unimplemented!() // TODO(client-high): replace upload in upload queue and local db
+                                    }
+                                }
                                 let _ = final_sender.take().unwrap().unbounded_send(
                                     ResponsePartWithSidecar {
                                         response,
