@@ -113,7 +113,8 @@ impl ClientDb {
             },
             db.clone(),
             error_handler,
-        );
+        )
+        .await?;
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();

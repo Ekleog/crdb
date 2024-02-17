@@ -46,13 +46,13 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub fn new<GSO, GSQ, BG, EH, EHF>(
+    pub async fn new<GSO, GSQ, BG, EH, EHF>(
         upload_queue: Arc<LocalDb>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
         binary_getter: Arc<BG>,
         error_handler: EH,
-    ) -> (ApiDb, mpsc::UnboundedReceiver<Updates>)
+    ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
     where
         GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
@@ -85,7 +85,22 @@ impl ApiDb {
             binary_getter,
             error_handler,
         ));
-        (
+        for upload_id in upload_queue
+            .list_uploads()
+            .await
+            .wrap_context("listing upload queue")?
+        {
+            let upload = upload_queue
+                .get_upload(upload_id)
+                .await
+                .wrap_context("retrieving upload")?;
+            let request = Arc::new(Request::Upload(upload));
+            let (sender, _) = mpsc::unbounded(); // Ignore the response
+            upload_resender
+                .unbounded_send((Some(upload_id), request, sender))
+                .expect("connection cannot go away before apidb does");
+        }
+        Ok((
             ApiDb {
                 upload_queue,
                 connection,
@@ -93,7 +108,7 @@ impl ApiDb {
                 connection_event_cb,
             },
             update_receiver,
-        )
+        ))
     }
 
     pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {

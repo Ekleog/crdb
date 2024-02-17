@@ -552,7 +552,6 @@ impl IndexedDb {
         res
     }
 
-    // TODO(client-high): use list_uploads and get_upload upon bootup
     pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
         // TODO(test-high): fuzz upload-queue behavior
         self.db
