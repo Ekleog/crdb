@@ -15,8 +15,8 @@ use crate::{
         MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
         Upload,
     },
-    BinPtr, CrdbFuture, CrdbStream, Event, EventId, Object, ObjectId, Query, SessionToken, TypeId,
-    Updatedness,
+    BinPtr, CrdbFuture, CrdbStream, Event, EventId, Object, ObjectId, Query, Session, SessionToken,
+    TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, pin_mut, stream, StreamExt};
@@ -157,6 +157,24 @@ impl ApiDb {
     pub fn rename_session(&self, name: String) {
         self.request(Arc::new(Request::RenameSession(name)));
         // Ignore the response from the server
+    }
+
+    pub async fn current_session(&self) -> crate::Result<Session> {
+        let response = self
+            .request(Arc::new(Request::CurrentSession))
+            .next()
+            .await
+            .ok_or_else(|| crate::Error::Other(anyhow!("Connection thread went down too early")))?;
+        match response.response {
+            ResponsePart::Sessions(mut sessions) if sessions.len() == 1 => {
+                Ok(sessions.pop().unwrap())
+            }
+            ResponsePart::Error(err) => Err(err.into()),
+            _ => Err(crate::Error::Other(anyhow!(
+                "Unexpected server response to CurrentSession: {:?}",
+                response.response
+            ))),
+        }
     }
 
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {

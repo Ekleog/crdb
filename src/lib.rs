@@ -80,9 +80,10 @@ pub mod crdb_internal {
         hash_binary,
         messages::{Request, Update, UpdateData, Updates, Upload},
         object::{parse_snapshot, parse_snapshot_ref, CanDoCallbacks},
-        private, BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object,
-        ObjectId, Query, QueryId, Result, SerializableError, SessionToken, Timestamp, TypeId,
-        Updatedness, User,
+        private,
+        session::Session,
+        BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object, ObjectId, Query,
+        QueryId, Result, SerializableError, SessionToken, Timestamp, TypeId, Updatedness, User,
     };
     pub use anyhow;
     pub use futures::{self, channel::mpsc, future, stream, Stream};

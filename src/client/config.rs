@@ -55,6 +55,10 @@ macro_rules! generate_client {
                 self.db.rename_session(name)
             }
 
+            pub fn current_session(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Session>> {
+                self.db.current_session()
+            }
+
             /// Pauses the vacuum until the returned mutex guard is dropped
             pub fn pause_vacuum(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::tokio::sync::RwLockReadGuard<'_, ()>> {
                 self.db.pause_vacuum()

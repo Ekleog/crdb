@@ -8,8 +8,8 @@ use crate::{
     ids::QueryId,
     messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
     object::parse_snapshot_ref,
-    BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, SessionToken,
-    TypeId, Updatedness, User,
+    BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, Session,
+    SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
@@ -612,6 +612,10 @@ impl ClientDb {
 
     pub fn rename_session(&self, name: String) {
         self.api.rename_session(name)
+    }
+
+    pub async fn current_session(&self) -> crate::Result<Session> {
+        self.api.current_session().await
     }
 
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
