@@ -425,13 +425,10 @@ impl<C: ServerConfig> Server<C> {
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
             Request::GetSubscribe(object_ids) => {
-                self.send_objects(
-                    conn,
-                    msg.request_id,
-                    None,
-                    object_ids.iter().map(|(o, u)| (*o, *u)),
-                )
-                .await
+                // TODO(blocked): remove this copy once https://github.com/rust-lang/rust/issues/110338 is fixed
+                let object_ids = object_ids.iter().map(|(o, u)| (*o, *u)).collect::<Vec<_>>();
+                self.send_objects(conn, msg.request_id, None, object_ids.into_iter())
+                    .await
             }
             Request::QuerySubscribe {
                 query_id,
