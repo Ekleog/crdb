@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
         8 * 1024 * 1024,
         // Vacuum every 2 minutes, recreating objects older than 5 minutes
         crdb::ServerVacuumSchedule::new(
-            crdb::cron::Schedule::from_str("0 2 * * * * *").unwrap(),
+            crdb::cron::Schedule::from_str("0 */2 * * * * *").unwrap(),
             crdb::chrono::Utc,
         )
         .recreate_older_than(std::time::Duration::from_secs(5 * 60)),
