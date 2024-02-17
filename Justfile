@@ -60,10 +60,10 @@ test-crate-server *ARGS:
 test-example-basic *ARGS: build-example-basic-client (test-example-basic-host ARGS)
 
 build-example-basic-client:
-    cd examples/basic && CARGO_TARGET_DIR="target/wasm" RUSTFLAGS="-Zmacro-backtrace" cargo build --target wasm32-unknown-unknown -p client-js
+    cd examples/basic && CARGO_TARGET_DIR="target/wasm" RUSTFLAGS="-Zmacro-backtrace" cargo build --target wasm32-unknown-unknown -p basic-client-js
 
 test-example-basic-host *ARGS:
-    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p api -p server -p client-native {{ARGS}}
+    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p basic-api -p basic-server -p basic-client-native {{ARGS}}
 
 fuzz-pg-simple ARGS='':
     cargo bolero test --all-features \

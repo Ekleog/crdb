@@ -1,8 +1,8 @@
 [package]
-name = "client-native"
+name = "basic-client-native"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-api = { path = "../api" }
+basic-api = { path = "../api" }
 crdb = { path = "../../..", features = ["client"] }

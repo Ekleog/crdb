@@ -1,10 +1,10 @@
 [package]
-name = "server"
+name = "basic-server"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-api = { path = "../api" }
+basic-api = { path = "../api" }
 crdb = { path = "../../..", features = ["server"] }
 tokio = { version = "1.0", features = ["full"] }

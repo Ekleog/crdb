@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("opening database {db_url:?}"))?;
     crdb::Server::new(
-        api::db::ServerConfig,
+        basic_api::db::ServerConfig,
         db,
         8 * 1024 * 1024,
         crdb::ServerVacuumSchedule::new(
