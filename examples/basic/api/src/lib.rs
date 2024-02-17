@@ -49,11 +49,20 @@ impl crdb::Object for Item {
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
-        self_id: ObjectId,
-        event: &'a Self::Event,
+        _self_id: ObjectId,
+        _event: &'a Self::Event,
         db: &'a C,
     ) -> anyhow::Result<bool> {
-        unimplemented!()
+        if user == self.owner {
+            return Ok(true);
+        }
+        for tag in self.tags.iter() {
+            let tag = db.get(*tag).await.context("fetching tag")?;
+            if tag.users_who_can_edit.contains(&user) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
@@ -72,7 +81,13 @@ impl crdb::Object for Item {
 }
 
 #[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
-pub enum ItemEvent {}
+pub enum ItemEvent {
+    SetOwner(User),
+    SetText(String),
+    AddTag(DbPtr<Tag>),
+    RmTag(DbPtr<Tag>),
+    SetFile(Option<BinPtr>),
+}
 
 impl crdb::Event for ItemEvent {
     fn required_binaries(&self) -> Vec<crdb::BinPtr> {
