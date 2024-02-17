@@ -743,39 +743,36 @@ impl ClientDb {
                 importance.to_object_lock(),
             )
             .await?;
-        if importance >= Importance::Subscribe {
-            if let Some(val) = val {
-                let val_json =
-                    serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
-                let (queries, lock_after) = Self::queries_for(
-                    &self.subscribed_queries.lock().unwrap(),
-                    *T::type_ulid(),
-                    &val_json,
-                );
-                let (_, _, lock_before) = self
-                    .subscribed_objects
-                    .lock()
-                    .unwrap()
-                    .insert(object_id, (None, queries, lock_after))
-                    .ok_or_else(|| {
-                        crate::Error::Other(anyhow!("Submitted event to non-subscribed object"))
-                    })?;
-                if lock_before != lock_after {
-                    self.db
-                        .change_locks(lock_before, lock_after, object_id)
-                        .await
-                        .wrap_context("updating queries locks")?;
-                }
+        let do_subscribe = if let Some(val) = val {
+            let val_json =
+                serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
+            let (queries, lock_after) = Self::queries_for(
+                &self.subscribed_queries.lock().unwrap(),
+                *T::type_ulid(),
+                &val_json,
+            );
+            let do_subscribe = importance >= Importance::Subscribe || lock_after != Lock::NONE;
+            let (_, _, lock_before) = self
+                .subscribed_objects
+                .lock()
+                .unwrap()
+                .insert(object_id, (None, queries, lock_after))
+                .ok_or_else(|| {
+                    crate::Error::Other(anyhow!("Submitted event to non-subscribed object"))
+                })?;
+            if lock_before != lock_after {
+                self.db
+                    .change_locks(lock_before, lock_after, object_id)
+                    .await
+                    .wrap_context("updating queries locks")?;
             }
-        }
+            do_subscribe
+        } else {
+            importance >= Importance::Subscribe
+        };
         // TODO(misc-med): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
         self.api
-            .submit::<T>(
-                object_id,
-                event_id,
-                event,
-                importance >= Importance::Subscribe,
-            )
+            .submit::<T>(object_id, event_id, event, do_subscribe)
             .await
     }
 
