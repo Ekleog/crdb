@@ -50,6 +50,23 @@ struct LoginProps {
     on_login: Callback<()>,
 }
 
+fn user_to_ulid(mut user: String) -> String {
+    user.make_ascii_uppercase();
+    user.chars()
+        .map(|c| match c {
+            'I' => '1',
+            'L' => '7',
+            'O' => '0',
+            'U' => 'V',
+            c => c,
+        })
+        .filter(|&c| {
+            (c >= '0' && c <= '9')
+                || (c >= 'A' && c <= 'Z')
+        })
+        .collect()
+}
+
 #[function_component(Login)]
 fn login(LoginProps { on_login }: &LoginProps) -> Html {
     let state = use_state(|| (String::from(""), String::from("")));
@@ -57,7 +74,7 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
         let state = state.clone();
         move |e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            state.set((input.value(), state.1.clone()));
+            state.set((user_to_ulid(input.value()), state.1.clone()));
         }
     };
     let on_pass_change = {
@@ -67,7 +84,7 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
             state.set((state.0.clone(), input.value()));
         }
     };
-    let onclick= {
+    let onclick = {
         let on_login = on_login.clone();
         move |_| {
             let on_login = on_login.clone();
@@ -84,6 +101,7 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
                 <input
                     type="text"
                     placeholder="username"
+                    maxlength="26"
                     value={state.0.clone()}
                     onchange={on_user_change}
                     />
