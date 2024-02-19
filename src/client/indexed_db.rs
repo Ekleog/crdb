@@ -277,7 +277,26 @@ impl IndexedDb {
     }
 
     pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
-        unimplemented!() // TODO(client-high)
+        let saved_info = self
+            .db
+            .transaction(&["config"])
+            .run(move |transaction| async move {
+                let saved_info = transaction
+                    .object_store("config")
+                    .wrap_context("retrieving 'config' object store")?
+                    .get(&JsString::from(CONFIG_SAVED_LOGIN))
+                    .await
+                    .wrap_context("retrieving login from database")?;
+                Ok(saved_info)
+            })
+            .await
+            .wrap_context("retrieving login from database")?;
+        let Some(saved_info) = saved_info else {
+            return Ok(None);
+        };
+        let saved_info = serde_wasm_bindgen::from_value(saved_info)
+            .wrap_context("deserializing saved login info")?;
+        Ok(Some(saved_info))
     }
 
     pub async fn query<T: Object>(&self, query: Arc<Query>) -> crate::Result<Vec<ObjectId>> {
