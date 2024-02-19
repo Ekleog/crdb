@@ -6,10 +6,10 @@ all *ARGS: fmt (test ARGS) clippy udeps
 run-example-basic-server *ARGS:
     createdb basic-crdb || true
     sqlx migrate run --source src/server/migrations/ --database-url "postgres:///basic-crdb"
-    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo run -p basic-server -- {{ARGS}}
+    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" RUST_LOG="trace" cargo run -p basic-server -- {{ARGS}}
 
 serve-example-basic-client-js *ARGS:
-    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" RUSTFLAGS="-Zmacro-backtrace" trunk serve
+    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" RUSTFLAGS="-Zmacro-backtrace" trunk serve --proxy-backend=http://localhost:3000/api
 
 fmt:
     cargo fmt

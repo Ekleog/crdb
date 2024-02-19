@@ -1,6 +1,7 @@
 use anyhow::Context;
 use axum::{
     extract::{State, WebSocketUpgrade},
+    http::StatusCode,
     routing::{get, post},
     Json,
 };
@@ -66,16 +67,16 @@ async fn main() -> anyhow::Result<()> {
         .context("serving axum webserver")
 }
 
-fn err_to_string(err: anyhow::Error) -> String {
-    format!("{err:?}")
+fn err_to_string(err: anyhow::Error) -> (StatusCode, String) {
+    (StatusCode::INTERNAL_SERVER_ERROR, format!("{err:?}"))
 }
 
 pub async fn login(
     State(db): State<Arc<crdb::Server<ServerConfig>>>,
     Json(data): Json<AuthInfo>,
-) -> Result<Json<SessionToken>, String> {
+) -> Result<Json<SessionToken>, (StatusCode, String)> {
     if data.pass != PASSWORD {
-        return Err("Wrong password".into());
+        return Err((StatusCode::FORBIDDEN, "Wrong password".into()));
     }
     let (token, _) = db
         .login_session(data.user, "new session".into(), None)

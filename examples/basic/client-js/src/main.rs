@@ -41,8 +41,8 @@ fn app() -> Html {
         let _: &basic_api::db::Db = db;
         unimplemented!() // TODO(example-high)
     } else {
-        let on_login = Callback::from(move |_| {
-            unimplemented!() // TODO(example-high)
+        let on_login = Callback::from(move |(user, token)| {
+            panic!("need to login {user:?} with token {token:?}") // TODO(example-high)
         });
         html! {
             <Login {on_login} />
@@ -95,7 +95,10 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 let user = format!("{:0>26}", state.0);
                 let user = User(Ulid::from_str(&user).expect("username is invalid"));
-                let auth_info = AuthInfo { user, pass: state.1.clone() };
+                let auth_info = AuthInfo {
+                    user,
+                    pass: state.1.clone(),
+                };
                 let token = gloo_net::http::Request::post("/api/login")
                     .json(&auth_info)
                     .expect("failed serializing auth info")
@@ -130,7 +133,7 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
                     />
                 { " " }
                 <input
-                    type="submit"
+                    type="button"
                     value="Login"
                     {onclick}
                     />
