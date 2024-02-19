@@ -8,6 +8,9 @@ run-example-basic-server *ARGS:
     sqlx migrate run --source src/server/migrations/ --database-url "postgres:///basic-crdb"
     cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo run -p basic-server -- {{ARGS}}
 
+serve-example-basic-client-js *ARGS:
+    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" RUSTFLAGS="-Zmacro-backtrace" trunk serve
+
 fmt:
     cargo fmt
     cd examples/basic && cargo fmt
