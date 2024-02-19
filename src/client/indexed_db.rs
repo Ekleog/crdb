@@ -254,6 +254,10 @@ impl IndexedDb {
         })
     }
 
+    pub async fn save_login(&self, _info: LoginInfo) -> crate::Result<()> {
+        unimplemented!() // TODO(client-high)
+    }
+
     pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
         unimplemented!() // TODO(client-high)
     }

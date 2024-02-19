@@ -39,6 +39,10 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite-high)
     }
 
+    pub async fn save_login(&self, _info: LoginInfo) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
     pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
         unimplemented!() // TODO(sqlite-high)
     }

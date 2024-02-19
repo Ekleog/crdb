@@ -46,7 +46,7 @@ macro_rules! generate_client {
                 self.db.on_connection_event(cb)
             }
 
-            pub fn login(&self, url: crdb::Arc<String>, user: crdb::User, token: crdb::SessionToken) {
+            pub fn login(&self, url: crdb::Arc<String>, user: crdb::User, token: crdb::SessionToken) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
                 self.db.login(url, user, token)
             }
 

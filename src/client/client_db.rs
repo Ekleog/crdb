@@ -1,4 +1,4 @@
-use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb};
+use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb, LoginInfo};
 use crate::{
     api::{ApiConfig, UploadId},
     cache::CacheDb,
@@ -152,7 +152,9 @@ impl ClientDb {
             }
         });
         if let Some(login_info) = maybe_login {
-            this.login(login_info.url, login_info.user, login_info.token);
+            this.login(login_info.url, login_info.user, login_info.token)
+                .await
+                .wrap_context("relogging in as previously logged-in user")?;
         }
         Ok((
             this,
@@ -608,7 +610,12 @@ impl ClientDb {
     /// Note: The fact that `token` is actually a token for the `user` passed at creation of this [`ClientDb`]
     /// is not actually checked, and is assumed to be true. Providing the wrong `user` may lead to object creations
     /// or event submissions being spuriously rejected locally, but will not allow them to succeed remotely anyway.
-    pub fn login(&self, url: Arc<String>, user: User, token: SessionToken) {
+    pub async fn login(
+        &self,
+        url: Arc<String>,
+        user: User,
+        token: SessionToken,
+    ) -> crate::Result<()> {
         if self
             .user
             .read()
@@ -617,10 +624,12 @@ impl ClientDb {
             .unwrap_or(false)
         {
             // There was already a user logged in, and it is not this user. Drop the whole db.
-            unimplemented!() // TODO(client-high)
+            self.db.remove_everything().await?;
         }
         *self.user.write().unwrap() = Some(user);
-        self.api.login(url, token)
+        self.api.login(url.clone(), token);
+        self.db.save_login(LoginInfo { url, user, token }).await?;
+        Ok(())
     }
 
     pub async fn logout(&self) -> anyhow::Result<()> {
