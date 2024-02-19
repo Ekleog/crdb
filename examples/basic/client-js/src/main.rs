@@ -51,8 +51,56 @@ struct LoginProps {
 }
 
 #[function_component(Login)]
-fn login(LoginProps { .. }: &LoginProps) -> Html {
+fn login(LoginProps { on_login }: &LoginProps) -> Html {
+    let state = use_state(|| (String::from(""), String::from("")));
+    let on_user_change = {
+        let state = state.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            state.set((input.value(), state.1.clone()));
+        }
+    };
+    let on_pass_change = {
+        let state = state.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            state.set((state.0.clone(), input.value()));
+        }
+    };
+    let onclick= {
+        let on_login = on_login.clone();
+        move |_| {
+            let on_login = on_login.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                on_login.emit(()) // TODO(example-high)
+            });
+        }
+    };
     html! {
-        <h1>{ "Login" }</h1>
+        <>
+            <h1>{ "Login" }</h1>
+            <form>
+                { "User: " }
+                <input
+                    type="text"
+                    placeholder="username"
+                    value={state.0.clone()}
+                    onchange={on_user_change}
+                    />
+                { " Password: " }
+                <input
+                    type="password"
+                    placeholder="password"
+                    value={state.1.clone()}
+                    onchange={on_pass_change}
+                    />
+                { " " }
+                <input
+                    type="submit"
+                    value="Login"
+                    {onclick}
+                    />
+            </form>
+        </>
     }
 }

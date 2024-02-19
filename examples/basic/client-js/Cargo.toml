@@ -9,4 +9,5 @@ console_error_panic_hook = "0.1.7"
 crdb = { path = "../../..", features = ["client"] }
 tracing-wasm = "0.2.1"
 yew = { version = "0.21.0", features = ["csr"] }
+wasm-bindgen-futures = "0.4.39"
 web-sys = "0.3.66"
