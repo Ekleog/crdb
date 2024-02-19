@@ -22,6 +22,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
 const OBJECT_STORE_LIST: &[&str] = &[
+    "config",
     "snapshots",
     "events",
     "binaries",
@@ -30,6 +31,8 @@ const OBJECT_STORE_LIST: &[&str] = &[
     "events_meta",
     "upload_queue_meta",
 ];
+
+const CONFIG_SAVED_LOGIN: &str = "login";
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 struct SnapshotMeta {
@@ -93,6 +96,7 @@ impl IndexedDb {
                 let db = evt.database();
 
                 // Note: whenever changing this list, remember to also update OBJECT_STORE_LIST
+                db.build_object_store("config").create()?;
                 db.build_object_store("snapshots").create()?;
                 db.build_object_store("events").create()?;
                 db.build_object_store("binaries").create()?;
@@ -254,8 +258,22 @@ impl IndexedDb {
         })
     }
 
-    pub async fn save_login(&self, _info: LoginInfo) -> crate::Result<()> {
-        unimplemented!() // TODO(client-high)
+    pub async fn save_login(&self, info: LoginInfo) -> crate::Result<()> {
+        let info_js = serde_wasm_bindgen::to_value(&info).wrap_context("serializing login info")?;
+        self.db
+            .transaction(&["config"])
+            .rw()
+            .run(move |transaction| async move {
+                transaction
+                    .object_store("config")
+                    .wrap_context("retrieving 'config' object store")?
+                    .put_kv(&JsString::from(CONFIG_SAVED_LOGIN), &info_js)
+                    .await
+                    .wrap_context("saving login info to database")?;
+                Ok(())
+            })
+            .await
+            .wrap_context("saving login info to database")
     }
 
     pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {

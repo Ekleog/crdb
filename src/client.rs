@@ -18,6 +18,7 @@ pub use sqlite_db::SqliteDb as LocalDb;
 use crate::{SessionToken, User};
 use std::sync::Arc;
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct LoginInfo {
     url: Arc<String>,
     user: User,
