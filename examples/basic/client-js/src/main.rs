@@ -31,7 +31,28 @@ fn main() {
 
 #[function_component(App)]
 fn app() -> Html {
+    let db = use_state(|| None);
+    if let Some(db) = &*db {
+        let _: &basic_api::db::Db = db;
+        unimplemented!() // TODO(example-high)
+    } else {
+        let on_login = Callback::from(move |_| {
+            unimplemented!() // TODO(example-high)
+        });
+        html! {
+            <Login {on_login} />
+        }
+    }
+}
+
+#[derive(Properties, PartialEq)]
+struct LoginProps {
+    on_login: Callback<()>,
+}
+
+#[function_component(Login)]
+fn login(LoginProps { .. }: &LoginProps) -> Html {
     html! {
-        <h1>{ "Hello World" }</h1>
+        <h1>{ "Login" }</h1>
     }
 }
