@@ -14,3 +14,12 @@ pub use connection::ConnectionEvent;
 pub use indexed_db::IndexedDb as LocalDb;
 #[cfg(not(target_arch = "wasm32"))]
 pub use sqlite_db::SqliteDb as LocalDb;
+
+use crate::{SessionToken, User};
+use std::sync::Arc;
+
+pub struct LoginInfo {
+    url: Arc<String>,
+    user: User,
+    token: SessionToken,
+}

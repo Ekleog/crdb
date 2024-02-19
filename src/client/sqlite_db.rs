@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use super::ClientStorageInfo;
+use super::{ClientStorageInfo, LoginInfo};
 
 #[cfg(test)]
 mod tests;
@@ -36,6 +36,10 @@ impl SqliteDb {
     }
 
     pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
         unimplemented!() // TODO(sqlite-high)
     }
 

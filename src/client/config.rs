@@ -10,7 +10,6 @@ macro_rules! generate_client {
         impl $client_db
         {
             pub fn connect<RRL, EH, EHF, CVS>(
-                user: crdb::User,
                 local_db: String,
                 cache_watermark: usize,
                 require_relogin: RRL,
@@ -28,7 +27,6 @@ macro_rules! generate_client {
             {
                 async move {
                     let (db, upgrade_handle) = crdb::ClientDb::new::<$api_config, RRL, EH, EHF, CVS>(
-                        user,
                         &local_db,
                         cache_watermark,
                         require_relogin,
@@ -48,8 +46,8 @@ macro_rules! generate_client {
                 self.db.on_connection_event(cb)
             }
 
-            pub fn login(&self, url: crdb::Arc<String>, token: crdb::SessionToken) {
-                self.db.login(url, token)
+            pub fn login(&self, url: crdb::Arc<String>, user: crdb::User, token: crdb::SessionToken) {
+                self.db.login(url, user, token)
             }
 
             pub fn logout(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {

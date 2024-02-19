@@ -16,7 +16,7 @@ use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
 use std::{
     collections::{hash_map, HashMap, HashSet},
     future::Future,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
 use tokio::sync::{broadcast, oneshot, watch};
@@ -29,7 +29,7 @@ enum UpdateResult {
 }
 
 pub struct ClientDb {
-    user: User,
+    user: Arc<RwLock<Option<User>>>,
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
@@ -56,7 +56,6 @@ const BROADCAST_CHANNEL_SIZE: usize = 64;
 
 impl ClientDb {
     pub async fn new<C: ApiConfig, RRL, EH, EHF, VS>(
-        user: User,
         local_db: &str,
         cache_watermark: usize,
         require_relogin: RRL,
@@ -70,12 +69,17 @@ impl ClientDb {
         EHF: 'static + CrdbFuture<Output = OnError>,
         VS: 'static + Send + Fn(ClientStorageInfo) -> bool,
     {
-        // TODO(client-high): `user` should actually be saved in the localdb, and passed to `login`, not here. In turn,
-        // the db should be cleared upon `login` with a `user` that does not match.
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
         let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
+        let maybe_login = db_bypass
+            .get_saved_login()
+            .await
+            .wrap_context("retrieving saved login info")?;
+        if maybe_login.is_none() {
+            (require_relogin)();
+        }
         let subscribed_queries = db_bypass
             .get_subscribed_queries()
             .await
@@ -124,7 +128,7 @@ impl ClientDb {
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
         let this = ClientDb {
-            user,
+            user: Arc::new(RwLock::new(maybe_login.as_ref().map(|l| l.user))),
             api,
             db,
             db_bypass,
@@ -147,6 +151,9 @@ impl ClientDb {
                 let _ = upgrade_finished_sender.send(num_errors);
             }
         });
+        if let Some(login_info) = maybe_login {
+            this.login(login_info.url, login_info.user, login_info.token);
+        }
         Ok((
             this,
             upgrade_finished.map(|res| res.expect("upgrade task was killed")),
@@ -601,12 +608,24 @@ impl ClientDb {
     /// Note: The fact that `token` is actually a token for the `user` passed at creation of this [`ClientDb`]
     /// is not actually checked, and is assumed to be true. Providing the wrong `user` may lead to object creations
     /// or event submissions being spuriously rejected locally, but will not allow them to succeed remotely anyway.
-    pub fn login(&self, url: Arc<String>, token: SessionToken) {
+    pub fn login(&self, url: Arc<String>, user: User, token: SessionToken) {
+        if self
+            .user
+            .read()
+            .unwrap()
+            .map(|u| u != user)
+            .unwrap_or(false)
+        {
+            // There was already a user logged in, and it is not this user. Drop the whole db.
+            unimplemented!() // TODO(client-high)
+        }
+        *self.user.write().unwrap() = Some(user);
         self.api.login(url, token)
     }
 
     pub async fn logout(&self) -> anyhow::Result<()> {
         self.api.logout();
+        *self.user.write().unwrap() = None;
         self.db.remove_everything().await?;
         Ok(())
     }
@@ -696,8 +715,12 @@ impl ClientDb {
         created_at: EventId,
         object: Arc<T>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
+        let user =
+            self.user.read().unwrap().ok_or_else(|| {
+                crate::Error::Other(anyhow!("called `submit` with no known user"))
+            })?;
         if !object
-            .can_create(self.user, object_id, &*self.db)
+            .can_create(user, object_id, &*self.db)
             .await
             .wrap_context("checking whether object creation seems to be allowed locally")?
         {
@@ -751,10 +774,14 @@ impl ClientDb {
         event_id: EventId,
         event: Arc<T::Event>,
     ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
+        let user =
+            self.user.read().unwrap().ok_or_else(|| {
+                crate::Error::Other(anyhow!("called `submit` with no known user"))
+            })?;
         let _lock = self.vacuum_guard.read().await; // avoid vacuum before setting queries lock
         let object = self.db.get_latest::<T>(Lock::NONE, object_id).await?;
         if !object
-            .can_apply(self.user, object_id, &event, &*self.db)
+            .can_apply(user, object_id, &event, &*self.db)
             .await
             .wrap_context("checking whether object creation seems to be allowed locally")?
         {

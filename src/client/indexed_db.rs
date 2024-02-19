@@ -1,6 +1,6 @@
 use crate::{
     api::UploadId,
-    client::ClientStorageInfo,
+    client::{ClientStorageInfo, LoginInfo},
     db_trait::{Db, Lock},
     error::ResultExt,
     fts,
@@ -252,6 +252,10 @@ impl IndexedDb {
             usage,
             objects_unlocked_this_run: self.objects_unlocked_this_run.get(),
         })
+    }
+
+    pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
+        unimplemented!() // TODO(client-high)
     }
 
     pub async fn query<T: Object>(&self, query: Arc<Query>) -> crate::Result<Vec<ObjectId>> {
