@@ -67,14 +67,32 @@ impl ApiDb {
         EHF: 'static + CrdbFuture<Output = OnError>,
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
-        let connection_event_cb = Arc::new(RwLock::new(Box::new(|_| ()) as _));
+        let connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>> =
+            Arc::new(RwLock::new(Box::new(|_| ()) as _));
+        let event_cb = {
+            let connection_event_cb = connection_event_cb.clone();
+            Box::new(move |evt| {
+                let _need_relogin = match evt {
+                    ConnectionEvent::LoggingIn => false,
+                    ConnectionEvent::FailedConnecting(_) => true,
+                    ConnectionEvent::FailedSendingToken(_) => true,
+                    ConnectionEvent::LostConnection(_) => false,
+                    ConnectionEvent::InvalidToken(_) => true,
+                    ConnectionEvent::Connected => false,
+                    ConnectionEvent::TimeOffset(_) => false,
+                    ConnectionEvent::LoggedOut => true,
+                };
+                // TODO(client-high): use _need_relogin to call user code
+                connection_event_cb.read().unwrap()(evt);
+            })
+        };
         let (connection, commands) = mpsc::unbounded();
         let (requests, requests_receiver) = mpsc::unbounded();
         crate::spawn(
             Connection::new(
                 commands,
                 requests_receiver,
-                connection_event_cb.clone(),
+                event_cb,
                 update_sender,
                 get_subscribed_objects,
                 get_subscribed_queries,

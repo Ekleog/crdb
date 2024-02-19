@@ -11,7 +11,7 @@ use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::Duration,
 };
 use tokio::time::Instant;
@@ -132,7 +132,7 @@ pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
     // The last `bool` shows whether we already started sending an answer to the Sender. If yes, we need to
     // kill it with an Error rather than restart it from 0, to avoid duplicate answers.
     pending_requests: HashMap<RequestId, (Arc<RequestWithSidecar>, ResponseSender, bool)>,
-    event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
+    event_cb: Box<dyn Send + Sync + Fn(ConnectionEvent)>,
     update_sender: mpsc::UnboundedSender<Updates>,
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
@@ -149,7 +149,7 @@ where
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
         requests: mpsc::UnboundedReceiver<(ResponseSender, Arc<RequestWithSidecar>)>,
-        event_cb: Arc<RwLock<Box<dyn Fn(ConnectionEvent) + Sync + Send>>>,
+        event_cb: Box<dyn Fn(ConnectionEvent) + Sync + Send>,
         update_sender: mpsc::UnboundedSender<Updates>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
@@ -228,7 +228,7 @@ where
                     // There was an error in the stream. Likely disconnection.
                     Err(err) => {
                         self.state = self.state.disconnect();
-                        self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
+                        (self.event_cb)(ConnectionEvent::LostConnection(err));
                     }
 
                     // We got a new text message.
@@ -245,7 +245,7 @@ where
                                 self.state = State::Connected { url, token, socket, expected_binaries: None };
                                 self.next_ping = Some(Instant::now() + PING_INTERVAL);
                                 self.next_pong_deadline = None;
-                                self.event_cb.read().unwrap()(ConnectionEvent::Connected);
+                                (self.event_cb)(ConnectionEvent::Connected);
 
                                 // Re-subscribe to the previously subscribed queries and objects
                                 // Start with subscribed objects, so that we easily tell the server what we already know about them.
@@ -290,11 +290,11 @@ where
                                 last_response: true
                             } if req == request_id && tok == token => {
                                 self.state = State::NoValidInfo;
-                                self.event_cb.read().unwrap()(ConnectionEvent::InvalidToken(token));
+                                (self.event_cb)(ConnectionEvent::InvalidToken(token));
                             }
                             resp => {
-                                self.state = State::NoValidInfo;
-                                self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(
+                                self.state = State::Disconnected { url, token };
+                                (self.event_cb)(ConnectionEvent::LostConnection(
                                     anyhow!("Unexpected server answer to login request: {resp:?}")
                                 ));
                             }
@@ -308,7 +308,7 @@ where
                         // We got a new text message while still expecting a binary message. Protocol violation.
                         State::Connected { expected_binaries: Some(_), .. } => {
                             self.state = self.state.disconnect();
-                            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(
+                            (self.event_cb)(ConnectionEvent::LostConnection(
                                 anyhow!("Unexpected server message while waiting for binaries: {message:?}")
                             ));
                         }
@@ -332,7 +332,7 @@ where
                             }
                         } else {
                             self.state = self.state.disconnect();
-                            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(
+                            (self.event_cb)(ConnectionEvent::LostConnection(
                                 anyhow!("Unexpected server binary frame while not waiting for it")
                             ));
                         }
@@ -357,7 +357,7 @@ where
                 let mut socket = match implem::connect(&*url).await {
                     Ok(socket) => socket,
                     Err(err) => {
-                        self.event_cb.read().unwrap()(ConnectionEvent::FailedConnecting(err));
+                        (self.event_cb)(ConnectionEvent::FailedConnecting(err));
                         self.state = State::Disconnected { url, token }; // try again next loop
                         continue;
                     }
@@ -368,7 +368,7 @@ where
                     request: Arc::new(Request::SetToken(token)),
                 };
                 if let Err(err) = Self::send(&mut socket, &message).await {
-                    self.event_cb.read().unwrap()(ConnectionEvent::FailedSendingToken(err));
+                    (self.event_cb)(ConnectionEvent::FailedSendingToken(err));
                     self.state = State::Disconnected { url, token }; // try again next loop
                     continue;
                 }
@@ -428,11 +428,11 @@ where
         match command {
             Command::Login { url, token } => {
                 self.state = State::Disconnected { url, token };
-                self.event_cb.read().unwrap()(ConnectionEvent::LoggingIn);
+                (self.event_cb)(ConnectionEvent::LoggingIn);
             }
             Command::Logout => {
                 self.state = State::NoValidInfo;
-                self.event_cb.read().unwrap()(ConnectionEvent::LoggedOut);
+                (self.event_cb)(ConnectionEvent::LoggedOut);
             }
         }
     }
@@ -507,15 +507,15 @@ where
                         .time_ms_i()
                         .expect("Time was obviously wrong");
                     if server_time.saturating_sub(now) > 0 {
-                        self.event_cb.read().unwrap()(ConnectionEvent::TimeOffset(
+                        (self.event_cb)(ConnectionEvent::TimeOffset(
                             server_time.saturating_sub(now),
                         ));
                     } else if server_time.saturating_sub(self.last_ping) < 0 {
-                        self.event_cb.read().unwrap()(ConnectionEvent::TimeOffset(
+                        (self.event_cb)(ConnectionEvent::TimeOffset(
                             server_time.saturating_sub(self.last_ping),
                         ));
                     } else {
-                        self.event_cb.read().unwrap()(ConnectionEvent::TimeOffset(0));
+                        (self.event_cb)(ConnectionEvent::TimeOffset(0));
                     }
                 } else {
                     tracing::warn!(
@@ -589,7 +589,7 @@ where
             panic!("Called send_connected while not connected");
         };
         if let Err(err) = implem::send_sidecar(socket, sidecar).await {
-            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
+            (self.event_cb)(ConnectionEvent::LostConnection(err));
             self.state = State::Disconnected {
                 url: url.clone(),
                 token: *token,
@@ -605,7 +605,7 @@ where
             panic!("Called send_connected while not connected");
         };
         if let Err(err) = Self::send(socket, &message).await {
-            self.event_cb.read().unwrap()(ConnectionEvent::LostConnection(err));
+            (self.event_cb)(ConnectionEvent::LostConnection(err));
             self.state = State::Disconnected {
                 url: url.clone(),
                 token: *token,
