@@ -31,7 +31,6 @@ fn main() {
 
 #[function_component(App)]
 fn app() -> Html {
-    panic!("foo bar {}", 42);
     html! {
         <h1>{ "Hello World" }</h1>
     }
