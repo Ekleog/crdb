@@ -49,12 +49,13 @@ pub struct ApiDb {
 }
 
 impl ApiDb {
-    pub async fn new<C, GSO, GSQ, BG, EH, EHF>(
+    pub async fn new<C, GSO, GSQ, BG, EH, EHF, RRL>(
         upload_queue: Arc<LocalDb>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
         binary_getter: Arc<BG>,
         error_handler: EH,
+        require_relogin: RRL,
     ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
     where
         C: ApiConfig,
@@ -65,6 +66,7 @@ impl ApiDb {
         BG: 'static + Db,
         EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + CrdbFuture<Output = OnError>,
+        RRL: 'static + Send + Sync + Fn(),
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>> =
@@ -72,7 +74,7 @@ impl ApiDb {
         let event_cb = {
             let connection_event_cb = connection_event_cb.clone();
             Box::new(move |evt| {
-                let _need_relogin = match evt {
+                let need_relogin = match evt {
                     ConnectionEvent::LoggingIn => false,
                     ConnectionEvent::FailedConnecting(_) => true,
                     ConnectionEvent::FailedSendingToken(_) => true,
@@ -82,7 +84,9 @@ impl ApiDb {
                     ConnectionEvent::TimeOffset(_) => false,
                     ConnectionEvent::LoggedOut => true,
                 };
-                // TODO(client-high): use _need_relogin to call user code
+                if need_relogin {
+                    (require_relogin)();
+                }
                 connection_event_cb.read().unwrap()(evt);
             })
         };

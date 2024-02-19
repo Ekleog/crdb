@@ -55,19 +55,23 @@ pub struct ClientDb {
 const BROADCAST_CHANNEL_SIZE: usize = 64;
 
 impl ClientDb {
-    pub async fn new<C: ApiConfig, EH, EHF, VS>(
+    pub async fn new<C: ApiConfig, RRL, EH, EHF, VS>(
         user: User,
         local_db: &str,
         cache_watermark: usize,
+        require_relogin: RRL,
         error_handler: EH,
         vacuum_schedule: ClientVacuumSchedule<VS>,
     ) -> anyhow::Result<(ClientDb, impl CrdbFuture<Output = usize>)>
     where
         C: ApiConfig,
+        RRL: 'static + Send + Sync + Fn(),
         EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + CrdbFuture<Output = OnError>,
         VS: 'static + Send + Fn(ClientStorageInfo) -> bool,
     {
+        // TODO(client-high): `user` should actually be saved in the localdb, and passed to `login`, not here. In turn,
+        // the db should be cleared upon `login` with a `user` that does not match.
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
         let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
@@ -94,7 +98,7 @@ impl ClientDb {
         ));
         let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
         let subscribed_objects = Arc::new(Mutex::new(subscribed_objects));
-        let (api, updates_receiver) = ApiDb::new::<C, _, _, _, _, _>(
+        let (api, updates_receiver) = ApiDb::new::<C, _, _, _, _, _, _>(
             db_bypass.clone(),
             {
                 let subscribed_objects = subscribed_objects.clone();
@@ -113,6 +117,7 @@ impl ClientDb {
             },
             db.clone(),
             error_handler,
+            require_relogin,
         )
         .await?;
         let api = Arc::new(api);

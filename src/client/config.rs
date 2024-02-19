@@ -9,10 +9,11 @@ macro_rules! generate_client {
 
         impl $client_db
         {
-            pub fn connect<EH, EHF, CVS>(
+            pub fn connect<RRL, EH, EHF, CVS>(
                 user: crdb::User,
                 local_db: String,
                 cache_watermark: usize,
+                require_relogin: RRL,
                 error_handler: EH,
                 vacuum_schedule: crdb::ClientVacuumSchedule<CVS>,
             ) -> impl crdb::CrdbFuture<Output = crdb::anyhow::Result<(
@@ -20,12 +21,20 @@ macro_rules! generate_client {
                 impl crdb::CrdbFuture<Output = usize>,
             )>>
             where
+                RRL: 'static + Send + Sync + Fn(),
                 EH: 'static + Send + Sync + Fn(crdb::Upload, crdb::Error) -> EHF,
                 EHF: 'static + crdb::CrdbFuture<Output = crdb::OnError>,
                 CVS: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool,
             {
                 async move {
-                    let (db, upgrade_handle) = crdb::ClientDb::new::<$api_config, EH, EHF, CVS>(user, &local_db, cache_watermark, error_handler, vacuum_schedule).await?;
+                    let (db, upgrade_handle) = crdb::ClientDb::new::<$api_config, RRL, EH, EHF, CVS>(
+                        user,
+                        &local_db,
+                        cache_watermark,
+                        require_relogin,
+                        error_handler,
+                        vacuum_schedule,
+                    ).await?;
                     Ok(($client_db {
                         db,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
