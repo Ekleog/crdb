@@ -1,3 +1,8 @@
+use std::str::FromStr;
+
+use basic_api::AuthInfo;
+use crdb::{SessionToken, User};
+use ulid::Ulid;
 use yew::prelude::*;
 
 fn main() {
@@ -47,7 +52,7 @@ fn app() -> Html {
 
 #[derive(Properties, PartialEq)]
 struct LoginProps {
-    on_login: Callback<()>,
+    on_login: Callback<(User, SessionToken)>,
 }
 
 fn user_to_ulid(mut user: String) -> String {
@@ -83,10 +88,24 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
     };
     let onclick = {
         let on_login = on_login.clone();
+        let state = state.clone();
         move |_| {
             let on_login = on_login.clone();
+            let state = state.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                on_login.emit(()) // TODO(example-high)
+                let user = format!("{:0>26}", state.0);
+                let user = User(Ulid::from_str(&user).expect("username is invalid"));
+                let auth_info = AuthInfo { user, pass: state.1.clone() };
+                let token = gloo_net::http::Request::post("/api/login")
+                    .json(&auth_info)
+                    .expect("failed serializing auth info")
+                    .send()
+                    .await
+                    .expect("failed sending login request")
+                    .json::<SessionToken>()
+                    .await
+                    .expect("failed deserializing login response");
+                on_login.emit((user, token))
             });
         }
     };

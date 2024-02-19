@@ -7,7 +7,10 @@ edition = "2021"
 basic-api = { path = "../api" }
 console_error_panic_hook = "0.1.7"
 crdb = { path = "../../..", features = ["client"] }
+gloo-net = "0.5.0"
+tracing = "0.1.40"
 tracing-wasm = "0.2.1"
+ulid = "1.1"
 yew = { version = "0.21.0", features = ["csr"] }
 wasm-bindgen-futures = "0.4.39"
 web-sys = "0.3.66"
