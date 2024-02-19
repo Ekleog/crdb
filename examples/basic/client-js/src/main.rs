@@ -107,7 +107,7 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
                     .expect("failed sending login request")
                     .json::<SessionToken>()
                     .await
-                    .expect("failed deserializing login response");
+                    .expect("failed deserializing login response, probably wrong password");
                 on_login.emit((user, token))
             });
         }
