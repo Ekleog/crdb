@@ -60,10 +60,7 @@ fn user_to_ulid(mut user: String) -> String {
             'U' => 'V',
             c => c,
         })
-        .filter(|&c| {
-            (c >= '0' && c <= '9')
-                || (c >= 'A' && c <= 'Z')
-        })
+        .filter(|&c| (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z'))
         .collect()
 }
 
