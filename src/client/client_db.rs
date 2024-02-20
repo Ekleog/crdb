@@ -1218,21 +1218,23 @@ pub struct ClientStorageInfo {
     pub objects_unlocked_this_run: usize,
 }
 
-impl<F> ClientVacuumSchedule<F> {
-    pub fn new(frequency: Duration) -> ClientVacuumSchedule<fn(ClientStorageInfo) -> bool> {
+impl ClientVacuumSchedule<fn(ClientStorageInfo) -> bool> {
+    pub fn new(frequency: Duration) -> Self {
         ClientVacuumSchedule {
             frequency,
             filter: |_| true,
         }
     }
 
-    pub fn never() -> ClientVacuumSchedule<fn(ClientStorageInfo) -> bool> {
+    pub fn never() -> Self {
         ClientVacuumSchedule {
             frequency: Duration::from_secs(86400),
             filter: |_| false,
         }
     }
+}
 
+impl<F> ClientVacuumSchedule<F> {
     /// If the provided function returns `true`, then vacuum will happen
     ///
     /// The `ClientStorageInfo` provided is all approximate information.
