@@ -7,6 +7,7 @@ use yew_hooks::prelude::*;
 
 const CACHE_WATERMARK: usize = 8 * 1024 * 1024;
 const VACUUM_FREQUENCY: Duration = Duration::from_secs(3600);
+const WEBSOCKET_URL: &str = "ws://localhost:3000/api/ws";
 
 fn main() {
     tracing_wasm::set_as_global_default();
@@ -89,7 +90,7 @@ fn app() -> Html {
                 let logging_in = logging_in.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     tracing::trace!("sending login to db");
-                    db.login(Arc::new(String::from("/api/ws")), user, token)
+                    db.login(Arc::new(String::from(WEBSOCKET_URL)), user, token)
                         .await
                         .expect("failed logging in");
                     tracing::trace!("db acknowledged login");

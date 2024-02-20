@@ -356,6 +356,7 @@ where
             if let State::Disconnected { url, token } = &self.state {
                 let url = url.clone();
                 let token = *token;
+                tracing::trace!(%url, "connecting to websocket");
                 let mut socket = match implem::connect(&*url).await {
                     Ok(socket) => socket,
                     Err(err) => {
