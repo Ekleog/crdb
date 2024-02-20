@@ -4,7 +4,9 @@ use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
 use yew::prelude::*;
-use yew_hooks::prelude::*;
+
+mod use_async;
+use use_async::*;
 
 const CACHE_WATERMARK: usize = 8 * 1024 * 1024;
 const VACUUM_FREQUENCY: Duration = Duration::from_secs(3600);
@@ -43,45 +45,47 @@ fn main() {
 fn app() -> Html {
     let require_relogin = use_state(|| false);
     let logging_in = use_state(|| false);
-    let db = use_async_with_options(
-        {
-            let require_relogin = require_relogin.clone();
-            async move {
-                let (db, upgrade_handle) = basic_api::db::Db::connect(
-                    String::from("basic-crdb"),
-                    CACHE_WATERMARK,
-                    move || {
-                        tracing::info!("db requested a relogin");
-                        require_relogin.set(true);
-                    },
-                    |upload, err| async move {
-                        panic!("failed submitting {upload:?}: {err:?}");
-                    },
-                    crdb::ClientVacuumSchedule::new(VACUUM_FREQUENCY),
-                )
-                .await
-                .map_err(|err| format!("{err:?}"))?;
-                let upgrade_errs = upgrade_handle.await;
-                if upgrade_errs != 0 {
-                    return Err(format!("got {upgrade_errs} errors while upgrading"));
-                }
-                db.on_connection_event(|evt| {
-                    tracing::info!(?evt, "connection event");
-                });
-                Ok(Rc::new(db))
+    let db = use_async((), {
+        let require_relogin = require_relogin.clone();
+        move |_| async move {
+            let (db, upgrade_handle) = basic_api::db::Db::connect(
+                String::from("basic-crdb"),
+                CACHE_WATERMARK,
+                move || {
+                    tracing::info!("db requested a relogin");
+                    require_relogin.set(true);
+                },
+                |upload, err| async move {
+                    panic!("failed submitting {upload:?}: {err:?}");
+                },
+                crdb::ClientVacuumSchedule::new(VACUUM_FREQUENCY),
+            )
+            .await
+            .map_err(|err| format!("{err:?}"))?;
+            let upgrade_errs = upgrade_handle.await;
+            if upgrade_errs != 0 {
+                return Err(format!("got {upgrade_errs} errors while upgrading"));
             }
-        },
-        UseAsyncOptions::enable_auto(),
-    );
-    if db.loading || *logging_in {
-        html! {
-            <h1>{ "Loading…" }</h1>
+            db.on_connection_event(|evt| {
+                tracing::info!(?evt, "connection event");
+            });
+            Ok(Rc::new(db))
         }
-    } else if let Some(err) = &db.error {
-        panic!("Unexpected error loading database:\n{err}");
-    } else if *require_relogin {
+    });
+    if *logging_in {
+        return html! {
+            <h1>{ "Loading…" }</h1>
+        };
+    }
+    let db = db.status();
+    let db = match db {
+        UseAsyncStatus::Pending => {
+            return html! { <h1>{ "Loading…" }</h1> };
+        }
+        UseAsyncStatus::Ready(db) => db.as_ref().expect("failed loading database").clone(),
+    };
+    if *require_relogin {
         let on_login = Callback::from({
-            let db = db.data.clone().unwrap();
             let require_relogin = require_relogin.clone();
             let logging_in = logging_in.clone();
             move |(user, token)| {
@@ -102,14 +106,9 @@ fn app() -> Html {
         html! {
             <Login {on_login} />
         }
-    } else if let Some(db) = &db.data {
-        html! {
-            <Refresher db={(*db).clone()} />
-        }
     } else {
-        // See https://github.com/jetli/yew-hooks/issues/40 for why this branch is required
         html! {
-            <h1>{ "This should not be visible more than a fraction of a second" }</h1>
+            <Refresher {db} />
         }
     }
 }
@@ -137,30 +136,32 @@ impl<T> PartialEq for RcEq<T> {
 #[function_component(Refresher)]
 fn refresher(RefresherProps { db }: &RefresherProps) -> Html {
     // TODO(misc-high): write a crdb-yew to hide that and only refresh each individual query when required
-    let counter = use_state(|| 0); // Counter used only to force a refresh of each component that uses DbContext
+    let counter = use_mut_ref(|| 0); // Counter used only to force a refresh of each component that uses DbContext
+    let force_update = use_force_update();
+    *counter.borrow_mut() += 1;
     use_effect_with(RcEq(db.clone()), {
-        let counter = counter.clone();
+        let force_update = force_update.clone();
         move |RcEq(db)| {
-            let counter = counter.clone();
+            let force_update = force_update.clone();
             let db = db.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let mut updates = db.listen_for_all_updates();
-                let counter = counter.clone();
+                let force_update = force_update.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     loop {
                         match updates.recv().await {
                             Err(crdb::broadcast::error::RecvError::Closed) => break,
                             _ => (), // ignore the contents, just refresh
                         }
-                        tracing::info!("refreshing");
-                        counter.set(*counter + 1);
+                        tracing::debug!("refreshing the whole app");
+                        force_update.force_update();
                     }
                 });
             })
         }
     });
     html! {
-        <ContextProvider<DbContext> context={DbContext(db.clone(), *counter)}>
+        <ContextProvider<DbContext> context={DbContext(db.clone(), *counter.borrow())}>
             <MainView />
         </ContextProvider<DbContext>>
     }
@@ -422,32 +423,28 @@ fn query_remote_items() -> Html {
 
 #[function_component(ShowLocalDb)]
 fn show_local_db() -> Html {
-    let db = use_context::<DbContext>().unwrap().0;
-    let local_items = use_async_with_options(
+    let db = use_context::<DbContext>().unwrap();
+    let counter = db.1;
+    let local_items = use_async(db, |db| {
+        let db = db.clone();
         async move {
-            Ok::<_, String>(
-                db.query_item_local(Arc::new(Query::All(Vec::new())))
-                    .await
-                    .map_err(|err| format!("{err:?}"))?
-                    .map(|v| v.map_err(|err| format!("{err:?}")))
+            Ok::<_, crdb::Error>(
+                db.0.query_item_local(Arc::new(Query::All(Vec::new())))
+                    .await?
                     .collect::<Vec<_>>()
                     .await,
             )
-        },
-        UseAsyncOptions::enable_auto(),
-    );
-    let local_items = if local_items.loading {
-        html! { <h6>{ "Loading local items" }</h6> }
-    } else if let Some(err) = &local_items.error {
-        panic!("failed loading local items: {err:?}");
-    } else if let Some(local_items) = &local_items.data {
-        local_items
-            .iter()
-            .map(|i| html! {<> <br />{ format!("{i:?}") } </>})
-            .collect::<Html>()
-    } else {
-        html! { <h6>{ "Transient message, should go away soon" }</h6> }
+        }
+    });
+    tracing::debug!(?local_items, ?counter, "refreshing show_local_db");
+    let local_items = match local_items.status() {
+        UseAsyncStatus::Pending => return html! { <h6>{ "Loading local items…" }</h6> },
+        UseAsyncStatus::Ready(r) => r.as_ref().expect("failed loading local items"),
     };
+    let local_items = local_items
+        .iter()
+        .map(|i| html! {<> <br />{ format!("{i:?}") } </>})
+        .collect::<Html>();
     html! {<>
         <h3>{ "Local DB" }</h3>
         { local_items }
