@@ -11,10 +11,10 @@ pub struct AuthInfo {
 
 #[derive(Clone, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
 pub struct Item {
-    owner: User,
-    text: SearchableString,
-    tags: BTreeSet<DbPtr<Tag>>,
-    file: Option<BinPtr>,
+    pub owner: User,
+    pub text: SearchableString,
+    pub tags: BTreeSet<DbPtr<Tag>>,
+    pub file: Option<BinPtr>,
 }
 
 impl crdb::Object for Item {

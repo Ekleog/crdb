@@ -1,6 +1,6 @@
-use basic_api::AuthInfo;
-use crdb::{SessionToken, User};
-use std::{rc::Rc, str::FromStr, sync::Arc, time::Duration};
+use basic_api::{AuthInfo, Item};
+use crdb::{fts::SearchableString, Importance, SessionToken, User};
+use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
 use yew::prelude::*;
 use yew_hooks::prelude::*;
@@ -243,5 +243,54 @@ fn main_view() -> Html {
                 onclick={logout}
                 />
         </h1>
+        <CreateItem />
+    </>}
+}
+
+#[function_component(CreateItem)]
+fn create_item() -> Html {
+    let db = use_context::<DbContext>().unwrap().0;
+    let state = use_state(|| String::new());
+    let onchange = {
+        let state = state.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            state.set(input.value());
+        }
+    };
+    let create_item = Callback::from({
+        let state = state.clone();
+        move |importance| {
+            let item = Item {
+                owner: db.user().unwrap(),
+                text: SearchableString::from(&*state),
+                tags: BTreeSet::new(),
+                file: None,
+            };
+            let db = db.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = db.create_item(importance, Arc::new(item)).await.expect("failed creating item");
+            })
+        }
+    });
+    html! {<>
+        { "Create Item: "}
+        <input
+            type="text"
+            placeholder="text"
+            value={(*state).clone()}
+            {onchange} />
+        <input
+            type="button"
+            value="Create Item"
+            onclick={create_item.reform(|_| Importance::Latest)} />
+        <input
+            type="button"
+            value="Create Item & Subscribe"
+            onclick={create_item.reform(|_| Importance::Subscribe)} />
+        <input
+            type="button"
+            value="Create Item & Lock"
+            onclick={create_item.reform(|_| Importance::Lock)} />
     </>}
 }
