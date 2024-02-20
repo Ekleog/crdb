@@ -253,20 +253,20 @@ fn main_view() -> Html {
 #[function_component(CreateItem)]
 fn create_item() -> Html {
     let db = use_context::<DbContext>().unwrap().0;
-    let state = use_state(|| String::new());
+    let text = use_state(|| String::new());
     let onchange = {
-        let state = state.clone();
+        let text = text.clone();
         move |e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            state.set(input.value());
+            text.set(input.value());
         }
     };
     let create_item = Callback::from({
-        let state = state.clone();
+        let text = text.clone();
         move |importance| {
             let item = Item {
                 owner: db.user().unwrap(),
-                text: SearchableString::from(&*state),
+                text: SearchableString::from(&*text),
                 tags: BTreeSet::new(),
                 file: None,
             };
@@ -284,7 +284,7 @@ fn create_item() -> Html {
         <input
             type="text"
             placeholder="text"
-            value={(*state).clone()}
+            value={(*text).clone()}
             {onchange} />
         <input
             type="button"
