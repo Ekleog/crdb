@@ -10,6 +10,7 @@ use crate::{
     crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
+    future::{CrdbSend, CrdbSync},
     ids::QueryId,
     messages::{
         MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
@@ -59,14 +60,14 @@ impl ApiDb {
     ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
     where
         C: ApiConfig,
-        GSO: 'static + Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
+        GSO: 'static + CrdbSend + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
             + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
         BG: 'static + Db,
-        EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
+        EH: 'static + CrdbSend + CrdbSync + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + CrdbFuture<Output = OnError>,
-        RRL: 'static + Send + Sync + Fn(),
+        RRL: 'static + CrdbSend + CrdbSync + Fn(),
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>> =
@@ -528,7 +529,7 @@ async fn upload_resender<C, BG, EH, EHF>(
 ) where
     C: ApiConfig,
     BG: Db,
-    EH: 'static + Send + Sync + Fn(Upload, crate::Error) -> EHF,
+    EH: 'static + CrdbSend + CrdbSync + Fn(Upload, crate::Error) -> EHF,
     EHF: 'static + CrdbFuture<Output = OnError>,
 {
     // The below loop is split into two sub parts: all that is just sent once, and all that requires

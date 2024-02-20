@@ -1,5 +1,6 @@
 use crate::{
     crdb_internal::Lock,
+    future::CrdbFn,
     ids::QueryId,
     messages::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
@@ -132,7 +133,7 @@ pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
     // The last `bool` shows whether we already started sending an answer to the Sender. If yes, we need to
     // kill it with an Error rather than restart it from 0, to avoid duplicate answers.
     pending_requests: HashMap<RequestId, (Arc<RequestWithSidecar>, ResponseSender, bool)>,
-    event_cb: Box<dyn Send + Sync + Fn(ConnectionEvent)>,
+    event_cb: Box<dyn CrdbFn<ConnectionEvent>>,
     update_sender: mpsc::UnboundedSender<Updates>,
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
@@ -149,7 +150,7 @@ where
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
         requests: mpsc::UnboundedReceiver<(ResponseSender, Arc<RequestWithSidecar>)>,
-        event_cb: Box<dyn Fn(ConnectionEvent) + Sync + Send>,
+        event_cb: Box<dyn CrdbFn<ConnectionEvent>>,
         update_sender: mpsc::UnboundedSender<Updates>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,

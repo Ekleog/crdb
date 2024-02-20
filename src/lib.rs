@@ -38,6 +38,8 @@ use future::{CrdbSend, CrdbSync};
 
 #[cfg(feature = "client")]
 mod client;
+#[cfg(feature = "client")]
+pub use client::ClientVacuumSchedule;
 #[cfg(not(feature = "client"))]
 mod client {
     #[macro_export]
@@ -77,6 +79,7 @@ pub mod crdb_internal {
         cache::ObjectCache,
         db_trait::{Db, Lock},
         error::ResultExt,
+        future::{CrdbSend, CrdbSync},
         hash_binary,
         messages::{Request, Update, UpdateData, Updates, Upload},
         object::{parse_snapshot, parse_snapshot_ref, CanDoCallbacks},
