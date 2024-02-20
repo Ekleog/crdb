@@ -43,16 +43,15 @@ pub trait CrdbFutureExt: CrdbFuture {
 
 impl<T: CrdbFuture> CrdbFutureExt for T {}
 
-pub fn spawn<F>(f: F) -> tokio::task::JoinHandle<F::Output>
+pub fn spawn<F>(f: F)
 where
-    F: 'static + CrdbFuture,
-    F::Output: CrdbSend,
+    F: 'static + CrdbFuture<Output = ()>,
 {
     #[cfg(not(target_arch = "wasm32"))]
-    let res = tokio::task::spawn(f);
+    tokio::task::spawn(f);
 
     #[cfg(target_arch = "wasm32")]
-    let res = tokio::task::spawn_local(f);
-
-    res
+    wasm_bindgen_futures::spawn_local(async move {
+        f.await;
+    });
 }
