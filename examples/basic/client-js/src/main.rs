@@ -216,6 +216,12 @@ impl PartialEq for MainViewProps {
     }
 }
 
+fn show_user(user: User) -> String {
+    let s = format!("{}", user.0);
+    let i = s.find(|c| c != '0').unwrap_or_else(|| s.len() - 3);
+    s[i..].to_owned()
+}
+
 #[function_component(MainView)]
 fn main_view(MainViewProps { db }: &MainViewProps) -> Html {
     let logout = {
@@ -229,7 +235,7 @@ fn main_view(MainViewProps { db }: &MainViewProps) -> Html {
     };
     html! {<>
         <h1>
-            { format!("Logged in as {} ", db.user().unwrap().0) }
+            { format!("Logged in as {} ", show_user(db.user().unwrap())) }
             <input
                 type="button"
                 value="Logout"
