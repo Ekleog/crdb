@@ -6,9 +6,25 @@ use crate::{
     NewSession, Session, SessionRef, SessionToken, User,
 };
 use anyhow::Context;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 use ulid::Ulid;
 use web_time::SystemTime;
+
+// Ignore issues that could arise after year ~4970. MarkActive will only happen with
+// server-controlled systemtimes anyway.
+const MAX_TIME_AHEAD: Duration = Duration::from_secs(3600 * 24 * 366 * 3000);
+
+fn reasonable_system_time(u: &mut arbitrary::Unstructured) -> arbitrary::Result<SystemTime> {
+    let d = u.arbitrary::<Duration>()?;
+    if d < MAX_TIME_AHEAD {
+        Ok(SystemTime::UNIX_EPOCH + d)
+    } else {
+        Err(arbitrary::Error::IncorrectFormat)
+    }
+}
 
 #[derive(Debug, arbitrary::Arbitrary)]
 enum Op {
@@ -16,8 +32,7 @@ enum Op {
     Resume(usize),
     MarkActive(
         usize,
-        #[arbitrary(with = |u: &mut arbitrary::Unstructured| u.arbitrary::<std::time::Duration>().map(|d| SystemTime::UNIX_EPOCH + d))]
-         SystemTime,
+        #[arbitrary(with = reasonable_system_time)] SystemTime,
     ),
     Rename(usize, String),
     ListSessions(usize),
