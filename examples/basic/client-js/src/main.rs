@@ -1,6 +1,6 @@
 use basic_api::AuthInfo;
 use crdb::{SessionToken, User};
-use std::{rc::Rc, str::FromStr, time::Duration};
+use std::{rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
 use yew::prelude::*;
 use yew_hooks::prelude::*;
@@ -64,19 +64,27 @@ fn app() -> Html {
         },
         UseAsyncOptions::enable_auto(),
     );
-    if *require_relogin {
-        let on_login = Callback::from(move |(user, token)| {
-            panic!("need to login {user:?} with token {token:?}") // TODO(example-high)
-        });
-        html! {
-            <Login {on_login} />
-        }
-    } else if db.loading {
+    if db.loading {
         html! {
             <h1>{ "Loading…" }</h1>
         }
     } else if let Some(err) = &db.error {
         panic!("Unexpected error loading database:\n{err}");
+    } else if *require_relogin {
+        let on_login = Callback::from({
+            let db = db.data.clone().unwrap();
+            move |(user, token)| {
+                let db = db.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    db.login(Arc::new(String::from("/api/ws")), user, token)
+                        .await
+                        .expect("failed logging in");
+                });
+            }
+        });
+        html! {
+            <Login {on_login} />
+        }
     } else if let Some(db) = &db.data {
         let _: &Rc<basic_api::db::Db> = db;
         unimplemented!() // TODO(example-high)
