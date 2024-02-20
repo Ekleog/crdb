@@ -22,7 +22,7 @@ use std::{any::Any, sync::Arc};
 
 pub use dbptr::DbPtr;
 pub use error::{Error, Result, SerializableError};
-pub use future::{spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
+pub use future::{sleep, sleep_until, spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
 pub use ids::{
     BinPtr, EventId, ObjectId, QueryId, SessionRef, SessionToken, TypeId, Updatedness, User,
 };

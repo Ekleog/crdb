@@ -89,6 +89,7 @@ tracing-wasm = { version = "0.2.1", optional = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.11", features = ["js"] }
 gloo-net = "0.5.0"
+gloo-timers = { version = "0.3.0", features = ["futures"] }
 indexed-db = "0.4.0"
 js-sys = "0.3.67"
 serde-wasm-bindgen = "0.6.3"

@@ -55,3 +55,23 @@ where
         f.await;
     });
 }
+
+pub async fn sleep(duration: std::time::Duration) {
+    #[cfg(not(target_arch = "wasm32"))]
+    tokio::time::sleep(duration).await;
+
+    #[cfg(target_arch = "wasm32")]
+    gloo_timers::future::sleep(duration).await;
+}
+
+pub async fn sleep_until(time: web_time::Instant) {
+    #[cfg(not(target_arch = "wasm32"))]
+    tokio::time::sleep_until(tokio::time::Instant::from_std(time)).await;
+
+    #[cfg(target_arch = "wasm32")]
+    gloo_timers::future::sleep(
+        time.checked_duration_since(web_time::Instant::now())
+            .unwrap_or(std::time::Duration::ZERO),
+    )
+    .await;
+}

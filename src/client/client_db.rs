@@ -266,7 +266,7 @@ impl ClientDb {
                 };
 
                 tokio::select! {
-                    _ = tokio::time::sleep(vacuum_schedule.frequency) => (),
+                    _ = crate::sleep(vacuum_schedule.frequency) => (),
                     _ = cancellation_token.cancelled() => break,
                 }
             }

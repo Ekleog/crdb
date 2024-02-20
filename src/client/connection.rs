@@ -16,7 +16,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::time::Instant;
+use web_time::Instant;
 use web_time::SystemTime;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -181,11 +181,11 @@ where
                 // Retry connecting if we're looping there
                 // TODO(perf-low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
-                _reconnect_attempt_interval = tokio::time::sleep(RECONNECT_INTERVAL),
+                _reconnect_attempt_interval = crate::sleep(RECONNECT_INTERVAL),
                     if self.is_trying_to_connect() => (),
 
                 // Send the next ping, if it's time to do it
-                Some(_) = OptionFuture::from(self.next_ping.map(tokio::time::sleep_until)), if self.is_connected() => {
+                Some(_) = OptionFuture::from(self.next_ping.map(crate::sleep_until)), if self.is_connected() => {
                     let request_id = self.next_request_id();
                     let _ = self.send_connected(&ClientMessage {
                         request_id,
@@ -197,7 +197,7 @@ where
                 }
 
                 // Next pong did not come in time, disconnect
-                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| tokio::time::sleep_until(t))), if self.is_connecting() => {
+                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| crate::sleep_until(t))), if self.is_connecting() => {
                     self.state = self.state.disconnect();
                     self.next_pong_deadline = None;
                 }
