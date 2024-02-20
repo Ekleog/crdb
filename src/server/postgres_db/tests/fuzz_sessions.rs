@@ -13,17 +13,17 @@ use std::{
 use ulid::Ulid;
 use web_time::SystemTime;
 
+const NANOS_PER_SEC: u128 = 1_000_000_000;
+
 // Ignore issues that could arise after year ~4970. MarkActive will only happen with
 // server-controlled systemtimes anyway.
-const MAX_TIME_AHEAD: Duration = Duration::from_secs(3600 * 24 * 366 * 3000);
+const MAX_TIME_AHEAD: u128 = NANOS_PER_SEC * 3600 * 24 * 366 * 3000;
 
 fn reasonable_system_time(u: &mut arbitrary::Unstructured) -> arbitrary::Result<SystemTime> {
-    let d = u.arbitrary::<Duration>()?;
-    if d < MAX_TIME_AHEAD {
-        Ok(SystemTime::UNIX_EPOCH + d)
-    } else {
-        Err(arbitrary::Error::IncorrectFormat)
-    }
+    eprintln!("generating reasonable system time");
+    let d = u.arbitrary::<u128>()? % MAX_TIME_AHEAD;
+    Ok(SystemTime::UNIX_EPOCH
+        + Duration::new((d / NANOS_PER_SEC) as u64, (d % NANOS_PER_SEC) as u32))
 }
 
 #[derive(Debug, arbitrary::Arbitrary)]
