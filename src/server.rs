@@ -823,15 +823,7 @@ impl<C: ServerConfig> Server<C> {
                 })
             }
         });
-        let snapshots = stream::iter(snapshots)
-            .buffer_unordered(16) // TODO(perf-low): is 16 a good number?
-            .filter_map(|res| async move {
-                match res {
-                    Ok(object) => Some(Ok(object)),
-                    Err(crate::Error::ObjectDoesNotExist(_)) if query_updatedness.is_some() => None, // User lost read access to object between query and read
-                    Err(err) => Some(Err(err)),
-                }
-            });
+        let snapshots = stream::iter(snapshots).buffer_unordered(16); // TODO(perf-low): is 16 a good number?
         pin_mut!(snapshots);
         let mut size_of_message = 0;
         let mut current_data = Vec::new();
@@ -855,12 +847,31 @@ impl<C: ServerConfig> Server<C> {
                 )
                 .await?;
             }
-            let snapshot = match snapshot {
-                Ok(snapshot) => snapshot,
+            match snapshot {
+                Ok(snapshot) => {
+                    size_of_message += size_as_json(&snapshot)?;
+                    current_data.push(snapshot);
+                }
+                Err(err @ crate::Error::ObjectDoesNotExist(_)) => {
+                    if query_updatedness.is_some() {
+                        // User lost read access to object between query and read
+                        // Do nothing
+                    } else {
+                        // User explicitly requested a non-existing object
+                        // Return an error but keep processing the request
+                        Self::send(
+                            &mut conn.socket,
+                            &ServerMessage::Response {
+                                request_id,
+                                response: ResponsePart::Error(err.into()),
+                                last_response: false,
+                            },
+                        )
+                        .await?;
+                    }
+                }
                 Err(err) => return Self::send_res(&mut conn.socket, request_id, Err(err)).await,
             };
-            size_of_message += size_as_json(&snapshot)?;
-            current_data.push(snapshot);
         }
         Self::send_res(
             &mut conn.socket,
