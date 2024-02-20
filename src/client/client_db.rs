@@ -250,13 +250,18 @@ impl ClientDb {
                                 tracing::error!(?err, "error occurred while vacuuming");
                             }
                             let mut to_unsubscribe = to_unsubscribe.lock().unwrap();
-                            {
-                                let mut subscribed_objects = subscribed_objects.lock().unwrap();
-                                for object_id in to_unsubscribe.iter() {
-                                    subscribed_objects.remove(object_id);
+                            if !to_unsubscribe.is_empty() {
+                                {
+                                    let mut subscribed_objects = subscribed_objects.lock().unwrap();
+                                    for object_id in to_unsubscribe.iter() {
+                                        subscribed_objects.remove(object_id);
+                                    }
                                 }
+                                api.unsubscribe(std::mem::replace(
+                                    &mut to_unsubscribe,
+                                    HashSet::new(),
+                                ));
                             }
-                            api.unsubscribe(std::mem::replace(&mut to_unsubscribe, HashSet::new()));
                         }
                     }
                     Err(err) => tracing::error!(

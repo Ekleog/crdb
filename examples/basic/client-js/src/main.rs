@@ -78,6 +78,7 @@ fn app() -> Html {
                             Err(crdb::broadcast::error::RecvError::Closed) => break,
                             _ => (), // ignore the contents, just refresh
                         }
+                        tracing::info!("refreshing");
                         force_update.force_update();
                     }
                 });
