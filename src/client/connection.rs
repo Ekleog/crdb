@@ -33,16 +33,19 @@ const RECONNECT_INTERVAL: Duration = Duration::from_secs(10);
 const PING_INTERVAL: Duration = Duration::from_secs(10);
 const PONG_DEADLINE: Duration = Duration::from_secs(10);
 
+#[derive(Debug)]
 pub struct RequestWithSidecar {
     pub request: Arc<Request>,
     pub sidecar: Vec<Arc<[u8]>>,
 }
 
+#[derive(Debug)]
 pub struct ResponsePartWithSidecar {
     pub response: ResponsePart,
     pub sidecar: Option<Arc<[u8]>>,
 }
 
+#[derive(Debug)]
 pub enum Command {
     Login {
         url: Arc<String>,
@@ -183,10 +186,13 @@ where
                 // TODO(perf-low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
                 _reconnect_attempt_interval = crate::sleep(RECONNECT_INTERVAL),
-                    if self.is_trying_to_connect() => (),
+                    if self.is_trying_to_connect() => {
+                    tracing::trace!("reconnect interval elapsed");
+                },
 
                 // Send the next ping, if it's time to do it
                 Some(_) = OptionFuture::from(self.next_ping.map(crate::sleep_until)), if self.is_connected() => {
+                    tracing::trace!("sending ping request");
                     let request_id = self.next_request_id();
                     let _ = self.send_connected(&ClientMessage {
                         request_id,
@@ -199,6 +205,7 @@ where
 
                 // Next pong did not come in time, disconnect
                 Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| crate::sleep_until(t))), if self.is_connecting() => {
+                    tracing::trace!("pong did not come in time, disconnecting");
                     self.state = self.state.disconnect();
                     self.next_pong_deadline = None;
                 }
@@ -206,6 +213,7 @@ where
                 // Listen for any incoming commands (including end-of-run)
                 // Note: StreamExt::next is cancellation-safe on any Stream
                 command = self.commands.next() => {
+                    tracing::trace!(?command, "received command");
                     let Some(command) = command else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
@@ -214,6 +222,7 @@ where
 
                 // Listen for incoming requests from the client
                 request = self.requests.next() => {
+                    tracing::trace!(?request, "received request");
                     let Some((sender, request)) = request else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
@@ -229,6 +238,7 @@ where
 
                     // There was an error in the stream. Likely disconnection.
                     Err(err) => {
+                        tracing::trace!(?err, "received server error");
                         self.state = self.state.disconnect();
                         (self.event_cb)(ConnectionEvent::LostConnection(err));
                     }
@@ -244,6 +254,7 @@ where
                                 response: ResponsePart::Success,
                                 last_response: true
                             } if req == request_id => {
+                                tracing::trace!("received server success for token sending");
                                 self.state = State::Connected { url, token, socket, expected_binaries: None };
                                 self.next_ping = Some(Instant::now() + PING_INTERVAL);
                                 self.next_pong_deadline = None;
@@ -291,10 +302,12 @@ where
                                 response: ResponsePart::Error(crate::SerializableError::InvalidToken(tok)),
                                 last_response: true
                             } if req == request_id && tok == token => {
+                                tracing::trace!("server answered that token is invalid");
                                 self.state = State::NoValidInfo;
                                 (self.event_cb)(ConnectionEvent::InvalidToken(token));
                             }
                             resp => {
+                                tracing::trace!(?resp, "server gave unexpected answer");
                                 self.state = State::Disconnected { url, token };
                                 (self.event_cb)(ConnectionEvent::LostConnection(
                                     anyhow!("Unexpected server answer to login request: {resp:?}")
@@ -304,11 +317,13 @@ where
 
                         // Main function, must now deal with requests and updates.
                         State::Connected { expected_binaries: None, .. } => {
+                            tracing::trace!(?message, "received server message");
                             self.handle_connected_message(message).await;
                         }
 
                         // We got a new text message while still expecting a binary message. Protocol violation.
                         State::Connected { expected_binaries: Some(_), .. } => {
+                            tracing::trace!(?message, "received server message but expected a binary");
                             self.state = self.state.disconnect();
                             (self.event_cb)(ConnectionEvent::LostConnection(
                                 anyhow!("Unexpected server message while waiting for binaries: {message:?}")
@@ -318,6 +333,7 @@ where
 
                     // We got a new binary message.
                     Ok(IncomingMessage::Binary(message)) => {
+                        tracing::trace!("received server binary message");
                         if let State::Connected { expected_binaries: Some((request_id, num_bins)), .. } = &mut self.state {
                             if let Some((_, sender, already_sent)) = self.pending_requests.get_mut(&request_id) {
                                 *already_sent = true;
@@ -346,6 +362,7 @@ where
                 if !self.not_sent_requests.is_empty() {
                     let not_sent_requests =
                         std::mem::replace(&mut self.not_sent_requests, VecDeque::new());
+                    tracing::trace!(?not_sent_requests, "sending not-sent requests");
                     for (request_id, request, sender) in not_sent_requests {
                         self.handle_request(request_id, request, sender).await;
                     }
@@ -370,6 +387,7 @@ where
                     request_id,
                     request: Arc::new(Request::SetToken(token)),
                 };
+                tracing::trace!("sending token");
                 if let Err(err) = Self::send(&mut socket, &message).await {
                     (self.event_cb)(ConnectionEvent::FailedSendingToken(err));
                     self.state = State::Disconnected { url, token }; // try again next loop
