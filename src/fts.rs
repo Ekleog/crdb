@@ -29,6 +29,8 @@ pub(crate) fn normalize(input: &str) -> String {
         // For each word
         while let Some(next_brk) = segments.next() {
             if segments.is_word_like() {
+                res.push(' ');
+
                 // Fold case
                 buf.clear();
                 CASEMAPPER
@@ -51,16 +53,16 @@ pub(crate) fn normalize(input: &str) -> String {
                     &Stemmer::create(Algorithm::English)
                         .stem(&Stemmer::create(Algorithm::French).stem(&buf2)),
                 );
-                res.push(' ');
             }
             last_brk = next_brk;
         }
-        res.pop(); // remove the last space if there was at least one word
+        // Start and finish with a space, for easier matching
+        res.push(' ');
         res
     })
 }
 
-/// Assumes that both `value` and `pat` have already been `normalize`d. Checks wheth
+/// Assumes that both `value` and `pat` have already been `normalize`d. Checks whether
 /// `value` contains pattern `pat`.
 #[inline]
 pub(crate) fn matches(value: &str, pat: &str) -> bool {
@@ -127,19 +129,36 @@ mod tests {
     #[test]
     fn basic_examples() {
         let tests = [
-            ("Je   suis bien embêté !", "je sui bien embet"),
+            ("Je   suis bien embêté !", " je sui bien embet "),
             (
-                "Some 色々な言語の façon de faire un test :)",
-                "som 色 々 な 言語 facon de fair un test",
+                " Some 色々な言語の façon de faire un test :) ",
+                " som 色 々 な 言語 facon de fair un test ",
             ),
-            ("ば", "は"), // japanese diacritics too
-            ("coupe-papier", "coup papi"),
+            ("ば", " は "), // japanese diacritics too
+            ("coupe-papier", " coup papi "),
         ];
         for (before, after) in tests {
             assert_eq!(
                 super::normalize(before),
                 after,
-                "normalization of {before:?} didn't match"
+                "normalization of {before:?} didn't match",
+            );
+        }
+    }
+
+    #[test]
+    fn basic_matches() {
+        let tests = [
+            ("foobar", "foobar", true),
+            ("foobar", "", true),
+            ("foobar", "foo", false),
+            ("i think", "think", true),
+        ];
+        for (data, pat, res) in tests {
+            assert_eq!(
+                super::matches(&super::normalize(data), &super::normalize(pat)),
+                res,
+                "expected fts::matches({data:?}, {pat:?}) = {res:?} failed",
             );
         }
     }
