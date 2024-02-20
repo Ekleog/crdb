@@ -102,8 +102,9 @@ fn app() -> Html {
             <Login {on_login} />
         }
     } else if let Some(db) = &db.data {
-        let _: &Rc<basic_api::db::Db> = db;
-        unimplemented!() // TODO(example-high)
+        html! {
+            <MainView {db} />
+        }
     } else {
         // See https://github.com/jetli/yew-hooks/issues/40 for why this branch is required
         html! {
@@ -201,5 +202,23 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
                     />
             </form>
         </>
+    }
+}
+
+#[derive(Properties)]
+struct MainViewProps {
+    db: Rc<basic_api::db::Db>,
+}
+
+impl PartialEq for MainViewProps {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.db, &other.db)
+    }
+}
+
+#[function_component(MainView)]
+fn main_view(MainViewProps { db }: &MainViewProps) -> Html {
+    html! {
+        <h1>{ format!("Logged in as {}", db.user().unwrap().0) }</h1>
     }
 }

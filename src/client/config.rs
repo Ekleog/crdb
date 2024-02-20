@@ -54,6 +54,10 @@ macro_rules! generate_client {
                 self.db.logout()
             }
 
+            pub fn user(&self) -> Option<crdb::User> {
+                self.db.user()
+            }
+
             pub fn watch_upload_queue(&self) -> crdb::tokio::sync::watch::Receiver<Vec<crdb::UploadId>> {
                 self.db.watch_upload_queue()
             }

@@ -640,6 +640,10 @@ impl ClientDb {
         Ok(())
     }
 
+    pub fn user(&self) -> Option<User> {
+        *self.user.read().unwrap()
+    }
+
     pub fn watch_upload_queue(&self) -> watch::Receiver<Vec<UploadId>> {
         self.api.watch_upload_queue()
     }
