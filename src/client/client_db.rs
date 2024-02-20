@@ -607,8 +607,6 @@ impl ClientDb {
         Ok(res)
     }
 
-    /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
-    /// we just noticed a disconnection.
     pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {
         self.api.on_connection_event(cb)
     }

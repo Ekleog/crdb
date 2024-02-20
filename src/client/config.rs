@@ -40,8 +40,6 @@ macro_rules! generate_client {
                 }
             }
 
-            /// `cb` will be called with the parameter `true` if we just connected (again), and `false` if
-            /// we just noticed a disconnection.
             pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(crdb::ConnectionEvent)) {
                 self.db.on_connection_event(cb)
             }
