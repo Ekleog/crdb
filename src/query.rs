@@ -360,12 +360,18 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             res.push_str(&format!(" @> ${}, FALSE)", bind_idx));
             *bind_idx += 1;
         }
-        Query::ContainsStr(path, _) => {
+        Query::ContainsStr(path, pat) => {
             res.push_str("COALESCE(to_tsvector(");
             add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            // If the pattern is only spaces, then postgresql wrongly returns `false`. But we do want
+            // to check that the field does exist. So add an IS NOT NULL in that case
+            let or_empty_pat = match pat.chars().all(|c| c == ' ') {
+                true => "IS NOT NULL",
+                false => "",
+            };
             res.push_str(&format!(
-                "->'_crdb-normalized') @@ phraseto_tsquery(${}), FALSE)",
-                bind_idx
+                "->'_crdb-normalized') @@ phraseto_tsquery(${}) {or_empty_pat}, FALSE)",
+                bind_idx,
             ));
             *bind_idx += 1;
         }

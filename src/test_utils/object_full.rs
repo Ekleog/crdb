@@ -1,4 +1,4 @@
-use super::ulid;
+use super::{stubs::USER_ID_NULL, ulid};
 use crate::{
     fts::SearchableString, BinPtr, CanDoCallbacks, CrdbFuture, CrdbFutureExt, DbPtr, Object,
     ObjectId, TypeId, User,
@@ -93,6 +93,7 @@ impl Object for TestObjectFull {
     ) -> impl 'a + CrdbFuture<Output = anyhow::Result<HashSet<User>>> {
         async move {
             let mut res = self.users.iter().copied().collect::<HashSet<_>>();
+            res.insert(USER_ID_NULL);
             let mut deps_to_observe = self.deps.iter().copied().collect::<VecDeque<_>>();
             while let Some(remote) = deps_to_observe.pop_front() {
                 match db.get(remote).await {

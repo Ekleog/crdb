@@ -6,7 +6,7 @@ use super::fuzz_helpers::{
         fts::SearchableString,
         make_fuzzer_stuffs,
         test_utils::{self, *},
-        BinPtr, DbPtr, EventId, ObjectId, Query, Updatedness, User,
+        BinPtr, DbPtr, EventId, JsonPathItem, ObjectId, Query, Updatedness, User,
     },
     make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
 };
@@ -303,6 +303,64 @@ async fn regression_serde_serializes_hashmap_order_at_random() {
                         .collect(),
                 }),
                 lock: Lock::OBJECT.bits(),
+            },
+        ]),
+    )
+    .await;
+}
+
+#[fuzz_helpers::test]
+async fn regression_fts_query_behavior() {
+    // TODO(test-high): fuzz specifically the FTS search, this was not found by fuzzers
+    // In particular, postgresql special-cased empty-string requests and always returned false, whereas
+    // we would meaningfully always return true, as every string contains the empty string
+    let cluster = setup();
+    fuzz_impl(
+        &cluster,
+        Arc::new(vec![
+            Op::CreateFull {
+                object_id: OBJECT_ID_1,
+                created_at: EVENT_ID_1,
+                updatedness: Some(UPDATEDNESS_1),
+                object: Arc::new(TestObjectFull {
+                    name: SearchableString::from("foo bar baz"),
+                    deps: vec![],
+                    bins: vec![],
+                    users: BTreeSet::new(),
+                }),
+                lock: Lock::OBJECT.bits(),
+            },
+            Op::QueryFull {
+                user: USER_ID_NULL,
+                only_updated_since: None,
+                query: Arc::new(Query::ContainsStr(
+                    vec![JsonPathItem::Key(String::from("name"))],
+                    String::from(""),
+                )),
+            },
+            Op::QueryFull {
+                user: USER_ID_NULL,
+                only_updated_since: None,
+                query: Arc::new(Query::ContainsStr(
+                    vec![JsonPathItem::Key(String::from("name"))],
+                    String::from("fo"),
+                )),
+            },
+            Op::QueryFull {
+                user: USER_ID_NULL,
+                only_updated_since: None,
+                query: Arc::new(Query::ContainsStr(
+                    vec![JsonPathItem::Key(String::from("name"))],
+                    String::from("foo"),
+                )),
+            },
+            Op::QueryFull {
+                user: USER_ID_NULL,
+                only_updated_since: None,
+                query: Arc::new(Query::ContainsStr(
+                    vec![JsonPathItem::Key(String::from("name"))],
+                    String::from("bar baz"),
+                )),
             },
         ]),
     )
