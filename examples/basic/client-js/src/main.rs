@@ -1,9 +1,12 @@
-use std::str::FromStr;
-
 use basic_api::AuthInfo;
 use crdb::{SessionToken, User};
+use std::{rc::Rc, str::FromStr, time::Duration};
 use ulid::Ulid;
 use yew::prelude::*;
+use yew_hooks::prelude::*;
+
+const CACHE_WATERMARK: usize = 8 * 1024 * 1024;
+const VACUUM_FREQUENCY: Duration = Duration::from_secs(3600);
 
 fn main() {
     tracing_wasm::set_as_global_default();
@@ -36,17 +39,50 @@ fn main() {
 
 #[function_component(App)]
 fn app() -> Html {
-    let db = use_state(|| None);
-    if let Some(db) = &*db {
-        let _: &basic_api::db::Db = db;
-        unimplemented!() // TODO(example-high)
-    } else {
+    let require_relogin = use_state(|| false);
+    let db = use_async_with_options(
+        {
+            let require_relogin = require_relogin.clone();
+            async move {
+                let (db, upgrade_handle) = basic_api::db::Db::connect(
+                    String::from("basic-crdb"),
+                    CACHE_WATERMARK,
+                    move || require_relogin.set(true),
+                    |upload, err| async move {
+                        panic!("failed submitting {upload:?}: {err:?}");
+                    },
+                    crdb::ClientVacuumSchedule::new(VACUUM_FREQUENCY),
+                )
+                .await
+                .map_err(|err| format!("{err:?}"))?;
+                let upgrade_errs = upgrade_handle.await;
+                if upgrade_errs != 0 {
+                    return Err(format!("got {upgrade_errs} errors while upgrading"));
+                }
+                Ok(Rc::new(db))
+            }
+        },
+        UseAsyncOptions::enable_auto(),
+    );
+    if *require_relogin {
         let on_login = Callback::from(move |(user, token)| {
             panic!("need to login {user:?} with token {token:?}") // TODO(example-high)
         });
         html! {
             <Login {on_login} />
         }
+    } else if db.loading {
+        html! {
+            <h1>{ "Loading…" }</h1>
+        }
+    } else if let Some(err) = &db.error {
+        panic!("Unexpected error loading database:\n{err}");
+    } else if let Some(db) = &db.data {
+        let _: &Rc<basic_api::db::Db> = db;
+        unimplemented!() // TODO(example-high)
+    } else {
+        // See https://github.com/jetli/yew-hooks/issues/40 for why this branch is required
+        html! {}
     }
 }
 
