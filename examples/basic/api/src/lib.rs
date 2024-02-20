@@ -9,7 +9,9 @@ pub struct AuthInfo {
     pub pass: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize,
+)]
 pub struct Item {
     pub owner: User,
     pub text: SearchableString,

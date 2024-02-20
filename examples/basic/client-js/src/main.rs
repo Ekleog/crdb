@@ -1,6 +1,6 @@
 use basic_api::{AuthInfo, Item};
-use futures::stream::StreamExt;
 use crdb::{fts::SearchableString, Importance, JsonPathItem, Query, QueryId, SessionToken, User};
+use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
 use yew::prelude::*;
@@ -247,8 +247,15 @@ fn main_view() -> Html {
                 onclick={logout}
                 />
         </h1>
-        <CreateItem /><br />
-        <QueryRemoteItems /><br />
+        <div style="position: relative">
+            <div style="height: 100%; width: 55%; position: absolute; top: 0; left: 0">
+                <CreateItem /><br />
+                <QueryRemoteItems /><br />
+            </div>
+            <div style="height: 100%; width: 45%; position: absolute; top: 0; right: 0">
+                <ShowLocalDb /><br />
+            </div>
+        </div>
     </>}
 }
 
@@ -319,7 +326,10 @@ fn query_remote_items() -> Html {
         let query = query.clone();
         let query_res = query_res.clone();
         move |importance| {
-            let query = Query::ContainsStr(vec![JsonPathItem::Key(String::from("text"))], (*query).clone());
+            let query = Query::ContainsStr(
+                vec![JsonPathItem::Key(String::from("text"))],
+                (*query).clone(),
+            );
             let db = db.clone();
             let query_res = query_res.clone();
             wasm_bindgen_futures::spawn_local(async move {
@@ -333,7 +343,8 @@ fn query_remote_items() -> Html {
             })
         }
     });
-    let query_results = query_res.iter()
+    let query_results = query_res
+        .iter()
         .map(|r| html! {<> <br /> { format!("{r:?}") } </>})
         .collect::<Html>();
     html! {<>
@@ -356,5 +367,34 @@ fn query_remote_items() -> Html {
             value="Query Items & Lock"
             onclick={run_query_remote.reform(|_| Importance::Lock)} />
         { query_results }
+    </>}
+}
+
+#[function_component(ShowLocalDb)]
+fn show_local_db() -> Html {
+    let db = use_context::<DbContext>().unwrap().0;
+    let local_items = use_async_with_options(async move {
+        Ok::<_, String>(db
+            .query_item_local(Arc::new(Query::All(Vec::new())))
+            .await
+            .map_err(|err| format!("{err:?}"))?
+            .map(|v| v.map_err(|err| format!("{err:?}")))
+            .collect::<Vec<_>>()
+            .await)
+    }, UseAsyncOptions::enable_auto());
+    let local_items = if local_items.loading {
+        html!{ <h6>{ "Loading local items" }</h6> }
+    } else if let Some(err) = &local_items.error {
+        panic!("failed loading local items: {err:?}");
+    } else if let Some(local_items) = &local_items.data {
+        local_items.iter()
+            .map(|i| html! {<> <br />{ format!("{i:?}") } </>})
+            .collect::<Html>()
+    } else {
+        html!{ <h6>{ "Transient message, should go away soon" }</h6> }
+    };
+    html! {<>
+        <h3>{ "Local DB" }</h3>
+        { local_items }
     </>}
 }
