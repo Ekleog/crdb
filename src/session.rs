@@ -9,12 +9,24 @@ impl SessionToken {
     }
 }
 
+#[cfg(feature = "_tests")]
+fn any_system_time_opt(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Option<SystemTime>> {
+    let d = u.arbitrary::<Option<web_time::Duration>>()?;
+    let Some(d) = d else {
+        return Ok(None);
+    };
+    let t = SystemTime::UNIX_EPOCH
+        .checked_add(d)
+        .ok_or(arbitrary::Error::IncorrectFormat)?;
+    Ok(Some(t))
+}
+
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
 pub struct NewSession {
     pub user_id: User,
     pub session_name: String,
-    #[cfg_attr(feature = "_tests", arbitrary(with = |u: &mut arbitrary::Unstructured| u.arbitrary::<Option<std::time::Duration>>().map(|d| d.map(|d| SystemTime::UNIX_EPOCH + d))))]
+    #[cfg_attr(feature = "_tests", arbitrary(with = any_system_time_opt))]
     pub expiration_time: Option<SystemTime>,
 }
 
