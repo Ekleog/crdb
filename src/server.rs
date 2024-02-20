@@ -560,7 +560,14 @@ impl<C: ServerConfig> Server<C> {
                             object.clone(),
                             &*self.cache_db,
                         )
-                        .await?;
+                        .await;
+                        let res = match res {
+                            Ok(res) => res,
+                            Err(err) => {
+                                return Self::send_res(&mut conn.socket, msg.request_id, Err(err))
+                                    .await;
+                            }
+                        };
                         if let Some((new_update, users_who_can_read, rdeps)) = res {
                             let mut new_data = HashMap::new();
                             self.add_rdeps_updates(&mut new_data, rdeps)
@@ -594,7 +601,8 @@ impl<C: ServerConfig> Server<C> {
                         if *subscribe {
                             sess.subscribed_objects.write().unwrap().insert(*object_id);
                         }
-                        Ok(())
+                        Self::send_res(&mut conn.socket, msg.request_id, Ok(ResponsePart::Success))
+                            .await
                     }
                     Upload::Event {
                         object_id,
@@ -614,7 +622,14 @@ impl<C: ServerConfig> Server<C> {
                             event.clone(),
                             &*self.cache_db,
                         )
-                        .await?;
+                        .await;
+                        let res = match res {
+                            Ok(res) => res,
+                            Err(err) => {
+                                return Self::send_res(&mut conn.socket, msg.request_id, Err(err))
+                                    .await;
+                            }
+                        };
                         if let Some((new_update, users_who_can_read, rdeps)) = res {
                             let mut new_data = HashMap::new();
                             self.add_rdeps_updates(&mut new_data, rdeps)
@@ -648,7 +663,8 @@ impl<C: ServerConfig> Server<C> {
                         if *subscribe {
                             sess.subscribed_objects.write().unwrap().insert(*object_id);
                         }
-                        Ok(())
+                        Self::send_res(&mut conn.socket, msg.request_id, Ok(ResponsePart::Success))
+                            .await
                     }
                 }
             }
