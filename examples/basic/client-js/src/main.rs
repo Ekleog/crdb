@@ -43,6 +43,8 @@ fn main() {
 fn app() -> Html {
     let require_relogin = use_state(|| false);
     let logging_in = use_state(|| false);
+    // TODO(misc-high): write a crdb-yew to hide that and only refresh when required
+    let force_update = use_force_update();
     let db = use_async_with_options(
         {
             let require_relogin = require_relogin.clone();
@@ -67,6 +69,17 @@ fn app() -> Html {
                 }
                 db.on_connection_event(|evt| {
                     tracing::info!(?evt, "connection event");
+                });
+                let mut updates = db.listen_for_all_updates();
+                let force_update = force_update.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    loop {
+                        match updates.recv().await {
+                            Err(crdb::broadcast::error::RecvError::Closed) => break,
+                            _ => (), // ignore the contents, just refresh
+                        }
+                        force_update.force_update();
+                    }
                 });
                 Ok(Rc::new(db))
             }
