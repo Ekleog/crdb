@@ -548,6 +548,7 @@ async fn upload_resender<C, BG, EH, EHF>(
             .unwrap_or(false)
         {
             let (upload_id, request, sender) = requests.next().await.unwrap();
+            tracing::trace!(?request, "resender received non-upload request");
             assert!(upload_id.is_none(), "non-upload should not have an id");
             let _ = connection.unbounded_send((
                 sender,
@@ -569,6 +570,7 @@ async fn upload_resender<C, BG, EH, EHF>(
         {
             let (upload_id, request, final_sender) = requests.next().await.unwrap();
             let upload_id = upload_id.unwrap();
+            tracing::trace!(?upload_id, ?request, "resender received upload request");
             let (sender, receiver) = mpsc::unbounded();
             upload_reqs.push_back((
                 upload_id,
