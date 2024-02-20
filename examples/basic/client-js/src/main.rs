@@ -136,33 +136,36 @@ fn user_to_ulid(mut user: String) -> String {
 
 #[function_component(Login)]
 fn login(LoginProps { on_login }: &LoginProps) -> Html {
-    let state = use_state(|| (String::from(""), String::from("")));
+    let username = use_state(|| String::from(""));
+    let password = use_state(|| String::from(""));
     let on_user_change = {
-        let state = state.clone();
+        let username = username.clone();
         move |e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            state.set((user_to_ulid(input.value()), state.1.clone()));
+            username.set(user_to_ulid(input.value()));
         }
     };
     let on_pass_change = {
-        let state = state.clone();
+        let password = password.clone();
         move |e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            state.set((state.0.clone(), input.value()));
+            password.set(input.value());
         }
     };
     let onclick = {
         let on_login = on_login.clone();
-        let state = state.clone();
+        let username = username.clone();
+        let password = password.clone();
         move |_| {
             let on_login = on_login.clone();
-            let state = state.clone();
+            let username = username.clone();
+            let password = password.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let user = format!("{:0>26}", state.0);
+                let user = format!("{:0>26}", *username);
                 let user = User(Ulid::from_str(&user).expect("username is invalid"));
                 let auth_info = AuthInfo {
                     user,
-                    pass: state.1.clone(),
+                    pass: (*password).clone(),
                 };
                 let token = gloo_net::http::Request::post("/api/login")
                     .json(&auth_info)
@@ -186,14 +189,14 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
                     type="text"
                     placeholder="username"
                     maxlength="26"
-                    value={state.0.clone()}
+                    value={(*username).clone()}
                     onchange={on_user_change}
                     />
                 { " Password: " }
                 <input
                     type="password"
                     placeholder="password"
-                    value={state.1.clone()}
+                    value={(*password).clone()}
                     onchange={on_pass_change}
                     />
                 { " " }
