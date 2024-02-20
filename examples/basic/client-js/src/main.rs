@@ -142,18 +142,31 @@ fn refresher(RefresherProps { db }: &RefresherProps) -> Html {
     use_effect_with(RcEq(db.clone()), {
         let force_update = force_update.clone();
         move |RcEq(db)| {
-            let force_update = force_update.clone();
-            let db = db.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let mut updates = db.listen_for_all_updates();
+            wasm_bindgen_futures::spawn_local({
                 let force_update = force_update.clone();
-                loop {
-                    match updates.recv().await {
-                        Err(crdb::broadcast::error::RecvError::Closed) => break,
-                        _ => (), // ignore the contents, just refresh
+                let db = db.clone();
+                async move {
+                    let mut updates = db.listen_for_all_updates();
+                    loop {
+                        match updates.recv().await {
+                            Err(crdb::broadcast::error::RecvError::Closed) => break,
+                            _ => (), // ignore the contents, just refresh
+                        }
+                        tracing::debug!("refreshing the whole app");
+                        force_update.force_update();
                     }
-                    tracing::debug!("refreshing the whole app");
-                    force_update.force_update();
+                }
+            });
+            wasm_bindgen_futures::spawn_local({
+                let force_update = force_update.clone();
+                let db = db.clone();
+                async move {
+                    // TODO(api-high): normalize watcher names: watch upload queue, listen updates, ?? connection events?
+                    let mut updates = db.watch_upload_queue();
+                    while updates.changed().await.is_ok() {
+                        tracing::debug!("refreshing the whole app");
+                        force_update.force_update();
+                    }
                 }
             });
         }
