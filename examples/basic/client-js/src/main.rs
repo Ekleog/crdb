@@ -137,6 +137,7 @@ impl<T> PartialEq for RcEq<T> {
 fn refresher(RefresherProps { db }: &RefresherProps) -> Html {
     // TODO(misc-high): write a crdb-yew to hide that and only refresh each individual query when required
     let counter = use_mut_ref(|| 0); // Counter used only to force a refresh of each component that uses DbContext
+    // TODO(example-high): let connection_status = ...
     let force_update = use_force_update();
     *counter.borrow_mut() += 1;
     use_effect_with(RcEq(db.clone()), {
