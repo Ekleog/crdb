@@ -373,25 +373,30 @@ fn query_remote_items() -> Html {
 #[function_component(ShowLocalDb)]
 fn show_local_db() -> Html {
     let db = use_context::<DbContext>().unwrap().0;
-    let local_items = use_async_with_options(async move {
-        Ok::<_, String>(db
-            .query_item_local(Arc::new(Query::All(Vec::new())))
-            .await
-            .map_err(|err| format!("{err:?}"))?
-            .map(|v| v.map_err(|err| format!("{err:?}")))
-            .collect::<Vec<_>>()
-            .await)
-    }, UseAsyncOptions::enable_auto());
+    let local_items = use_async_with_options(
+        async move {
+            Ok::<_, String>(
+                db.query_item_local(Arc::new(Query::All(Vec::new())))
+                    .await
+                    .map_err(|err| format!("{err:?}"))?
+                    .map(|v| v.map_err(|err| format!("{err:?}")))
+                    .collect::<Vec<_>>()
+                    .await,
+            )
+        },
+        UseAsyncOptions::enable_auto(),
+    );
     let local_items = if local_items.loading {
-        html!{ <h6>{ "Loading local items" }</h6> }
+        html! { <h6>{ "Loading local items" }</h6> }
     } else if let Some(err) = &local_items.error {
         panic!("failed loading local items: {err:?}");
     } else if let Some(local_items) = &local_items.data {
-        local_items.iter()
+        local_items
+            .iter()
             .map(|i| html! {<> <br />{ format!("{i:?}") } </>})
             .collect::<Html>()
     } else {
-        html!{ <h6>{ "Transient message, should go away soon" }</h6> }
+        html! { <h6>{ "Transient message, should go away soon" }</h6> }
     };
     html! {<>
         <h3>{ "Local DB" }</h3>
