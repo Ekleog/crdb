@@ -269,7 +269,10 @@ fn create_item() -> Html {
             };
             let db = db.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let _ = db.create_item(importance, Arc::new(item)).await.expect("failed creating item");
+                let _ = db
+                    .create_item(importance, Arc::new(item))
+                    .await
+                    .expect("failed creating item");
             })
         }
     });
