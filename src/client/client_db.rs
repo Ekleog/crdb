@@ -842,7 +842,8 @@ impl ClientDb {
         } else {
             importance >= Importance::Subscribe
         };
-        // TODO(misc-med): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
+        // TODO(api-high): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
+        // TODO(api-high): make Importance actually be two-dimensional, with both subscription level and lock level
         self.api
             .submit::<T>(object_id, event_id, event, do_subscribe)
             .await
