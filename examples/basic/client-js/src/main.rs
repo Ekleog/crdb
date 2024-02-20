@@ -43,8 +43,6 @@ fn main() {
 fn app() -> Html {
     let require_relogin = use_state(|| false);
     let logging_in = use_state(|| false);
-    // TODO(misc-high): write a crdb-yew to hide that and only refresh when required
-    let force_update = use_force_update();
     let db = use_async_with_options(
         {
             let require_relogin = require_relogin.clone();
@@ -69,18 +67,6 @@ fn app() -> Html {
                 }
                 db.on_connection_event(|evt| {
                     tracing::info!(?evt, "connection event");
-                });
-                let mut updates = db.listen_for_all_updates();
-                let force_update = force_update.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    loop {
-                        match updates.recv().await {
-                            Err(crdb::broadcast::error::RecvError::Closed) => break,
-                            _ => (), // ignore the contents, just refresh
-                        }
-                        tracing::info!("refreshing");
-                        force_update.force_update();
-                    }
                 });
                 Ok(Rc::new(db))
             }
@@ -118,15 +104,65 @@ fn app() -> Html {
         }
     } else if let Some(db) = &db.data {
         html! {
-            <ContextProvider<DbContext> context={DbContext(db.clone())}>
-                <MainView />
-            </ContextProvider<DbContext>>
+            <Refresher db={(*db).clone()} />
         }
     } else {
         // See https://github.com/jetli/yew-hooks/issues/40 for why this branch is required
         html! {
             <h1>{ "This should not be visible more than a fraction of a second" }</h1>
         }
+    }
+}
+
+#[derive(Properties)]
+struct RefresherProps {
+    db: Rc<basic_api::db::Db>,
+}
+
+impl PartialEq for RefresherProps {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.db, &other.db)
+    }
+}
+
+#[derive(Clone)]
+struct RcEq<T>(Rc<T>);
+
+impl<T> PartialEq for RcEq<T> {
+    fn eq(&self, other: &RcEq<T>) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+#[function_component(Refresher)]
+fn refresher(RefresherProps { db }: &RefresherProps) -> Html {
+    // TODO(misc-high): write a crdb-yew to hide that and only refresh each individual query when required
+    let counter = use_state(|| 0); // Counter used only to force a refresh of each component that uses DbContext
+    use_effect_with(RcEq(db.clone()), {
+        let counter = counter.clone();
+        move |RcEq(db)| {
+            let counter = counter.clone();
+            let db = db.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let mut updates = db.listen_for_all_updates();
+                let counter = counter.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    loop {
+                        match updates.recv().await {
+                            Err(crdb::broadcast::error::RecvError::Closed) => break,
+                            _ => (), // ignore the contents, just refresh
+                        }
+                        tracing::info!("refreshing");
+                        counter.set(*counter + 1);
+                    }
+                });
+            })
+        }
+    });
+    html! {
+        <ContextProvider<DbContext> context={DbContext(db.clone(), *counter)}>
+            <MainView />
+        </ContextProvider<DbContext>>
     }
 }
 
@@ -226,11 +262,11 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
 }
 
 #[derive(Clone)]
-struct DbContext(Rc<basic_api::db::Db>);
+struct DbContext(Rc<basic_api::db::Db>, usize);
 
 impl PartialEq for DbContext {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
+        Rc::ptr_eq(&self.0, &other.0) && self.1 == other.1
     }
 }
 
