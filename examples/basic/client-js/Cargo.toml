@@ -7,6 +7,7 @@ edition = "2021"
 basic-api = { path = "../api" }
 console_error_panic_hook = "0.1.7"
 crdb = { path = "../../..", features = ["client"] }
+futures = "0.3.30"
 gloo-net = "0.5.0"
 tracing = "0.1.40"
 tracing-wasm = "0.2.1"

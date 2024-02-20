@@ -1,5 +1,6 @@
 use basic_api::{AuthInfo, Item};
-use crdb::{fts::SearchableString, Importance, SessionToken, User};
+use futures::stream::StreamExt;
+use crdb::{fts::SearchableString, Importance, JsonPathItem, Query, QueryId, SessionToken, User};
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
 use yew::prelude::*;
@@ -246,7 +247,8 @@ fn main_view() -> Html {
                 onclick={logout}
                 />
         </h1>
-        <CreateItem />
+        <CreateItem /><br />
+        <QueryRemoteItems /><br />
     </>}
 }
 
@@ -298,5 +300,61 @@ fn create_item() -> Html {
             type="button"
             value="Create Item & Lock"
             onclick={create_item.reform(|_| Importance::Lock)} />
+    </>}
+}
+
+#[function_component(QueryRemoteItems)]
+fn query_remote_items() -> Html {
+    let db = use_context::<DbContext>().unwrap().0;
+    let query = use_state(|| String::new());
+    let query_res = use_state(|| Vec::new());
+    let onchange = {
+        let query = query.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            query.set(input.value());
+        }
+    };
+    let run_query_remote = Callback::from({
+        let query = query.clone();
+        let query_res = query_res.clone();
+        move |importance| {
+            let query = Query::ContainsStr(vec![JsonPathItem::Key(String::from("text"))], (*query).clone());
+            let db = db.clone();
+            let query_res = query_res.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let res = db
+                    .query_item_remote(importance, QueryId::now(), Arc::new(query))
+                    .await
+                    .expect("failed creating item")
+                    .collect::<Vec<_>>()
+                    .await;
+                query_res.set(res);
+            })
+        }
+    });
+    let query_results = query_res.iter()
+        .map(|r| html! {<> <br /> { format!("{r:?}") } </>})
+        .collect::<Html>();
+    html! {<>
+        { "Query Remote Items: "}
+        <input
+            type="text"
+            placeholder="text"
+            value={(*query).clone()}
+            {onchange} />
+        <input
+            type="button"
+            value="Query Items"
+            onclick={run_query_remote.reform(|_| Importance::Latest)} />
+        <input
+            type="button"
+            value="Query Items & Subscribe"
+            onclick={run_query_remote.reform(|_| Importance::Subscribe)} />
+        <input
+            type="button"
+            value="Query Items & Lock"
+            onclick={run_query_remote.reform(|_| Importance::Lock)} />
+        { query_results }
     </>}
 }
