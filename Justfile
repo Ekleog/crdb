@@ -9,7 +9,7 @@ run-example-basic-server *ARGS:
     cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" RUST_LOG="trace" cargo run -p basic-server -- {{ARGS}}
 
 serve-example-basic-client-js *ARGS:
-    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" RUSTFLAGS="-Zmacro-backtrace" trunk serve --proxy-backend=http://localhost:3000/api
+    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" RUSTFLAGS="-Zmacro-backtrace" trunk serve
 
 fmt:
     cargo fmt
