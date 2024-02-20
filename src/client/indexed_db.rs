@@ -1058,7 +1058,7 @@ impl IndexedDb {
         let zero_id = TypeId::from_u128(0).to_js_string();
         let max_id = TypeId::from_u128(u128::MAX).to_js_string();
         self.db
-            .transaction(&["snapshots_meta"])
+            .transaction(&["snapshots", "snapshots_meta"])
             .run(|transaction| async move {
                 let snapshots_meta = transaction
                     .object_store("snapshots_meta")
