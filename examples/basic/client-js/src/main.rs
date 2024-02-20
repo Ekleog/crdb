@@ -147,17 +147,15 @@ fn refresher(RefresherProps { db }: &RefresherProps) -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 let mut updates = db.listen_for_all_updates();
                 let force_update = force_update.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    loop {
-                        match updates.recv().await {
-                            Err(crdb::broadcast::error::RecvError::Closed) => break,
-                            _ => (), // ignore the contents, just refresh
-                        }
-                        tracing::debug!("refreshing the whole app");
-                        force_update.force_update();
+                loop {
+                    match updates.recv().await {
+                        Err(crdb::broadcast::error::RecvError::Closed) => break,
+                        _ => (), // ignore the contents, just refresh
                     }
-                });
-            })
+                    tracing::debug!("refreshing the whole app");
+                    force_update.force_update();
+                }
+            });
         }
     });
     html! {
