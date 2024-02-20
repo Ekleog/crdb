@@ -510,17 +510,19 @@ impl<C: ServerConfig> Server<C> {
                     .await
             }
             Request::Unsubscribe(object_ids) => {
-                let mut subscribed_objects = conn
-                    .session
-                    .as_ref()
-                    .ok_or(crate::Error::ProtocolViolation)?
-                    .subscribed_objects
-                    .write()
-                    .unwrap();
-                for id in object_ids {
-                    subscribed_objects.remove(id);
+                {
+                    let mut subscribed_objects = conn
+                        .session
+                        .as_ref()
+                        .ok_or(crate::Error::ProtocolViolation)?
+                        .subscribed_objects
+                        .write()
+                        .unwrap();
+                    for id in object_ids {
+                        subscribed_objects.remove(id);
+                    }
                 }
-                Ok(())
+                Self::send_res(&mut conn.socket, msg.request_id, Ok(ResponsePart::Success)).await
             }
             Request::UnsubscribeQuery(query_id) => {
                 conn.session
@@ -530,7 +532,7 @@ impl<C: ServerConfig> Server<C> {
                     .write()
                     .unwrap()
                     .remove(query_id);
-                Ok(())
+                Self::send_res(&mut conn.socket, msg.request_id, Ok(ResponsePart::Success)).await
             }
             Request::Upload(upload) => {
                 let sess = conn
@@ -655,7 +657,7 @@ impl<C: ServerConfig> Server<C> {
                     .as_mut()
                     .ok_or(crate::Error::ProtocolViolation)?
                     .expected_binaries = *num_binaries;
-                Ok(())
+                Self::send_res(&mut conn.socket, msg.request_id, Ok(ResponsePart::Success)).await
             }
         }
     }
