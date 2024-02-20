@@ -6,7 +6,8 @@ use crate::{
         ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
         UpdateData, Updates,
     },
-    ObjectId, Query, SessionToken, Timestamp, TypeId, Updatedness,
+    timestamp::SystemTimeExt,
+    ObjectId, Query, SessionToken, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
@@ -16,6 +17,7 @@ use std::{
     time::Duration,
 };
 use tokio::time::Instant;
+use web_time::SystemTime;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
@@ -164,9 +166,7 @@ where
             pending_requests: HashMap::new(),
             event_cb,
             update_sender,
-            last_ping: Timestamp::now()
-                .time_ms_i()
-                .expect("Time is obviously ill-set"),
+            last_ping: SystemTime::now().ms_since_posix().unwrap(),
             next_ping: None,
             next_pong_deadline: None,
             get_subscribed_objects,
@@ -191,7 +191,7 @@ where
                         request_id,
                         request: Arc::new(Request::GetTime),
                     }).await;
-                    self.last_ping = Timestamp::now().time_ms_i().expect("Time is obviously ill-set");
+                    self.last_ping = SystemTime::now().ms_since_posix().unwrap();
                     self.next_ping = None;
                     self.next_pong_deadline = Some((request_id, Instant::now() + PONG_DEADLINE));
                 }
@@ -497,16 +497,14 @@ where
                         tracing::error!("Server answered GetTime with unexpected {response:?}");
                         return;
                     };
-                    let Ok(server_time) = server_time.time_ms_i() else {
+                    let Ok(server_time) = server_time.ms_since_posix() else {
                         tracing::error!("Server answered GetTime with obviously-wrong timestamp {server_time:?}");
                         return;
                     };
                     self.next_ping = Some(Instant::now() + PING_INTERVAL);
                     self.next_pong_deadline = None;
                     // Figure out the time offset with the server, only counting certainly-off times
-                    let now = Timestamp::now()
-                        .time_ms_i()
-                        .expect("Time was obviously wrong");
+                    let now = SystemTime::now().ms_since_posix().unwrap();
                     if server_time.saturating_sub(now) > 0 {
                         (self.event_cb)(ConnectionEvent::TimeOffset(
                             server_time.saturating_sub(now),

@@ -1,18 +1,19 @@
-use crate::{DynSized, ObjectId, Timestamp};
+use crate::{timestamp::SystemTimeExt, DynSized, ObjectId};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicI64, Ordering},
         Arc,
     },
 };
+use web_time::SystemTime;
 
 // TODO(test-med): test this
 
 pub struct ObjectCache {
     watermark: usize,
-    // AtomicU64 here is the timestamp (in ms since unix epoch) of the last access to the object
-    objects: HashMap<ObjectId, (AtomicU64, Arc<dyn DynSized>)>,
+    // AtomicI64 here is the timestamp (in ms since unix epoch) of the last access to the object
+    objects: HashMap<ObjectId, (AtomicI64, Arc<dyn DynSized>)>,
     approx_exclusive_size: usize,
 }
 
@@ -43,7 +44,7 @@ impl ObjectCache {
     }
 
     pub fn set(&mut self, object_id: ObjectId, value: Arc<dyn DynSized>) {
-        let now = AtomicU64::new(Timestamp::now().time_ms());
+        let now = AtomicI64::new(SystemTime::now().ms_since_posix().unwrap());
         self.add_approx_size(value.deep_size_of());
         if let Some(previous) = self.objects.insert(object_id, (now, value)) {
             self.rm_approx_size(previous.1.deep_size_of());
@@ -58,7 +59,10 @@ impl ObjectCache {
 
     pub fn get(&self, id: &ObjectId) -> Option<Arc<dyn DynSized>> {
         self.objects.get(id).map(|(access, v)| {
-            access.store(Timestamp::now().time_ms(), Ordering::Relaxed);
+            access.store(
+                SystemTime::now().ms_since_posix().unwrap(),
+                Ordering::Relaxed,
+            );
             v.clone()
         })
     }

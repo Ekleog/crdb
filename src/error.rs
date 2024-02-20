@@ -1,4 +1,4 @@
-use crate::{BinPtr, EventId, ObjectId, SessionToken, Timestamp, TypeId};
+use crate::{BinPtr, EventId, ObjectId, SessionToken, TypeId};
 use anyhow::anyhow;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -8,9 +8,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("Missing binary pointers: {0:?}")]
     MissingBinaries(Vec<BinPtr>),
-
-    #[error("{0:?} is outside the range of valid ULIDs")]
-    InvalidTimestamp(Timestamp),
 
     #[error("{0:?} already exists with a different value set")]
     ObjectAlreadyExists(ObjectId),
@@ -71,9 +68,6 @@ pub enum SerializableError {
     #[error("Missing binary pointers: {0:?}")]
     MissingBinaries(Vec<BinPtr>),
 
-    #[error("{0:?} is outside the range of valid ULIDs")]
-    InvalidTimestamp(Timestamp),
-
     #[error("{0:?} already exists with a different value set")]
     ObjectAlreadyExists(ObjectId),
 
@@ -131,7 +125,6 @@ impl From<Error> for SerializableError {
     fn from(err: Error) -> SerializableError {
         match err {
             Error::MissingBinaries(e) => SerializableError::MissingBinaries(e),
-            Error::InvalidTimestamp(e) => SerializableError::InvalidTimestamp(e),
             Error::ObjectAlreadyExists(e) => SerializableError::ObjectAlreadyExists(e),
             Error::EventAlreadyExists(e) => SerializableError::EventAlreadyExists(e),
             Error::ObjectDoesNotExist(e) => SerializableError::ObjectDoesNotExist(e),
@@ -173,7 +166,6 @@ impl From<SerializableError> for Error {
     fn from(err: SerializableError) -> Error {
         match err {
             SerializableError::MissingBinaries(e) => Error::MissingBinaries(e),
-            SerializableError::InvalidTimestamp(e) => Error::InvalidTimestamp(e),
             SerializableError::ObjectAlreadyExists(e) => Error::ObjectAlreadyExists(e),
             SerializableError::EventAlreadyExists(e) => Error::EventAlreadyExists(e),
             SerializableError::ObjectDoesNotExist(e) => Error::ObjectDoesNotExist(e),

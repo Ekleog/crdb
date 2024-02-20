@@ -30,7 +30,6 @@ pub use importance::Importance;
 pub use object::{CanDoCallbacks, Event, Object};
 pub use query::{JsonPathItem, Query};
 pub use session::{NewSession, Session};
-pub use timestamp::Timestamp;
 
 use db_trait::Db;
 use error::ResultExt;
@@ -86,8 +85,7 @@ pub mod crdb_internal {
         private,
         session::Session,
         BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object, ObjectId, Query,
-        QueryId, Result, SerializableError, SessionRef, SessionToken, Timestamp, TypeId,
-        Updatedness, User,
+        QueryId, Result, SerializableError, SessionRef, SessionToken, TypeId, Updatedness, User,
     };
     pub use anyhow;
     pub use futures::{self, channel::mpsc, future, stream, Stream};

@@ -66,6 +66,7 @@ thiserror = "1.0"
 tokio = { version = "1.35", features = ["macros", "rt", "sync"] }
 tracing = "0.1.40"
 ulid = { version = "1.1.1", features = ["serde"] } # 1.1.1 required for wasm support
+web-time = { version = "1.0", features = ["serde"] }
 writeable = "0.5.4"
 
 # Optional dependencies
@@ -120,3 +121,7 @@ inherits = "dev"
 opt-level = 3
 incremental = false
 codegen-units = 1
+
+# TODO(blocked): remove override once https://github.com/daxpedda/web-time/pull/24 lands
+[patch.crates-io]
+web-time = { version = "1.0", git = "https://github.com/daxpedda/web-time", rev = "0986c4ac8243156993033ba3f1edd9f5151f3dae" }

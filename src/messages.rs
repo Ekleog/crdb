@@ -1,6 +1,8 @@
+use web_time::SystemTime;
+
 use crate::{
-    ids::QueryId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, Timestamp,
-    TypeId, Updatedness,
+    ids::QueryId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, TypeId,
+    Updatedness,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -99,7 +101,7 @@ pub enum ResponsePart {
     Success,
     Error(crate::SerializableError),
     Sessions(Vec<Session>),
-    CurrentTime(Timestamp),
+    CurrentTime(SystemTime),
     Objects {
         data: Vec<MaybeObject>,
         // Set only in answer to a Query, this is the max of the Updatedness of all the returned objects.

@@ -6,7 +6,8 @@ use crate::{
         ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
         Update, UpdateData, Updates, Upload,
     },
-    BinPtr, Db, EventId, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, Timestamp,
+    timestamp::SystemTimeExt,
+    BinPtr, Db, EventId, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken,
     Updatedness, User,
 };
 use anyhow::anyhow;
@@ -176,13 +177,13 @@ impl<C: ServerConfig> Server<C> {
                     // Define the parameters
                     let no_new_changes_before = vacuum_schedule.recreate_older_than.map(|d| {
                         EventId(Ulid::from_parts(
-                            Timestamp::from(SystemTime::now() - d).time_ms(),
+                            (SystemTime::now() - d).ms_since_posix().unwrap() as u64,
                             u128::MAX,
                         ))
                     });
                     let kill_sessions_older_than = vacuum_schedule
                         .kill_sessions_older_than
-                        .map(|d| Timestamp::from(SystemTime::now() - d));
+                        .map(|d| SystemTime::now() - d);
 
                     // Retrieve the updatedness slot
                     let (sender, receiver) = oneshot::channel();
@@ -230,9 +231,9 @@ impl<C: ServerConfig> Server<C> {
         &self,
         user_id: User,
         session_name: String,
-        expiration_time: Option<Timestamp>,
+        expiration_time: Option<SystemTime>,
     ) -> crate::Result<(SessionToken, SessionRef)> {
-        let now = Timestamp::now();
+        let now = SystemTime::now();
         self.postgres_db
             .login_session(Session {
                 user_id,
@@ -340,7 +341,7 @@ impl<C: ServerConfig> Server<C> {
             // mark the session as active every 10 seconds / 1 minute, yet that's the frequency at which the clients
             // send GetTime in order to detect disconnection
             self.postgres_db
-                .mark_session_active(sess.token, Timestamp::now())
+                .mark_session_active(sess.token, SystemTime::now())
                 .await
                 .wrap_context("marking session as active")?;
         }
@@ -420,7 +421,7 @@ impl<C: ServerConfig> Server<C> {
             Request::GetTime => {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
-                    Some(_) => Ok(ResponsePart::CurrentTime(Timestamp::now())),
+                    Some(_) => Ok(ResponsePart::CurrentTime(SystemTime::now())),
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
@@ -986,7 +987,7 @@ impl<C: ServerConfig> Server<C> {
     pub async fn vacuum(
         &self,
         no_new_changes_before: Option<EventId>,
-        kill_sessions_older_than: Option<Timestamp>,
+        kill_sessions_older_than: Option<SystemTime>,
     ) -> crate::Result<()> {
         let (updatedness, slot) = self.updatedness_slot().await?;
         Self::run_vacuum(
@@ -1003,7 +1004,7 @@ impl<C: ServerConfig> Server<C> {
         postgres_db: &PostgresDb<C>,
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
-        kill_sessions_older_than: Option<Timestamp>,
+        kill_sessions_older_than: Option<SystemTime>,
         slot: oneshot::Sender<UpdatesMap>,
     ) -> crate::Result<()> {
         // Perform the vacuum, collecting all updates

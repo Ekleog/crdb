@@ -8,8 +8,9 @@ use crate::{
     messages::{ObjectData, SnapshotData, Update, UpdateData},
     object::parse_snapshot,
     query::Bind,
+    timestamp::SystemTimeExt,
     BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
-    SessionToken, Timestamp, TypeId, Updatedness, User,
+    SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
 use futures::{future::Either, StreamExt, TryStreamExt};
@@ -83,9 +84,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(session.session_ref)
             .bind(session.user_id)
             .bind(&session.session_name)
-            .bind(session.login_time.time_ms_i()?)
-            .bind(session.last_active.time_ms_i()?)
-            .bind(session.expiration_time.map(|t| t.time_ms_i()).transpose()?)
+            .bind(session.login_time.ms_since_posix()?)
+            .bind(session.last_active.ms_since_posix()?)
+            .bind(
+                session
+                    .expiration_time
+                    .map(|t| t.ms_since_posix())
+                    .transpose()?,
+            )
             .execute(&self.db)
             .await
             .wrap_with_context(|| {
@@ -110,19 +116,25 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             user_id: User::from_uuid(res.user_id),
             session_ref: SessionRef::from_uuid(res.session_ref),
             session_name: res.name,
-            login_time: Timestamp::from_i64_ms(res.login_time),
-            last_active: Timestamp::from_i64_ms(res.last_active),
-            expiration_time: res.expiration_time.map(Timestamp::from_i64_ms),
+            login_time: SystemTime::from_ms_since_posix(res.login_time)
+                .expect("negative timestamp made its way into database"),
+            last_active: SystemTime::from_ms_since_posix(res.last_active)
+                .expect("negative timestamp made its way into database"),
+            expiration_time: res
+                .expiration_time
+                .map(SystemTime::from_ms_since_posix)
+                .transpose()
+                .expect("negative timestamp made its way into database"),
         })
     }
 
     pub async fn mark_session_active(
         &self,
         token: SessionToken,
-        at: Timestamp,
+        at: SystemTime,
     ) -> crate::Result<()> {
         let affected = sqlx::query("UPDATE sessions SET last_active = $1 WHERE session_token = $2")
-            .bind(at.time_ms_i()?)
+            .bind(at.ms_since_posix()?)
             .bind(token)
             .execute(&self.db)
             .await
@@ -159,9 +171,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 user_id: User::from_uuid(r.user_id),
                 session_ref: SessionRef::from_uuid(r.session_ref),
                 session_name: r.name,
-                login_time: Timestamp::from_i64_ms(r.login_time),
-                last_active: Timestamp::from_i64_ms(r.last_active),
-                expiration_time: r.expiration_time.map(Timestamp::from_i64_ms),
+                login_time: SystemTime::from_ms_since_posix(r.login_time)
+                    .expect("negative timestamp made its way into database"),
+                last_active: SystemTime::from_ms_since_posix(r.last_active)
+                    .expect("negative timestamp made its way into database"),
+                expiration_time: r
+                    .expiration_time
+                    .map(SystemTime::from_ms_since_posix)
+                    .transpose()
+                    .expect("negative timestamp made its way into database"),
             })
             .collect();
         Ok(sessions)
@@ -240,7 +258,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         &self,
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
-        kill_sessions_older_than: Option<Timestamp>,
+        kill_sessions_older_than: Option<SystemTime>,
         mut notify_recreation: impl FnMut(Update, HashSet<User>),
     ) -> crate::Result<()> {
         // TODO(perf-high): do not vacuum away binaries that have been uploaded less than an hour ago
@@ -249,7 +267,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             reord::point().await;
             sqlx::query!(
                 "DELETE FROM sessions WHERE last_active < $1",
-                t.time_ms() as i64
+                t.ms_since_posix()?,
             )
             .execute(&self.db)
             .await

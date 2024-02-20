@@ -53,7 +53,6 @@ pub fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
     use crate::Error::*;
     match (pg, mem) {
         (MissingBinaries(a), MissingBinaries(b)) => a == b,
-        (InvalidTimestamp(a), InvalidTimestamp(b)) => a == b,
         (ObjectAlreadyExists(a), ObjectAlreadyExists(b)) => a == b,
         (EventAlreadyExists(a), EventAlreadyExists(b)) => a == b,
         (ObjectDoesNotExist(a), ObjectDoesNotExist(b)) => a == b,

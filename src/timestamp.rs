@@ -1,57 +1,36 @@
-use std::time::SystemTime;
-use ulid::Ulid;
+use anyhow::anyhow;
+use web_time::SystemTime;
 
-#[derive(
-    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
-)]
-#[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
-pub struct Timestamp(u64); // Milliseconds since UNIX_EPOCH
+pub(crate) trait SystemTimeExt {
+    fn ms_since_posix(&self) -> crate::Result<i64>;
 
-impl Timestamp {
-    pub fn now() -> Timestamp {
-        Timestamp(
-            u64::try_from(
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis(),
-            )
-            .unwrap(),
-        )
-    }
+    #[cfg(feature = "server")]
+    fn from_ms_since_posix(ms: i64) -> crate::Result<SystemTime>;
+}
 
-    pub fn from_ms(v: u64) -> Timestamp {
-        Timestamp(v)
-    }
-
-    pub fn max_for_ulid() -> Timestamp {
-        Timestamp((1 << Ulid::TIME_BITS) - 1)
-    }
-
-    pub fn time_ms(&self) -> u64 {
-        self.0
+impl SystemTimeExt for SystemTime {
+    fn ms_since_posix(&self) -> crate::Result<i64> {
+        self.duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| {
+                crate::Error::Other(anyhow!("Failed computing duration since unix epoch"))
+            })?
+            .as_millis()
+            .try_into()
+            .map_err(|_| {
+                crate::Error::Other(anyhow!(
+                    "Failed converting duration into reasonably-bound milliseconds"
+                ))
+            })
     }
 
     #[cfg(feature = "server")]
-    pub fn from_i64_ms(v: i64) -> Timestamp {
-        Timestamp(u64::try_from(v).expect("negative timestamp made its way in the database"))
-    }
-
-    pub fn time_ms_i(&self) -> crate::Result<i64> {
-        i64::try_from(self.0).map_err(|_| crate::Error::InvalidTimestamp(*self))
-    }
-}
-
-impl From<std::time::SystemTime> for Timestamp {
-    fn from(t: std::time::SystemTime) -> Timestamp {
-        // SystemTime.duration_since(UNIX_EPOCH) always returns a UTC number of seconds
-        Timestamp(
-            u64::try_from(
-                t.duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis(),
-            )
-            .unwrap(),
-        )
+    fn from_ms_since_posix(ms: i64) -> crate::Result<SystemTime> {
+        use std::time::Duration;
+        let ms = u64::try_from(ms).map_err(|_| {
+            crate::Error::Other(anyhow!(
+                "Cannot convert negative milliseconds into SystemTime"
+            ))
+        })?;
+        Ok(SystemTime::UNIX_EPOCH + Duration::from_millis(ms as u64))
     }
 }

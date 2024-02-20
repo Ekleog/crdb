@@ -1,6 +1,7 @@
 use super::PostgresDb;
-use crate::{test_utils::db::ServerConfig, Object};
+use crate::{test_utils::db::ServerConfig, timestamp::SystemTimeExt, Object};
 use std::time::Duration;
+use web_time::SystemTime;
 
 // mod fuzz_battle_royale;
 mod fuzz_sessions;
@@ -16,7 +17,7 @@ async fn smoke_test(db: sqlx::PgPool) {
         .expect("connecting to db");
     crate::smoke_test!(
         db: db,
-        vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(OBJECT_ID_3.time()), |_, _| ()),
+        vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(SystemTime::from_ms_since_posix(1024).unwrap()), |_, _| ()),
         query_all: db
             .query(USER_ID_NULL, *TestObjectSimple::type_ulid(), None, Arc::new(Query::All(vec![])))
             .await

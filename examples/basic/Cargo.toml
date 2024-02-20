@@ -6,3 +6,7 @@ members = [
     "client-native",
     "server",
 ]
+
+# TODO(blocked): remove override once https://github.com/daxpedda/web-time/pull/24 lands
+[patch.crates-io]
+web-time = { version = "1.0", git = "https://github.com/daxpedda/web-time", rev = "0986c4ac8243156993033ba3f1edd9f5151f3dae" }

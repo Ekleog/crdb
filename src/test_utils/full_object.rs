@@ -1,6 +1,5 @@
 use crate::{
-    error::ResultExt, BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, Timestamp,
-    Updatedness,
+    error::ResultExt, BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, Updatedness,
 };
 use anyhow::anyhow;
 use std::{

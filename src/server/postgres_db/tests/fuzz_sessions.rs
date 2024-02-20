@@ -2,17 +2,23 @@ use super::TmpDb;
 use crate::{
     server::PostgresDb,
     test_utils::{cmp, db::ServerConfig, USER_ID_1},
-    NewSession, Session, SessionRef, SessionToken, Timestamp, User,
+    timestamp::SystemTimeExt,
+    NewSession, Session, SessionRef, SessionToken, User,
 };
 use anyhow::Context;
 use std::collections::{HashMap, HashSet};
 use ulid::Ulid;
+use web_time::SystemTime;
 
 #[derive(Debug, arbitrary::Arbitrary)]
 enum Op {
     Login(NewSession),
     Resume(usize),
-    MarkActive(usize, Timestamp),
+    MarkActive(
+        usize,
+        #[arbitrary(with = |u: &mut arbitrary::Unstructured| u.arbitrary::<std::time::Duration>().map(|d| SystemTime::UNIX_EPOCH + d))]
+         SystemTime,
+    ),
     Rename(usize, String),
     ListSessions(usize),
     Disconnect(usize),
@@ -73,11 +79,6 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 Err(crate::Error::NullByteInString) if session.session_name.contains('\0') => {
                     return Ok(())
                 }
-                Err(crate::Error::InvalidTimestamp(t))
-                    if session.expiration_time == Some(t) && t.time_ms() > i64::MAX as u64 =>
-                {
-                    return Ok(());
-                }
                 Err(e) => Err(e).context("logging session in")?,
             };
             anyhow::ensure!(
@@ -98,8 +99,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
         Op::MarkActive(session, at) => {
             let token = s.token_for(*session);
             let pg = db.mark_session_active(token, *at).await;
-            if let Err(e) = at.time_ms_i() {
-                return cmp(at.time_ms_i(), Err(e));
+            if let Err(e) = at.ms_since_posix() {
+                return cmp(at.ms_since_posix(), Err(e));
             }
             match s.sessions.get_mut(&token) {
                 None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
@@ -206,7 +207,7 @@ fn regression_too_big_timestamp_led_to_crash() {
         &vec![Login(NewSession {
             user_id: USER_ID_1,
             session_name: String::new(),
-            expiration_time: Some(Timestamp::from_ms(u64::MAX)),
+            expiration_time: Some(SystemTime::from_ms_since_posix(i64::MAX).unwrap()),
         })],
     )
 }
@@ -221,10 +222,10 @@ fn regression_disconnect_was_ignored() {
             Login(NewSession {
                 user_id: USER_ID_1,
                 session_name: String::new(),
-                expiration_time: Some(Timestamp::from_ms(0)),
+                expiration_time: Some(SystemTime::from_ms_since_posix(0).unwrap()),
             }),
             Disconnect(0),
-            MarkActive(0, Timestamp::from_ms(0)),
+            MarkActive(0, SystemTime::from_ms_since_posix(0).unwrap()),
         ],
     )
 }
@@ -239,7 +240,7 @@ fn regression_memdb_ignored_disconnect_user_param() {
             Login(NewSession {
                 user_id: USER_ID_1,
                 session_name: String::from("foo"),
-                expiration_time: Some(Timestamp::from_ms(1)),
+                expiration_time: Some(SystemTime::from_ms_since_posix(1).unwrap()),
             }),
             Disconnect(0),
             ListSessions(0),

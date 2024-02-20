@@ -1,4 +1,5 @@
-use crate::{SessionRef, SessionToken, Timestamp, User};
+use crate::{SessionRef, SessionToken, User};
+use web_time::SystemTime;
 
 impl SessionToken {
     #[cfg(feature = "server")]
@@ -13,7 +14,8 @@ impl SessionToken {
 pub struct NewSession {
     pub user_id: User,
     pub session_name: String,
-    pub expiration_time: Option<Timestamp>,
+    #[cfg_attr(feature = "_tests", arbitrary(with = |u: &mut arbitrary::Unstructured| u.arbitrary::<Option<std::time::Duration>>().map(|d| d.map(|d| SystemTime::UNIX_EPOCH + d))))]
+    pub expiration_time: Option<SystemTime>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -21,15 +23,14 @@ pub struct Session {
     pub user_id: User,
     pub session_ref: SessionRef,
     pub session_name: String,
-    // TODO(misc-high): get rid of Timestamp struct, these should be replaced with SystemTime and are almost the last remaining uses
-    pub login_time: Timestamp,
-    pub last_active: Timestamp,
-    pub expiration_time: Option<Timestamp>,
+    pub login_time: SystemTime,
+    pub last_active: SystemTime,
+    pub expiration_time: Option<SystemTime>,
 }
 
 impl Session {
     pub fn new(s: NewSession) -> Session {
-        let now = Timestamp::now();
+        let now = SystemTime::now();
         Session {
             user_id: s.user_id,
             session_ref: SessionRef::now(),

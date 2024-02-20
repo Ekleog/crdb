@@ -4,7 +4,7 @@ use crate::{
         TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
         OBJECT_ID_1,
     },
-    Timestamp, Updatedness,
+    Updatedness,
 };
 use std::sync::Arc;
 

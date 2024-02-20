@@ -1,4 +1,3 @@
-use crate::Timestamp;
 use ulid::Ulid;
 
 macro_rules! impl_id {
@@ -24,10 +23,6 @@ macro_rules! impl_id {
                 Self(Ulid::new())
             }
 
-            pub(crate) fn time(&self) -> Timestamp {
-                Timestamp::from_ms(self.0.timestamp_ms())
-            }
-
             #[cfg(not(target_arch = "wasm32"))]
             pub(crate) fn to_uuid(self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.0.to_bytes())
@@ -41,13 +36,6 @@ macro_rules! impl_id {
             #[cfg(target_arch = "wasm32")]
             pub(crate) fn to_js_string(&self) -> js_sys::JsString {
                 js_sys::JsString::from(format!("{}", self.0))
-            }
-
-            pub(crate) fn last_id_at(time: Timestamp) -> crate::Result<Self> {
-                if time.time_ms() >= (1 << Ulid::TIME_BITS) {
-                    return Err(crate::Error::InvalidTimestamp(time));
-                }
-                Ok(Self(Ulid::from_parts(time.time_ms(), (1 << Ulid::RAND_BITS) - 1)))
             }
 
             pub fn from_u128(v: u128) -> Self {
