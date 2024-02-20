@@ -51,6 +51,7 @@ pub enum Command {
     Logout,
 }
 
+#[derive(Debug)]
 pub enum ConnectionEvent {
     LoggingIn,
     FailedConnecting(anyhow::Error),

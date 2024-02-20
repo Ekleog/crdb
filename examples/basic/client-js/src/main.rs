@@ -40,6 +40,7 @@ fn main() {
 #[function_component(App)]
 fn app() -> Html {
     let require_relogin = use_state(|| false);
+    let logging_in = use_state(|| false);
     let db = use_async_with_options(
         {
             let require_relogin = require_relogin.clone();
@@ -47,7 +48,10 @@ fn app() -> Html {
                 let (db, upgrade_handle) = basic_api::db::Db::connect(
                     String::from("basic-crdb"),
                     CACHE_WATERMARK,
-                    move || require_relogin.set(true),
+                    move || {
+                        tracing::info!("db requested a relogin");
+                        require_relogin.set(true);
+                    },
                     |upload, err| async move {
                         panic!("failed submitting {upload:?}: {err:?}");
                     },
@@ -59,12 +63,15 @@ fn app() -> Html {
                 if upgrade_errs != 0 {
                     return Err(format!("got {upgrade_errs} errors while upgrading"));
                 }
+                db.on_connection_event(|evt| {
+                    tracing::info!(?evt, "connection event");
+                });
                 Ok(Rc::new(db))
             }
         },
         UseAsyncOptions::enable_auto(),
     );
-    if db.loading {
+    if db.loading || *logging_in {
         html! {
             <h1>{ "Loading…" }</h1>
         }
@@ -73,12 +80,20 @@ fn app() -> Html {
     } else if *require_relogin {
         let on_login = Callback::from({
             let db = db.data.clone().unwrap();
+            let require_relogin = require_relogin.clone();
+            let logging_in = logging_in.clone();
             move |(user, token)| {
+                require_relogin.set(false);
+                logging_in.set(true);
                 let db = db.clone();
+                let logging_in = logging_in.clone();
                 wasm_bindgen_futures::spawn_local(async move {
+                    tracing::trace!("sending login to db");
                     db.login(Arc::new(String::from("/api/ws")), user, token)
                         .await
                         .expect("failed logging in");
+                    tracing::trace!("db acknowledged login");
+                    logging_in.set(false);
                 });
             }
         });
@@ -90,7 +105,9 @@ fn app() -> Html {
         unimplemented!() // TODO(example-high)
     } else {
         // See https://github.com/jetli/yew-hooks/issues/40 for why this branch is required
-        html! {}
+        html! {
+            <h1>{ "This should not be visible more than a fraction of a second" }</h1>
+        }
     }
 }
 
