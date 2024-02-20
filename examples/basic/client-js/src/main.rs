@@ -7,7 +7,7 @@ use yew_hooks::prelude::*;
 
 const CACHE_WATERMARK: usize = 8 * 1024 * 1024;
 const VACUUM_FREQUENCY: Duration = Duration::from_secs(3600);
-const WEBSOCKET_URL: &str = "ws://localhost:3000/api/ws";
+const WEBSOCKET_URL: &str = "ws://127.0.0.1:8080/api/ws";
 
 fn main() {
     tracing_wasm::set_as_global_default();
@@ -218,7 +218,24 @@ impl PartialEq for MainViewProps {
 
 #[function_component(MainView)]
 fn main_view(MainViewProps { db }: &MainViewProps) -> Html {
-    html! {
-        <h1>{ format!("Logged in as {}", db.user().unwrap().0) }</h1>
-    }
+    let logout = {
+        let db = db.clone();
+        Callback::from(move |_| {
+            let db = db.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                db.logout().await.expect("failed logging out");
+            });
+        })
+    };
+    html! {<>
+        <h1>
+            { format!("Logged in as {} ", db.user().unwrap().0) }
+            <input
+                type="button"
+                value="Logout"
+                onclick={logout}
+                />
+        </h1>
+
+    </>}
 }
