@@ -784,6 +784,7 @@ impl ClientDb {
             .await
     }
 
+    /// Note: this will fail if the object is not subscribed upon yet: it would not make sense anyway.
     pub async fn submit<T: Object>(
         &self,
         importance: Importance,
