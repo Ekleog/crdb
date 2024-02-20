@@ -759,7 +759,7 @@ impl ClientDb {
                 *T::type_ulid(),
                 &val_json,
             );
-            let do_subscribe = importance >= Importance::Subscribe || lock != Lock::NONE;
+            let do_subscribe = importance >= Importance::Subscribe || !queries.is_empty();
             if do_subscribe {
                 self.subscribed_objects
                     .lock()
@@ -822,7 +822,7 @@ impl ClientDb {
                 *T::type_ulid(),
                 &val_json,
             );
-            let do_subscribe = importance >= Importance::Subscribe || lock_after != Lock::NONE;
+            let do_subscribe = importance >= Importance::Subscribe || !queries.is_empty();
             let (_, _, lock_before) = self
                 .subscribed_objects
                 .lock()
