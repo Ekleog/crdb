@@ -20,7 +20,7 @@ use crate::{
     SessionToken, TypeId, Updatedness,
 };
 use anyhow::anyhow;
-use futures::{channel::mpsc, future::Either, pin_mut, stream, StreamExt};
+use futures::{channel::mpsc, future::Either, pin_mut, stream, FutureExt, StreamExt};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     future::Future,
@@ -538,15 +538,20 @@ async fn upload_resender<C, BG, EH, EHF>(
     // uploads and queries to resolve in parallel.
     let requests = requests.peekable();
     pin_mut!(requests);
+    macro_rules! poll_next_if {
+        ($cond:expr) => {
+            requests
+                .as_mut()
+                .peek()
+                .now_or_never()
+                .and_then(|req| req)
+                .map($cond)
+                .unwrap_or(false)
+        };
+    }
     while requests.as_mut().peek().await.is_some() {
         // First, handle all requests that require no re-sending. Just send them once and forget about them.
-        while requests
-            .as_mut()
-            .peek()
-            .await
-            .map(|(upload_id, _, _)| upload_id.is_none())
-            .unwrap_or(false)
-        {
+        while poll_next_if!(|(id, _, _)| id.is_none()) {
             let (upload_id, request, sender) = requests.next().await.unwrap();
             tracing::trace!(?request, "resender received non-upload request");
             assert!(upload_id.is_none(), "non-upload should not have an id");
@@ -561,13 +566,7 @@ async fn upload_resender<C, BG, EH, EHF>(
 
         // Then, handle uploads. We start them all, and resend them with the missing binaries until we're successfully done.
         let mut upload_reqs = VecDeque::new();
-        while requests
-            .as_mut()
-            .peek()
-            .await
-            .map(|(upload_id, _, _)| upload_id.is_some())
-            .unwrap_or(false)
-        {
+        while poll_next_if!(|(id, _, _)| id.is_some()) {
             let (upload_id, request, final_sender) = requests.next().await.unwrap();
             let upload_id = upload_id.unwrap();
             tracing::trace!(?upload_id, ?request, "resender received upload request");
