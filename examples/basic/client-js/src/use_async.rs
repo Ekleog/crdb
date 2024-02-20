@@ -1,4 +1,4 @@
-// TODO(misc-high): upstream somewhere
+// TODO(blocked): use upstream version if https://github.com/yewstack/yew/pull/3609 lands
 
 use std::{fmt, future::Future};
 
