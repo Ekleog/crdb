@@ -627,7 +627,8 @@ impl IndexedDb {
                 let Some(res) = transaction
                     .object_store("upload_queue")
                     .wrap_context("retrieving 'upload_queue' object store")?
-                    .get(&JsValue::from(u32::try_from(upload_id.0).unwrap())) // TODO(misc-high): figure out how to accept up to safe_range
+                    // TODO(misc-high): replace with https://github.com/rustwasm/wasm-bindgen/pull/3847 ?
+                    .get(&JsValue::from(u32::try_from(upload_id.0).unwrap()))
                     .await
                     .wrap_context("fetching data from upload_queue store")?
                 else {
