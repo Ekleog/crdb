@@ -776,6 +776,9 @@ impl ClientDb {
         } else {
             importance >= Importance::Subscribe
         };
+        if !do_subscribe {
+            self.db.remove(object_id).await?;
+        }
         self.api
             .create(object_id, created_at, object, do_subscribe)
             .await
