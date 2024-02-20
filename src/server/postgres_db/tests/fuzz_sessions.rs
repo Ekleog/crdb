@@ -94,6 +94,11 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
                 Err(crate::Error::NullByteInString) if session.session_name.contains('\0') => {
                     return Ok(())
                 }
+                Err(crate::Error::InvalidTime(t))
+                    if session.expiration_time == Some(t) && t.ms_since_posix().is_err() =>
+                {
+                    return Ok(())
+                }
                 Err(e) => Err(e).context("logging session in")?,
             };
             anyhow::ensure!(
@@ -260,5 +265,18 @@ fn regression_memdb_ignored_disconnect_user_param() {
             Disconnect(0),
             ListSessions(0),
         ],
+    );
+}
+
+#[test]
+fn regression_expiration_time_too_late_caused_crash() {
+    let cluster = TmpDb::new();
+    fuzz_impl(
+        &cluster,
+        &vec![Op::Login(NewSession {
+            user_id: USER_ID_1,
+            session_name: String::from(""),
+            expiration_time: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(u64::MAX / 2)),
+        })],
     );
 }

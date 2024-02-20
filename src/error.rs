@@ -1,5 +1,6 @@
 use crate::{BinPtr, EventId, ObjectId, SessionToken, TypeId};
 use anyhow::anyhow;
+use web_time::SystemTime;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -32,6 +33,9 @@ pub enum Error {
 
     #[error("Invalid number provided")]
     InvalidNumber,
+
+    #[error("Invalid time")]
+    InvalidTime(SystemTime),
 
     #[error(
         "{event_id:?} is too early to be submitted on {object_id:?} created at {created_at:?}"
@@ -92,6 +96,9 @@ pub enum SerializableError {
     #[error("Invalid number provided")]
     InvalidNumber,
 
+    #[error("Invalid time")]
+    InvalidTime(SystemTime),
+
     #[error(
         "{event_id:?} is too early to be submitted on {object_id:?} created at {created_at:?}"
     )]
@@ -133,6 +140,7 @@ impl From<Error> for SerializableError {
             Error::NullByteInString => SerializableError::NullByteInString,
             Error::InvalidToken(e) => SerializableError::InvalidToken(e),
             Error::InvalidNumber => SerializableError::InvalidNumber,
+            Error::InvalidTime(t) => SerializableError::InvalidTime(t),
             Error::EventTooEarly {
                 event_id,
                 object_id,
@@ -174,6 +182,7 @@ impl From<SerializableError> for Error {
             SerializableError::NullByteInString => Error::NullByteInString,
             SerializableError::InvalidToken(e) => Error::InvalidToken(e),
             SerializableError::InvalidNumber => Error::InvalidNumber,
+            SerializableError::InvalidTime(t) => Error::InvalidTime(t),
             SerializableError::EventTooEarly {
                 event_id,
                 object_id,
