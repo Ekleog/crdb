@@ -5,7 +5,7 @@ use crate::{
     crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
-    future::{CrdbSend, CrdbSync},
+    future::CrdbSend,
     ids::QueryId,
     messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
     object::parse_snapshot_ref,
@@ -65,8 +65,8 @@ impl ClientDb {
     ) -> anyhow::Result<(ClientDb, impl CrdbFuture<Output = usize>)>
     where
         C: ApiConfig,
-        RRL: 'static + CrdbSend + CrdbSync + Fn(),
-        EH: 'static + CrdbSend + CrdbSync + Fn(Upload, crate::Error) -> EHF,
+        RRL: 'static + CrdbSend + Fn(),
+        EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + CrdbFuture<Output = OnError>,
         VS: 'static + Send + Fn(ClientStorageInfo) -> bool,
     {

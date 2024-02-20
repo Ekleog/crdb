@@ -20,8 +20,8 @@ macro_rules! generate_client {
                 impl crdb::CrdbFuture<Output = usize>,
             )>>
             where
-                RRL: 'static + crdb::CrdbSend + crdb::CrdbSync + Fn(),
-                EH: 'static + crdb::CrdbSend + crdb::CrdbSync + Fn(crdb::Upload, crdb::Error) -> EHF,
+                RRL: 'static + crdb::CrdbSend + Fn(),
+                EH: 'static + crdb::CrdbSend + Fn(crdb::Upload, crdb::Error) -> EHF,
                 EHF: 'static + crdb::CrdbFuture<Output = crdb::OnError>,
                 CVS: 'static + Send + Fn(crdb::ClientStorageInfo) -> bool,
             {
