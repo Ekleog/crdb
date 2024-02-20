@@ -15,10 +15,7 @@ fn any_system_time_opt(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Opt
     let Some(d) = d else {
         return Ok(None);
     };
-    let t = SystemTime::UNIX_EPOCH
-        .checked_add(d)
-        .ok_or(arbitrary::Error::IncorrectFormat)?;
-    Ok(Some(t))
+    Ok(SystemTime::UNIX_EPOCH.checked_add(d))
 }
 
 #[derive(Clone, Debug)]

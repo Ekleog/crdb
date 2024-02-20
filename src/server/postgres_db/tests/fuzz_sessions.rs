@@ -20,7 +20,6 @@ const NANOS_PER_SEC: u128 = 1_000_000_000;
 const MAX_TIME_AHEAD: u128 = NANOS_PER_SEC * 3600 * 24 * 366 * 3000;
 
 fn reasonable_system_time(u: &mut arbitrary::Unstructured) -> arbitrary::Result<SystemTime> {
-    eprintln!("generating reasonable system time");
     let d = u.arbitrary::<u128>()? % MAX_TIME_AHEAD;
     Ok(SystemTime::UNIX_EPOCH
         + Duration::new((d / NANOS_PER_SEC) as u64, (d % NANOS_PER_SEC) as u32))
@@ -175,6 +174,8 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> 
 }
 
 fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
+    #[cfg(not(fuzzing))]
+    eprintln!("Fuzzing with:\n{}", serde_json::to_string(&ops).unwrap());
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async move {
