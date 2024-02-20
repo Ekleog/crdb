@@ -103,7 +103,9 @@ fn app() -> Html {
         }
     } else if let Some(db) = &db.data {
         html! {
-            <MainView {db} />
+            <ContextProvider<DbContext> context={DbContext(db.clone())}>
+                <MainView />
+            </ContextProvider<DbContext>>
         }
     } else {
         // See https://github.com/jetli/yew-hooks/issues/40 for why this branch is required
@@ -205,14 +207,12 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
     }
 }
 
-#[derive(Properties)]
-struct MainViewProps {
-    db: Rc<basic_api::db::Db>,
-}
+#[derive(Clone)]
+struct DbContext(Rc<basic_api::db::Db>);
 
-impl PartialEq for MainViewProps {
+impl PartialEq for DbContext {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.db, &other.db)
+        Rc::ptr_eq(&self.0, &other.0)
     }
 }
 
@@ -223,7 +223,8 @@ fn show_user(user: User) -> String {
 }
 
 #[function_component(MainView)]
-fn main_view(MainViewProps { db }: &MainViewProps) -> Html {
+fn main_view() -> Html {
+    let db = use_context::<DbContext>().unwrap().0;
     let logout = {
         let db = db.clone();
         Callback::from(move |_| {
@@ -242,6 +243,5 @@ fn main_view(MainViewProps { db }: &MainViewProps) -> Html {
                 onclick={logout}
                 />
         </h1>
-
     </>}
 }
