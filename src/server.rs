@@ -416,6 +416,7 @@ impl<C: ServerConfig> Server<C> {
                         .await
                         .map(|()| ResponsePart::Success),
                 };
+                conn.session = None;
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
             Request::DisconnectSession(session_ref) => {
