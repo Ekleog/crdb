@@ -407,6 +407,17 @@ impl<C: ServerConfig> Server<C> {
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
+            Request::Logout => {
+                let res = match &conn.session {
+                    None => Err(crate::Error::ProtocolViolation),
+                    Some(sess) => self
+                        .postgres_db
+                        .disconnect_session(sess.session.user_id, sess.session.session_ref)
+                        .await
+                        .map(|()| ResponsePart::Success),
+                };
+                Self::send_res(&mut conn.socket, msg.request_id, res).await
+            }
             Request::DisconnectSession(session_ref) => {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),

@@ -27,6 +27,7 @@ pub enum Request {
     RenameSession(String),
     CurrentSession,
     ListSessions,
+    Logout,
     DisconnectSession(SessionRef),
     GetTime,
     // Map from object to the only_updated_since information we want on it

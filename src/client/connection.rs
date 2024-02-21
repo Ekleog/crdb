@@ -217,7 +217,7 @@ where
                     let Some(command) = command else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
-                    self.handle_command(command);
+                    self.handle_command(command).await;
                 }
 
                 // Listen for incoming requests from the client
@@ -445,13 +445,22 @@ where
         self.last_request_id
     }
 
-    fn handle_command(&mut self, command: Command) {
+    async fn handle_command(&mut self, command: Command) {
         match command {
             Command::Login { url, token } => {
                 self.state = State::Disconnected { url, token };
                 (self.event_cb)(ConnectionEvent::LoggingIn);
             }
             Command::Logout => {
+                if let State::Connected { .. } = self.state {
+                    let request_id = self.next_request_id();
+                    self.send_connected(&ClientMessage {
+                        request_id,
+                        request: Arc::new(Request::Logout),
+                    })
+                    .await;
+                }
+                // TODO(client-high): clear the state in hashmaps & co, and make sure this is called when user relogins as other user
                 self.state = State::NoValidInfo;
                 (self.event_cb)(ConnectionEvent::LoggedOut);
             }
