@@ -349,7 +349,7 @@ impl ClientDb {
                     lock,
                     reply,
                 } => {
-                    if *data_saver_skipper.borrow_and_update() {
+                    if *data_saver_skipper.borrow() {
                         continue;
                     }
                     let _guard = vacuum_guard.read().await; // Do not vacuum while we're inserting new data
@@ -374,7 +374,11 @@ impl ClientDb {
                             // update.
                         }
                         Err(crate::Error::MissingBinaries(binary_ids)) => {
-                            if let Err(err) = Self::fetch_binaries(binary_ids, &db, &api).await {
+                            let fetch_binaries_res = tokio::select! {
+                                bins = Self::fetch_binaries(binary_ids, &db, &api) => bins,
+                                _ = data_saver_skipper.wait_for(|do_skip| *do_skip) => continue,
+                            };
+                            if let Err(err) = fetch_binaries_res {
                                 tracing::error!(
                                     ?err,
                                     ?update,
