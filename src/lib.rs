@@ -38,7 +38,7 @@ use future::{CrdbSend, CrdbSync};
 #[cfg(feature = "client")]
 mod client;
 #[cfg(feature = "client")]
-pub use client::ClientVacuumSchedule;
+pub use client::{ClientVacuumSchedule, ConnectionEvent};
 #[cfg(not(feature = "client"))]
 mod client {
     #[macro_export]

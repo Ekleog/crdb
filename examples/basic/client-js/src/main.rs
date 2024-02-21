@@ -1,5 +1,8 @@
 use basic_api::{AuthInfo, Item};
-use crdb::{fts::SearchableString, Importance, JsonPathItem, Query, QueryId, SessionToken, User};
+use crdb::{
+    fts::SearchableString, ConnectionEvent, Importance, JsonPathItem, Query, QueryId, SessionToken,
+    User,
+};
 use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
@@ -45,8 +48,10 @@ fn main() {
 fn app() -> Html {
     let require_relogin = use_state(|| false);
     let logging_in = use_state(|| false);
+    let connection_status = use_state(|| ConnectionEvent::LoggedOut);
     let db = use_async((), {
         let require_relogin = require_relogin.clone();
+        let connection_status = connection_status.clone();
         move |_| async move {
             let (db, upgrade_handle) = basic_api::db::Db::connect(
                 String::from("basic-crdb"),
@@ -66,8 +71,10 @@ fn app() -> Html {
             if upgrade_errs != 0 {
                 return Err(format!("got {upgrade_errs} errors while upgrading"));
             }
-            db.on_connection_event(|evt| {
+            tracing::debug!("setting on_connection_event");
+            db.on_connection_event(move |evt| {
                 tracing::info!(?evt, "connection event");
+                connection_status.set(evt);
             });
             Ok(Rc::new(db))
         }
@@ -108,7 +115,7 @@ fn app() -> Html {
         }
     } else {
         html! {
-            <Refresher {db} />
+            <Refresher {db} connection_status={Rc::new(format!("{:?}", &*connection_status))} />
         }
     }
 }
@@ -116,6 +123,7 @@ fn app() -> Html {
 #[derive(Properties)]
 struct RefresherProps {
     db: Rc<basic_api::db::Db>,
+    connection_status: Rc<String>,
 }
 
 impl PartialEq for RefresherProps {
@@ -134,10 +142,14 @@ impl<T> PartialEq for RcEq<T> {
 }
 
 #[function_component(Refresher)]
-fn refresher(RefresherProps { db }: &RefresherProps) -> Html {
+fn refresher(
+    RefresherProps {
+        db,
+        connection_status,
+    }: &RefresherProps,
+) -> Html {
     // TODO(misc-high): write a crdb-yew to hide that and only refresh each individual query when required
     let counter = use_mut_ref(|| 0); // Counter used only to force a refresh of each component that uses DbContext
-    // TODO(example-high): let connection_status = ...
     let force_update = use_force_update();
     *counter.borrow_mut() += 1;
     use_effect_with(RcEq(db.clone()), {
@@ -174,7 +186,7 @@ fn refresher(RefresherProps { db }: &RefresherProps) -> Html {
     });
     html! {
         <ContextProvider<DbContext> context={DbContext(db.clone(), *counter.borrow())}>
-            <MainView />
+            <MainView {connection_status} />
         </ContextProvider<DbContext>>
     }
 }
@@ -289,8 +301,13 @@ fn show_user(user: User) -> String {
     s[i..].to_owned()
 }
 
+#[derive(PartialEq, Properties)]
+struct MainViewProps {
+    connection_status: Rc<String>,
+}
+
 #[function_component(MainView)]
-fn main_view() -> Html {
+fn main_view(MainViewProps { connection_status }: &MainViewProps) -> Html {
     let db = use_context::<DbContext>().unwrap().0;
     let logout = {
         let db = db.clone();
@@ -303,7 +320,7 @@ fn main_view() -> Html {
     };
     html! {<>
         <h1>
-            { format!("Logged in as {} ", show_user(db.user().unwrap())) }
+            { format!("Logged in as {}: {connection_status} ", show_user(db.user().unwrap())) }
             <input
                 type="button"
                 value="Logout"
