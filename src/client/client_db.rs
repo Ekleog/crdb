@@ -841,97 +841,6 @@ impl ClientDb {
             .await
     }
 
-    /// Returns the latest snapshot for the object described by `data`
-    async fn locally_create_all<T: Object>(
-        data_saver: &mpsc::UnboundedSender<(
-            Arc<Update>,
-            Option<Updatedness>,
-            Lock,
-            oneshot::Sender<crate::Result<UpdateResult>>,
-        )>,
-        db: &CacheDb<LocalDb>,
-        lock: Lock,
-        data: ObjectData,
-    ) -> crate::Result<Option<serde_json::Value>> {
-        if data.type_id != *T::type_ulid() {
-            return Err(crate::Error::WrongType {
-                object_id: data.object_id,
-                expected_type_id: *T::type_ulid(),
-                real_type_id: data.type_id,
-            });
-        }
-
-        // First, submit object creation request
-        let mut latest_snapshot_returns =
-            Vec::with_capacity(data.events.len() + data.creation_snapshot.is_some() as usize);
-        if let Some((created_at, snapshot_version, snapshot_data)) = data.creation_snapshot {
-            let (sender, receiver) = oneshot::channel();
-            latest_snapshot_returns.push(receiver);
-            data_saver
-                .unbounded_send((
-                    Arc::new(Update {
-                        object_id: data.object_id,
-                        data: UpdateData::Creation {
-                            type_id: data.type_id,
-                            created_at,
-                            snapshot_version,
-                            data: snapshot_data,
-                        },
-                    }),
-                    data.events.is_empty().then(|| data.now_have_all_until),
-                    lock,
-                    sender,
-                ))
-                .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
-        } else if lock != Lock::NONE {
-            db.get_latest::<T>(lock, data.object_id)
-                .await
-                .wrap_context("locking object as requested")?;
-        }
-
-        // Then, submit all the events
-        let events_len = data.events.len();
-        for (i, (event_id, event)) in data.events.into_iter().enumerate() {
-            // We already locked the object just above if requested
-            let (sender, receiver) = oneshot::channel();
-            latest_snapshot_returns.push(receiver);
-            data_saver
-                .unbounded_send((
-                    Arc::new(Update {
-                        object_id: data.object_id,
-                        data: UpdateData::Event {
-                            type_id: data.type_id,
-                            event_id,
-                            data: event,
-                        },
-                    }),
-                    (i + 1 == events_len).then(|| data.now_have_all_until),
-                    Lock::NONE,
-                    sender,
-                ))
-                .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
-        }
-
-        // Finally, retrieve the result
-        let mut res = None;
-        for receiver in latest_snapshot_returns {
-            if let Ok(res_data) = receiver.await {
-                match res_data {
-                    Ok(UpdateResult::LatestChanged(_, res_data)) => res = Some(res_data),
-                    Ok(_) => (),
-                    Err(crate::Error::ObjectDoesNotExist(o))
-                        if o == data.object_id && lock == Lock::NONE =>
-                    {
-                        // Ignore this error, the object was just vacuumed during creation
-                    }
-                    Err(err) => return Err(err).wrap_context("creating in local database"),
-                }
-            }
-        }
-
-        Ok(res)
-    }
-
     async fn get_impl<T: Object>(
         &self,
         lock: Lock,
@@ -945,8 +854,7 @@ impl ClientDb {
         }
         if subscribe {
             let res = self.api.get_subscribe(object_id).await?;
-            let res_json =
-                Self::locally_create_all::<T>(&self.data_saver, &self.db, lock, res).await?;
+            let res_json = locally_create_all::<T>(&self.data_saver, &self.db, lock, res).await?;
             let (res, res_json) = match res_json {
                 Some(res_json) => (
                     Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),
@@ -1238,6 +1146,97 @@ fn queries_for(
     (queries, lock)
 }
 
+/// Returns the latest snapshot for the object described by `data`
+async fn locally_create_all<T: Object>(
+    data_saver: &mpsc::UnboundedSender<(
+        Arc<Update>,
+        Option<Updatedness>,
+        Lock,
+        oneshot::Sender<crate::Result<UpdateResult>>,
+    )>,
+    db: &CacheDb<LocalDb>,
+    lock: Lock,
+    data: ObjectData,
+) -> crate::Result<Option<serde_json::Value>> {
+    if data.type_id != *T::type_ulid() {
+        return Err(crate::Error::WrongType {
+            object_id: data.object_id,
+            expected_type_id: *T::type_ulid(),
+            real_type_id: data.type_id,
+        });
+    }
+
+    // First, submit object creation request
+    let mut latest_snapshot_returns =
+        Vec::with_capacity(data.events.len() + data.creation_snapshot.is_some() as usize);
+    if let Some((created_at, snapshot_version, snapshot_data)) = data.creation_snapshot {
+        let (sender, receiver) = oneshot::channel();
+        latest_snapshot_returns.push(receiver);
+        data_saver
+            .unbounded_send((
+                Arc::new(Update {
+                    object_id: data.object_id,
+                    data: UpdateData::Creation {
+                        type_id: data.type_id,
+                        created_at,
+                        snapshot_version,
+                        data: snapshot_data,
+                    },
+                }),
+                data.events.is_empty().then(|| data.now_have_all_until),
+                lock,
+                sender,
+            ))
+            .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
+    } else if lock != Lock::NONE {
+        db.get_latest::<T>(lock, data.object_id)
+            .await
+            .wrap_context("locking object as requested")?;
+    }
+
+    // Then, submit all the events
+    let events_len = data.events.len();
+    for (i, (event_id, event)) in data.events.into_iter().enumerate() {
+        // We already locked the object just above if requested
+        let (sender, receiver) = oneshot::channel();
+        latest_snapshot_returns.push(receiver);
+        data_saver
+            .unbounded_send((
+                Arc::new(Update {
+                    object_id: data.object_id,
+                    data: UpdateData::Event {
+                        type_id: data.type_id,
+                        event_id,
+                        data: event,
+                    },
+                }),
+                (i + 1 == events_len).then(|| data.now_have_all_until),
+                Lock::NONE,
+                sender,
+            ))
+            .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
+    }
+
+    // Finally, retrieve the result
+    let mut res = None;
+    for receiver in latest_snapshot_returns {
+        if let Ok(res_data) = receiver.await {
+            match res_data {
+                Ok(UpdateResult::LatestChanged(_, res_data)) => res = Some(res_data),
+                Ok(_) => (),
+                Err(crate::Error::ObjectDoesNotExist(o))
+                    if o == data.object_id && lock == Lock::NONE =>
+                {
+                    // Ignore this error, the object was just vacuumed during creation
+                }
+                Err(err) => return Err(err).wrap_context("creating in local database"),
+            }
+        }
+    }
+
+    Ok(res)
+}
+
 async fn save_object_data_locally<T: Object>(
     data: ObjectData,
     data_saver: &mpsc::UnboundedSender<(
@@ -1254,7 +1253,7 @@ async fn save_object_data_locally<T: Object>(
     let now_have_all_until = data.now_have_all_until;
     let object_id = data.object_id;
     let type_id = data.type_id;
-    let res_json = ClientDb::locally_create_all::<T>(&data_saver, &db, lock, data).await?;
+    let res_json = locally_create_all::<T>(&data_saver, &db, lock, data).await?;
     let (res, res_json) = match res_json {
         Some(res_json) => (
             Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),
