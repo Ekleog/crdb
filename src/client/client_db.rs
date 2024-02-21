@@ -40,12 +40,7 @@ pub struct ClientDb {
         Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>>,
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>>,
-    data_saver: mpsc::UnboundedSender<(
-        Arc<Update>,
-        Option<Updatedness>,
-        Lock,
-        oneshot::Sender<crate::Result<UpdateResult>>,
-    )>,
+    data_saver: mpsc::UnboundedSender<DataSaverMessage>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     query_updates_broadcastees:
         Arc<Mutex<HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>>>,
@@ -54,6 +49,17 @@ pub struct ClientDb {
 }
 
 const BROADCAST_CHANNEL_SIZE: usize = 64;
+
+enum DataSaverMessage {
+    Data {
+        update: Arc<Update>,
+        now_have_all_until: Option<Updatedness>,
+        lock: Lock,
+        reply: oneshot::Sender<crate::Result<UpdateResult>>,
+    },
+    StopFrame(oneshot::Sender<()>),
+    ResumeFrame,
+}
 
 impl ClientDb {
     pub async fn new<C: ApiConfig, RRL, EH, EHF, VS>(
@@ -182,15 +188,15 @@ impl ClientDb {
             let data_saver = self.data_saver.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
-                    for u in updates.data {
-                        let (sender, _) = oneshot::channel();
+                    for update in updates.data {
+                        let (reply, _) = oneshot::channel();
                         data_saver
-                            .unbounded_send((
-                                u,
-                                Some(updates.now_have_all_until),
-                                Lock::NONE,
-                                sender,
-                            ))
+                            .unbounded_send(DataSaverMessage::Data {
+                                update,
+                                now_have_all_until: Some(updates.now_have_all_until),
+                                lock: Lock::NONE,
+                                reply,
+                            })
                             .expect("data saver thread cannot go away");
                         // Ignore the result of saving
                     }
@@ -268,12 +274,7 @@ impl ClientDb {
 
     fn setup_data_saver<C: ApiConfig>(
         &self,
-        data_receiver: mpsc::UnboundedReceiver<(
-            Arc<Update>,
-            Option<Updatedness>,
-            Lock,
-            oneshot::Sender<crate::Result<UpdateResult>>,
-        )>,
+        data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
         let db_bypass = self.db_bypass.clone();
@@ -298,12 +299,7 @@ impl ClientDb {
     }
 
     async fn data_saver<C: ApiConfig>(
-        mut data_receiver: mpsc::UnboundedReceiver<(
-            Arc<Update>,
-            Option<Updatedness>,
-            Lock,
-            oneshot::Sender<crate::Result<UpdateResult>>,
-        )>,
+        mut data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         subscribed_objects: Arc<
             Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>,
         >,
@@ -319,42 +315,22 @@ impl ClientDb {
         >,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
-        while let Some((data, now_have_all_until, lock, result)) = data_receiver.next().await {
-            let _guard = vacuum_guard.read().await; // Do not vacuum while we're inserting new data
-            match Self::save_data::<C>(
-                &db,
-                &subscribed_objects,
-                &subscribed_queries,
-                &data,
-                now_have_all_until,
-                lock,
-                &updates_broadcaster,
-                &query_updates_broadcasters,
-            )
-            .await
-            {
-                Ok(res) => {
-                    let _ = result.send(Ok(res));
-                }
-                Err(crate::Error::ObjectDoesNotExist(_)) => {
-                    // Ignore this error, because if we received from the server an event with an object that does not exist
-                    // locally, it probably means that we recently unsubscribed from it but the server had already sent us the
-                    // update.
-                }
-                Err(crate::Error::MissingBinaries(binary_ids)) => {
-                    if let Err(err) = Self::fetch_binaries(binary_ids, &db, &api).await {
-                        tracing::error!(
-                            ?err,
-                            ?data,
-                            "failed retrieving required binaries for data the server sent us"
-                        );
-                        continue;
-                    }
+        while let Some(msg) = data_receiver.next().await {
+            match msg {
+                DataSaverMessage::StopFrame(_) => todo!(), // TODO(client-high)
+                DataSaverMessage::ResumeFrame => todo!(),  // TODO(client-high)
+                DataSaverMessage::Data {
+                    update,
+                    now_have_all_until,
+                    lock,
+                    reply,
+                } => {
+                    let _guard = vacuum_guard.read().await; // Do not vacuum while we're inserting new data
                     match Self::save_data::<C>(
                         &db,
                         &subscribed_objects,
                         &subscribed_queries,
-                        &data,
+                        &update,
                         now_have_all_until,
                         lock,
                         &updates_broadcaster,
@@ -363,20 +339,51 @@ impl ClientDb {
                     .await
                     {
                         Ok(res) => {
-                            let _ = result.send(Ok(res));
+                            let _ = reply.send(Ok(res));
+                        }
+                        Err(crate::Error::ObjectDoesNotExist(_)) => {
+                            // Ignore this error, because if we received from the server an event with an object that does not exist
+                            // locally, it probably means that we recently unsubscribed from it but the server had already sent us the
+                            // update.
+                        }
+                        Err(crate::Error::MissingBinaries(binary_ids)) => {
+                            if let Err(err) = Self::fetch_binaries(binary_ids, &db, &api).await {
+                                tracing::error!(
+                                    ?err,
+                                    ?update,
+                                    "failed retrieving required binaries for data the server sent us"
+                                );
+                                continue;
+                            }
+                            match Self::save_data::<C>(
+                                &db,
+                                &subscribed_objects,
+                                &subscribed_queries,
+                                &update,
+                                now_have_all_until,
+                                lock,
+                                &updates_broadcaster,
+                                &query_updates_broadcasters,
+                            )
+                            .await
+                            {
+                                Ok(res) => {
+                                    let _ = reply.send(Ok(res));
+                                }
+                                Err(err) => {
+                                    tracing::error!(
+                                        ?err,
+                                        ?update,
+                                        "unexpected error saving data after fetching the binaries"
+                                    );
+                                    let _ = reply.send(Err(err));
+                                }
+                            }
                         }
                         Err(err) => {
-                            tracing::error!(
-                                ?err,
-                                ?data,
-                                "unexpected error saving data after fetching the binaries"
-                            );
-                            let _ = result.send(Err(err));
+                            tracing::error!(?err, ?update, "unexpected error saving data");
                         }
                     }
-                }
-                Err(err) => {
-                    tracing::error!(?err, ?data, "unexpected error saving data");
                 }
             }
         }
@@ -1147,12 +1154,7 @@ fn queries_for(
 
 /// Returns the latest snapshot for the object described by `data`
 async fn locally_create_all<T: Object>(
-    data_saver: &mpsc::UnboundedSender<(
-        Arc<Update>,
-        Option<Updatedness>,
-        Lock,
-        oneshot::Sender<crate::Result<UpdateResult>>,
-    )>,
+    data_saver: &mpsc::UnboundedSender<DataSaverMessage>,
     db: &CacheDb<LocalDb>,
     lock: Lock,
     data: ObjectData,
@@ -1169,11 +1171,11 @@ async fn locally_create_all<T: Object>(
     let mut latest_snapshot_returns =
         Vec::with_capacity(data.events.len() + data.creation_snapshot.is_some() as usize);
     if let Some((created_at, snapshot_version, snapshot_data)) = data.creation_snapshot {
-        let (sender, receiver) = oneshot::channel();
-        latest_snapshot_returns.push(receiver);
+        let (reply, reply_receiver) = oneshot::channel();
+        latest_snapshot_returns.push(reply_receiver);
         data_saver
-            .unbounded_send((
-                Arc::new(Update {
+            .unbounded_send(DataSaverMessage::Data {
+                update: Arc::new(Update {
                     object_id: data.object_id,
                     data: UpdateData::Creation {
                         type_id: data.type_id,
@@ -1182,10 +1184,10 @@ async fn locally_create_all<T: Object>(
                         data: snapshot_data,
                     },
                 }),
-                data.events.is_empty().then(|| data.now_have_all_until),
+                now_have_all_until: data.events.is_empty().then(|| data.now_have_all_until),
                 lock,
-                sender,
-            ))
+                reply,
+            })
             .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
     } else if lock != Lock::NONE {
         db.get_latest::<T>(lock, data.object_id)
@@ -1197,11 +1199,11 @@ async fn locally_create_all<T: Object>(
     let events_len = data.events.len();
     for (i, (event_id, event)) in data.events.into_iter().enumerate() {
         // We already locked the object just above if requested
-        let (sender, receiver) = oneshot::channel();
-        latest_snapshot_returns.push(receiver);
+        let (reply, reply_receiver) = oneshot::channel();
+        latest_snapshot_returns.push(reply_receiver);
         data_saver
-            .unbounded_send((
-                Arc::new(Update {
+            .unbounded_send(DataSaverMessage::Data {
+                update: Arc::new(Update {
                     object_id: data.object_id,
                     data: UpdateData::Event {
                         type_id: data.type_id,
@@ -1209,10 +1211,10 @@ async fn locally_create_all<T: Object>(
                         data: event,
                     },
                 }),
-                (i + 1 == events_len).then(|| data.now_have_all_until),
-                Lock::NONE,
-                sender,
-            ))
+                now_have_all_until: (i + 1 == events_len).then(|| data.now_have_all_until),
+                lock: Lock::NONE,
+                reply,
+            })
             .map_err(|_| crate::Error::Other(anyhow!("Data saver task disappeared early")))?;
     }
 
@@ -1238,12 +1240,7 @@ async fn locally_create_all<T: Object>(
 
 async fn save_object_data_locally<T: Object>(
     data: ObjectData,
-    data_saver: &mpsc::UnboundedSender<(
-        Arc<Update>,
-        Option<Updatedness>,
-        Lock,
-        oneshot::Sender<crate::Result<UpdateResult>>,
-    )>,
+    data_saver: &mpsc::UnboundedSender<DataSaverMessage>,
     db: &CacheDb<LocalDb>,
     lock: Lock,
     subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>,
