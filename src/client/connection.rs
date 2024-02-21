@@ -460,7 +460,9 @@ where
                     })
                     .await;
                 }
-                // TODO(client-high): clear the state in hashmaps & co, and make sure this is called when user relogins as other user
+                self.last_request_id = RequestId(0);
+                while let Ok(Some(_)) = self.requests.try_next() {} // empty it
+                self.pending_requests.clear();
                 self.state = State::NoValidInfo;
                 (self.event_cb)(ConnectionEvent::LoggedOut);
             }
