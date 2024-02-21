@@ -22,13 +22,14 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
 const OBJECT_STORE_LIST: &[&str] = &[
-    "config",
-    "snapshots",
-    "events",
     "binaries",
-    "upload_queue",
-    "snapshots_meta",
+    "config",
+    "events",
     "events_meta",
+    "queries_meta",
+    "snapshots",
+    "snapshots_meta",
+    "upload_queue",
     "upload_queue_meta",
 ];
 
