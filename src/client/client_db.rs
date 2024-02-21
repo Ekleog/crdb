@@ -41,6 +41,7 @@ pub struct ClientDb {
     subscribed_queries:
         Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>>,
     data_saver: mpsc::UnboundedSender<DataSaverMessage>,
+    data_saver_skipper: watch::Sender<bool>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
     query_updates_broadcastees:
         Arc<Mutex<HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>>>,
@@ -142,6 +143,7 @@ impl ClientDb {
             subscribed_objects,
             subscribed_queries,
             data_saver,
+            data_saver_skipper: watch::channel(false).0,
             updates_broadcastee,
             query_updates_broadcastees,
             vacuum_guard: Arc::new(tokio::sync::RwLock::new(())),
@@ -283,9 +285,11 @@ impl ClientDb {
         let subscribed_queries = self.subscribed_queries.clone();
         let vacuum_guard = self.vacuum_guard.clone();
         let query_updates_broadcasters = self.query_updates_broadcastees.clone();
+        let data_saver_skipper = self.data_saver_skipper.subscribe();
         crate::spawn(async move {
             Self::data_saver::<C>(
                 data_receiver,
+                data_saver_skipper,
                 subscribed_objects,
                 subscribed_queries,
                 vacuum_guard,
@@ -300,6 +304,7 @@ impl ClientDb {
 
     async fn data_saver<C: ApiConfig>(
         mut data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
+        mut data_saver_skipper: watch::Receiver<bool>,
         subscribed_objects: Arc<
             Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>,
         >,
@@ -344,6 +349,9 @@ impl ClientDb {
                     lock,
                     reply,
                 } => {
+                    if *data_saver_skipper.borrow_and_update() {
+                        continue;
+                    }
                     let _guard = vacuum_guard.read().await; // Do not vacuum while we're inserting new data
                     match Self::save_data::<C>(
                         &db,
@@ -665,11 +673,13 @@ impl ClientDb {
 
         // Pause data saving and clear everything locally
         let (reply, reply_receiver) = oneshot::channel();
+        self.data_saver_skipper.send_replace(true);
         let _ = self
             .data_saver
             .unbounded_send(DataSaverMessage::StopFrame(reply));
         let _ = reply_receiver.await;
         self.db.remove_everything().await?;
+        self.data_saver_skipper.send_replace(false);
         let _ = self
             .data_saver
             .unbounded_send(DataSaverMessage::ResumeFrame);
