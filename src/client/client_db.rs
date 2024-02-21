@@ -853,36 +853,16 @@ impl ClientDb {
             Err(e) => return Err(e),
         }
         if subscribe {
-            let res = self.api.get_subscribe(object_id).await?;
-            let res_json = locally_create_all::<T>(&self.data_saver, &self.db, lock, res).await?;
-            let (res, res_json) = match res_json {
-                Some(res_json) => (
-                    Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),
-                    res_json,
-                ),
-                None => {
-                    let res = self.db.get_latest::<T>(Lock::NONE, object_id).await?;
-                    let res_json =
-                        serde_json::to_value(&res).wrap_context("serializing snapshot")?;
-                    (res, res_json)
-                }
-            };
-            let (queries, lock_after) = queries_for(
-                &self.subscribed_queries.lock().unwrap(),
-                *T::type_ulid(),
-                &res_json,
-            );
-            self.subscribed_objects
-                .lock()
-                .unwrap()
-                .insert(object_id, (None, queries, lock_after));
-            if lock_after != Lock::NONE {
-                self.db
-                    .change_locks(Lock::NONE, lock_after, object_id)
-                    .await
-                    .wrap_context("updating queries lock")?;
-            }
-            Ok(res)
+            let data = self.api.get_subscribe(object_id).await?;
+            save_object_data_locally::<T>(
+                data,
+                &self.data_saver,
+                &self.db,
+                lock,
+                &self.subscribed_objects,
+                &self.subscribed_queries,
+            )
+            .await
         } else {
             let res = self.api.get_latest(object_id).await?;
             let res = parse_snapshot_ref::<T>(res.snapshot_version, &res.snapshot)
@@ -1253,6 +1233,13 @@ async fn save_object_data_locally<T: Object>(
     let now_have_all_until = data.now_have_all_until;
     let object_id = data.object_id;
     let type_id = data.type_id;
+    if type_id != *T::type_ulid() {
+        return Err(crate::Error::WrongType {
+            object_id,
+            expected_type_id: *T::type_ulid(),
+            real_type_id: type_id,
+        });
+    }
     let res_json = locally_create_all::<T>(&data_saver, &db, lock, data).await?;
     let (res, res_json) = match res_json {
         Some(res_json) => (
