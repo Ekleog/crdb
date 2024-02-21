@@ -620,6 +620,13 @@ impl ClientDb {
     pub async fn logout(&self) -> crate::Result<()> {
         self.api.logout();
         *self.user.write().unwrap() = None;
+        self.subscribed_objects.lock().unwrap().clear();
+        self.subscribed_queries.lock().unwrap().clear();
+        while !self.data_saver.is_empty() {
+            // TODO(client-high): should kill and restart the future, right now logout can block on waiting
+            // for network connection if it's trying to save something with missing binaries
+            crate::sleep(Duration::from_millis(10)).await;
+        }
         self.db.remove_everything().await?;
         Ok(())
     }
