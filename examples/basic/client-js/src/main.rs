@@ -316,7 +316,8 @@ fn main_view() -> Html {
                 <QueryRemoteItems /><br />
             </div>
             <div style="height: 100%; width: 45%; position: absolute; top: 0; right: 0">
-                <ShowLocalDb /><br />
+                <ShowUploadQueue /><hr />
+                <ShowLocalDb /><hr />
             </div>
         </div>
     </>}
@@ -433,10 +434,40 @@ fn query_remote_items() -> Html {
     </>}
 }
 
+#[function_component(ShowUploadQueue)]
+fn show_upload_queue() -> Html {
+    let db = use_context::<DbContext>().unwrap();
+    let upload_queue = use_async(db, |db| {
+        let db = db.clone();
+        async move {
+            let ids =
+                db.0.list_uploads()
+                    .await
+                    .expect("failed listing upload queue");
+            let mut res = Vec::with_capacity(ids.len());
+            for id in ids {
+                res.push(db.0.get_upload(id).await);
+            }
+            Ok::<_, crdb::Error>(res)
+        }
+    });
+    let upload_queue = match upload_queue.status() {
+        UseAsyncStatus::Pending => return html! { <h6>{ "Loading upload queue" }</h6> },
+        UseAsyncStatus::Ready(r) => r.as_ref().expect("failed loading upload queue"),
+    };
+    let upload_queue = upload_queue
+        .iter()
+        .map(|i| html! {<> <br />{ format!("{i:?}") } </>})
+        .collect::<Html>();
+    html! {<>
+        <h3>{ "Upload queue" }</h3>
+        { upload_queue }
+    </>}
+}
+
 #[function_component(ShowLocalDb)]
 fn show_local_db() -> Html {
     let db = use_context::<DbContext>().unwrap();
-    let counter = db.1;
     let local_items = use_async(db, |db| {
         let db = db.clone();
         async move {
@@ -448,7 +479,6 @@ fn show_local_db() -> Html {
             )
         }
     });
-    tracing::debug!(?local_items, ?counter, "refreshing show_local_db");
     let local_items = match local_items.status() {
         UseAsyncStatus::Pending => return html! { <h6>{ "Loading local items…" }</h6> },
         UseAsyncStatus::Ready(r) => r.as_ref().expect("failed loading local items"),
