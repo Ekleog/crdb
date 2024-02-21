@@ -63,6 +63,7 @@ impl SqliteDb {
     pub async fn vacuum(
         &self,
         mut _notify_removals: impl 'static + FnMut(ObjectId),
+        mut _notify_query_removals: impl 'static + FnMut(QueryId),
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }

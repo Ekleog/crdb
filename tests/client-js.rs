@@ -12,7 +12,7 @@ async fn smoke_test() {
     let db = LocalDb::connect("smoke-test").await.unwrap();
     crdb::smoke_test!(
         db: db,
-        vacuum: db.vacuum(|_| ()),
+        vacuum: db.vacuum(|_| (), |_| ()),
         query_all: db
             .query::<TestObjectSimple>(Arc::new(Query::All(vec![])))
             .await
@@ -155,7 +155,7 @@ mod fuzz_helpers {
         mem_db: &MemDb,
         _recreate_at: Option<(EventId, Updatedness)>,
     ) -> anyhow::Result<()> {
-        let db = db.vacuum(|_| ()).await; // TODO(test-high): verify that the removals are the same as in MemDb
+        let db = db.vacuum(|_| (), |_| ()).await; // TODO(test-high): verify that the removals are the same as in MemDb
         let mem = mem_db.vacuum().await;
         cmp(db, mem)
     }

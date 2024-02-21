@@ -452,6 +452,7 @@ impl IndexedDb {
     pub async fn vacuum(
         &self,
         mut notify_removals: impl 'static + FnMut(ObjectId),
+        mut notify_query_removals: impl 'static + FnMut(QueryId),
     ) -> crate::Result<()> {
         let zero_id = ObjectId::from_u128(0).to_js_string();
         let max_id = ObjectId::from_u128(u128::MAX).to_js_string();
@@ -509,6 +510,7 @@ impl IndexedDb {
                     let query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
                         .wrap_context("deserializing query metadata")?;
                     if !query_meta.lock {
+                        notify_query_removals(query_meta.query_id);
                         cursor
                             .delete()
                             .await

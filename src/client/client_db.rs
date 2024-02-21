@@ -207,6 +207,7 @@ impl ClientDb {
         let db_bypass = self.db_bypass.clone();
         let vacuum_guard = self.vacuum_guard.clone();
         let subscribed_objects = self.subscribed_objects.clone();
+        let subscribed_queries = self.subscribed_queries.clone();
         let api = self.api.clone();
         crate::spawn(async move {
             loop {
@@ -215,14 +216,23 @@ impl ClientDb {
                         if (vacuum_schedule.filter)(storage_info) {
                             let _lock = vacuum_guard.write().await;
                             let to_unsubscribe = Arc::new(Mutex::new(HashSet::new()));
-                            // TODO(client-high): also notify of unlocked query removal, and remove from the hashmap
                             if let Err(err) = db_bypass
-                                .vacuum({
-                                    let to_unsubscribe = to_unsubscribe.clone();
-                                    move |object_id| {
-                                        to_unsubscribe.lock().unwrap().insert(object_id);
-                                    }
-                                })
+                                .vacuum(
+                                    {
+                                        let to_unsubscribe = to_unsubscribe.clone();
+                                        move |object_id| {
+                                            to_unsubscribe.lock().unwrap().insert(object_id);
+                                        }
+                                    },
+                                    {
+                                        let subscribed_queries = subscribed_queries.clone();
+                                        let api = api.clone();
+                                        move |query_id| {
+                                            subscribed_queries.lock().unwrap().remove(&query_id);
+                                            api.unsubscribe_query(query_id);
+                                        }
+                                    },
+                                )
                                 .await
                             {
                                 tracing::error!(?err, "error occurred while vacuuming");
