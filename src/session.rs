@@ -19,7 +19,10 @@ fn any_system_time_opt(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Opt
 }
 
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
+#[cfg_attr(
+    feature = "_tests",
+    derive(arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)
+)]
 pub struct NewSession {
     pub user_id: User,
     pub session_name: String,

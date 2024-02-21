@@ -25,7 +25,7 @@ fn reasonable_system_time(u: &mut arbitrary::Unstructured) -> arbitrary::Result<
         + Duration::new((d / NANOS_PER_SEC) as u64, (d % NANOS_PER_SEC) as u32))
 }
 
-#[derive(Debug, arbitrary::Arbitrary)]
+#[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
 enum Op {
     Login(NewSession),
     Resume(usize),
