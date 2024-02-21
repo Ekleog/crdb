@@ -1125,51 +1125,21 @@ impl ClientDb {
                                 let (data, updatedness) = data?;
                                 match data {
                                     MaybeObject::NotYetSubscribed(data) => {
-                                        let now_have_all_until = data.now_have_all_until;
-                                        let object_id = data.object_id;
-                                        let type_id = data.type_id;
-                                        let res_json = Self::locally_create_all::<T>(
+                                        let res = save_object_data_locally::<T>(
+                                            data,
                                             &data_saver,
                                             &db,
                                             lock,
-                                            data,
+                                            &subscribed_objects,
+                                            &subscribed_queries,
                                         )
                                         .await?;
-                                        let (res, res_json) = match res_json {
-                                            Some(res_json) => (
-                                                Arc::new(
-                                                    T::deserialize(&res_json)
-                                                        .wrap_context("deserializing snapshot")?,
-                                                ),
-                                                res_json,
-                                            ),
-                                            None => {
-                                                let res = self
-                                                    .db
-                                                    .get_latest::<T>(Lock::NONE, object_id)
-                                                    .await?;
-                                                let res_json = serde_json::to_value(&res)
-                                                    .wrap_context("serializing snapshot")?;
-                                                (res, res_json)
-                                            }
-                                        };
-                                        let (queries, lock_after) = Self::queries_for(
-                                            &subscribed_queries.lock().unwrap(),
-                                            type_id,
-                                            &res_json,
-                                        );
                                         if let Some(now_have_all_until) = updatedness {
-                                            db.update_queries(&queries, now_have_all_until).await?;
+                                            let mut the_query = HashSet::with_capacity(1);
+                                            the_query.insert(query_id);
+                                            db.update_queries(&the_query, now_have_all_until)
+                                                .await?;
                                         }
-                                        if lock_after != lock {
-                                            db.change_locks(Lock::NONE, lock_after, object_id)
-                                                .await
-                                                .wrap_context("updating queries lock")?;
-                                        }
-                                        subscribed_objects.lock().unwrap().insert(
-                                            object_id,
-                                            (Some(now_have_all_until), queries, lock_after),
-                                        );
                                         if let Some(q) =
                                             subscribed_queries.lock().unwrap().get_mut(&query_id)
                                         {
@@ -1268,4 +1238,46 @@ impl<F> ClientVacuumSchedule<F> {
             filter,
         }
     }
+}
+
+async fn save_object_data_locally<T: Object>(
+    data: ObjectData,
+    data_saver: &mpsc::UnboundedSender<(
+        Arc<Update>,
+        Option<Updatedness>,
+        Lock,
+        oneshot::Sender<crate::Result<UpdateResult>>,
+    )>,
+    db: &CacheDb<LocalDb>,
+    lock: Lock,
+    subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>,
+    subscribed_queries: &Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
+) -> crate::Result<Arc<T>> {
+    let now_have_all_until = data.now_have_all_until;
+    let object_id = data.object_id;
+    let type_id = data.type_id;
+    let res_json = ClientDb::locally_create_all::<T>(&data_saver, &db, lock, data).await?;
+    let (res, res_json) = match res_json {
+        Some(res_json) => (
+            Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),
+            res_json,
+        ),
+        None => {
+            let res = db.get_latest::<T>(Lock::NONE, object_id).await?;
+            let res_json = serde_json::to_value(&res).wrap_context("serializing snapshot")?;
+            (res, res_json)
+        }
+    };
+    let (queries, lock_after) =
+        ClientDb::queries_for(&subscribed_queries.lock().unwrap(), type_id, &res_json);
+    if lock_after != lock {
+        db.change_locks(Lock::NONE, lock_after, object_id)
+            .await
+            .wrap_context("updating queries lock")?;
+    }
+    subscribed_objects
+        .lock()
+        .unwrap()
+        .insert(object_id, (Some(now_have_all_until), queries, lock_after));
+    Ok(res)
 }
