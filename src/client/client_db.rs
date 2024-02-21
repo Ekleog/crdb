@@ -215,6 +215,7 @@ impl ClientDb {
                         if (vacuum_schedule.filter)(storage_info) {
                             let _lock = vacuum_guard.write().await;
                             let to_unsubscribe = Arc::new(Mutex::new(HashSet::new()));
+                            // TODO(client-high): also notify of unlocked query removal, and remove from the hashmap
                             if let Err(err) = db_bypass
                                 .vacuum({
                                     let to_unsubscribe = to_unsubscribe.clone();
