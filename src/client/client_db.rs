@@ -607,9 +607,9 @@ impl ClientDb {
             .map(|u| u != user)
             .unwrap_or(false)
         {
-            // There was already a user logged in, and it is not this user. Drop the whole db and explicitly logout.
-            self.db.remove_everything().await?;
-            self.api.logout();
+            // There was already a user logged in, and it is not this user.
+            // Start by doing as though the previous user had logged out: kill everything with fire.
+            self.logout().await?;
         }
         *self.user.write().unwrap() = Some(user);
         self.api.login(url.clone(), token);
@@ -617,7 +617,7 @@ impl ClientDb {
         Ok(())
     }
 
-    pub async fn logout(&self) -> anyhow::Result<()> {
+    pub async fn logout(&self) -> crate::Result<()> {
         self.api.logout();
         *self.user.write().unwrap() = None;
         self.db.remove_everything().await?;

@@ -48,7 +48,7 @@ macro_rules! generate_client {
                 self.db.login(url, user, token)
             }
 
-            pub fn logout(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<()>> {
+            pub fn logout(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
                 self.db.logout()
             }
 
