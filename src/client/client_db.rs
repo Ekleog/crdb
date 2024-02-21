@@ -91,7 +91,7 @@ impl ClientDb {
             .wrap_context("listing subscribed objects")?
             .into_iter()
             .map(|(object_id, (type_id, value, updatedness))| {
-                let (queries, lock) = Self::queries_for(&subscribed_queries, type_id, &value);
+                let (queries, lock) = queries_for(&subscribed_queries, type_id, &value);
                 (object_id, (updatedness, queries, lock))
             })
             .collect::<HashMap<_, _>>();
@@ -173,29 +173,6 @@ impl ClientDb {
             .unwrap()
             .get(&q)
             .map(|(_, recv)| recv.resubscribe())
-    }
-
-    fn queries_for(
-        subscribed_queries: &HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
-        type_id: TypeId,
-        value: &serde_json::Value,
-    ) -> (HashSet<QueryId>, Lock) {
-        let mut lock = Lock::NONE;
-        (
-            subscribed_queries
-                .iter()
-                .filter(|(_, (query, q_type_id, _, query_lock))| {
-                    if type_id == *q_type_id && query.matches_json(&value) {
-                        lock |= *query_lock;
-                        true
-                    } else {
-                        false
-                    }
-                })
-                .map(|(id, _)| *id)
-                .collect(),
-            lock,
-        )
     }
 
     fn setup_update_watcher(&self, mut updates_receiver: mpsc::UnboundedReceiver<Updates>) {
@@ -557,7 +534,7 @@ impl ClientDb {
                 // Something changed in the object's latest_snapshot
                 if let Some(now_have_all_until) = now_have_all_until {
                     let (mut queries, lock_after) =
-                        Self::queries_for(&subscribed_queries.lock().unwrap(), *type_id, res);
+                        queries_for(&subscribed_queries.lock().unwrap(), *type_id, res);
                     let lock_before = if let Some((_, queries_before, lock_before)) =
                         subscribed_objects.lock().unwrap().insert(
                             object_id,
@@ -768,7 +745,7 @@ impl ClientDb {
         let do_subscribe = if let Some(val) = val {
             let val_json =
                 serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
-            let (queries, lock) = Self::queries_for(
+            let (queries, lock) = queries_for(
                 &self.subscribed_queries.lock().unwrap(),
                 *T::type_ulid(),
                 &val_json,
@@ -832,7 +809,7 @@ impl ClientDb {
         let do_subscribe = if let Some(val) = val {
             let val_json =
                 serde_json::to_value(val).wrap_context("serializing new last snapshot")?;
-            let (queries, lock_after) = Self::queries_for(
+            let (queries, lock_after) = queries_for(
                 &self.subscribed_queries.lock().unwrap(),
                 *T::type_ulid(),
                 &val_json,
@@ -982,7 +959,7 @@ impl ClientDb {
                     (res, res_json)
                 }
             };
-            let (queries, lock_after) = Self::queries_for(
+            let (queries, lock_after) = queries_for(
                 &self.subscribed_queries.lock().unwrap(),
                 *T::type_ulid(),
                 &res_json,
@@ -1240,6 +1217,27 @@ impl<F> ClientVacuumSchedule<F> {
     }
 }
 
+fn queries_for(
+    subscribed_queries: &HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
+    type_id: TypeId,
+    value: &serde_json::Value,
+) -> (HashSet<QueryId>, Lock) {
+    let mut lock = Lock::NONE;
+    let queries = subscribed_queries
+        .iter()
+        .filter(|(_, (query, q_type_id, _, query_lock))| {
+            if type_id == *q_type_id && query.matches_json(&value) {
+                lock |= *query_lock;
+                true
+            } else {
+                false
+            }
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    (queries, lock)
+}
+
 async fn save_object_data_locally<T: Object>(
     data: ObjectData,
     data_saver: &mpsc::UnboundedSender<(
@@ -1269,7 +1267,7 @@ async fn save_object_data_locally<T: Object>(
         }
     };
     let (queries, lock_after) =
-        ClientDb::queries_for(&subscribed_queries.lock().unwrap(), type_id, &res_json);
+        queries_for(&subscribed_queries.lock().unwrap(), type_id, &res_json);
     if lock_after != lock {
         db.change_locks(Lock::NONE, lock_after, object_id)
             .await
