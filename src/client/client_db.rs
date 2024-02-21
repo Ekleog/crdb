@@ -651,6 +651,14 @@ impl ClientDb {
         self.api.watch_upload_queue()
     }
 
+    pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        self.db.list_uploads().await
+    }
+
+    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Option<Upload>> {
+        self.db.get_upload(upload_id).await
+    }
+
     pub fn rename_session(&self, name: String) {
         self.api.rename_session(name)
     }

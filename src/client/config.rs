@@ -60,6 +60,14 @@ macro_rules! generate_client {
                 self.db.watch_upload_queue()
             }
 
+            pub fn list_uploads(&self) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<Vec<crdb::UploadId>>> {
+                self.db.list_uploads()
+            }
+
+            pub fn get_upload(&self, upload_id: crdb::UploadId) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<Option<crdb::Upload>>> {
+                self.db.get_upload(upload_id)
+            }
+
             pub fn rename_session(&self, name: String) {
                 self.db.rename_session(name)
             }
