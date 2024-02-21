@@ -317,8 +317,27 @@ impl ClientDb {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
         while let Some(msg) = data_receiver.next().await {
             match msg {
-                DataSaverMessage::StopFrame(_) => todo!(), // TODO(client-high)
-                DataSaverMessage::ResumeFrame => todo!(),  // TODO(client-high)
+                DataSaverMessage::StopFrame(reply) => {
+                    // Skip all messages until we received enough ResumeFrame
+                    let _ = reply.send(());
+                    let mut depth = 1;
+                    while let Some(msg) = data_receiver.next().await {
+                        match msg {
+                            DataSaverMessage::Data { .. } => (), // Skip until we're no longer stopped
+                            DataSaverMessage::StopFrame(reply) => {
+                                let _ = reply.send(());
+                                depth += 1;
+                            }
+                            DataSaverMessage::ResumeFrame => {
+                                depth -= 1;
+                            }
+                        }
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                }
+                DataSaverMessage::ResumeFrame => panic!("data saver protocol violation"),
                 DataSaverMessage::Data {
                     update,
                     now_have_all_until,
