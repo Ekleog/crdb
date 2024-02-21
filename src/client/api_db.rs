@@ -10,7 +10,7 @@ use crate::{
     crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
-    future::CrdbSend,
+    future::{CrdbSend, CrdbSyncFn},
     ids::QueryId,
     messages::{
         MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
@@ -46,7 +46,7 @@ pub struct ApiDb {
         Arc<Request>,
         mpsc::UnboundedSender<ResponsePartWithSidecar>,
     )>,
-    connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>>,
+    connection_event_cb: Arc<RwLock<Box<dyn CrdbSyncFn<ConnectionEvent>>>>,
 }
 
 impl ApiDb {
@@ -70,7 +70,7 @@ impl ApiDb {
         RRL: 'static + CrdbSend + Fn(),
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
-        let connection_event_cb: Arc<RwLock<Box<dyn Send + Sync + Fn(ConnectionEvent)>>> =
+        let connection_event_cb: Arc<RwLock<Box<dyn CrdbSyncFn<ConnectionEvent>>>> =
             Arc::new(RwLock::new(Box::new(|_| ()) as _));
         let event_cb = {
             let connection_event_cb = connection_event_cb.clone();
@@ -153,7 +153,7 @@ impl ApiDb {
         self.upload_queue_watcher_receiver.clone()
     }
 
-    pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {
+    pub fn on_connection_event(&self, cb: impl 'static + CrdbSyncFn<ConnectionEvent>) {
         *self.connection_event_cb.write().unwrap() = Box::new(cb);
     }
 

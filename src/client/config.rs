@@ -40,7 +40,7 @@ macro_rules! generate_client {
                 }
             }
 
-            pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(crdb::ConnectionEvent)) {
+            pub fn on_connection_event(&self, cb: impl 'static + crdb::CrdbSend + crdb::CrdbSync + Fn(crdb::ConnectionEvent)) {
                 self.db.on_connection_event(cb)
             }
 

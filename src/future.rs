@@ -32,6 +32,11 @@ pub(crate) trait CrdbFn<Arg>: CrdbSend + Fn(Arg) {}
 #[cfg(feature = "client")]
 impl<Arg, F: CrdbSend + Fn(Arg)> CrdbFn<Arg> for F {}
 
+#[cfg(feature = "client")]
+pub(crate) trait CrdbSyncFn<Arg>: CrdbSend + CrdbSync + Fn(Arg) {}
+#[cfg(feature = "client")]
+impl<Arg, F: CrdbSend + CrdbSync + Fn(Arg)> CrdbSyncFn<Arg> for F {}
+
 pub trait CrdbFutureExt: CrdbFuture {
     fn boxed_crdb<'a>(self) -> Pin<Box<dyn 'a + CrdbFuture<Output = Self::Output>>>
     where

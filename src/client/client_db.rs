@@ -5,7 +5,7 @@ use crate::{
     crdb_internal::Lock,
     db_trait::Db,
     error::ResultExt,
-    future::CrdbSend,
+    future::{CrdbSend, CrdbSync},
     ids::QueryId,
     messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
     object::parse_snapshot_ref,
@@ -607,7 +607,10 @@ impl ClientDb {
         Ok(res)
     }
 
-    pub fn on_connection_event(&self, cb: impl 'static + Send + Sync + Fn(ConnectionEvent)) {
+    pub fn on_connection_event(
+        &self,
+        cb: impl 'static + CrdbSend + CrdbSync + Fn(ConnectionEvent),
+    ) {
         self.api.on_connection_event(cb)
     }
 
