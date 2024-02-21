@@ -607,8 +607,9 @@ impl ClientDb {
             .map(|u| u != user)
             .unwrap_or(false)
         {
-            // There was already a user logged in, and it is not this user. Drop the whole db.
+            // There was already a user logged in, and it is not this user. Drop the whole db and explicitly logout.
             self.db.remove_everything().await?;
+            self.api.logout();
         }
         *self.user.write().unwrap() = Some(user);
         self.api.login(url.clone(), token);
