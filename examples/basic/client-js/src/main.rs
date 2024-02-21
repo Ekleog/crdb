@@ -6,10 +6,7 @@ use crdb::{
 use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
-use yew::prelude::*;
-
-mod use_async;
-use use_async::*;
+use yew::{prelude::*, suspense::use_future_with};
 
 const CACHE_WATERMARK: usize = 8 * 1024 * 1024;
 const VACUUM_FREQUENCY: Duration = Duration::from_secs(3600);
@@ -49,7 +46,7 @@ fn app() -> Html {
     let require_relogin = use_state(|| false);
     let logging_in = use_state(|| false);
     let connection_status = use_state(|| ConnectionEvent::LoggedOut);
-    let db = use_async((), {
+    let db = use_future_with((), {
         let require_relogin = require_relogin.clone();
         let connection_status = connection_status.clone();
         move |_| async move {
@@ -84,12 +81,11 @@ fn app() -> Html {
             <h1>{ "Loading…" }</h1>
         };
     }
-    let db = db.status();
     let db = match db {
-        UseAsyncStatus::Pending => {
+        Err(_) => {
             return html! { <h1>{ "Loading…" }</h1> };
         }
-        UseAsyncStatus::Ready(db) => db.as_ref().expect("failed loading database").clone(),
+        Ok(db) => db.as_ref().expect("failed loading database").clone(),
     };
     if *require_relogin {
         let on_login = Callback::from({
@@ -454,7 +450,7 @@ fn query_remote_items() -> Html {
 #[function_component(ShowUploadQueue)]
 fn show_upload_queue() -> Html {
     let db = use_context::<DbContext>().unwrap();
-    let upload_queue = use_async(db, |db| {
+    let upload_queue = use_future_with(db, |db| {
         let db = db.clone();
         async move {
             let ids =
@@ -468,9 +464,9 @@ fn show_upload_queue() -> Html {
             Ok::<_, crdb::Error>(res)
         }
     });
-    let upload_queue = match upload_queue.status() {
-        UseAsyncStatus::Pending => return html! { <h6>{ "Loading upload queue" }</h6> },
-        UseAsyncStatus::Ready(r) => r.as_ref().expect("failed loading upload queue"),
+    let upload_queue = match &upload_queue {
+        Err(_) => return html! { <h6>{ "Loading upload queue" }</h6> },
+        Ok(r) => r.as_ref().expect("failed loading upload queue"),
     };
     let upload_queue = upload_queue
         .iter()
@@ -485,7 +481,7 @@ fn show_upload_queue() -> Html {
 #[function_component(ShowLocalDb)]
 fn show_local_db() -> Html {
     let db = use_context::<DbContext>().unwrap();
-    let local_items = use_async(db, |db| {
+    let local_items = use_future_with(db, |db| {
         let db = db.clone();
         async move {
             Ok::<_, crdb::Error>(
@@ -496,9 +492,9 @@ fn show_local_db() -> Html {
             )
         }
     });
-    let local_items = match local_items.status() {
-        UseAsyncStatus::Pending => return html! { <h6>{ "Loading local items…" }</h6> },
-        UseAsyncStatus::Ready(r) => r.as_ref().expect("failed loading local items"),
+    let local_items = match &local_items {
+        Err(_) => return html! { <h6>{ "Loading local items…" }</h6> },
+        Ok(r) => r.as_ref().expect("failed loading local items"),
     };
     let local_items = local_items
         .iter()
