@@ -128,7 +128,7 @@ struct RefresherProps {
 
 impl PartialEq for RefresherProps {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.db, &other.db)
+        Rc::ptr_eq(&self.db, &other.db) && self.connection_status == other.connection_status
     }
 }
 
