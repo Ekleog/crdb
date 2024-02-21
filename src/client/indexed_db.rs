@@ -450,6 +450,7 @@ impl IndexedDb {
                 "snapshots_meta",
                 "events",
                 "events_meta",
+                "queries_meta",
                 "upload_queue_meta",
                 "binaries",
             ])
@@ -467,6 +468,9 @@ impl IndexedDb {
                 let events = transaction
                     .object_store("events")
                     .wrap_context("retrieving the 'events' object store")?;
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving the 'queries_meta' object store")?;
                 let binaries = transaction
                     .object_store("binaries")
                     .wrap_context("retrieving the 'binaries' object store")?;
@@ -481,6 +485,27 @@ impl IndexedDb {
                 let object_event = events_meta
                     .index("object_event")
                     .wrap_context("retrieving the 'object_event' index")?;
+
+                // Remove all unlocked queries
+                let mut cursor = queries_meta
+                    .cursor()
+                    .open()
+                    .await
+                    .wrap_context("listing all queries")?;
+                while let Some(query_meta_js) = cursor.value() {
+                    let query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
+                        .wrap_context("deserializing query metadata")?;
+                    if !query_meta.lock {
+                        cursor
+                            .delete()
+                            .await
+                            .wrap_context("removing unlocked query")?;
+                    }
+                    cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("moving cursor forward")?;
+                }
 
                 // Remove all unlocked objects
                 let mut to_remove = locked_object
