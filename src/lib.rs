@@ -65,7 +65,7 @@ mod server {
 pub mod crdb_internal {
     #[cfg(feature = "client")]
     pub use crate::client::{
-        ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb, OnError,
+        ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb, Obj, OnError,
     };
     #[cfg(feature = "server")]
     pub use crate::server::{
@@ -88,7 +88,7 @@ pub mod crdb_internal {
         QueryId, Result, SerializableError, SessionRef, SessionToken, TypeId, Updatedness, User,
     };
     pub use anyhow;
-    pub use futures::{self, channel::mpsc, future, stream, Stream};
+    pub use futures::{self, channel::mpsc, future, stream, FutureExt, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
     pub use serde;

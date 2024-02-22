@@ -3,7 +3,7 @@
 macro_rules! generate_client {
     ( $api_config:ident | $client_db:ident | $($name:ident : $object:ty),* ) => {
         pub struct $client_db {
-            db: crdb::ClientDb,
+            db: crdb::Arc<crdb::ClientDb>,
             ulid: crdb::Mutex<crdb::ulid::Generator>,
         }
 
@@ -34,7 +34,7 @@ macro_rules! generate_client {
                         vacuum_schedule,
                     ).await?;
                     Ok(($client_db {
-                        db,
+                        db: crdb::Arc::new(db),
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     }, upgrade_handle))
                 }
@@ -150,16 +150,37 @@ macro_rules! generate_client {
                     self.db.submit::<$object>(importance, object.to_object_id(), crdb::EventId(id), event)
                 }
 
-                pub fn [< get_ $name >](&self, importance: crdb::Importance, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Arc<$object>>> {
-                    self.db.get::<$object>(importance, object.to_object_id())
+                pub fn [< get_ $name >](&self, importance: crdb::Importance, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<crdb::Obj<$object>>> {
+                    async move {
+                        self.db
+                            .get::<$object>(importance, object.to_object_id())
+                            .await
+                            .map(|(object_id, data)| crdb::Obj::new(crdb::DbPtr::from(object_id), data, self.db.clone()))
+                    }
                 }
 
-                pub fn [< get_ $name _local >](&self, importance: crdb::Importance, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<Option<crdb::Arc<$object>>>> {
-                    self.db.get_local::<$object>(importance, object.to_object_id())
+                pub fn [< get_ $name _local >](&self, importance: crdb::Importance, object: crdb::DbPtr<$object>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<Option<crdb::Obj<$object>>>> {
+                    async move {
+                        self.db
+                            .get_local::<$object>(importance, object.to_object_id())
+                            .await
+                            .map(|o| o.map(|(object_id, data)| crdb::Obj::new(crdb::DbPtr::from(object_id), data, self.db.clone())))
+                    }
                 }
 
-                pub fn [< query_ $name _local >](&self, query: crdb::Arc<crdb::Query>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
-                    self.db.query_local::<$object>(query)
+                pub fn [< query_ $name _local >](&self, query: crdb::Arc<crdb::Query>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Obj<$object>>>>> {
+                    async move {
+                        let db = self.db.clone();
+                        self.db
+                            .query_local::<$object>(query)
+                            .await
+                            .map(move |s| s.then(move |r| {
+                                let db = db.clone();
+                                async move {
+                                    r.map(|(object_id, data)| crdb::Obj::new(crdb::DbPtr::from(object_id), data, db.clone()))
+                                }
+                            }))
+                    }
                 }
 
                 /// Note that it is assumed here that the same QueryId will always be associated with the same Query.
@@ -172,12 +193,23 @@ macro_rules! generate_client {
                     importance: crdb::Importance,
                     query_id: crdb::QueryId,
                     query: crdb::Arc<crdb::Query>,
-                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Arc<$object>>>>> {
-                    self.db.query_remote::<$object>(
-                        importance,
-                        query_id,
-                        query,
-                    )
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Obj<$object>>>>> {
+                    async move {
+                        let db = self.db.clone();
+                        self.db
+                            .query_remote::<$object>(
+                                importance,
+                                query_id,
+                                query,
+                            )
+                            .await
+                            .map(move |s| s.then(move |r| {
+                                let db = db.clone();
+                                async move {
+                                    r.map(|(object_id, data)| crdb::Obj::new(crdb::DbPtr::from(object_id), data, db.clone()))
+                                }
+                            }))
+                    }
                 }
             })*
         }

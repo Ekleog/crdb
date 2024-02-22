@@ -914,15 +914,15 @@ impl ClientDb {
         lock: Lock,
         subscribe: bool,
         object_id: ObjectId,
-    ) -> crate::Result<Arc<T>> {
+    ) -> crate::Result<(ObjectId, Arc<T>)> {
         match self.db.get_latest::<T>(lock, object_id).await {
-            Ok(r) => return Ok(r),
+            Ok(r) => return Ok((object_id, r)),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
         if subscribe {
             let data = self.api.get_subscribe(object_id).await?;
-            save_object_data_locally::<T>(
+            let res = save_object_data_locally::<T>(
                 data,
                 &self.data_saver,
                 &self.db,
@@ -930,12 +930,13 @@ impl ClientDb {
                 &self.subscribed_objects,
                 &self.subscribed_queries,
             )
-            .await
+            .await?;
+            Ok((object_id, res))
         } else {
             let res = self.api.get_latest(object_id).await?;
             let res = parse_snapshot_ref::<T>(res.snapshot_version, &res.snapshot)
                 .wrap_context("deserializing server-returned snapshot")?;
-            Ok(Arc::new(res))
+            Ok((object_id, Arc::new(res)))
         }
     }
 
@@ -943,7 +944,7 @@ impl ClientDb {
         &self,
         importance: Importance,
         object_id: ObjectId,
-    ) -> crate::Result<Arc<T>> {
+    ) -> crate::Result<(ObjectId, Arc<T>)> {
         self.get_impl(
             importance.to_object_lock(),
             importance.to_subscribe(),
@@ -956,13 +957,13 @@ impl ClientDb {
         &self,
         importance: Importance,
         object_id: ObjectId,
-    ) -> crate::Result<Option<Arc<T>>> {
+    ) -> crate::Result<Option<(ObjectId, Arc<T>)>> {
         match self
             .db
             .get_latest::<T>(importance.to_object_lock(), object_id)
             .await
         {
-            Ok(res) => Ok(Some(res)),
+            Ok(res) => Ok(Some((object_id, res))),
             Err(crate::Error::ObjectDoesNotExist(o)) if o == object_id => Ok(None),
             Err(err) => Err(err),
         }
@@ -971,7 +972,7 @@ impl ClientDb {
     pub async fn query_local<T: Object>(
         &self,
         query: Arc<Query>,
-    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
+    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<(ObjectId, Arc<T>)>>> {
         let object_ids = self
             .db
             .query::<T>(query)
@@ -981,7 +982,7 @@ impl ClientDb {
         Ok(async_stream::stream! {
             for object_id in object_ids {
                 match self.db.get_latest::<T>(Lock::NONE, object_id).await {
-                    Ok(res) => yield Ok(res),
+                    Ok(res) => yield Ok((object_id, res)),
                     // Ignore missing objects, they were just vacuumed between listing and getting
                     Err(crate::Error::ObjectDoesNotExist(id)) if id == object_id => continue,
                     Err(err) => yield Err(err),
@@ -995,7 +996,7 @@ impl ClientDb {
         importance: Importance,
         query_id: QueryId,
         query: Arc<Query>,
-    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<Arc<T>>>> {
+    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<(ObjectId, Arc<T>)>>> {
         if importance >= Importance::Subscribe {
             self.query_updates_broadcastees
                 .lock()
@@ -1058,6 +1059,7 @@ impl ClientDb {
                                 let (data, updatedness) = data?;
                                 match data {
                                     MaybeObject::NotYetSubscribed(data) => {
+                                        let object_id = data.object_id;
                                         let res = save_object_data_locally::<T>(
                                             data,
                                             &data_saver,
@@ -1078,11 +1080,13 @@ impl ClientDb {
                                         {
                                             q.2 = updatedness.or(q.2);
                                         }
-                                        Ok(res)
+                                        Ok((object_id, res))
                                     }
-                                    MaybeObject::AlreadySubscribed(object_id) => {
-                                        self.db.get_latest::<T>(lock, object_id).await
-                                    }
+                                    MaybeObject::AlreadySubscribed(object_id) => self
+                                        .db
+                                        .get_latest::<T>(lock, object_id)
+                                        .await
+                                        .map(|res| (object_id, res)),
                                 }
                             }
                         }
@@ -1096,14 +1100,17 @@ impl ClientDb {
                         let (data, _now_have_all_until) = data?;
                         match data {
                             MaybeSnapshot::NotSubscribed(data) => {
+                                let object_id = data.object_id;
                                 let res =
                                     parse_snapshot_ref::<T>(data.snapshot_version, &data.snapshot)
                                         .wrap_context("deserializing server-returned snapshot")?;
-                                Ok(Arc::new(res))
+                                Ok((object_id, Arc::new(res)))
                             }
-                            MaybeSnapshot::AlreadySubscribed(object_id) => {
-                                self.db.get_latest::<T>(Lock::NONE, object_id).await
-                            }
+                            MaybeSnapshot::AlreadySubscribed(object_id) => self
+                                .db
+                                .get_latest::<T>(Lock::NONE, object_id)
+                                .await
+                                .map(|res| (object_id, res)),
                         }
                     }
                 },
