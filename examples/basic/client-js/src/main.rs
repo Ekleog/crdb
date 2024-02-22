@@ -6,6 +6,7 @@ use crdb::{
 use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
 use ulid::Ulid;
+use web_time::web::SystemTimeExt;
 use yew::{prelude::*, suspense::use_future_with};
 
 const CACHE_WATERMARK: usize = 8 * 1024 * 1024;
@@ -329,6 +330,7 @@ fn main_view(MainViewProps { connection_status }: &MainViewProps) -> Html {
                 <QueryRemoteItems /><br />
             </div>
             <div style="height: 100%; width: 45%; position: absolute; top: 0; right: 0">
+                <ShowSessionList /><hr />
                 <ShowUploadQueue /><hr />
                 <ShowLocalDb /><hr />
             </div>
@@ -444,6 +446,52 @@ fn query_remote_items() -> Html {
             value="Query Items & Lock"
             onclick={run_query_remote.reform(|_| Importance::Lock)} />
         { query_results }
+    </>}
+}
+
+#[function_component(ShowSessionList)]
+fn show_session_list() -> Html {
+    let db = use_context::<DbContext>().unwrap();
+    let do_refresh = use_state(|| 0);
+    // TODO(api-high): expose way to watch for session list
+    let sessions = use_future_with((db, *do_refresh), |arg| {
+        let db = arg.0.clone();
+        tracing::info!("re-listing sessions");
+        async move { db.0.list_sessions().await }
+    });
+    let sessions = match sessions {
+        Ok(s) => s,
+        Err(_) => {
+            return html! {
+                { "Loading…" }
+            }
+        }
+    };
+    let sessions = sessions.as_ref().expect("failed listing sessions");
+    let sessions = sessions
+        .into_iter()
+        .map(|s| {
+            html! {
+                <li key={ format!("{:?}", s.session_ref) }>
+                    { format!(
+                        "{} (logged in {}, last active {})",
+                        s.session_name,
+                        chrono::DateTime::<chrono::Local>::from(s.login_time.to_std()),
+                        chrono::DateTime::<chrono::Local>::from(s.last_active.to_std()),
+                    ) }
+                </li>
+            }
+        })
+        .collect::<Html>();
+    html! {<>
+        <h3>
+            { "Session list " }
+            <input
+                type="button"
+                value="Refresh"
+                onclick={move |_| do_refresh.set(*do_refresh + 1) } />
+        </h3>
+        { sessions }
     </>}
 }
 

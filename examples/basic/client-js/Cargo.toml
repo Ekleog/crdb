@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 basic-api = { path = "../api" }
+chrono = "0.4.34"
 console_error_panic_hook = "0.1.7"
 crdb = { path = "../../..", features = ["client"] }
 futures = "0.3.30"
@@ -15,3 +16,4 @@ ulid = "1.1"
 yew = { version = "0.21.0", features = ["csr"] }
 wasm-bindgen-futures = "0.4.39"
 web-sys = "0.3.66"
+web-time = "1.0"
