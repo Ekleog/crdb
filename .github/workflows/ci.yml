@@ -44,8 +44,8 @@ jobs:
         with:
           username: postgres
           password: postgres
-          database: crdb
-      - run: just make-test-db
+          database: crdb-test
+      - run: sqlx migrate run --source crdb/src/server/migrations
 
       # Run the tests
       - run: just test
