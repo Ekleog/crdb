@@ -730,8 +730,10 @@ impl ClientDb {
         self.vacuum_guard.read().await
     }
 
-    pub async fn unlock(&self, ptr: ObjectId) -> crate::Result<()> {
-        self.db.change_locks(Lock::OBJECT, Lock::NONE, ptr).await
+    pub async fn unlock<T: Object>(&self, ptr: DbPtr<T>) -> crate::Result<()> {
+        self.db
+            .change_locks(Lock::OBJECT, Lock::NONE, ptr.to_object_id())
+            .await
     }
 
     pub async fn unsubscribe<T: Object>(&self, ptr: DbPtr<T>) -> crate::Result<()> {

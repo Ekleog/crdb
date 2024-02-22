@@ -104,7 +104,7 @@ macro_rules! generate_client {
 
             /// To lock, use `get` with the `lock` argument set to `true`
             pub fn unlock<T: crdb::Object>(&self, object: crdb::DbPtr<T>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
-                self.db.unlock(object.to_object_id())
+                self.db.unlock(object)
             }
 
             pub fn unsubscribe<T: crdb::Object>(&self, object: crdb::DbPtr<T>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
