@@ -28,8 +28,8 @@ udeps:
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features client --target wasm32-unknown-unknown
 
 doc:
-    CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --examples
-    CARGO_TARGET_DIR="target/doc" cargo doc --features client --examples --target wasm32-unknown-unknown
+    CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
+    CARGO_TARGET_DIR="target/doc" cargo doc --features client --workspace --target wasm32-unknown-unknown
 
 test-standalone *ARGS: (test-crate-standalone ARGS) (test-example-basic ARGS)
 

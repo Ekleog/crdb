@@ -1,0 +1,7 @@
+[package]
+name = "get-all-docs"
+version = "0.1.0"
+edition = "2021"
+publish = false # Used only for `just doc` to generate *all* the documentation
+
+[dependencies]
