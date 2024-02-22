@@ -7,7 +7,7 @@ on:
       - main
 
 env:
-  DATABASE_URL: "postgres://postgres:postgres@localhost/crdb"
+  DATABASE_URL: "postgres://postgres:postgres@localhost/crdb-test"
 
 jobs:
   just-test:
@@ -45,7 +45,7 @@ jobs:
           username: postgres
           password: postgres
           database: crdb
-      - run: sqlx migrate run --source src/server/migrations
+      - run: just make-test-db
 
       # Run the tests
       - run: just test
