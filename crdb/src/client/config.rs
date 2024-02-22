@@ -4,7 +4,6 @@ macro_rules! generate_client {
     ( $api_config:ident | $client_db:ident | $($name:ident : $object:ty),* ) => {
         pub struct $client_db {
             db: crdb::Arc<crdb::ClientDb>,
-            ulid: crdb::Mutex<crdb::ulid::Generator>,
         }
 
         impl $client_db
@@ -35,7 +34,6 @@ macro_rules! generate_client {
                     ).await?;
                     Ok(($client_db {
                         db,
-                        ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     }, upgrade_handle))
                 }
             }
@@ -129,8 +127,7 @@ macro_rules! generate_client {
                     object: crdb::Arc<$object>,
                 ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>>)>> {
                     async move {
-                        let id = self.ulid.lock().unwrap().generate();
-                        let id = id.expect("Failed to generate ulid for object creation");
+                        let id = self.db.make_ulid();
                         let completion = self.db.create(importance, crdb::ObjectId(id), crdb::EventId(id), object).await?;
                         Ok((crdb::DbPtr::from(crdb::ObjectId(id)), completion))
                     }
@@ -142,8 +139,7 @@ macro_rules! generate_client {
                     object: crdb::DbPtr<$object>,
                     event: crdb::Arc<<$object as crdb::Object>::Event>,
                 ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>>>> {
-                    let id = self.ulid.lock().unwrap().generate();
-                    let id = id.expect("Failed to generate ulid for event submission");
+                    let id = self.db.make_ulid();
                     self.db.submit::<$object>(importance, object.to_object_id(), crdb::EventId(id), event)
                 }
 

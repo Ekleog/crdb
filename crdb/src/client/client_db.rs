@@ -22,6 +22,7 @@ use std::{
 };
 use tokio::sync::{broadcast, oneshot, watch};
 use tokio_util::sync::CancellationToken;
+use ulid::Ulid;
 
 enum UpdateResult {
     LostAccess,
@@ -31,6 +32,7 @@ enum UpdateResult {
 
 pub struct ClientDb {
     user: RwLock<Option<User>>,
+    ulid: Mutex<ulid::Generator>,
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     // The `Lock` here is ONLY the accumulated queries lock for this object! The object lock is
@@ -138,6 +140,7 @@ impl ClientDb {
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
         let this = Arc::new(ClientDb {
             user: RwLock::new(maybe_login.as_ref().map(|l| l.user)),
+            ulid: Mutex::new(ulid::Generator::new()),
             api,
             db,
             subscribed_objects,
@@ -169,6 +172,15 @@ impl ClientDb {
             this,
             upgrade_finished.map(|res| res.expect("upgrade task was killed")),
         ))
+    }
+
+    pub fn make_ulid(self: &Arc<Self>) -> Ulid {
+        // TODO(blocked): replace with generate_overflowing once https://github.com/dylanhart/ulid-rs/pull/75 lands
+        self.ulid
+            .lock()
+            .unwrap()
+            .generate()
+            .expect("Failed to generate ulid")
     }
 
     pub fn listen_for_all_updates(self: &Arc<Self>) -> broadcast::Receiver<ObjectId> {
