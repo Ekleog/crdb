@@ -18,6 +18,8 @@ client = [
 ]
 server = [
     "axum",
+    "crdb-core/axum",
+    "crdb-core/server",
     "cron",
     "lockable",
     "rand",
@@ -32,6 +34,7 @@ _tests = [ # internal feature, for use by wasm tests in particular and thus all 
     "arbitrary-json",
     "bolero",
     "console_error_panic_hook",
+    "crdb-core/arbitrary",
     "paste",
     "rand",
     "reord/test",
@@ -48,6 +51,9 @@ development = [
 ]
 
 [dependencies]
+crdb-core.workspace = true
+crdb-helpers.workspace = true
+
 anyhow.workspace = true
 bitflags.workspace = true
 chrono.workspace = true
@@ -89,6 +95,9 @@ tracing-wasm = { workspace = true, optional = true }
 
 # Dependencies specifically for wasm32
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+crdb-core = { workspace = true, features = ["indexed-db", "js-sys", "wasm-bindgen", "web-sys"] }
+crdb-helpers = { workspace = true, features = ["js"] }
+
 getrandom = { workspace = true, features = ["js"] } # TODO(api-high): introduce a `js` feature here too and enable conditionally
 gloo-net.workspace = true
 gloo-timers.workspace = true
@@ -101,6 +110,7 @@ web-sys.workspace = true
 
 # Dependencies specifically for native
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+crdb-core = { workspace = true, features = ["client-native"] }
 sqlx.workspace = true
 uuid.workspace = true
 

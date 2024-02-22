@@ -3,8 +3,7 @@ use super::{
     ReadPermsChanges, UpdatesWithSnap,
 };
 use crate::{
-    api::ApiConfig, db_trait::Db, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId,
-    Updatedness, User,
+    api::ApiConfig, CanDoCallbacks, CrdbFuture, Db, EventId, ObjectId, TypeId, Updatedness, User,
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -88,7 +87,7 @@ macro_rules! generate_server {
             ) -> crdb::Result<(crdb::HashSet<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let snapshot = crdb::parse_snapshot::<$object>(snapshot_version, snapshot)
+                        let snapshot = crdb_helpers::parse_snapshot::<$object>(snapshot_version, snapshot)
                             .wrap_with_context(|| format!("parsing snapshot for {object_id:?}"))?;
                         let res = call_on.get_users_who_can_read(&object_id, &snapshot, cb).await
                             .wrap_with_context(|| format!("listing users who can read {object_id:?}"))?;
@@ -140,7 +139,7 @@ macro_rules! generate_server {
                 use crdb::Object as _;
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let object = crdb::Arc::new(crdb::parse_snapshot_ref::<$object>(snapshot_version, &*snapshot)
+                        let object = crdb::Arc::new(crdb_helpers::parse_snapshot_ref::<$object>(snapshot_version, &*snapshot)
                             .wrap_context("parsing uploaded snapshot data")?);
                         let can_create = object.can_create(user, object_id, cb).await.wrap_context("checking whether user can create submitted object")?;
                         if !can_create {

@@ -2,17 +2,15 @@ use super::ServerConfig;
 use crate::{
     cache::CacheDb,
     crdb_internal::Lock,
-    db_trait::Db,
-    error::ResultExt,
     fts,
     messages::{ObjectData, SnapshotData, Update, UpdateData},
-    object::parse_snapshot,
     query::Bind,
     timestamp::SystemTimeExt,
-    BinPtr, CanDoCallbacks, DbPtr, Event, EventId, Object, ObjectId, Query, Session, SessionRef,
-    SessionToken, TypeId, Updatedness, User,
+    BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Object, ObjectId, Query, ResultExt, Session,
+    SessionRef, SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
+use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
 use sqlx::Row;
@@ -412,11 +410,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     ),
                 >,
             >,
-        }
-
-        impl<'a, 'b, C: CanDoCallbacks> crate::object::private::Sealed
-            for TrackingCanDoCallbacks<'a, 'b, C>
-        {
         }
 
         impl<'a, 'b, C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'a, 'b, C> {

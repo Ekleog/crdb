@@ -1,0 +1,39 @@
+[package]
+name = "crdb-core"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+client-native = [ "sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid" ]
+server = [ "rand", "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
+
+[dependencies]
+anyhow.workspace = true
+bitflags.workspace = true
+deepsize.workspace = true
+educe.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+ulid.workspace = true
+web-time.workspace = true
+
+arbitrary = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+indexed-db = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+rand = { workspace = true, optional = true}
+serde-wasm-bindgen = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["time"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers.workspace = true
+wasm-bindgen-futures.workspace = true

@@ -1,0 +1,21 @@
+[package]
+name = "crdb-helpers"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+js = [
+    "crdb-core/js-sys",
+    "crdb-core/serde-wasm-bindgen",
+    "serde-wasm-bindgen",
+    "wasm-bindgen",
+]
+
+[dependencies]
+crdb-core.workspace = true
+
+anyhow.workspace = true
+serde_json.workspace = true
+
+serde-wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }

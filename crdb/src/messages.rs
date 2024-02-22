@@ -1,7 +1,7 @@
 use web_time::SystemTime;
 
 use crate::{
-    ids::QueryId, BinPtr, EventId, ObjectId, Query, Session, SessionRef, SessionToken, TypeId,
+    BinPtr, EventId, ObjectId, Query, QueryId, Session, SessionRef, SessionToken, TypeId,
     Updatedness,
 };
 use std::{

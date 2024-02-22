@@ -1,14 +1,13 @@
 use crate::{
     api::UploadId,
     client::{ClientStorageInfo, LoginInfo},
-    db_trait::{Db, Lock},
-    error::ResultExt,
     fts,
     messages::Upload,
-    object::parse_snapshot_js,
-    BinPtr, DbPtr, Event, EventId, Object, ObjectId, Query, QueryId, TypeId, Updatedness,
+    BinPtr, Db, DbPtr, Event, EventId, Lock, Object, ObjectId, Query, QueryId, ResultExt, TypeId,
+    Updatedness,
 };
 use anyhow::anyhow;
+use crdb_helpers::parse_snapshot_js;
 use futures::{future, TryFutureExt};
 use indexed_db::CursorDirection;
 use js_sys::{Array, JsString, Uint8Array};

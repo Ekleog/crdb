@@ -2,12 +2,11 @@
 
 use super::SqliteDb;
 use crate::{
-    db_trait::{Db, Lock},
     test_utils::{
         self, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
         OBJECT_ID_1, OBJECT_ID_2,
     },
-    EventId, ObjectId, Updatedness,
+    Db, EventId, Lock, ObjectId, Updatedness,
 };
 use anyhow::Context;
 use std::{fmt::Debug, sync::Arc};

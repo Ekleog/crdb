@@ -14,8 +14,7 @@ bitflags::bitflags! {
 }
 
 impl Lock {
-    #[allow(dead_code)] // TODO(sqlite-high): remove once sqlite makes use of this too
-    pub(crate) fn from_query_lock(b: bool) -> Lock {
+    pub fn from_query_lock(b: bool) -> Lock {
         match b {
             true => Lock::FOR_QUERIES,
             false => Lock::NONE,

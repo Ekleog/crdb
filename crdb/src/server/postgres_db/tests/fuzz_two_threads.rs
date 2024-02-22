@@ -1,11 +1,8 @@
 use super::{TmpDb, CHECK_NAMED_LOCKS_FOR, MAYBE_LOCK_TIMEOUT};
 use crate::{
-    crdb_internal::Lock,
-    db_trait::Db,
-    error::ResultExt,
     server::postgres_db::PostgresDb,
     test_utils::{db::ServerConfig, *},
-    EventId, ObjectId, Updatedness,
+    Db, EventId, Lock, ObjectId, ResultExt, Updatedness,
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;

@@ -1,6 +1,4 @@
-use crate::{
-    error::ResultExt, BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, Updatedness,
-};
+use crate::{BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, ResultExt, Updatedness};
 use anyhow::anyhow;
 use std::{
     any::Any,

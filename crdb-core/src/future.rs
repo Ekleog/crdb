@@ -27,14 +27,10 @@ impl<F: CrdbSend + Future> CrdbFuture for F {}
 pub trait CrdbStream: CrdbSend + Stream {}
 impl<F: CrdbSend + Stream> CrdbStream for F {}
 
-#[cfg(feature = "client")]
-pub(crate) trait CrdbFn<Arg>: CrdbSend + Fn(Arg) {}
-#[cfg(feature = "client")]
+pub trait CrdbFn<Arg>: CrdbSend + Fn(Arg) {}
 impl<Arg, F: CrdbSend + Fn(Arg)> CrdbFn<Arg> for F {}
 
-#[cfg(feature = "client")]
-pub(crate) trait CrdbSyncFn<Arg>: CrdbSend + CrdbSync + Fn(Arg) {}
-#[cfg(feature = "client")]
+pub trait CrdbSyncFn<Arg>: CrdbSend + CrdbSync + Fn(Arg) {}
 impl<Arg, F: CrdbSend + CrdbSync + Fn(Arg)> CrdbSyncFn<Arg> for F {}
 
 pub trait CrdbFutureExt: CrdbFuture {

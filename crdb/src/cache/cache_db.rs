@@ -1,8 +1,5 @@
 use super::{BinariesCache, ObjectCache};
-use crate::{
-    db_trait::{Db, Lock},
-    hash_binary, BinPtr, DynSized, EventId, Object, ObjectId, Updatedness,
-};
+use crate::{hash_binary, BinPtr, Db, DynSized, EventId, Lock, Object, ObjectId, Updatedness};
 use std::{
     ops::Deref,
     sync::{Arc, RwLock},

@@ -1,7 +1,4 @@
-use crate::{
-    db_trait::{Db, Lock},
-    CrdbFuture, EventId, ObjectId, TypeId, Updatedness,
-};
+use crate::{CrdbFuture, Db, EventId, Lock, ObjectId, TypeId, Updatedness};
 
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct UploadId(pub i64);
@@ -90,7 +87,7 @@ macro_rules! generate_api {
             ) -> crdb::Result<()> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let object = crdb::parse_snapshot_ref::<$object>(snapshot_version, object)
+                        let object = crdb_helpers::parse_snapshot_ref::<$object>(snapshot_version, object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
                         db.create::<$object>(object_id, created_at, crdb::Arc::new(object), None, crdb::Lock::NONE).await?;
                         return Ok(());
@@ -111,7 +108,7 @@ macro_rules! generate_api {
             ) -> crdb::Result<Option<crdb::serde_json::Value>> {
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let object = crdb::parse_snapshot_ref::<$object>(snapshot_version, object)
+                        let object = crdb_helpers::parse_snapshot_ref::<$object>(snapshot_version, object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
                         let res = db.recreate::<$object>(object_id, created_at, crdb::Arc::new(object), updatedness, force_lock).await?;
                         let Some(res) = res else {

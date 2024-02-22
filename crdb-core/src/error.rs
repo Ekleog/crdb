@@ -243,7 +243,7 @@ impl<T> ResultExt for anyhow::Result<T> {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "sqlx")]
 impl<T> ResultExt for sqlx::Result<T> {
     type Ok = T;
 
@@ -262,7 +262,7 @@ impl<T> ResultExt for sqlx::Result<T> {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "web-sys")]
 impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     type Ok = T;
 
@@ -276,7 +276,7 @@ impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm-bindgen")]
 impl<T> ResultExt for std::result::Result<T, wasm_bindgen::JsValue> {
     type Ok = T;
 
@@ -297,7 +297,7 @@ impl<T> ResultExt for std::result::Result<T, wasm_bindgen::JsValue> {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "serde-wasm-bindgen")]
 impl<T> ResultExt for std::result::Result<T, serde_wasm_bindgen::Error> {
     type Ok = T;
 
@@ -309,7 +309,7 @@ impl<T> ResultExt for std::result::Result<T, serde_wasm_bindgen::Error> {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "indexed-db")]
 impl<T> ResultExt for std::result::Result<T, indexed_db::Error<crate::Error>> {
     type Ok = T;
 
@@ -322,7 +322,7 @@ impl<T> ResultExt for std::result::Result<T, indexed_db::Error<crate::Error>> {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "axum")]
 impl<T> ResultExt for std::result::Result<T, axum::Error> {
     type Ok = T;
 

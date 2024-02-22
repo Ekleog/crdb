@@ -1,22 +1,14 @@
 use crate::{
-    db_trait::Lock, BinPtr, CrdbFuture, CrdbSend, CrdbSync, Db, DbPtr, ObjectId, ResultExt, TypeId,
-    User,
+    BinPtr, CrdbFuture, CrdbSend, CrdbSync, Db, DbPtr, Lock, ObjectId, ResultExt, TypeId, User,
 };
-use anyhow::Context;
 #[cfg(doc)]
 use std::collections::{BTreeMap, HashMap};
 use std::{any::Any, collections::HashSet, sync::Arc};
 
-pub(crate) mod private {
-    pub trait Sealed {}
-}
-
-pub trait CanDoCallbacks: CrdbSend + CrdbSync + private::Sealed {
+pub trait CanDoCallbacks: CrdbSend + CrdbSync {
     fn get<T: Object>(&self, ptr: DbPtr<T>)
         -> impl '_ + CrdbFuture<Output = crate::Result<Arc<T>>>;
 }
-
-impl<D: Db> private::Sealed for D {}
 
 impl<D: Db> CanDoCallbacks for D {
     async fn get<T: Object>(&self, object_id: DbPtr<T>) -> crate::Result<Arc<T>> {
@@ -124,72 +116,4 @@ pub trait Object:
     // eg. a custom Serializer that'd collect only the _crdb-bin-ptr. Also we'd still need "regular"
     // serialization to be transparent, because users could query() on them.
     fn required_binaries(&self) -> Vec<BinPtr>;
-}
-
-pub fn parse_snapshot<T: Object>(
-    snapshot_version: i32,
-    snapshot_data: serde_json::Value,
-) -> anyhow::Result<T> {
-    if snapshot_version == T::snapshot_version() {
-        Ok(serde_json::from_value(snapshot_data).with_context(|| {
-            format!(
-                "parsing current snapshot version {snapshot_version} for object type {:?}",
-                T::type_ulid()
-            )
-        })?)
-    } else {
-        T::from_old_snapshot(snapshot_version, snapshot_data).with_context(|| {
-            format!(
-                "parsing old snapshot version {snapshot_version} for object type {:?}",
-                T::type_ulid()
-            )
-        })
-    }
-}
-
-pub fn parse_snapshot_ref<T: Object>(
-    snapshot_version: i32,
-    snapshot_data: &serde_json::Value,
-) -> anyhow::Result<T> {
-    if snapshot_version == T::snapshot_version() {
-        Ok(T::deserialize(snapshot_data).with_context(|| {
-            format!(
-                "parsing current snapshot version {snapshot_version} for object type {:?}",
-                T::type_ulid()
-            )
-        })?)
-    } else {
-        T::from_old_snapshot(snapshot_version, snapshot_data.clone()).with_context(|| {
-            format!(
-                "parsing old snapshot version {snapshot_version} for object type {:?}",
-                T::type_ulid()
-            )
-        })
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn parse_snapshot_js<T: Object>(
-    snapshot_version: i32,
-    snapshot_data: wasm_bindgen::JsValue,
-) -> crate::Result<T> {
-    if snapshot_version == T::snapshot_version() {
-        Ok(
-            serde_wasm_bindgen::from_value(snapshot_data).wrap_with_context(|| {
-                format!(
-                    "parsing current snapshot version {snapshot_version} for object type {:?}",
-                    T::type_ulid()
-                )
-            })?,
-        )
-    } else {
-        let as_serde_json = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_data)
-            .wrap_with_context(|| format!("parsing data from IndexedDB as JSON"))?;
-        T::from_old_snapshot(snapshot_version, as_serde_json).wrap_with_context(|| {
-            format!(
-                "parsing old snapshot version {snapshot_version} for object type {:?}",
-                T::type_ulid()
-            )
-        })
-    }
 }

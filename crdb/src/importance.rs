@@ -1,5 +1,5 @@
 #[cfg(feature = "client")]
-use crate::db_trait::Lock;
+use crate::Lock;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Importance {

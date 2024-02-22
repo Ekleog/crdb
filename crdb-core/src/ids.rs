@@ -23,18 +23,18 @@ macro_rules! impl_id {
                 Self(Ulid::new())
             }
 
-            #[cfg(not(target_arch = "wasm32"))]
-            pub(crate) fn to_uuid(self) -> uuid::Uuid {
+            #[cfg(feature = "uuid")]
+            pub fn to_uuid(self) -> uuid::Uuid {
                 uuid::Uuid::from_bytes(self.0.to_bytes())
             }
 
-            #[cfg(not(target_arch = "wasm32"))]
-            pub(crate) fn from_uuid(id: uuid::Uuid) -> Self {
+            #[cfg(feature = "uuid")]
+            pub fn from_uuid(id: uuid::Uuid) -> Self {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
 
-            #[cfg(target_arch = "wasm32")]
-            pub(crate) fn to_js_string(&self) -> js_sys::JsString {
+            #[cfg(feature = "js-sys")]
+            pub fn to_js_string(&self) -> js_sys::JsString {
                 js_sys::JsString::from(format!("{}", self.0))
             }
 
@@ -42,7 +42,7 @@ macro_rules! impl_id {
                 Self(Ulid::from_bytes(v.to_be_bytes()))
             }
 
-            pub(crate) fn as_u128(&self) -> u128 {
+            pub fn as_u128(&self) -> u128 {
                 u128::from_be_bytes(self.0.to_bytes())
             }
         }
@@ -83,7 +83,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(all(feature = "client", not(target_arch = "wasm32")))]
+        #[cfg(feature = "client-native")]
         impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
             fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode_by_ref(&self.to_uuid(), buf)
@@ -99,7 +99,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(all(feature = "client", not(target_arch = "wasm32")))]
+        #[cfg(feature = "client-native")]
         impl sqlx::Type<sqlx::Sqlite> for $type {
             fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
                 <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::type_info()
@@ -109,7 +109,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(feature = "_tests")]
+        #[cfg(feature = "arbitrary")]
         impl<'a> arbitrary::Arbitrary<'a> for $type {
             fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
                 Ok(Self(Ulid::from_bytes(u.arbitrary()?)))
@@ -129,3 +129,11 @@ impl_id!(User);
 impl_id!(SessionRef);
 impl_id!(SessionToken);
 impl_id!(Updatedness);
+
+impl SessionToken {
+    #[cfg(feature = "server")]
+    pub fn new() -> SessionToken {
+        use rand::Rng;
+        SessionToken(ulid::Ulid::from_bytes(rand::thread_rng().gen()))
+    }
+}

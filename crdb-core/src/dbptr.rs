@@ -31,7 +31,6 @@ impl<T: Object> DbPtr<T> {
         ObjectId(self.id)
     }
 
-    #[cfg(feature = "_tests")]
     pub fn from_string(s: &str) -> anyhow::Result<DbPtr<T>> {
         Ok(DbPtr {
             id: Ulid::from_string(s)?,
@@ -40,7 +39,7 @@ impl<T: Object> DbPtr<T> {
     }
 }
 
-#[cfg(feature = "_tests")]
+#[cfg(feature = "arbitrary")]
 impl<'a, T: Object> arbitrary::Arbitrary<'a> for DbPtr<T> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {

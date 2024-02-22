@@ -1,13 +1,5 @@
-use crate::{SessionRef, SessionToken, User};
+use crate::{SessionRef, User};
 use web_time::SystemTime;
-
-impl SessionToken {
-    #[cfg(feature = "server")]
-    pub fn new() -> SessionToken {
-        use rand::Rng;
-        SessionToken(ulid::Ulid::from_bytes(rand::thread_rng().gen()))
-    }
-}
 
 #[cfg(feature = "_tests")]
 fn any_system_time_opt(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Option<SystemTime>> {

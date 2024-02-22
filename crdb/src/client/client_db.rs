@@ -3,16 +3,13 @@ use crate::{
     api::{ApiConfig, UploadId},
     cache::CacheDb,
     crdb_internal::Lock,
-    db_trait::Db,
-    error::ResultExt,
-    future::{CrdbSend, CrdbSync},
-    ids::QueryId,
     messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
-    object::parse_snapshot_ref,
-    BinPtr, CrdbFuture, CrdbStream, DbPtr, EventId, Importance, Obj, Object, ObjectId, Query,
-    Session, SessionRef, SessionToken, TypeId, Updatedness, User,
+    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId, Importance, Obj,
+    Object, ObjectId, Query, QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId,
+    Updatedness, User,
 };
 use anyhow::anyhow;
+use crdb_helpers::parse_snapshot_ref;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
 use std::{
     collections::{hash_map, HashMap, HashSet},

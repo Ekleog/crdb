@@ -1,11 +1,6 @@
 use crate::{
-    api::UploadId,
-    db_trait::{Db, Lock},
-    error::ResultExt,
-    fts,
-    ids::QueryId,
-    messages::Upload,
-    BinPtr, EventId, Object, ObjectId, Query, TypeId, Updatedness,
+    api::UploadId, fts, messages::Upload, BinPtr, Db, EventId, Lock, Object, ObjectId, Query,
+    QueryId, ResultExt, TypeId, Updatedness,
 };
 use anyhow::Context;
 use std::{

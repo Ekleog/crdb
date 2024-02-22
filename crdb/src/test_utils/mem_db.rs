@@ -1,9 +1,7 @@
 use super::{eq, FullObject};
 use crate::{
-    db_trait::{Db, Lock},
-    error::ResultExt,
-    BinPtr, CanDoCallbacks, CrdbStream, DynSized, Event, EventId, Object, ObjectId, Query, TypeId,
-    Updatedness, User,
+    BinPtr, CanDoCallbacks, CrdbStream, Db, DynSized, Event, EventId, Lock, Object, ObjectId,
+    Query, ResultExt, TypeId, Updatedness, User,
 };
 use futures::{stream, Stream, StreamExt};
 use std::{

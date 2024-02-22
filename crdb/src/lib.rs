@@ -1,14 +1,8 @@
 mod api;
 mod cache;
-mod db_trait;
-mod dbptr;
-mod error;
 pub mod fts;
-mod future;
-mod ids;
 mod importance;
 mod messages;
-mod object;
 mod query;
 mod session;
 #[cfg(feature = "_tests")]
@@ -20,20 +14,11 @@ const _: () = panic!("running tests without the `_tests` feature enabled");
 
 use std::{any::Any, sync::Arc};
 
-pub use dbptr::DbPtr;
-pub use error::{Error, Result, SerializableError};
-pub use future::{sleep, sleep_until, spawn, CrdbFuture, CrdbFutureExt, CrdbStream};
-pub use ids::{
-    BinPtr, EventId, ObjectId, QueryId, SessionRef, SessionToken, TypeId, Updatedness, User,
-};
+pub use crdb_core::*;
+
 pub use importance::Importance;
-pub use object::{CanDoCallbacks, Event, Object};
 pub use query::{JsonPathItem, Query};
 pub use session::{NewSession, Session};
-
-use db_trait::Db;
-use error::ResultExt;
-use future::{CrdbSend, CrdbSync};
 
 #[cfg(feature = "client")]
 mod client;
@@ -76,18 +61,12 @@ pub mod crdb_internal {
     pub use crate::{
         api::{ApiConfig, UploadId},
         cache::ObjectCache,
-        db_trait::{Db, Lock},
-        error::ResultExt,
-        future::{CrdbSend, CrdbSync},
-        hash_binary,
         messages::{Request, Update, UpdateData, Updates, Upload},
-        object::{parse_snapshot, parse_snapshot_ref, CanDoCallbacks},
-        private,
         session::Session,
-        BinPtr, CrdbFuture, CrdbStream, DbPtr, Error, EventId, Importance, Object, ObjectId, Query,
-        QueryId, Result, SerializableError, SessionRef, SessionToken, TypeId, Updatedness, User,
+        *,
     };
     pub use anyhow;
+    pub use crdb_helpers;
     pub use futures::{self, channel::mpsc, future, stream, FutureExt, Stream};
     #[cfg(feature = "client")]
     pub use paste::paste;
@@ -194,6 +173,7 @@ macro_rules! db {
         $v mod $module {
 
             use $crate::crdb_internal as crdb;
+            use crdb::crdb_helpers;
             use crdb::Db as CrdbDb;
             use crdb::ResultExt as CrdbResultExt;
             use crdb::stream::StreamExt as CrdbStreamExt;
