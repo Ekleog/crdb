@@ -817,6 +817,7 @@ async fn do_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate::
 fn expect_simple_response(
     mut response_receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
 ) -> oneshot::Receiver<crate::Result<()>> {
+    // TODO(perf-med): handle this like handle_upload_response: probably with a not-must-use wrapper and removing the crate::spawn?
     let (sender, receiver) = oneshot::channel();
     crate::spawn(async move {
         let Some(response) = response_receiver.next().await else {
