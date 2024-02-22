@@ -453,7 +453,7 @@ fn query_remote_items() -> Html {
 fn show_session_list() -> Html {
     let db = use_context::<DbContext>().unwrap();
     let do_refresh = use_state(|| 0);
-    // TODO(api-high): expose way to watch for session list
+    // TODO(api-high): expose way to watch for session list, get rid of do_refresh
     let sessions = use_future_with((db.clone(), *do_refresh), |arg| {
         let db = arg.0 .0.clone();
         async move { db.list_sessions().await }
@@ -462,6 +462,30 @@ fn show_session_list() -> Html {
         let db = arg.0 .0.clone();
         async move { db.current_session().await }
     });
+    let new_name = use_state(|| String::new());
+    let on_new_name_change = {
+        let new_name = new_name.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            new_name.set(input.value());
+        }
+    };
+    let rename_current_session = {
+        let db = db.0.clone();
+        let new_name = new_name.clone();
+        let do_refresh = do_refresh.clone();
+        move |_| {
+            let db = db.clone();
+            let new_name = new_name.clone();
+            let do_refresh = do_refresh.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                db.rename_session((*new_name).clone());
+                // TODO(api-high): make rename_session return a way to know when the rename is done, await and refresh
+                crdb::sleep(Duration::from_secs(1)).await;
+                do_refresh.set(*do_refresh + 1);
+            })
+        }
+    };
     let (sessions, current_session) = match (sessions, current_session) {
         (Ok(a), Ok(b)) => (a, b),
         _ => {
@@ -510,7 +534,16 @@ fn show_session_list() -> Html {
             <input
                 type="button"
                 value="Refresh"
-                onclick={move |_| do_refresh.set(*do_refresh + 1) } />
+                onclick={ move |_| do_refresh.set(*do_refresh + 1) } />
+            <input
+                type="text"
+                placeholder={ current_session.session_name.clone() }
+                value={ (*new_name).clone() }
+                onchange={ on_new_name_change } />
+            <input
+                type="button"
+                value="Rename current session"
+                onclick={ rename_current_session } />
         </h3>
         { sessions }
     </>}
