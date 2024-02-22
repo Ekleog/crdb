@@ -1,7 +1,6 @@
 # export RUST_BACKTRACE := "short"
 
-# TODO(misc-low): introduce `doc` again here after figuring out why it always restarts at unicode-ident despite the cache
-all *ARGS: fmt (test ARGS) clippy udeps
+all *ARGS: fmt (test ARGS) clippy udeps doc
 
 run-example-basic-server *ARGS:
     createdb basic-crdb || true
@@ -22,14 +21,13 @@ clippy:
     CARGO_TARGET_DIR="target/clippy" cargo clippy -- -D warnings
 
 udeps:
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features client
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features server
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --features client --target wasm32-unknown-unknown
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude get-all-docs
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude get-all-docs --features client
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude get-all-docs --features server
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude get-all-docs --features client --target wasm32-unknown-unknown
 
 doc:
     CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
-    CARGO_TARGET_DIR="target/doc" cargo doc --features client --workspace --target wasm32-unknown-unknown
 
 test-standalone *ARGS: (test-crate-standalone ARGS) (test-example-basic ARGS)
 
@@ -60,7 +58,7 @@ test-crate-client-native *ARGS:
     SQLX_OFFLINE="true" cargo nextest run --features client,_tests {{ARGS}}
 
 test-crate-client-js *ARGS:
-    cargo test --features client,_tests --target wasm32-unknown-unknown {{ARGS}}
+    cargo test --features client,_tests -p crdb --target wasm32-unknown-unknown {{ARGS}}
 
 test-crate-server *ARGS:
     SQLX_OFFLINE="true" cargo nextest run --features server,_tests {{ARGS}}
