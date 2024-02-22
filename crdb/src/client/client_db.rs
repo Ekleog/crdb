@@ -33,7 +33,6 @@ pub struct ClientDb {
     user: RwLock<Option<User>>,
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
-    db_bypass: Arc<LocalDb>,
     // The `Lock` here is ONLY the accumulated queries lock for this object! The object lock is
     // handled directly in the database only.
     subscribed_objects:
@@ -79,20 +78,22 @@ impl ClientDb {
     {
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
-        let db_bypass = Arc::new(LocalDb::connect(local_db).await?);
-        let db = Arc::new(CacheDb::new(db_bypass.clone(), cache_watermark));
-        let maybe_login = db_bypass
+        let db = Arc::new(CacheDb::new(
+            Arc::new(LocalDb::connect(local_db).await?),
+            cache_watermark,
+        ));
+        let maybe_login = db
             .get_saved_login()
             .await
             .wrap_context("retrieving saved login info")?;
         if maybe_login.is_none() {
             (require_relogin)();
         }
-        let subscribed_queries = db_bypass
+        let subscribed_queries = db
             .get_subscribed_queries()
             .await
             .wrap_context("listing subscribed queries")?;
-        let subscribed_objects = db_bypass
+        let subscribed_objects = db
             .get_subscribed_objects()
             .await
             .wrap_context("listing subscribed objects")?
@@ -111,7 +112,7 @@ impl ClientDb {
         let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
         let subscribed_objects = Arc::new(Mutex::new(subscribed_objects));
         let (api, updates_receiver) = ApiDb::new::<C, _, _, _, _, _, _>(
-            db_bypass.clone(),
+            &db,
             {
                 let subscribed_objects = subscribed_objects.clone();
                 move || {
@@ -139,7 +140,6 @@ impl ClientDb {
             user: RwLock::new(maybe_login.as_ref().map(|l| l.user)),
             api,
             db,
-            db_bypass,
             subscribed_objects,
             subscribed_queries,
             data_saver,
@@ -154,7 +154,7 @@ impl ClientDb {
         this.setup_data_saver::<C>(data_saver_receiver, updates_broadcaster);
         let (upgrade_finished_sender, upgrade_finished) = oneshot::channel();
         crate::spawn({
-            let db = this.db_bypass.clone();
+            let db = this.db.clone();
             async move {
                 let num_errors = C::reencode_old_versions(&*db).await;
                 let _ = upgrade_finished_sender.send(num_errors);
@@ -218,19 +218,19 @@ impl ClientDb {
         vacuum_schedule: ClientVacuumSchedule<F>,
         cancellation_token: CancellationToken,
     ) {
-        let db_bypass = self.db_bypass.clone();
+        let db = self.db.clone();
         let vacuum_guard = self.vacuum_guard.clone();
         let subscribed_objects = self.subscribed_objects.clone();
         let subscribed_queries = self.subscribed_queries.clone();
         let api = self.api.clone();
         crate::spawn(async move {
             loop {
-                match db_bypass.storage_info().await {
+                match db.storage_info().await {
                     Ok(storage_info) => {
                         if (vacuum_schedule.filter)(storage_info) {
                             let _lock = vacuum_guard.write().await;
                             let to_unsubscribe = Arc::new(Mutex::new(HashSet::new()));
-                            if let Err(err) = db_bypass
+                            if let Err(err) = db
                                 .vacuum(
                                     {
                                         let to_unsubscribe = to_unsubscribe.clone();
@@ -285,7 +285,7 @@ impl ClientDb {
         data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
-        let db_bypass = self.db_bypass.clone();
+        let db = self.db.clone();
         let api = self.api.clone();
         let subscribed_objects = self.subscribed_objects.clone();
         let subscribed_queries = self.subscribed_queries.clone();
@@ -299,7 +299,7 @@ impl ClientDb {
                 subscribed_objects,
                 subscribed_queries,
                 vacuum_guard,
-                db_bypass,
+                db,
                 api,
                 updates_broadcaster,
                 query_updates_broadcasters,
@@ -318,7 +318,7 @@ impl ClientDb {
             Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
         >,
         vacuum_guard: Arc<tokio::sync::RwLock<()>>,
-        db: Arc<LocalDb>,
+        db: Arc<CacheDb<LocalDb>>,
         api: Arc<ApiDb>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
         query_updates_broadcasters: Arc<
@@ -796,9 +796,7 @@ impl ClientDb {
             objects_to_unlock
         };
         self.api.unsubscribe_query(query_id);
-        self.db_bypass
-            .unsubscribe_query(query_id, objects_to_unlock)
-            .await
+        self.db.unsubscribe_query(query_id, objects_to_unlock).await
     }
 
     pub async fn create<T: Object>(
@@ -1043,7 +1041,7 @@ impl ClientDb {
             };
             if only_updated_since.is_none() {
                 // Was not subscribed yet
-                self.db_bypass
+                self.db
                     .subscribe_query(
                         query_id,
                         query.clone(),

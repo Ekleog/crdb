@@ -156,7 +156,7 @@ impl<D: Db> Db for CacheDb<D> {
 }
 
 impl<D: Db> Deref for CacheDb<D> {
-    type Target = D;
+    type Target = Arc<D>;
 
     fn deref(&self) -> &Self::Target {
         &self.db

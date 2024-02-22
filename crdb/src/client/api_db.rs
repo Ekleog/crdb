@@ -51,7 +51,7 @@ pub struct ApiDb {
 
 impl ApiDb {
     pub async fn new<C, GSO, GSQ, BG, EH, EHF, RRL>(
-        upload_queue: Arc<LocalDb>,
+        upload_queue: &Arc<LocalDb>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
         binary_getter: Arc<BG>,
@@ -138,7 +138,7 @@ impl ApiDb {
         }
         Ok((
             ApiDb {
-                upload_queue,
+                upload_queue: upload_queue.clone(),
                 upload_queue_watcher_sender,
                 upload_queue_watcher_receiver,
                 connection,
