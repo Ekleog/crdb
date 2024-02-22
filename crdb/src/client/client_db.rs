@@ -9,8 +9,8 @@ use crate::{
     ids::QueryId,
     messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
     object::parse_snapshot_ref,
-    BinPtr, CrdbFuture, CrdbStream, EventId, Importance, Object, ObjectId, Query, Session,
-    SessionRef, SessionToken, TypeId, Updatedness, User,
+    BinPtr, CrdbFuture, CrdbStream, DbPtr, EventId, Importance, Obj, Object, ObjectId, Query,
+    Session, SessionRef, SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
@@ -910,18 +910,18 @@ impl ClientDb {
     }
 
     pub async fn get<T: Object>(
-        &self,
+        self: &Arc<Self>,
         importance: Importance,
         object_id: ObjectId,
-    ) -> crate::Result<(ObjectId, Arc<T>)> {
+    ) -> crate::Result<Obj<T>> {
         let lock = importance.to_object_lock();
         let subscribe = importance.to_subscribe();
         match self.db.get_latest::<T>(lock, object_id).await {
-            Ok(r) => return Ok((object_id, r)),
+            Ok(r) => return Ok(Obj::new(DbPtr::from(object_id), r, self.clone())),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
-        if subscribe {
+        let res = if subscribe {
             let data = self.api.get_subscribe(object_id).await?;
             let res = save_object_data_locally::<T>(
                 data,
@@ -932,13 +932,14 @@ impl ClientDb {
                 &self.subscribed_queries,
             )
             .await?;
-            Ok((object_id, res))
+            res
         } else {
             let res = self.api.get_latest(object_id).await?;
             let res = parse_snapshot_ref::<T>(res.snapshot_version, &res.snapshot)
                 .wrap_context("deserializing server-returned snapshot")?;
-            Ok((object_id, Arc::new(res)))
-        }
+            Arc::new(res)
+        };
+        Ok(Obj::new(DbPtr::from(object_id), res, self.clone()))
     }
 
     pub async fn get_local<T: Object>(
