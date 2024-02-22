@@ -626,10 +626,23 @@ impl PartialEq for RenderItemProps {
 
 #[function_component(RenderItem)]
 fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
+    let db = use_context::<DbContext>().unwrap();
+    let ptr = data.ptr();
+    // TODO(api-high): whether the object is locked or not should be exposed to the user
+    let unlock = move |_| {
+        let db = db.0.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            db.unlock(ptr).await.expect("failed unlocking object")
+        })
+    };
     html! {<>
         <i>{ show_user(data.owner) }</i>
         { ": " }
         <b>{ &*data.text }</b>
-        { format!(" {:?} {:?}", data.tags, data.file) }
+        { format!(" {:?} {:?} ", data.tags, data.file) }
+        <input
+            type="button"
+            value="Unlock"
+            onclick={unlock} />
     </>}
 }
