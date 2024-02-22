@@ -814,6 +814,20 @@ impl ClientDb {
     pub async fn create<T: Object>(
         self: &Arc<Self>,
         importance: Importance,
+        object: Arc<T>,
+    ) -> crate::Result<(Obj<T>, impl Future<Output = crate::Result<()>>)> {
+        let id = self.make_ulid();
+        let object_id = ObjectId(id);
+        let completion = self
+            .create_with(importance, object_id, EventId(id), object.clone())
+            .await?;
+        let res = Obj::new(DbPtr::from(object_id), object, self.clone());
+        Ok((res, completion))
+    }
+
+    pub async fn create_with<T: Object>(
+        self: &Arc<Self>,
+        importance: Importance,
         object_id: ObjectId,
         created_at: EventId,
         object: Arc<T>,

@@ -125,12 +125,8 @@ macro_rules! generate_client {
                     &self,
                     importance: crdb::Importance,
                     object: crdb::Arc<$object>,
-                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::DbPtr<$object>, impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>>)>> {
-                    async move {
-                        let id = self.db.make_ulid();
-                        let completion = self.db.create(importance, crdb::ObjectId(id), crdb::EventId(id), object).await?;
-                        Ok((crdb::DbPtr::from(crdb::ObjectId(id)), completion))
-                    }
+                ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<(crdb::Obj<$object>, impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>>)>> {
+                    self.db.create(importance, object)
                 }
 
                 pub fn [< submit_to_ $name >](
