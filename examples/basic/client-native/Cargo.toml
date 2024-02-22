@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 basic-api = { path = "../api" }
-crdb = { path = "../../..", features = ["client"] }
+crdb = { path = "../../../crdb", features = ["client"] }
