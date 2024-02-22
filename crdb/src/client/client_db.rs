@@ -887,8 +887,23 @@ impl ClientDb {
             .await
     }
 
-    /// Note: this will fail if the object is not subscribed upon yet: it would not make sense anyway.
     pub async fn submit<T: Object>(
+        self: &Arc<Self>,
+        ptr: DbPtr<T>,
+        event: T::Event,
+    ) -> crate::Result<impl Future<Output = crate::Result<()>>> {
+        let event_id = EventId(self.make_ulid());
+        self.submit_with::<T>(
+            Importance::Latest,
+            ptr.to_object_id(),
+            event_id,
+            Arc::new(event),
+        )
+        .await
+    }
+
+    /// Note: this will fail if the object is not subscribed upon yet: it would not make sense anyway.
+    pub async fn submit_with<T: Object>(
         self: &Arc<Self>,
         importance: Importance,
         object_id: ObjectId,
