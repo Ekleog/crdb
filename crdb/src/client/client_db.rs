@@ -912,12 +912,13 @@ impl ClientDb {
     pub async fn get<T: Object>(
         self: &Arc<Self>,
         importance: Importance,
-        object_id: ObjectId,
+        ptr: DbPtr<T>,
     ) -> crate::Result<Obj<T>> {
+        let object_id = ptr.to_object_id();
         let lock = importance.to_object_lock();
         let subscribe = importance.to_subscribe();
         match self.db.get_latest::<T>(lock, object_id).await {
-            Ok(r) => return Ok(Obj::new(DbPtr::from(object_id), r, self.clone())),
+            Ok(r) => return Ok(Obj::new(ptr, r, self.clone())),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
             Err(e) => return Err(e),
         }
@@ -939,7 +940,7 @@ impl ClientDb {
                 .wrap_context("deserializing server-returned snapshot")?;
             Arc::new(res)
         };
-        Ok(Obj::new(DbPtr::from(object_id), res, self.clone()))
+        Ok(Obj::new(ptr, res, self.clone()))
     }
 
     pub async fn get_local<T: Object>(
