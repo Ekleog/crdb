@@ -30,7 +30,7 @@ enum UpdateResult {
 }
 
 pub struct ClientDb {
-    user: Arc<RwLock<Option<User>>>,
+    user: RwLock<Option<User>>,
     api: Arc<ApiDb>,
     db: Arc<CacheDb<LocalDb>>,
     db_bypass: Arc<LocalDb>,
@@ -136,7 +136,7 @@ impl ClientDb {
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
         let this = Arc::new(ClientDb {
-            user: Arc::new(RwLock::new(maybe_login.as_ref().map(|l| l.user))),
+            user: RwLock::new(maybe_login.as_ref().map(|l| l.user)),
             api,
             db,
             db_bypass,
