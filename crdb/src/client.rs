@@ -1,6 +1,5 @@
 mod api_db;
 mod client_db;
-mod config;
 mod connection;
 mod obj;
 

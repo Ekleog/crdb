@@ -26,7 +26,6 @@ crate::db! {
     pub mod db {
         api_config: ApiConfig,
         server_config: ServerConfig,
-        client_db: ClientDb,
         objects: {
             delegate_perms: super::TestObjectDelegatePerms,
             full: super::TestObjectFull,

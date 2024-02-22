@@ -217,7 +217,6 @@ crdb::db! {
     pub mod db {
         api_config: ApiConfig,
         server_config: ServerConfig,
-        client_db: Db,
         objects: {
             item: super::Item,
             tag: super::Tag,

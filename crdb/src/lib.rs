@@ -38,7 +38,7 @@ use future::{CrdbSend, CrdbSync};
 #[cfg(feature = "client")]
 mod client;
 #[cfg(feature = "client")]
-pub use client::{ClientVacuumSchedule, ConnectionEvent, Obj};
+pub use client::{ClientDb, ClientVacuumSchedule, ConnectionEvent, Obj};
 #[cfg(not(feature = "client"))]
 mod client {
     #[macro_export]
@@ -181,10 +181,10 @@ pub fn check_strings(v: &serde_json::Value) -> crate::Result<()> {
 #[macro_export]
 macro_rules! db {
     (
+        // TODO(api-high): have a single `config` type defined here, by using a ServerDb trait and not directly PostgresDb
         $v:vis mod $module:ident {
             api_config: $api_config:ident,
             server_config: $server_config:ident,
-            client_db: $client_db:ident,
             objects: {
                 $( $name:ident : $object:ty, )*
             },
@@ -199,7 +199,6 @@ macro_rules! db {
             use crdb::stream::StreamExt as CrdbStreamExt;
 
             $crate::generate_api!($api_config | $($object),*);
-            $crate::generate_client!($api_config | $client_db | $($name: $object),*);
             $crate::generate_server!($api_config | $server_config | $($object),*);
         }
     }

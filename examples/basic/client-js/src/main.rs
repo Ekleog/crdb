@@ -51,8 +51,9 @@ fn app() -> Html {
         let require_relogin = require_relogin.clone();
         let connection_status = connection_status.clone();
         move |_| async move {
-            let (db, upgrade_handle) = basic_api::db::Db::connect(
-                String::from("basic-crdb"),
+            let (db, upgrade_handle) = crdb::ClientDb::connect(
+                basic_api::db::ApiConfig,
+                "basic-crdb",
                 CACHE_WATERMARK,
                 move || {
                     tracing::info!("db requested a relogin");
@@ -74,7 +75,7 @@ fn app() -> Html {
                 tracing::info!(?evt, "connection event");
                 connection_status.set(evt);
             });
-            Ok(Rc::new(db))
+            Ok(db)
         }
     });
     if *logging_in {
@@ -119,22 +120,22 @@ fn app() -> Html {
 
 #[derive(Properties)]
 struct RefresherProps {
-    db: Rc<basic_api::db::Db>,
+    db: Arc<crdb::ClientDb>,
     connection_status: Rc<String>,
 }
 
 impl PartialEq for RefresherProps {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.db, &other.db) && self.connection_status == other.connection_status
+        Arc::ptr_eq(&self.db, &other.db) && self.connection_status == other.connection_status
     }
 }
 
 #[derive(Clone)]
-struct RcEq<T>(Rc<T>);
+struct ArcEq<T>(Arc<T>);
 
-impl<T> PartialEq for RcEq<T> {
-    fn eq(&self, other: &RcEq<T>) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
+impl<T> PartialEq for ArcEq<T> {
+    fn eq(&self, other: &ArcEq<T>) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
     }
 }
 
@@ -149,9 +150,9 @@ fn refresher(
     let counter = use_mut_ref(|| 0); // Counter used only to force a refresh of each component that uses DbContext
     let force_update = use_force_update();
     *counter.borrow_mut() += 1;
-    use_effect_with(RcEq(db.clone()), {
+    use_effect_with(ArcEq(db.clone()), {
         let force_update = force_update.clone();
-        move |RcEq(db)| {
+        move |ArcEq(db)| {
             wasm_bindgen_futures::spawn_local({
                 let force_update = force_update.clone();
                 let db = db.clone();
@@ -284,11 +285,11 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
 }
 
 #[derive(Clone)]
-struct DbContext(Rc<basic_api::db::Db>, usize);
+struct DbContext(Arc<crdb::ClientDb>, usize);
 
 impl PartialEq for DbContext {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0) && self.1 == other.1
+        Arc::ptr_eq(&self.0, &other.0) && self.1 == other.1
     }
 }
 
@@ -361,7 +362,7 @@ fn create_item() -> Html {
             let db = db.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let _ = db
-                    .create_item(importance, Arc::new(item))
+                    .create(importance, Arc::new(item))
                     .await
                     .expect("failed creating item");
             })
@@ -413,7 +414,7 @@ fn query_remote_items() -> Html {
             let query_res = query_res.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let res = db
-                    .query_item_remote(importance, QueryId::now(), Arc::new(query))
+                    .query_remote::<basic_api::Item>(importance, QueryId::now(), Arc::new(query))
                     .await
                     .expect("failed creating item")
                     .collect::<Vec<_>>()
@@ -590,7 +591,7 @@ fn show_local_db() -> Html {
         let db = db.clone();
         async move {
             Ok::<_, crdb::Error>(
-                db.0.query_item_local(Arc::new(Query::All(Vec::new())))
+                db.0.query_local::<basic_api::Item>(Arc::new(Query::All(Vec::new())))
                     .await?
                     .collect::<Vec<_>>()
                     .await,

@@ -64,7 +64,8 @@ enum DataSaverMessage {
 }
 
 impl ClientDb {
-    pub async fn new<C: ApiConfig, RRL, EH, EHF, VS>(
+    pub async fn connect<C, RRL, EH, EHF, VS>(
+        config: C,
         local_db: &str,
         cache_watermark: usize,
         require_relogin: RRL,
@@ -78,6 +79,7 @@ impl ClientDb {
         EHF: 'static + CrdbFuture<Output = OnError>,
         VS: 'static + Send + Fn(ClientStorageInfo) -> bool,
     {
+        let _ = config; // mark used
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
         let db = Arc::new(CacheDb::new(
