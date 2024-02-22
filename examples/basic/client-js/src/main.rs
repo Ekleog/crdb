@@ -630,11 +630,26 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
     let db = use_context::<DbContext>().unwrap();
     let ptr = data.ptr();
     // TODO(api-high): whether the object is locked or not should be exposed to the user
-    let unlock = move |_| {
-        let db = db.0.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            db.unlock(ptr).await.expect("failed unlocking object")
-        })
+    let unlock = {
+        let db = db.clone();
+        move |_| {
+            let db = db.0.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                db.unlock(ptr).await.expect("failed unlocking object")
+            })
+        }
+    };
+    // TODO(api-high): whether the object is subscribed or not should be exposed to the user
+    let unsubscribe = {
+        let db = db.clone();
+        move |_| {
+            let db = db.0.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                db.unsubscribe(ptr)
+                    .await
+                    .expect("failed unsubscribing object")
+            })
+        }
     };
     html! {<>
         <i>{ show_user(data.owner) }</i>
@@ -645,5 +660,9 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
             type="button"
             value="Unlock"
             onclick={unlock} />
+        <input
+            type="button"
+            value="Unsubscribe"
+            onclick={unsubscribe} />
     </>}
 }
