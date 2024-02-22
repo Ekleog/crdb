@@ -177,9 +177,9 @@ impl ApiDb {
         response
     }
 
-    pub fn rename_session(&self, name: String) {
-        self.request(Arc::new(Request::RenameSession(name)));
-        // Ignore the response from the server
+    pub fn rename_session(&self, name: String) -> oneshot::Receiver<crate::Result<()>> {
+        let response_receiver = self.request(Arc::new(Request::RenameSession(name)));
+        expect_simple_response(response_receiver)
     }
 
     pub async fn current_session(&self) -> crate::Result<Session> {
@@ -220,25 +220,8 @@ impl ApiDb {
         &self,
         session_ref: SessionRef,
     ) -> oneshot::Receiver<crate::Result<()>> {
-        let mut response_receiver = self.request(Arc::new(Request::DisconnectSession(session_ref)));
-        let (sender, receiver) = oneshot::channel();
-        crate::spawn(async move {
-            let Some(response) = response_receiver.next().await else {
-                let _ = sender.send(Err(crate::Error::Other(anyhow!(
-                    "Connection thread went down too ealy"
-                ))));
-                return;
-            };
-            let _ = match response.response {
-                ResponsePart::Success => sender.send(Ok(())),
-                ResponsePart::Error(err) => sender.send(Err(err.into())),
-                _ => sender.send(Err(crate::Error::Other(anyhow!(
-                    "Unexpected server response to DisconnectSession: {:?}",
-                    response.response
-                )))),
-            };
-        });
-        receiver
+        let response_receiver = self.request(Arc::new(Request::DisconnectSession(session_ref)));
+        expect_simple_response(response_receiver)
     }
 
     pub fn unsubscribe(&self, object_ids: HashSet<ObjectId>) {
@@ -829,4 +812,27 @@ async fn do_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate::
         .await
         .map(|_| ()),
     }
+}
+
+fn expect_simple_response(
+    mut response_receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
+) -> oneshot::Receiver<crate::Result<()>> {
+    let (sender, receiver) = oneshot::channel();
+    crate::spawn(async move {
+        let Some(response) = response_receiver.next().await else {
+            let _ = sender.send(Err(crate::Error::Other(anyhow!(
+                "Connection thread went down too ealy"
+            ))));
+            return;
+        };
+        let _ = match response.response {
+            ResponsePart::Success => sender.send(Ok(())),
+            ResponsePart::Error(err) => sender.send(Err(err.into())),
+            _ => sender.send(Err(crate::Error::Other(anyhow!(
+                "Unexpected server response to DisconnectSession: {:?}",
+                response.response
+            )))),
+        };
+    });
+    receiver
 }

@@ -707,7 +707,7 @@ impl ClientDb {
         self.db.get_upload(upload_id).await
     }
 
-    pub fn rename_session(&self, name: String) {
+    pub fn rename_session(&self, name: String) -> oneshot::Receiver<crate::Result<()>> {
         self.api.rename_session(name)
     }
 

@@ -68,7 +68,7 @@ macro_rules! generate_client {
                 self.db.get_upload(upload_id)
             }
 
-            pub fn rename_session(&self, name: String) {
+            pub fn rename_session(&self, name: String) -> crdb::tokio::sync::oneshot::Receiver<crdb::Result<()>> {
                 self.db.rename_session(name)
             }
 
