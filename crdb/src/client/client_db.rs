@@ -734,7 +734,13 @@ impl ClientDb {
         self.db.change_locks(Lock::OBJECT, Lock::NONE, ptr).await
     }
 
-    pub async fn unsubscribe(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
+    pub async fn unsubscribe<T: Object>(&self, ptr: DbPtr<T>) -> crate::Result<()> {
+        let mut set = HashSet::new();
+        set.insert(ptr.to_object_id());
+        self.unsubscribe_all(set).await
+    }
+
+    pub async fn unsubscribe_all(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
             self.subscribed_objects.lock().unwrap().remove(object_id);

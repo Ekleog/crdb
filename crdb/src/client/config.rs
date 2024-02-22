@@ -108,9 +108,7 @@ macro_rules! generate_client {
             }
 
             pub fn unsubscribe<T: crdb::Object>(&self, object: crdb::DbPtr<T>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
-                let mut set = std::collections::HashSet::new();
-                set.insert(object.to_object_id());
-                self.db.unsubscribe(set)
+                self.db.unsubscribe(object)
             }
 
             pub fn unsubscribe_query(&self, query: crdb::QueryId) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
