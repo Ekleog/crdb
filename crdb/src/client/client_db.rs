@@ -69,7 +69,7 @@ impl ClientDb {
         require_relogin: RRL,
         error_handler: EH,
         vacuum_schedule: ClientVacuumSchedule<VS>,
-    ) -> anyhow::Result<(ClientDb, impl CrdbFuture<Output = usize>)>
+    ) -> anyhow::Result<(Arc<ClientDb>, impl CrdbFuture<Output = usize>)>
     where
         C: ApiConfig,
         RRL: 'static + CrdbSend + Fn(),
@@ -135,7 +135,7 @@ impl ClientDb {
         let api = Arc::new(api);
         let cancellation_token = CancellationToken::new();
         let (data_saver, data_saver_receiver) = mpsc::unbounded();
-        let this = ClientDb {
+        let this = Arc::new(ClientDb {
             user: Arc::new(RwLock::new(maybe_login.as_ref().map(|l| l.user))),
             api,
             db,
@@ -148,7 +148,7 @@ impl ClientDb {
             query_updates_broadcastees,
             vacuum_guard: Arc::new(tokio::sync::RwLock::new(())),
             _cleanup_token: cancellation_token.clone().drop_guard(),
-        };
+        });
         this.setup_update_watcher(updates_receiver);
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
         this.setup_data_saver::<C>(data_saver_receiver, updates_broadcaster);
@@ -171,11 +171,14 @@ impl ClientDb {
         ))
     }
 
-    pub fn listen_for_all_updates(&self) -> broadcast::Receiver<ObjectId> {
+    pub fn listen_for_all_updates(self: &Arc<Self>) -> broadcast::Receiver<ObjectId> {
         self.updates_broadcastee.resubscribe()
     }
 
-    pub fn listen_for_updates_on(&self, q: QueryId) -> Option<broadcast::Receiver<ObjectId>> {
+    pub fn listen_for_updates_on(
+        self: &Arc<Self>,
+        q: QueryId,
+    ) -> Option<broadcast::Receiver<ObjectId>> {
         self.query_updates_broadcastees
             .lock()
             .unwrap()
@@ -183,7 +186,10 @@ impl ClientDb {
             .map(|(_, recv)| recv.resubscribe())
     }
 
-    fn setup_update_watcher(&self, mut updates_receiver: mpsc::UnboundedReceiver<Updates>) {
+    fn setup_update_watcher(
+        self: &Arc<Self>,
+        mut updates_receiver: mpsc::UnboundedReceiver<Updates>,
+    ) {
         // No need for a cancellation token: this task will automatically end as soon as the stream
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
         crate::spawn({
@@ -208,7 +214,7 @@ impl ClientDb {
     }
 
     fn setup_autovacuum<F: 'static + Send + Fn(ClientStorageInfo) -> bool>(
-        &self,
+        self: &Arc<Self>,
         vacuum_schedule: ClientVacuumSchedule<F>,
         cancellation_token: CancellationToken,
     ) {
@@ -275,7 +281,7 @@ impl ClientDb {
     }
 
     fn setup_data_saver<C: ApiConfig>(
-        &self,
+        self: &Arc<Self>,
         data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
     ) {
@@ -634,7 +640,7 @@ impl ClientDb {
     }
 
     pub fn on_connection_event(
-        &self,
+        self: &Arc<Self>,
         cb: impl 'static + CrdbSend + CrdbSync + Fn(ConnectionEvent),
     ) {
         self.api.on_connection_event(cb)
@@ -644,7 +650,7 @@ impl ClientDb {
     /// is not actually checked, and is assumed to be true. Providing the wrong `user` may lead to object creations
     /// or event submissions being spuriously rejected locally, but will not allow them to succeed remotely anyway.
     pub async fn login(
-        &self,
+        self: &Arc<Self>,
         url: Arc<String>,
         user: User,
         token: SessionToken,
@@ -703,11 +709,14 @@ impl ClientDb {
         self.db.list_uploads().await
     }
 
-    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Option<Upload>> {
+    pub async fn get_upload(
+        self: &Arc<Self>,
+        upload_id: UploadId,
+    ) -> crate::Result<Option<Upload>> {
         self.db.get_upload(upload_id).await
     }
 
-    pub fn rename_session(&self, name: String) -> oneshot::Receiver<crate::Result<()>> {
+    pub fn rename_session(self: &Arc<Self>, name: String) -> oneshot::Receiver<crate::Result<()>> {
         self.api.rename_session(name)
     }
 
@@ -720,7 +729,7 @@ impl ClientDb {
     }
 
     pub fn disconnect_session(
-        &self,
+        self: &Arc<Self>,
         session_ref: SessionRef,
     ) -> oneshot::Receiver<crate::Result<()>> {
         self.api.disconnect_session(session_ref)
@@ -730,19 +739,22 @@ impl ClientDb {
         self.vacuum_guard.read().await
     }
 
-    pub async fn unlock<T: Object>(&self, ptr: DbPtr<T>) -> crate::Result<()> {
+    pub async fn unlock<T: Object>(self: &Arc<Self>, ptr: DbPtr<T>) -> crate::Result<()> {
         self.db
             .change_locks(Lock::OBJECT, Lock::NONE, ptr.to_object_id())
             .await
     }
 
-    pub async fn unsubscribe<T: Object>(&self, ptr: DbPtr<T>) -> crate::Result<()> {
+    pub async fn unsubscribe<T: Object>(self: &Arc<Self>, ptr: DbPtr<T>) -> crate::Result<()> {
         let mut set = HashSet::new();
         set.insert(ptr.to_object_id());
         self.unsubscribe_all(set).await
     }
 
-    pub async fn unsubscribe_all(&self, object_ids: HashSet<ObjectId>) -> crate::Result<()> {
+    pub async fn unsubscribe_all(
+        self: &Arc<Self>,
+        object_ids: HashSet<ObjectId>,
+    ) -> crate::Result<()> {
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
             self.subscribed_objects.lock().unwrap().remove(object_id);
@@ -751,7 +763,7 @@ impl ClientDb {
         Ok(())
     }
 
-    pub async fn unsubscribe_query(&self, query_id: QueryId) -> crate::Result<()> {
+    pub async fn unsubscribe_query(self: &Arc<Self>, query_id: QueryId) -> crate::Result<()> {
         self.query_updates_broadcastees
             .lock()
             .unwrap()
@@ -790,7 +802,7 @@ impl ClientDb {
     }
 
     pub async fn create<T: Object>(
-        &self,
+        self: &Arc<Self>,
         importance: Importance,
         object_id: ObjectId,
         created_at: EventId,
@@ -853,7 +865,7 @@ impl ClientDb {
 
     /// Note: this will fail if the object is not subscribed upon yet: it would not make sense anyway.
     pub async fn submit<T: Object>(
-        &self,
+        self: &Arc<Self>,
         importance: Importance,
         object_id: ObjectId,
         event_id: EventId,
@@ -1123,7 +1135,7 @@ impl ClientDb {
 
     // TODO(misc-low): should the client be allowed to request a recreation?
 
-    pub async fn create_binary(&self, data: Arc<[u8]>) -> crate::Result<()> {
+    pub async fn create_binary(self: &Arc<Self>, data: Arc<[u8]>) -> crate::Result<()> {
         let binary_id = crate::hash_binary(&data);
         self.db.create_binary(binary_id, data.clone()).await
         // Do not create the binary over the API. We'll try uploading the object that requires it when
@@ -1133,7 +1145,10 @@ impl ClientDb {
         // the create_object.
     }
 
-    pub async fn get_binary(&self, binary_id: BinPtr) -> anyhow::Result<Option<Arc<[u8]>>> {
+    pub async fn get_binary(
+        self: &Arc<Self>,
+        binary_id: BinPtr,
+    ) -> anyhow::Result<Option<Arc<[u8]>>> {
         if let Some(res) = self.db.get_binary(binary_id).await? {
             return Ok(Some(res));
         }

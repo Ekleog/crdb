@@ -34,7 +34,7 @@ macro_rules! generate_client {
                         vacuum_schedule,
                     ).await?;
                     Ok(($client_db {
-                        db: crdb::Arc::new(db),
+                        db,
                         ulid: crdb::Mutex::new(crdb::ulid::Generator::new()),
                     }, upgrade_handle))
                 }
