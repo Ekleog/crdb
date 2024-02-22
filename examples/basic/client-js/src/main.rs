@@ -479,9 +479,10 @@ fn show_session_list() -> Html {
             let new_name = new_name.clone();
             let do_refresh = do_refresh.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                db.rename_session((*new_name).clone());
-                // TODO(api-high): make rename_session return a way to know when the rename is done, await and refresh
-                crdb::sleep(Duration::from_secs(1)).await;
+                db.rename_session((*new_name).clone())
+                    .await
+                    .unwrap()
+                    .expect("failed renaming session");
                 do_refresh.set(*do_refresh + 1);
             })
         }
