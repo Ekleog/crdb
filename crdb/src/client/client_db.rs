@@ -758,6 +758,11 @@ impl ClientDb {
             .await
     }
 
+    /// Note that unsubscribing from an object will ignore any query that could force it to stay subscribed. This is
+    /// so that you could have a query that warns you of any new objects, and then you filter the ones you actually want
+    /// locally and unsubscribe from the objects you don't care about. Note however that if you could ever start caring
+    /// again about an object (eg. after it received some updates), then you probably should not do this, because
+    /// unsubscribing from an object will lead to you never receiving the future updates in the first place.
     pub async fn unsubscribe<T: Object>(self: &Arc<Self>, ptr: DbPtr<T>) -> crate::Result<()> {
         let mut set = HashSet::new();
         set.insert(ptr.to_object_id());
