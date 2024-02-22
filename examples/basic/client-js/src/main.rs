@@ -424,7 +424,7 @@ fn query_remote_items() -> Html {
     });
     let query_results = query_res
         .iter()
-        .map(|r| html! {<li> { format!("{r:?}") } </li>})
+        .map(|r| html! {<li>{ format!("{:?}", **r.as_ref().unwrap()) }</li>})
         .collect::<Html>();
     html! {<>
         { "Query Remote Items: "}
@@ -603,7 +603,7 @@ fn show_local_db() -> Html {
     };
     let local_items = local_items
         .iter()
-        .map(|i| html! {<li> { format!("{i:?}") } </li>})
+        .map(|i| html! {<li>{ format!("{:?}", **i.as_ref().unwrap()) }</li>})
         .collect::<Html>();
     html! {<>
         <h3>{ "Local DB" }</h3>
