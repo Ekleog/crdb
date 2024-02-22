@@ -424,7 +424,7 @@ fn query_remote_items() -> Html {
     });
     let query_results = query_res
         .iter()
-        .map(|r| html! {<> <br /> { format!("{r:?}") } </>})
+        .map(|r| html! {<li> { format!("{r:?}") } </li>})
         .collect::<Html>();
     html! {<>
         { "Query Remote Items: "}
@@ -445,7 +445,9 @@ fn query_remote_items() -> Html {
             type="button"
             value="Query Items & Lock"
             onclick={run_query_remote.reform(|_| Importance::Lock)} />
-        { query_results }
+        <ul>
+            { query_results }
+        </ul>
     </>}
 }
 
@@ -601,10 +603,12 @@ fn show_local_db() -> Html {
     };
     let local_items = local_items
         .iter()
-        .map(|i| html! {<> <br />{ format!("{i:?}") } </>})
+        .map(|i| html! {<li> { format!("{i:?}") } </li>})
         .collect::<Html>();
     html! {<>
         <h3>{ "Local DB" }</h3>
-        { local_items }
+        <ul>
+            { local_items }
+        </ul>
     </>}
 }
