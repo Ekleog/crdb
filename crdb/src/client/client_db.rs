@@ -746,10 +746,12 @@ impl ClientDb {
         self.api.disconnect_session(session_ref)
     }
 
+    /// Pauses the vacuum until the returned mutex guard is dropped
     pub async fn pause_vacuum(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
         self.vacuum_guard.read().await
     }
 
+    /// To lock, use `get` with the `lock` argument set to `true`
     pub async fn unlock<T: Object>(self: &Arc<Self>, ptr: DbPtr<T>) -> crate::Result<()> {
         self.db
             .change_locks(Lock::OBJECT, Lock::NONE, ptr.to_object_id())
@@ -1040,6 +1042,12 @@ impl ClientDb {
         })
     }
 
+    /// Note that it is assumed here that the same QueryId will always be associated with the same Query.
+    /// In particular, this means that when bumping an Object's snapshot_version and adjusting the queries
+    /// accordingly, you should change the QueryId, as well as unsubscribe/resubscribe on startup so that
+    /// the database gets updated.
+    ///
+    /// `query_id` is ignored when `importance` is `Latest`.
     pub async fn query_remote<'a, T: Object>(
         self: &'a Arc<Self>,
         importance: Importance,
@@ -1173,6 +1181,10 @@ impl ClientDb {
 
     // TODO(misc-low): should the client be allowed to request a recreation?
 
+    /// Note: when creating a binary, it can be vacuumed away at any time until an object or
+    /// event is added that requires it. As such, you probably want to use `pause_vacuum`
+    /// to make sure the created binary is not vacuumed away before the object or event
+    /// had enough time to get created.
     pub async fn create_binary(self: &Arc<Self>, data: Arc<[u8]>) -> crate::Result<()> {
         let binary_id = crate::hash_binary(&data);
         self.db.create_binary(binary_id, data.clone()).await
