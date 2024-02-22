@@ -159,18 +159,7 @@ macro_rules! generate_client {
                 }
 
                 pub fn [< query_ $name _local >](&self, query: crdb::Arc<crdb::Query>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Obj<$object>>>>> {
-                    async move {
-                        let db = self.db.clone();
-                        self.db
-                            .query_local::<$object>(query)
-                            .await
-                            .map(move |s| s.then(move |r| {
-                                let db = db.clone();
-                                async move {
-                                    r.map(|(object_id, data)| crdb::Obj::new(crdb::DbPtr::from(object_id), data, db.clone()))
-                                }
-                            }))
-                    }
+                    self.db.query_local::<$object>(query)
                 }
 
                 /// Note that it is assumed here that the same QueryId will always be associated with the same Query.

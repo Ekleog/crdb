@@ -958,10 +958,10 @@ impl ClientDb {
         }
     }
 
-    pub async fn query_local<T: Object>(
-        &self,
+    pub async fn query_local<'a, T: Object>(
+        self: &'a Arc<Self>,
         query: Arc<Query>,
-    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<(ObjectId, Arc<T>)>>> {
+    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<Obj<T>>>> {
         let object_ids = self
             .db
             .query::<T>(query)
@@ -971,7 +971,7 @@ impl ClientDb {
         Ok(async_stream::stream! {
             for object_id in object_ids {
                 match self.db.get_latest::<T>(Lock::NONE, object_id).await {
-                    Ok(res) => yield Ok((object_id, res)),
+                    Ok(res) => yield Ok(Obj::new(DbPtr::from(object_id), res, self.clone())),
                     // Ignore missing objects, they were just vacuumed between listing and getting
                     Err(crate::Error::ObjectDoesNotExist(id)) if id == object_id => continue,
                     Err(err) => yield Err(err),
