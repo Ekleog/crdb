@@ -456,7 +456,6 @@ fn show_session_list() -> Html {
     // TODO(api-high): expose way to watch for session list
     let sessions = use_future_with((db, *do_refresh), |arg| {
         let db = arg.0.clone();
-        tracing::info!("re-listing sessions");
         async move { db.0.list_sessions().await }
     });
     let sessions = match sessions {
@@ -472,12 +471,12 @@ fn show_session_list() -> Html {
         .into_iter()
         .map(|s| {
             html! {
-                <li key={ format!("{:?}", s.session_ref) }>
+                <li>
                     { format!(
-                        "{} (logged in {}, last active {})",
+                        "'{}' (logged in {}, last active {})",
                         s.session_name,
-                        chrono::DateTime::<chrono::Local>::from(s.login_time.to_std()),
-                        chrono::DateTime::<chrono::Local>::from(s.last_active.to_std()),
+                        chrono::DateTime::<chrono::Utc>::from(s.login_time.to_std()).naive_utc(),
+                        chrono::DateTime::<chrono::Utc>::from(s.last_active.to_std()).naive_utc(),
                     ) }
                 </li>
             }

@@ -336,6 +336,7 @@ impl<C: ServerConfig> Server<C> {
         {
             return Err(crate::Error::ProtocolViolation);
         }
+        tracing::trace!(?msg, session=?conn.session.as_ref().map(|s| &s.session), "received client message");
         if let Some(sess) = &conn.session {
             // TODO(perf-low): do not mark the session as active upon each incoming message? we don't really need to
             // mark the session as active every 10 seconds / 1 minute, yet that's the frequency at which the clients

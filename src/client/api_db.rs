@@ -202,7 +202,7 @@ impl ApiDb {
 
     pub async fn list_sessions(&self) -> crate::Result<Vec<Session>> {
         let response = self
-            .request(Arc::new(Request::CurrentSession))
+            .request(Arc::new(Request::ListSessions))
             .next()
             .await
             .ok_or_else(|| crate::Error::Other(anyhow!("Connection thread went down too early")))?;
