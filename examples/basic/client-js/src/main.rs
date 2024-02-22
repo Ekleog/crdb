@@ -424,7 +424,7 @@ fn query_remote_items() -> Html {
     });
     let query_results = query_res
         .iter()
-        .map(|r| html! {<li>{ format!("{:?}", **r.as_ref().unwrap()) }</li>})
+        .map(|i| html! {<li><RenderItem data={Rc::new(i.as_ref().unwrap().clone())} /></li>})
         .collect::<Html>();
     html! {<>
         { "Query Remote Items: "}
@@ -603,12 +603,33 @@ fn show_local_db() -> Html {
     };
     let local_items = local_items
         .iter()
-        .map(|i| html! {<li>{ format!("{:?}", **i.as_ref().unwrap()) }</li>})
+        .map(|i| html! {<li><RenderItem data={Rc::new(i.as_ref().unwrap().clone())} /></li>})
         .collect::<Html>();
     html! {<>
         <h3>{ "Local DB" }</h3>
         <ul>
             { local_items }
         </ul>
+    </>}
+}
+
+#[derive(Properties)]
+struct RenderItemProps {
+    data: Rc<crdb::Obj<Item>>,
+}
+
+impl PartialEq for RenderItemProps {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.data, &other.data)
+    }
+}
+
+#[function_component(RenderItem)]
+fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
+    html! {<>
+        <i>{ show_user(data.owner) }</i>
+        { ": " }
+        <b>{ &*data.text }</b>
+        { format!(" {:?} {:?}", data.tags, data.file) }
     </>}
 }
