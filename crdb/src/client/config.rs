@@ -173,22 +173,7 @@ macro_rules! generate_client {
                     query_id: crdb::QueryId,
                     query: crdb::Arc<crdb::Query>,
                 ) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<impl '_ + crdb::CrdbStream<Item = crdb::Result<crdb::Obj<$object>>>>> {
-                    async move {
-                        let db = self.db.clone();
-                        self.db
-                            .query_remote::<$object>(
-                                importance,
-                                query_id,
-                                query,
-                            )
-                            .await
-                            .map(move |s| s.then(move |r| {
-                                let db = db.clone();
-                                async move {
-                                    r.map(|(object_id, data)| crdb::Obj::new(crdb::DbPtr::from(object_id), data, db.clone()))
-                                }
-                            }))
-                    }
+                    self.db.query_remote::<$object>(importance, query_id, query)
                 }
             })*
         }

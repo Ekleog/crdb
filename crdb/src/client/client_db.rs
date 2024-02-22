@@ -980,12 +980,12 @@ impl ClientDb {
         })
     }
 
-    pub async fn query_remote<T: Object>(
-        &self,
+    pub async fn query_remote<'a, T: Object>(
+        self: &'a Arc<Self>,
         importance: Importance,
         query_id: QueryId,
         query: Arc<Query>,
-    ) -> crate::Result<impl '_ + CrdbStream<Item = crate::Result<(ObjectId, Arc<T>)>>> {
+    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<Obj<T>>>> {
         if importance >= Importance::Subscribe {
             self.query_updates_broadcastees
                 .lock()
@@ -1069,13 +1069,13 @@ impl ClientDb {
                                         {
                                             q.2 = updatedness.or(q.2);
                                         }
-                                        Ok((object_id, res))
+                                        Ok(Obj::new(DbPtr::from(object_id), res, self.clone()))
                                     }
-                                    MaybeObject::AlreadySubscribed(object_id) => self
-                                        .db
-                                        .get_latest::<T>(lock, object_id)
-                                        .await
-                                        .map(|res| (object_id, res)),
+                                    MaybeObject::AlreadySubscribed(object_id) => {
+                                        self.db.get_latest::<T>(lock, object_id).await.map(|res| {
+                                            Obj::new(DbPtr::from(object_id), res, self.clone())
+                                        })
+                                    }
                                 }
                             }
                         }
@@ -1093,13 +1093,17 @@ impl ClientDb {
                                 let res =
                                     parse_snapshot_ref::<T>(data.snapshot_version, &data.snapshot)
                                         .wrap_context("deserializing server-returned snapshot")?;
-                                Ok((object_id, Arc::new(res)))
+                                Ok(Obj::new(
+                                    DbPtr::from(object_id),
+                                    Arc::new(res),
+                                    self.clone(),
+                                ))
                             }
                             MaybeSnapshot::AlreadySubscribed(object_id) => self
                                 .db
                                 .get_latest::<T>(Lock::NONE, object_id)
                                 .await
-                                .map(|res| (object_id, res)),
+                                .map(|res| Obj::new(DbPtr::from(object_id), res, self.clone())),
                         }
                     }
                 },
