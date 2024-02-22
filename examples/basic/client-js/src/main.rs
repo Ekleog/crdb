@@ -458,7 +458,7 @@ fn show_session_list() -> Html {
         let db = arg.0 .0.clone();
         async move { db.list_sessions().await }
     });
-    let current_session = use_future_with((db, *do_refresh), |arg| {
+    let current_session = use_future_with((db.clone(), *do_refresh), |arg| {
         let db = arg.0 .0.clone();
         async move { db.current_session().await }
     });
@@ -477,14 +477,29 @@ fn show_session_list() -> Html {
     let sessions = sessions
         .into_iter()
         .map(|s| {
+            let session_ref = s.session_ref;
+            let db = db.0.clone();
+            let do_refresh = do_refresh.clone();
+            let onclick = move |_| {
+                let db = db.clone();
+                let do_refresh = do_refresh.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    db.disconnect_session(session_ref).await.unwrap().expect("failed disconnecting session");
+                    do_refresh.set(*do_refresh + 1);
+                })
+            };
             html! {
                 <li style={ (s.session_ref == current_session.session_ref).then(|| "font-weight: bold").unwrap_or("") }>
                     { format!(
-                        "'{}' (logged in {}, last active {})",
+                        "'{}' (logged in {}, last active {}) ",
                         s.session_name,
                         chrono::DateTime::<chrono::Utc>::from(s.login_time.to_std()).naive_utc(),
                         chrono::DateTime::<chrono::Utc>::from(s.last_active.to_std()).naive_utc(),
                     ) }
+                    <input
+                        type="button"
+                        value="Logout"
+                        { onclick } />
                 </li>
             }
         })
