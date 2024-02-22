@@ -909,12 +909,13 @@ impl ClientDb {
             .await
     }
 
-    async fn get_impl<T: Object>(
+    pub async fn get<T: Object>(
         &self,
-        lock: Lock,
-        subscribe: bool,
+        importance: Importance,
         object_id: ObjectId,
     ) -> crate::Result<(ObjectId, Arc<T>)> {
+        let lock = importance.to_object_lock();
+        let subscribe = importance.to_subscribe();
         match self.db.get_latest::<T>(lock, object_id).await {
             Ok(r) => return Ok((object_id, r)),
             Err(crate::Error::ObjectDoesNotExist(_)) => (), // fall-through and fetch from API
@@ -938,19 +939,6 @@ impl ClientDb {
                 .wrap_context("deserializing server-returned snapshot")?;
             Ok((object_id, Arc::new(res)))
         }
-    }
-
-    pub async fn get<T: Object>(
-        &self,
-        importance: Importance,
-        object_id: ObjectId,
-    ) -> crate::Result<(ObjectId, Arc<T>)> {
-        self.get_impl(
-            importance.to_object_lock(),
-            importance.to_subscribe(),
-            object_id,
-        )
-        .await
     }
 
     pub async fn get_local<T: Object>(
