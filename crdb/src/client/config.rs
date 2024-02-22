@@ -94,8 +94,7 @@ macro_rules! generate_client {
             /// to make sure the created binary is not vacuumed away before the object or event
             /// had enough time to get created.
             pub fn create_binary(&self, data: crdb::Arc<[u8]>) -> impl '_ + crdb::CrdbFuture<Output = crdb::Result<()>> {
-                let binary_id = crdb::hash_binary(&*data);
-                self.db.create_binary(binary_id, data)
+                self.db.create_binary(data)
             }
 
             pub fn get_binary(&self, binary_id: crdb::BinPtr) -> impl '_ + crdb::CrdbFuture<Output = crdb::anyhow::Result<Option<crdb::Arc<[u8]>>>> {

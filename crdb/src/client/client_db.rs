@@ -1123,7 +1123,8 @@ impl ClientDb {
 
     // TODO(misc-low): should the client be allowed to request a recreation?
 
-    pub async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
+    pub async fn create_binary(&self, data: Arc<[u8]>) -> crate::Result<()> {
+        let binary_id = crate::hash_binary(&data);
         self.db.create_binary(binary_id, data.clone()).await
         // Do not create the binary over the API. We'll try uploading the object that requires it when
         // that happens, hoping for the binary to already be known by the server. If it is not, then we'll
