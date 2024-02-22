@@ -454,24 +454,31 @@ fn show_session_list() -> Html {
     let db = use_context::<DbContext>().unwrap();
     let do_refresh = use_state(|| 0);
     // TODO(api-high): expose way to watch for session list
-    let sessions = use_future_with((db, *do_refresh), |arg| {
-        let db = arg.0.clone();
-        async move { db.0.list_sessions().await }
+    let sessions = use_future_with((db.clone(), *do_refresh), |arg| {
+        let db = arg.0 .0.clone();
+        async move { db.list_sessions().await }
     });
-    let sessions = match sessions {
-        Ok(s) => s,
-        Err(_) => {
+    let current_session = use_future_with((db, *do_refresh), |arg| {
+        let db = arg.0 .0.clone();
+        async move { db.current_session().await }
+    });
+    let (sessions, current_session) = match (sessions, current_session) {
+        (Ok(a), Ok(b)) => (a, b),
+        _ => {
             return html! {
                 { "Loading…" }
             }
         }
     };
     let sessions = sessions.as_ref().expect("failed listing sessions");
+    let current_session = current_session
+        .as_ref()
+        .expect("failed getting current session");
     let sessions = sessions
         .into_iter()
         .map(|s| {
             html! {
-                <li>
+                <li style={ (s.session_ref == current_session.session_ref).then(|| "font-weight: bold").unwrap_or("") }>
                     { format!(
                         "'{}' (logged in {}, last active {})",
                         s.session_name,
