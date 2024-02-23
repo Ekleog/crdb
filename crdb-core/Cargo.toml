@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 client-native = [ "sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid" ]
 server = [ "rand", "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
+wasm-bindgen = [ "dep:wasm-bindgen", "web-sys" ]
 
 [dependencies]
 anyhow.workspace = true
