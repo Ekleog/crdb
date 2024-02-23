@@ -195,7 +195,7 @@ macro_rules! generate_server {
                             .wrap_context("parsing uploaded snapshot data")?);
                         let object = call_on.get_latest::<$object>(crdb::Lock::OBJECT, object_id).await
                             .wrap_context("retrieving requested object id")?;
-                        let can_apply = object.can_apply(user, object_id, &event, call_on).await.wrap_context("checking whether user can apply submitted event")?;
+                        let can_apply = object.can_apply(user, object_id, &event, cb).await.wrap_context("checking whether user can apply submitted event")?;
                         if !can_apply {
                             return Err(crdb::Error::Forbidden);
                         }
