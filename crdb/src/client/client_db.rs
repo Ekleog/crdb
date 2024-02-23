@@ -787,6 +787,12 @@ impl ClientDb {
         Ok(())
     }
 
+    pub fn list_subscribed_queries(
+        self: &Arc<Self>,
+    ) -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)> {
+        self.subscribed_queries.lock().unwrap().clone()
+    }
+
     pub async fn unsubscribe_query(self: &Arc<Self>, query_id: QueryId) -> crate::Result<()> {
         self.query_updates_broadcastees
             .lock()

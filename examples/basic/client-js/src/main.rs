@@ -333,6 +333,7 @@ fn main_view(MainViewProps { connection_status }: &MainViewProps) -> Html {
             <div style="height: 100%; width: 45%; position: absolute; top: 0; right: 0">
                 <ShowSessionList /><hr />
                 <ShowUploadQueue /><hr />
+                <ShowSubscribedQueries /><hr />
                 <ShowLocalDb /><hr />
             </div>
         </div>
@@ -581,6 +582,52 @@ fn show_upload_queue() -> Html {
     html! {<>
         <h3>{ "Upload queue" }</h3>
         { upload_queue }
+    </>}
+}
+
+#[function_component(ShowSubscribedQueries)]
+fn show_subscribed_queries() -> Html {
+    let db = use_context::<DbContext>().unwrap();
+    let do_refresh = use_force_update();
+    let subscribed_queries = db.0.list_subscribed_queries();
+    let subscribed_queries = subscribed_queries
+        .into_iter()
+        .map(|q| {
+            let query_id = q.0;
+            let db = db.0.clone();
+            let do_refresh = do_refresh.clone();
+            let onclick = move |_| {
+                let db = db.clone();
+                let do_refresh = do_refresh.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    db.unsubscribe_query(query_id)
+                        .await
+                        .expect("failed unsubscribing from query");
+                    do_refresh.force_update();
+                })
+            };
+            html! {
+                <li>
+                    { format!("{:?} {:?}", q.1 .0, q.1 .3) }
+                    <input
+                        type="button"
+                        value="Unsubscribe"
+                        { onclick } />
+                </li>
+            }
+        })
+        .collect::<Html>();
+    html! {<>
+        <h3>
+            { "Subscribed Queries " }
+            <input
+                type="button"
+                value="Refresh"
+                onclick={ move |_| do_refresh.force_update() } />
+        </h3>
+        <ul>
+            { subscribed_queries }
+        </ul>
     </>}
 }
 
