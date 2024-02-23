@@ -183,7 +183,7 @@ fn refresher(
         }
     });
     html! {
-        <ContextProvider<DbContext> context={DbContext(db.clone(), *counter.borrow())}>
+        <ContextProvider<DbContext> context={DbContext(db.clone(), force_update.clone(), *counter.borrow())}>
             <MainView {connection_status} />
         </ContextProvider<DbContext>>
     }
@@ -285,11 +285,11 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
 }
 
 #[derive(Clone)]
-struct DbContext(Arc<crdb::ClientDb>, usize);
+struct DbContext(Arc<crdb::ClientDb>, UseForceUpdateHandle, usize);
 
 impl PartialEq for DbContext {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0) && self.1 == other.1
+        Arc::ptr_eq(&self.0, &other.0) && self.2 == other.2
     }
 }
 
@@ -642,12 +642,15 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
     // TODO(api-high): whether the object is subscribed or not should be exposed to the user
     let unsubscribe = {
         let db = db.clone();
+        let force_update = db.1.clone();
         move |_| {
             let db = db.0.clone();
+            let force_update = force_update.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 db.unsubscribe(ptr)
                     .await
-                    .expect("failed unsubscribing object")
+                    .expect("failed unsubscribing object");
+                force_update.force_update(); // TODO(blocked): remove once the todos in unsubscribe are solved
             })
         }
     };
