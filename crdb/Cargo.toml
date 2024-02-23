@@ -95,7 +95,7 @@ tracing-wasm = { workspace = true, optional = true }
 
 # Dependencies specifically for wasm32
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-crdb-core = { workspace = true, features = ["indexed-db", "js-sys", "wasm-bindgen", "web-sys"] }
+crdb-core = { workspace = true, features = ["indexed-db", "js-sys", "web-sys"] }
 crdb-helpers = { workspace = true, features = ["js"] }
 
 getrandom = { workspace = true, features = ["js"] } # TODO(api-high): introduce a `js` feature here too and enable conditionally

@@ -276,12 +276,12 @@ impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     }
 }
 
-#[cfg(feature = "wasm-bindgen")]
-impl<T> ResultExt for std::result::Result<T, wasm_bindgen::JsValue> {
+#[cfg(feature = "web-sys")]
+impl<T> ResultExt for std::result::Result<T, web_sys::wasm_bindgen::JsValue> {
     type Ok = T;
 
     fn wrap_with_context(self, f: impl FnOnce() -> String) -> Result<T> {
-        use wasm_bindgen::JsCast;
+        use web_sys::wasm_bindgen::JsCast;
         match self {
             Err(err) => {
                 if err.has_type::<web_sys::DomException>() {

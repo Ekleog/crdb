@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 js = [
-    "crdb-core/js-sys",
+    "crdb-core/web-sys",
     "crdb-core/serde-wasm-bindgen",
     "serde-wasm-bindgen",
     "wasm-bindgen",

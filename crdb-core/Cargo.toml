@@ -6,7 +6,6 @@ edition = "2021"
 [features]
 client-native = [ "sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid" ]
 server = [ "rand", "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
-wasm-bindgen = [ "dep:wasm-bindgen", "web-sys" ]
 
 [dependencies]
 anyhow.workspace = true
@@ -29,7 +28,6 @@ rand = { workspace = true, optional = true}
 serde-wasm-bindgen = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
-wasm-bindgen = { workspace = true, optional = true }
 web-sys = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
