@@ -9,14 +9,13 @@ macro_rules! fuzz_simple {
                     test_utils::{self, *},
                     Db, Lock, ResultExt,
                 },
-                make_fuzzer_stuffs, BinPtr, EventId, JsonPathItem, ObjectId, Query, Updatedness,
-                User,
+                make_fuzzer_stuffs, BinPtr, Decimal, EventId, JsonPathItem, ObjectId, Query,
+                Updatedness, User,
             },
             make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
         };
 
         use anyhow::Context;
-        use rust_decimal::Decimal;
         use std::{str::FromStr, sync::Arc};
         use ulid::Ulid;
 

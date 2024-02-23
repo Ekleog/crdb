@@ -1,10 +1,9 @@
 use crate::{
     api::UploadId,
     client::{ClientStorageInfo, LoginInfo},
-    fts,
     messages::Upload,
-    BinPtr, Db, DbPtr, Event, EventId, Lock, Object, ObjectId, Query, QueryId, ResultExt, TypeId,
-    Updatedness,
+    normalizer_version, BinPtr, Db, DbPtr, Event, EventId, Lock, Object, ObjectId, Query, QueryId,
+    ResultExt, TypeId, Updatedness,
 };
 use anyhow::anyhow;
 use crdb_helpers::parse_snapshot_js;
@@ -963,7 +962,7 @@ impl IndexedDb {
             object_id,
             is_creation: Some(1),
             is_latest: Some(1),
-            normalizer_version: fts::normalizer_version(),
+            normalizer_version: normalizer_version(),
             snapshot_version: T::snapshot_version(),
             have_all_until: updatedness,
             is_locked: Some(lock.bits()),
@@ -1601,7 +1600,7 @@ impl Db for IndexedDb {
                     object_id,
                     is_creation: None,
                     is_latest: Some(1),
-                    normalizer_version: fts::normalizer_version(),
+                    normalizer_version: normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     have_all_until: now_have_all_until,
                     is_locked: None,
@@ -1939,7 +1938,7 @@ impl Db for IndexedDb {
                     object_id,
                     is_creation: Some(1),
                     is_latest: new_creation_should_be_latest.then(|| 1),
-                    normalizer_version: fts::normalizer_version(),
+                    normalizer_version: normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     have_all_until: updatedness,
                     is_locked: Some(
@@ -2006,7 +2005,7 @@ impl Db for IndexedDb {
                         object_id,
                         is_creation: None,
                         is_latest: Some(1),
-                        normalizer_version: fts::normalizer_version(),
+                        normalizer_version: normalizer_version(),
                         snapshot_version: T::snapshot_version(),
                         have_all_until: updatedness,
                         is_locked: None,
@@ -2278,7 +2277,7 @@ impl Db for IndexedDb {
                     object_id,
                     is_creation: None,
                     is_latest: Some(1),
-                    normalizer_version: fts::normalizer_version(),
+                    normalizer_version: normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     have_all_until: now_have_all_until,
                     is_locked: None,
@@ -2378,7 +2377,7 @@ impl Db for IndexedDb {
                             .wrap_context("deserializing snapshot metadata")?;
                     if snapshot_meta.type_id == *T::type_ulid()
                         && (snapshot_meta.snapshot_version < T::snapshot_version()
-                            || snapshot_meta.normalizer_version < fts::normalizer_version())
+                            || snapshot_meta.normalizer_version < normalizer_version())
                     {
                         let snapshot_id = snapshot_meta.snapshot_id;
                         if let Err(err) = reencode_snapshot::<T>(

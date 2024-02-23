@@ -37,7 +37,6 @@ _tests = [ # internal feature, for use by wasm tests in particular and thus all 
     "paste",
     "rand",
     "reord/test",
-    "rust_decimal/rust-fuzz",
     "tracing-wasm",
 ]
 
@@ -59,13 +58,7 @@ chrono.workspace = true
 deepsize.workspace = true
 educe.workspace = true
 futures.workspace = true
-icu_casemap.workspace = true
-icu_normalizer.workspace = true
-icu_properties.workspace = true
-icu_segmenter.workspace = true
 reord.workspace = true
-rust_decimal.workspace = true
-rust-stemmers.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha3.workspace = true
@@ -74,7 +67,6 @@ tokio.workspace = true
 tracing.workspace = true
 ulid.workspace = true
 web-time.workspace = true
-writeable.workspace = true
 
 # Optional dependencies
 async-stream = { workspace = true, optional = true }

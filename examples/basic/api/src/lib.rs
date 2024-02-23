@@ -1,5 +1,5 @@
 use anyhow::Context;
-use crdb::{fts::SearchableString, BinPtr, CanDoCallbacks, DbPtr, ObjectId, TypeId, User};
+use crdb::{BinPtr, CanDoCallbacks, DbPtr, ObjectId, SearchableString, TypeId, User};
 use std::collections::{BTreeSet, HashSet};
 use ulid::Ulid;
 

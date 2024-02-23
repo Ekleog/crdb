@@ -3,8 +3,7 @@ use rust_decimal::Decimal;
 use crate::fts;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
-#[non_exhaustive]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum JsonPathItem {
     Key(String),
 
@@ -14,7 +13,6 @@ pub enum JsonPathItem {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[non_exhaustive]
 pub enum Query {
     // Logic operators
     All(Vec<Query>),
@@ -42,14 +40,14 @@ pub enum Query {
     ContainsStr(Vec<JsonPathItem>, String),
 }
 
-#[cfg(feature = "_tests")]
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Query {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Query> {
         arbitrary_impl(u, 0)
     }
 }
 
-#[cfg(feature = "_tests")]
+#[cfg(feature = "arbitrary")]
 fn arbitrary_impl(u: &mut arbitrary::Unstructured<'_>, depth: usize) -> arbitrary::Result<Query> {
     if u.is_empty() || depth > 50 {
         // avoid stack overflow in arbitrary
@@ -271,199 +269,4 @@ impl Query {
             },
         }
     }
-
-    #[cfg(feature = "server")]
-    pub(crate) fn where_clause(&self, first_idx: usize) -> String {
-        let mut res = String::new();
-        let mut bind_idx = first_idx;
-        add_to_where_clause(&mut res, &mut bind_idx, self);
-        res
-    }
-
-    #[cfg(feature = "server")]
-    pub(crate) fn binds(&self) -> crate::Result<Vec<Bind<'_>>> {
-        let mut res = Vec::new();
-        add_to_binds(&mut res, self)?;
-        Ok(res)
-    }
-}
-
-#[cfg(feature = "server")]
-fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
-    let mut initial_bind_idx = *bind_idx;
-    match query {
-        Query::All(v) => {
-            res.push_str("TRUE");
-            for q in v {
-                res.push_str(" AND (");
-                add_to_where_clause(&mut *res, &mut *bind_idx, q);
-                res.push(')');
-            }
-        }
-        Query::Any(v) => {
-            res.push_str("FALSE");
-            for q in v {
-                res.push_str(" OR (");
-                add_to_where_clause(&mut *res, &mut *bind_idx, q);
-                res.push(')');
-            }
-        }
-        Query::Not(q) => {
-            res.push_str("NOT (");
-            add_to_where_clause(&mut *res, &mut *bind_idx, q);
-            res.push(')');
-        }
-        Query::Eq(path, _) => {
-            res.push_str("COALESCE(");
-            add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(&format!(" = ${}, FALSE)", bind_idx));
-            *bind_idx += 1;
-        }
-        Query::Le(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(");
-            add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (");
-            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
-            res.push_str(&format!(")::numeric <= ${} ELSE FALSE END", bind_idx));
-            *bind_idx += 1;
-        }
-        Query::Lt(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(");
-            add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (");
-            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
-            res.push_str(&format!(")::numeric < ${} ELSE FALSE END", bind_idx));
-            *bind_idx += 1;
-        }
-        Query::Ge(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(");
-            add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (");
-            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
-            res.push_str(&format!(")::numeric >= ${} ELSE FALSE END", bind_idx));
-            *bind_idx += 1;
-        }
-        Query::Gt(path, _) => {
-            res.push_str("CASE WHEN jsonb_typeof(");
-            add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(") = 'number' THEN (");
-            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
-            res.push_str(&format!(")::numeric > ${} ELSE FALSE END", bind_idx));
-            *bind_idx += 1;
-        }
-        Query::Contains(path, _) => {
-            res.push_str("COALESCE(");
-            add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            res.push_str(&format!(" @> ${}, FALSE)", bind_idx));
-            *bind_idx += 1;
-        }
-        Query::ContainsStr(path, pat) => {
-            res.push_str("COALESCE(to_tsvector(");
-            add_path_to_clause(&mut *res, &mut *bind_idx, path);
-            // If the pattern is only spaces, then postgresql wrongly returns `false`. But we do want
-            // to check that the field does exist. So add an IS NOT NULL in that case
-            let or_empty_pat = match pat.chars().all(|c| c == ' ') {
-                true => "IS NOT NULL",
-                false => "",
-            };
-            res.push_str(&format!(
-                "->'_crdb-normalized') @@ phraseto_tsquery(${}) {or_empty_pat}, FALSE)",
-                bind_idx,
-            ));
-            *bind_idx += 1;
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-fn add_path_to_clause(res: &mut String, bind_idx: &mut usize, path: &[JsonPathItem]) {
-    if let Some(JsonPathItem::Id(i)) = path.last() {
-        if *i == -1 || *i == 0 {
-            // PostgreSQL currently treats numerics as arrays of size 1
-            // See also https://www.postgresql.org/message-id/87h6jbbxma.fsf%40coegni.ekleog.org
-            res.push_str("CASE WHEN jsonb_typeof(snapshot");
-            for (i, _) in path[..path.len() - 1].iter().enumerate() {
-                res.push_str(&format!("->${}", *bind_idx + i));
-            }
-            res.push_str(") = 'array' THEN ")
-        }
-    }
-    res.push_str("snapshot");
-    for _ in path {
-        res.push_str(&format!("->${bind_idx}"));
-        *bind_idx += 1;
-    }
-    if let Some(JsonPathItem::Id(i)) = path.last() {
-        if *i == -1 || *i == 0 {
-            res.push_str(" ELSE NULL END");
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-fn add_path_to_binds<'a>(res: &mut Vec<Bind<'a>>, path: &'a [JsonPathItem]) {
-    for p in path {
-        match p {
-            JsonPathItem::Key(k) => res.push(Bind::Str(k)),
-            JsonPathItem::Id(i) => res.push(Bind::I32(*i)),
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-pub(crate) enum Bind<'a> {
-    Json(&'a serde_json::Value),
-    Str(&'a str),
-    String(String),
-    Decimal(Decimal),
-    I32(i32),
-}
-
-#[cfg(feature = "server")]
-fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) -> crate::Result<()> {
-    match query {
-        Query::All(v) => {
-            for q in v {
-                add_to_binds(&mut *res, q)?;
-            }
-        }
-        Query::Any(v) => {
-            for q in v {
-                add_to_binds(&mut *res, q)?;
-            }
-        }
-        Query::Not(q) => {
-            add_to_binds(&mut *res, q)?;
-        }
-        Query::Eq(p, v) => {
-            add_path_to_binds(&mut *res, p);
-            res.push(Bind::Json(v));
-        }
-        Query::Le(p, v) => {
-            add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(*v));
-        }
-        Query::Lt(p, v) => {
-            add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(*v));
-        }
-        Query::Ge(p, v) => {
-            add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(*v));
-        }
-        Query::Gt(p, v) => {
-            add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(*v));
-        }
-        Query::Contains(p, v) => {
-            add_path_to_binds(&mut *res, p);
-            res.push(Bind::Json(v));
-        }
-        Query::ContainsStr(p, v) => {
-            add_path_to_binds(&mut *res, p);
-            crate::check_string(v)?;
-            res.push(Bind::String(crate::fts::normalize(v)));
-        }
-    }
-    Ok(())
 }

@@ -2,14 +2,14 @@ use super::ServerConfig;
 use crate::{
     cache::CacheDb,
     crdb_internal::Lock,
-    fts,
     messages::{ObjectData, SnapshotData, Update, UpdateData},
-    query::Bind,
+    normalizer_version,
     timestamp::SystemTimeExt,
     BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Object, ObjectId, Query, ResultExt, Session,
     SessionRef, SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
+use crdb_core::{Decimal, JsonPathItem};
 use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
@@ -221,7 +221,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         };
 
         // If it is already up-to-date (eg. has been rewritten by an event coming in), ignore
-        if s.normalizer_version >= fts::normalizer_version()
+        if s.normalizer_version >= normalizer_version()
             && s.snapshot_version >= T::snapshot_version()
         {
             return Ok(());
@@ -239,7 +239,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         )
         .bind(sqlx::types::Json(&snapshot))
         .bind(T::snapshot_version())
-        .bind(fts::normalizer_version())
+        .bind(normalizer_version())
         .bind(snapshot_id)
         .execute(&self.db)
         .await
@@ -731,7 +731,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(object_id)
         .bind(is_creation)
         .bind(is_latest)
-        .bind(fts::normalizer_version())
+        .bind(normalizer_version())
         .bind(T::snapshot_version())
         .bind(sqlx::types::Json(object))
         .bind(users_who_can_read.map(|u| u.into_iter().collect::<Vec<_>>()))
@@ -794,7 +794,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(created_at)
                 .bind(type_id)
                 .bind(object_id)
-                .bind(fts::normalizer_version())
+                .bind(normalizer_version())
                 .bind(snapshot_version)
                 .bind(object_json)
                 .bind(users_who_can_read.iter().copied().collect::<Vec<_>>())
@@ -1407,7 +1407,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 AND last_modified >= $3
                 AND ({})
             ",
-            query.where_clause(4)
+            where_clause(&query, 4)
         );
         let min_last_modified = only_updated_since
             .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
@@ -1418,7 +1418,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(type_id)
             .bind(user)
             .bind(min_last_modified);
-        for b in query.binds()? {
+        for b in binds(&query)? {
             match b {
                 Bind::Json(v) => query_sql = query_sql.bind(v),
                 Bind::Str(v) => query_sql = query_sql.bind(v),
@@ -2068,7 +2068,7 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
         )
         .bind(T::type_ulid())
         .bind(T::snapshot_version())
-        .bind(fts::normalizer_version())
+        .bind(normalizer_version())
         .fetch(&self.db);
         while let Some(s) = old_snapshots.next().await {
             let s = match s {
@@ -2156,6 +2156,194 @@ async fn apply_events_between<T: Object>(
         })?;
 
         object.apply(DbPtr::from(object_id), &e);
+    }
+    Ok(())
+}
+
+pub fn where_clause(this: &Query, first_idx: usize) -> String {
+    let mut res = String::new();
+    let mut bind_idx = first_idx;
+    add_to_where_clause(&mut res, &mut bind_idx, this);
+    res
+}
+
+pub fn binds(this: &Query) -> crate::Result<Vec<Bind<'_>>> {
+    let mut res = Vec::new();
+    add_to_binds(&mut res, this)?;
+    Ok(res)
+}
+
+fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
+    let mut initial_bind_idx = *bind_idx;
+    match query {
+        Query::All(v) => {
+            res.push_str("TRUE");
+            for q in v {
+                res.push_str(" AND (");
+                add_to_where_clause(&mut *res, &mut *bind_idx, q);
+                res.push(')');
+            }
+        }
+        Query::Any(v) => {
+            res.push_str("FALSE");
+            for q in v {
+                res.push_str(" OR (");
+                add_to_where_clause(&mut *res, &mut *bind_idx, q);
+                res.push(')');
+            }
+        }
+        Query::Not(q) => {
+            res.push_str("NOT (");
+            add_to_where_clause(&mut *res, &mut *bind_idx, q);
+            res.push(')');
+        }
+        Query::Eq(path, _) => {
+            res.push_str("COALESCE(");
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            res.push_str(&format!(" = ${}, FALSE)", bind_idx));
+            *bind_idx += 1;
+        }
+        Query::Le(path, _) => {
+            res.push_str("CASE WHEN jsonb_typeof(");
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            res.push_str(") = 'number' THEN (");
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
+            res.push_str(&format!(")::numeric <= ${} ELSE FALSE END", bind_idx));
+            *bind_idx += 1;
+        }
+        Query::Lt(path, _) => {
+            res.push_str("CASE WHEN jsonb_typeof(");
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            res.push_str(") = 'number' THEN (");
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
+            res.push_str(&format!(")::numeric < ${} ELSE FALSE END", bind_idx));
+            *bind_idx += 1;
+        }
+        Query::Ge(path, _) => {
+            res.push_str("CASE WHEN jsonb_typeof(");
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            res.push_str(") = 'number' THEN (");
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
+            res.push_str(&format!(")::numeric >= ${} ELSE FALSE END", bind_idx));
+            *bind_idx += 1;
+        }
+        Query::Gt(path, _) => {
+            res.push_str("CASE WHEN jsonb_typeof(");
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            res.push_str(") = 'number' THEN (");
+            add_path_to_clause(&mut *res, &mut initial_bind_idx, path);
+            res.push_str(&format!(")::numeric > ${} ELSE FALSE END", bind_idx));
+            *bind_idx += 1;
+        }
+        Query::Contains(path, _) => {
+            res.push_str("COALESCE(");
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            res.push_str(&format!(" @> ${}, FALSE)", bind_idx));
+            *bind_idx += 1;
+        }
+        Query::ContainsStr(path, pat) => {
+            res.push_str("COALESCE(to_tsvector(");
+            add_path_to_clause(&mut *res, &mut *bind_idx, path);
+            // If the pattern is only spaces, then postgresql wrongly returns `false`. But we do want
+            // to check that the field does exist. So add an IS NOT NULL in that case
+            let or_empty_pat = match pat.chars().all(|c| c == ' ') {
+                true => "IS NOT NULL",
+                false => "",
+            };
+            res.push_str(&format!(
+                "->'_crdb-normalized') @@ phraseto_tsquery(${}) {or_empty_pat}, FALSE)",
+                bind_idx,
+            ));
+            *bind_idx += 1;
+        }
+    }
+}
+
+fn add_path_to_clause(res: &mut String, bind_idx: &mut usize, path: &[JsonPathItem]) {
+    if let Some(JsonPathItem::Id(i)) = path.last() {
+        if *i == -1 || *i == 0 {
+            // PostgreSQL currently treats numerics as arrays of size 1
+            // See also https://www.postgresql.org/message-id/87h6jbbxma.fsf%40coegni.ekleog.org
+            res.push_str("CASE WHEN jsonb_typeof(snapshot");
+            for (i, _) in path[..path.len() - 1].iter().enumerate() {
+                res.push_str(&format!("->${}", *bind_idx + i));
+            }
+            res.push_str(") = 'array' THEN ")
+        }
+    }
+    res.push_str("snapshot");
+    for _ in path {
+        res.push_str(&format!("->${bind_idx}"));
+        *bind_idx += 1;
+    }
+    if let Some(JsonPathItem::Id(i)) = path.last() {
+        if *i == -1 || *i == 0 {
+            res.push_str(" ELSE NULL END");
+        }
+    }
+}
+
+fn add_path_to_binds<'a>(res: &mut Vec<Bind<'a>>, path: &'a [JsonPathItem]) {
+    for p in path {
+        match p {
+            JsonPathItem::Key(k) => res.push(Bind::Str(k)),
+            JsonPathItem::Id(i) => res.push(Bind::I32(*i)),
+        }
+    }
+}
+
+pub enum Bind<'a> {
+    Json(&'a serde_json::Value),
+    Str(&'a str),
+    String(String),
+    Decimal(Decimal),
+    I32(i32),
+}
+
+fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) -> crate::Result<()> {
+    match query {
+        Query::All(v) => {
+            for q in v {
+                add_to_binds(&mut *res, q)?;
+            }
+        }
+        Query::Any(v) => {
+            for q in v {
+                add_to_binds(&mut *res, q)?;
+            }
+        }
+        Query::Not(q) => {
+            add_to_binds(&mut *res, q)?;
+        }
+        Query::Eq(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Json(v));
+        }
+        Query::Le(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(*v));
+        }
+        Query::Lt(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(*v));
+        }
+        Query::Ge(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(*v));
+        }
+        Query::Gt(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Decimal(*v));
+        }
+        Query::Contains(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            res.push(Bind::Json(v));
+        }
+        Query::ContainsStr(p, v) => {
+            add_path_to_binds(&mut *res, p);
+            crate::check_string(v)?;
+            res.push(Bind::String(crate::normalize(v)));
+        }
     }
     Ok(())
 }

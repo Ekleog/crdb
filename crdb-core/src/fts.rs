@@ -14,12 +14,11 @@ const CASEMAPPER: CaseMapper = CaseMapper::new();
 const DECOMPOSER: DecomposingNormalizer = DecomposingNormalizer::new_nfd();
 const RECOMPOSER: ComposingNormalizer = ComposingNormalizer::new_nfc();
 
-#[cfg(any(feature = "client", feature = "server"))]
-pub(crate) fn normalizer_version() -> i32 {
+pub fn normalizer_version() -> i32 {
     0
 }
 
-pub(crate) fn normalize(input: &str) -> String {
+pub fn normalize(input: &str) -> String {
     SEGMENTER.with(|segmenter| {
         let mut res = String::with_capacity(input.len());
         let mut last_brk = 0;
@@ -65,12 +64,12 @@ pub(crate) fn normalize(input: &str) -> String {
 /// Assumes that both `value` and `pat` have already been `normalize`d. Checks whether
 /// `value` contains pattern `pat`.
 #[inline]
-pub(crate) fn matches(value: &str, pat: &str) -> bool {
+pub fn matches(value: &str, pat: &str) -> bool {
     value.contains(pat)
 }
 
 #[derive(Clone, deepsize::DeepSizeOf, educe::Educe, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(feature = "_tests", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[educe(Deref, DerefMut, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(from = "SearchableStringSer", into = "SearchableStringSer")]
 pub struct SearchableString(#[educe(Deref, DerefMut)] pub String);

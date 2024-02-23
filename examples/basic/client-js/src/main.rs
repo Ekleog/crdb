@@ -1,7 +1,6 @@
 use basic_api::{AuthInfo, Item, Tag};
 use crdb::{
-    fts::SearchableString, ConnectionEvent, Importance, JsonPathItem, Query, QueryId, SessionToken,
-    User,
+    ConnectionEvent, Importance, JsonPathItem, Query, QueryId, SearchableString, SessionToken, User,
 };
 use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};

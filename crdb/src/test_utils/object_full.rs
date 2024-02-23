@@ -1,7 +1,7 @@
 use super::{stubs::USER_ID_NULL, ulid};
 use crate::{
-    fts::SearchableString, BinPtr, CanDoCallbacks, CrdbFuture, CrdbFutureExt, DbPtr, Object,
-    ObjectId, TypeId, User,
+    BinPtr, CanDoCallbacks, CrdbFuture, CrdbFutureExt, DbPtr, Object, ObjectId, SearchableString,
+    TypeId, User,
 };
 use anyhow::Context;
 use bolero::ValueGenerator;

@@ -6,10 +6,10 @@ macro_rules! fuzz_object_full {
             crdb::{
                 self,
                 crdb_internal::{Db, Lock, ResultExt},
-                fts::SearchableString,
                 make_fuzzer_stuffs,
                 test_utils::{self, *},
-                BinPtr, DbPtr, EventId, JsonPathItem, ObjectId, Query, Updatedness, User,
+                BinPtr, DbPtr, EventId, JsonPathItem, ObjectId, Query, SearchableString,
+                Updatedness, User,
             },
             make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
         };

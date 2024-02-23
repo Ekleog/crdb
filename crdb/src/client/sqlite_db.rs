@@ -1,6 +1,6 @@
 use crate::{
-    api::UploadId, fts, messages::Upload, BinPtr, Db, EventId, Lock, Object, ObjectId, Query,
-    QueryId, ResultExt, TypeId, Updatedness,
+    api::UploadId, messages::Upload, normalizer_version, BinPtr, Db, EventId, Lock, Object,
+    ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness,
 };
 use anyhow::Context;
 use std::{
@@ -153,7 +153,7 @@ impl Db for SqliteDb {
         .bind(created_at)
         .bind(type_id)
         .bind(object_id)
-        .bind(fts::normalizer_version())
+        .bind(normalizer_version())
         .bind(snapshot_version)
         .bind(object_json)
         .bind(updatedness)
