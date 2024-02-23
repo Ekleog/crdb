@@ -182,7 +182,7 @@ mod fuzz_remote_perms {
 }
 
 mod fuzz_object_full {
-    include!("../src/test_utils/fuzz_object_full.rs");
+    crdb::fuzz_object_full!();
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]

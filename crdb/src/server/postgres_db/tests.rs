@@ -207,5 +207,5 @@ mod fuzz_remote_perms {
 }
 
 mod fuzz_object_full {
-    include!("../../test_utils/fuzz_object_full.rs");
+    crate::fuzz_object_full!();
 }

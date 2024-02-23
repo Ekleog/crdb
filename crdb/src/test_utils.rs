@@ -6,6 +6,7 @@ use futures::StreamExt;
 use std::{any::Any, fmt::Debug, sync::Arc};
 
 mod full_object;
+mod fuzz_object_full;
 mod mem_db;
 mod object_delegate_perms;
 mod object_full;
