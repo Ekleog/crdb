@@ -13,7 +13,6 @@ serve-example-basic-client-js *ARGS:
 fmt:
     cargo fmt
     cd examples/basic && cargo fmt
-    rustfmt --edition 2021 crdb/src/test_utils/fuzz_*.rs
 
 test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 
