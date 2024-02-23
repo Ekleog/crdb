@@ -18,24 +18,24 @@ pub enum Importance {
 
 #[cfg(feature = "client")]
 impl Importance {
-    pub(crate) fn to_object_lock(&self) -> Lock {
-        if *self >= Importance::Lock {
+    pub(crate) fn to_object_lock(self) -> Lock {
+        if self >= Importance::Lock {
             Lock::OBJECT
         } else {
             Lock::NONE
         }
     }
 
-    pub(crate) fn to_query_lock(&self) -> Lock {
-        if *self >= Importance::Lock {
+    pub(crate) fn to_query_lock(self) -> Lock {
+        if self >= Importance::Lock {
             Lock::FOR_QUERIES
         } else {
             Lock::NONE
         }
     }
 
-    pub(crate) fn to_subscribe(&self) -> bool {
-        *self >= Importance::Subscribe
+    pub(crate) fn to_subscribe(self) -> bool {
+        self >= Importance::Subscribe
     }
 }
 

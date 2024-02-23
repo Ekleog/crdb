@@ -19,12 +19,11 @@ impl<D: Db> CacheDb<D> {
     /// automatically increased.
     pub(crate) fn new(db: Arc<D>, watermark: usize) -> CacheDb<D> {
         let cache = Arc::new(RwLock::new(ObjectCache::new(watermark)));
-        let this = CacheDb {
+        CacheDb {
             db: db.clone(),
             cache,
             binaries: Arc::new(RwLock::new(BinariesCache::new())),
-        };
-        this
+        }
     }
 
     // TODO(perf-high): auto-clear binaries without waiting for a reduce_size_to call
@@ -121,9 +120,9 @@ impl<D: Db> Db for CacheDb<D> {
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         debug_assert!(
-            binary_id == hash_binary(&*data),
+            binary_id == hash_binary(&data),
             "Provided id {binary_id:?} does not match value hash {:?}",
-            hash_binary(&*data),
+            hash_binary(&data),
         );
         self.binaries
             .write()

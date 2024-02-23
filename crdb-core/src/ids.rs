@@ -137,3 +137,10 @@ impl SessionToken {
         SessionToken(ulid::Ulid::from_bytes(rand::thread_rng().gen()))
     }
 }
+
+#[cfg(feature = "server")]
+impl Default for SessionToken {
+    fn default() -> SessionToken {
+        SessionToken::new()
+    }
+}

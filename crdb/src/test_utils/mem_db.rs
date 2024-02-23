@@ -10,9 +10,11 @@ use std::{
 };
 use tokio::sync::Mutex;
 
+type MemDbEvents = HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>;
+
 struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
-    events: HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
+    events: MemDbEvents,
     // The set is the list of required_binaries
     objects: HashMap<ObjectId, (TypeId, Lock, HashSet<BinPtr>, FullObject)>,
     binaries: HashMap<BinPtr, Arc<[u8]>>,
@@ -135,21 +137,13 @@ fn recreate_at<T: Object>(
     o: &FullObject,
     event_id: EventId,
     updatedness: Option<Updatedness>,
-    this_events: &mut HashMap<EventId, (ObjectId, Option<Arc<dyn DynSized>>)>,
+    this_events: &mut MemDbEvents,
 ) -> crate::Result<()> {
-    let mut events_before = o
-        .changes_clone()
-        .into_iter()
-        .map(|(e, _)| e)
-        .collect::<HashSet<EventId>>();
+    let mut events_before = o.changes_clone().into_keys().collect::<HashSet<EventId>>();
     events_before.insert(o.created_at());
     o.recreate_at::<T>(event_id, updatedness)
         .wrap_context("recreating object")?;
-    let mut events_after = o
-        .changes_clone()
-        .into_iter()
-        .map(|(e, _)| e)
-        .collect::<HashSet<EventId>>();
+    let mut events_after = o.changes_clone().into_keys().collect::<HashSet<EventId>>();
     events_after.insert(o.created_at());
     // Discard all removed events from self.events too
     for e in events_before.difference(&events_after) {

@@ -110,7 +110,7 @@ impl FullObject {
             .map(|v| {
                 v.snapshot_after
                     .as_ref()
-                    .map(|s| Arc::strong_count(&s) - 1)
+                    .map(|s| Arc::strong_count(s) - 1)
                     .unwrap_or(0)
             })
             .sum::<usize>();
@@ -213,20 +213,20 @@ impl FullObject {
         {
             let this = self.data.read().unwrap();
             if this.changes.is_empty() {
-                return Ok(this
+                return this
                     .creation
                     .clone()
                     .arc_to_any()
                     .downcast::<T>()
-                    .map_err(|_| anyhow!("Wrong type for snapshot downcast"))?);
+                    .map_err(|_| anyhow!("Wrong type for snapshot downcast"));
             }
             let (_, last_change) = this.changes.last_key_value().unwrap();
             if let Some(s) = &last_change.snapshot_after {
-                return Ok(s
+                return s
                     .clone()
                     .arc_to_any()
                     .downcast::<T>()
-                    .map_err(|_| anyhow!("Wrong type for snapshot downcast"))?);
+                    .map_err(|_| anyhow!("Wrong type for snapshot downcast"));
             }
         }
         Ok(self
@@ -354,7 +354,7 @@ impl FullObjectImpl {
             c.snapshot_after = None;
         }
         self.bump_last_updated(updatedness);
-        return Some(self.get_snapshot_at(Bound::Unbounded).unwrap().1);
+        Some(self.get_snapshot_at(Bound::Unbounded).unwrap().1)
     }
 
     pub fn recreate_at<T: Object>(

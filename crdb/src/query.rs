@@ -50,10 +50,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Query {
 }
 
 #[cfg(feature = "_tests")]
-fn arbitrary_impl<'a>(
-    u: &mut arbitrary::Unstructured<'a>,
-    depth: usize,
-) -> arbitrary::Result<Query> {
+fn arbitrary_impl(u: &mut arbitrary::Unstructured<'_>, depth: usize) -> arbitrary::Result<Query> {
     if u.is_empty() || depth > 50 {
         // avoid stack overflow in arbitrary
         return Ok(Query::Eq(Vec::new(), serde_json::Value::Null));
@@ -300,7 +297,7 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             for q in v {
                 res.push_str(" AND (");
                 add_to_where_clause(&mut *res, &mut *bind_idx, q);
-                res.push_str(")");
+                res.push(')');
             }
         }
         Query::Any(v) => {
@@ -308,13 +305,13 @@ fn add_to_where_clause(res: &mut String, bind_idx: &mut usize, query: &Query) {
             for q in v {
                 res.push_str(" OR (");
                 add_to_where_clause(&mut *res, &mut *bind_idx, q);
-                res.push_str(")");
+                res.push(')');
             }
         }
         Query::Not(q) => {
             res.push_str("NOT (");
             add_to_where_clause(&mut *res, &mut *bind_idx, q);
-            res.push_str(")");
+            res.push(')');
         }
         Query::Eq(path, _) => {
             res.push_str("COALESCE(");
@@ -444,19 +441,19 @@ fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) -> crate::Result<
         }
         Query::Le(p, v) => {
             add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(v.clone()));
+            res.push(Bind::Decimal(*v));
         }
         Query::Lt(p, v) => {
             add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(v.clone()));
+            res.push(Bind::Decimal(*v));
         }
         Query::Ge(p, v) => {
             add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(v.clone()));
+            res.push(Bind::Decimal(*v));
         }
         Query::Gt(p, v) => {
             add_path_to_binds(&mut *res, p);
-            res.push(Bind::Decimal(v.clone()));
+            res.push(Bind::Decimal(*v));
         }
         Query::Contains(p, v) => {
             add_path_to_binds(&mut *res, p);
@@ -464,7 +461,7 @@ fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) -> crate::Result<
         }
         Query::ContainsStr(p, v) => {
             add_path_to_binds(&mut *res, p);
-            crate::check_string(&v)?;
+            crate::check_string(v)?;
             res.push(Bind::String(crate::fts::normalize(v)));
         }
     }

@@ -62,7 +62,7 @@ pub fn parse_snapshot_js<T: Object>(
         )
     } else {
         let as_serde_json = serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_data)
-            .wrap_with_context(|| format!("parsing data from IndexedDB as JSON"))?;
+            .wrap_context("parsing data from IndexedDB as JSON")?;
         T::from_old_snapshot(snapshot_version, as_serde_json).wrap_with_context(|| {
             format!(
                 "parsing old snapshot version {snapshot_version} for object type {:?}",

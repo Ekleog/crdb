@@ -720,7 +720,7 @@ impl<C: ServerConfig> Server<C> {
                     .await?;
                 let new_updates = object.into_updates();
                 for u in c.gained_read {
-                    updates.entry(u).or_insert_with(HashMap::new).insert(
+                    updates.entry(u).or_default().insert(
                         c.object_id,
                         Arc::new(UpdatesWithSnap {
                             updates: new_updates.clone(),
@@ -847,7 +847,7 @@ impl<C: ServerConfig> Server<C> {
                     let mut t = self.postgres_db.get_transaction().await?;
                     let snapshot = self
                         .postgres_db
-                        .get_latest_snapshot(&mut *t, user, object_id)
+                        .get_latest_snapshot(&mut t, user, object_id)
                         .await?;
                     Ok(MaybeSnapshot::NotSubscribed(snapshot))
                 })
@@ -862,7 +862,7 @@ impl<C: ServerConfig> Server<C> {
         while let Some(snapshot) = snapshots.next().await {
             if size_of_message >= 1024 * 1024 {
                 // TODO(perf-low): is 1MiB a good number?
-                let data = std::mem::replace(&mut current_data, Vec::new());
+                let data = std::mem::take(&mut current_data);
                 size_of_message = 0;
                 Self::send(
                     &mut conn.socket,
@@ -1077,7 +1077,7 @@ impl<C: ServerConfig> Server<C> {
         let updates = updates.into_iter().map(|(k, v)| (k, Arc::new(v))).collect();
 
         // Submit the updates
-        if let Err(_) = slot.send(updates) {
+        if slot.send(updates).is_err() {
             tracing::error!("Update reorderer went away before server");
         }
 
