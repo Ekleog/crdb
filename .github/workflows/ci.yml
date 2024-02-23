@@ -21,7 +21,7 @@ jobs:
           - name: Clippy All Features
             command: cargo hack clippy --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 4
           - name: Test All Features
-            command: cargo hack test --workspace --ignore-private --features _tests --feature-powerset --optional-deps --depth 3
+            command: cargo hack nextest run --workspace --ignore-private --features _tests --feature-powerset --optional-deps --depth 3
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     steps:
