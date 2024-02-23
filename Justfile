@@ -20,9 +20,7 @@ clippy:
     CARGO_TARGET_DIR="target/clippy" SQLX_OFFLINE="true" cargo clippy --all-features -- -D warnings
 
 udeps:
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --features client
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --features server
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --all-features
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --features client --target wasm32-unknown-unknown
 
 doc:

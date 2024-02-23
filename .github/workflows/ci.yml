@@ -79,8 +79,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@6943331e01261cdff7420bbc2508cb463574e404
         with:
-          tool: just, cargo-udeps
-      - run: just udeps
+          tool: just, cargo-hack, cargo-udeps
+      - run: cargo hack udeps --each-feature
+      - run: cargo hack udeps --tests --each-feature
 
   just-doc:
     name: Doc
