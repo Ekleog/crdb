@@ -1,5 +1,8 @@
-use crate::{CanDoCallbacks, CrdbFuture, EventId, Object, ObjectId, TypeId, Updatedness, User};
-use std::{collections::HashSet, sync::Arc};
+use crate::{
+    CanDoCallbacks, CrdbFuture, CrdbSend, CrdbSync, EventId, Object, ObjectId, TypeId, Updatedness,
+    User,
+};
+use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 // TODO(blocked): replace with an associated type of ServerSideDb once https://github.com/rust-lang/rust/pull/120700 stabilizes
 pub type ComboLock<'a> = (
@@ -14,25 +17,34 @@ pub struct ReadPermsChanges {
     pub gained_read: HashSet<User>,
 }
 
-pub trait ServerSideDb {
+pub trait ServerSideDb: 'static + CrdbSend + CrdbSync {
+    // TODO(blocked): replace with -> impl once https://github.com/rust-lang/rust/issues/100013 is fixed
+    // This will also remove the clippy lint
+    #[allow(clippy::type_complexity)]
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
         &'ret self,
         object_id: ObjectId,
         object: &'a T,
         cb: &'a C,
-    ) -> impl 'a
-           + CrdbFuture<Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>>;
+    ) -> Pin<
+        Box<
+            dyn 'a
+                + CrdbFuture<
+                    Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>,
+                >,
+        >,
+    >;
 
     /// This function assumes that the lock on `object_id` is already taken
     ///
     /// Returns `Some` iff the object actually changed
-    fn recreate_at<'ret, 'a: 'ret, T: Object, C: CanDoCallbacks>(
-        &'ret self,
+    fn recreate_at<'a, T: Object, C: CanDoCallbacks>(
+        &'a self,
         object_id: ObjectId,
         event_id: EventId,
         updatedness: Updatedness,
         cb: &'a C,
-    ) -> impl 'ret + CrdbFuture<Output = crate::Result<Option<(EventId, Arc<T>)>>>;
+    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, Arc<T>)>>>;
 
     fn create_and_return_rdep_changes<T: Object>(
         &self,

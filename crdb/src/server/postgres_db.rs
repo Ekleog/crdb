@@ -17,6 +17,7 @@ use sqlx::Row;
 use std::{
     collections::{hash_map, BTreeMap, HashMap, HashSet},
     marker::PhantomData,
+    pin::Pin,
     sync::{Arc, Weak},
     time::SystemTime,
 };
@@ -1749,34 +1750,43 @@ impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
 
 impl<Config: ServerConfig> ServerSideDb for PostgresDb<Config> {
     /// This function assumes that the lock on `object_id` is already taken.
-    async fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
+    fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
         &'ret self,
         object_id: ObjectId,
         object: &'a T,
         cb: &'a C,
-    ) -> anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)> {
-        let cb = TrackingCanDoCallbacks {
-            cb,
-            already_taken_lock: object_id,
-            object_locks: &self.object_locks,
-            locks: Mutex::new(HashMap::new()),
-        };
+    ) -> Pin<
+        Box<
+            dyn 'a
+                + crate::CrdbFuture<
+                    Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>,
+                >,
+        >,
+    > {
+        Box::pin(async move {
+            let cb = TrackingCanDoCallbacks::<'a, 'ret> {
+                cb,
+                already_taken_lock: object_id,
+                object_locks: &self.object_locks,
+                locks: Mutex::new(HashMap::new()),
+            };
 
-        let users_who_can_read = object.users_who_can_read(&cb).await.with_context(|| {
-            format!("figuring out the list of users who can read {object_id:?}")
-        })?;
-        let cb_locks = cb.locks.into_inner();
-        let mut users_who_can_read_depends_on = Vec::with_capacity(cb_locks.len());
-        let mut locks = Vec::with_capacity(cb_locks.len());
-        for (o, l) in cb_locks {
-            users_who_can_read_depends_on.push(o);
-            locks.push(l);
-        }
-        Ok((users_who_can_read, users_who_can_read_depends_on, locks))
+            let users_who_can_read = object.users_who_can_read(&cb).await.with_context(|| {
+                format!("figuring out the list of users who can read {object_id:?}")
+            })?;
+            let cb_locks = cb.locks.into_inner();
+            let mut users_who_can_read_depends_on = Vec::with_capacity(cb_locks.len());
+            let mut locks = Vec::with_capacity(cb_locks.len());
+            for (o, l) in cb_locks {
+                users_who_can_read_depends_on.push(o);
+                locks.push(l);
+            }
+            Ok((users_who_can_read, users_who_can_read_depends_on, locks))
+        })
     }
 
-    async fn recreate_at<'ret, 'a: 'ret, T: Object, C: CanDoCallbacks>(
-        &'ret self,
+    async fn recreate_at<'a, T: Object, C: CanDoCallbacks>(
+        &'a self,
         object_id: ObjectId,
         event_id: EventId,
         updatedness: Updatedness,

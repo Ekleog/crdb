@@ -1,16 +1,16 @@
-use super::{postgres_db::PostgresDb, UpdatesWithSnap};
+use super::UpdatesWithSnap;
 use crate::{
-    api::ApiConfig, CanDoCallbacks, CrdbFuture, Db, EventId, ObjectId, TypeId, Updatedness, User,
+    api::ApiConfig, CanDoCallbacks, CrdbFuture, EventId, ObjectId, TypeId, Updatedness, User,
 };
-use crdb_core::{ComboLock, ReadPermsChanges};
+use crdb_core::{ComboLock, ReadPermsChanges, ServerSideDb};
 use std::{collections::HashSet, sync::Arc};
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
 pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
     type ApiConfig: ApiConfig;
 
-    fn get_users_who_can_read<'a, C: CanDoCallbacks>(
-        call_on: &'a PostgresDb<Self>,
+    fn get_users_who_can_read<'a, D: ServerSideDb, C: CanDoCallbacks>(
+        call_on: &'a D,
         object_id: ObjectId,
         type_id: TypeId,
         snapshot_version: i32,
@@ -18,8 +18,8 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         cb: &'a C,
     ) -> impl 'a + CrdbFuture<Output = crate::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
 
-    fn recreate_no_lock<'a, C: Db>(
-        call_on: &'a PostgresDb<Self>,
+    fn recreate_no_lock<'a, D: ServerSideDb, C: CanDoCallbacks>(
+        call_on: &'a D,
         type_id: TypeId,
         object_id: ObjectId,
         event_id: EventId,
@@ -31,8 +31,8 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
     >;
 
     #[allow(clippy::too_many_arguments)] // This is only used to proxy to a real function
-    fn upload_object<'a, C: Db>(
-        call_on: &'a PostgresDb<Self>,
+    fn upload_object<'a, D: ServerSideDb, C: CanDoCallbacks>(
+        call_on: &'a D,
         user: User,
         updatedness: Updatedness,
         type_id: TypeId,
@@ -51,8 +51,8 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
     /// The [`Vec<User>`] in return type is the list of users who can read the object both before and after the change. Users who gained or
     /// lost access to `object_id` are returned as part of the `Vec<ReadPermsChanges>`.
     #[allow(clippy::too_many_arguments)] // This is only used to proxy the call to a real function
-    fn upload_event<'a, C: Db>(
-        call_on: &'a PostgresDb<Self>,
+    fn upload_event<'a, D: ServerSideDb, C: CanDoCallbacks>(
+        call_on: &'a D,
         user: User,
         updatedness: Updatedness,
         type_id: TypeId,
@@ -77,30 +77,31 @@ macro_rules! generate_server {
         impl crdb::ServerConfig for $name {
             type ApiConfig = $api_config;
 
-            async fn get_users_who_can_read<'a, C: crdb::CanDoCallbacks>(
-                call_on: &'a crdb::PostgresDb<Self>,
+            fn get_users_who_can_read<'a, D: crdb::ServerSideDb, C: crdb::CanDoCallbacks>(
+                call_on: &'a D,
                 object_id: crdb::ObjectId,
                 type_id: crdb::TypeId,
                 snapshot_version: i32,
                 snapshot: crdb::serde_json::Value,
                 cb: &'a C,
-            ) -> crdb::Result<(crdb::HashSet<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
+            ) -> impl 'a + crdb::CrdbFuture<Output = crdb::Result<(crdb::HashSet<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)>> {
                 use crdb::ServerSideDb as _;
-
-                $(
-                    if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let snapshot = crdb_helpers::parse_snapshot::<$object>(snapshot_version, snapshot)
-                            .wrap_with_context(|| format!("parsing snapshot for {object_id:?}"))?;
-                        let res = call_on.get_users_who_can_read(object_id, &snapshot, cb).await
-                            .wrap_with_context(|| format!("listing users who can read {object_id:?}"))?;
-                        return Ok(res);
-                    }
-                )*
-                Err(crdb::Error::TypeDoesNotExist(type_id))
+                Box::pin(async move {
+                    $(
+                        if type_id == *<$object as crdb::Object>::type_ulid() {
+                            let snapshot = crdb_helpers::parse_snapshot::<$object>(snapshot_version, snapshot)
+                                .wrap_with_context(|| format!("parsing snapshot for {object_id:?}"))?;
+                            let res = call_on.get_users_who_can_read(object_id, &snapshot, cb).await
+                                .wrap_with_context(|| format!("listing users who can read {object_id:?}"))?;
+                            return Ok(res);
+                        }
+                    )*
+                    Err(crdb::Error::TypeDoesNotExist(type_id))
+                })
             }
 
-            async fn recreate_no_lock<'a, C: crdb::Db>(
-                call_on: &'a crdb::PostgresDb<Self>,
+            async fn recreate_no_lock<'a, D: crdb::ServerSideDb, C: crdb::CanDoCallbacks>(
+                call_on: &'a D,
                 type_id: crdb::TypeId,
                 object_id: crdb::ObjectId,
                 event_id: crdb::EventId,
@@ -115,7 +116,7 @@ macro_rules! generate_server {
                         let Some((new_created_at, data)) = call_on.recreate_at::<$object, C>(object_id, event_id, updatedness, cb).await? else {
                             return Ok(None);
                         };
-                        let users_who_can_read = cb.get_latest::<$object>(crdb::Lock::NONE, object_id)
+                        let users_who_can_read = cb.get::<$object>(crdb::DbPtr::from(object_id))
                             .await
                             .wrap_context("retrieving latest snapshot after recreation")?
                             .users_who_can_read(cb)
@@ -129,8 +130,8 @@ macro_rules! generate_server {
                 Err(crdb::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn upload_object<'a, C: crdb::Db>(
-                call_on: &'a crdb::PostgresDb<Self>,
+            async fn upload_object<'a, D: crdb::ServerSideDb, C: crdb::CanDoCallbacks>(
+                call_on: &'a D,
                 user: crdb::User,
                 updatedness: crdb::Updatedness,
                 type_id: crdb::TypeId,
@@ -178,8 +179,8 @@ macro_rules! generate_server {
                 Err(crdb::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn upload_event<'a, C: crdb::Db>(
-                call_on: &'a crdb::PostgresDb<Self>,
+            async fn upload_event<'a, D: crdb::ServerSideDb, C: crdb::CanDoCallbacks>(
+                call_on: &'a D,
                 user: crdb::User,
                 updatedness: crdb::Updatedness,
                 type_id: crdb::TypeId,
@@ -195,7 +196,7 @@ macro_rules! generate_server {
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::Arc::new(<<$object as crdb::Object>::Event as crdb::serde::Deserialize>::deserialize(&*event_data)
                             .wrap_context("parsing uploaded snapshot data")?);
-                        let object = call_on.get_latest::<$object>(crdb::Lock::OBJECT, object_id).await
+                        let object = cb.get::<$object>(crdb::DbPtr::from(object_id)).await
                             .wrap_context("retrieving requested object id")?;
                         let can_apply = object.can_apply(user, object_id, &event, cb).await.wrap_context("checking whether user can apply submitted event")?;
                         if !can_apply {
