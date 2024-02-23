@@ -35,7 +35,7 @@ macro_rules! impl_id {
 
             #[cfg(feature = "web-sys")]
             pub fn to_js_string(&self) -> web_sys::js_sys::JsString {
-                js_sys::JsString::from(format!("{}", self.0))
+                web_sys::js_sys::JsString::from(format!("{}", self.0))
             }
 
             pub fn from_u128(v: u128) -> Self {

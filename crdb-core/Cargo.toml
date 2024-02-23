@@ -23,7 +23,6 @@ web-time.workspace = true
 arbitrary = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 indexed-db = { workspace = true, optional = true }
-js-sys = { workspace = true, optional = true }
 rand = { workspace = true, optional = true}
 serde-wasm-bindgen = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
