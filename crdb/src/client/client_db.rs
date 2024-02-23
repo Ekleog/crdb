@@ -763,6 +763,10 @@ impl ClientDb {
     /// locally and unsubscribe from the objects you don't care about. Note however that if you could ever start caring
     /// again about an object (eg. after it received some updates), then you probably should not do this, because
     /// unsubscribing from an object will lead to you never receiving the future updates in the first place.
+    // TODO(api-high): this is currently not properly implemented. In particular, the server will send the object anyway
+    // upon the next event incoming to it, because it does not remember that the user explicitly unsubscribed from the
+    // object. Maybe it'd be better to unsubscribe iff no query forces the subscription to stay active? This ties into
+    // introducing a ManuallyUpdated type and having a proper semantic separation of locking and subscription
     pub async fn unsubscribe<T: Object>(self: &Arc<Self>, ptr: DbPtr<T>) -> crate::Result<()> {
         let mut set = HashSet::new();
         set.insert(ptr.to_object_id());
@@ -775,6 +779,8 @@ impl ClientDb {
     ) -> crate::Result<()> {
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
+            // TODO(client-high): depending on the todo choice above unsubscribe, this should either send a notice to
+            // indicate that we removed object_id, or not actually remove object_id but just unsubscribe from it.
             self.subscribed_objects.lock().unwrap().remove(object_id);
         }
         self.api.unsubscribe(object_ids);

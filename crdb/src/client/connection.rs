@@ -220,11 +220,11 @@ where
 
                 // Listen for incoming requests from the client
                 request = self.requests.next() => {
-                    tracing::trace!(?request, "received request");
                     let Some((sender, request)) = request else {
                         break; // ApiDb was dropped, let's close ourselves
                     };
                     let request_id = self.next_request_id();
+                    tracing::trace!(?request, ?request_id, "submitting request");
                     match self.state {
                         State::Connected { .. } => self.handle_request(request_id, request, sender).await,
                         _ => self.not_sent_requests.push_back((request_id, request, sender)),
