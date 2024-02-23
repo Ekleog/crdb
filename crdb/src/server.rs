@@ -1,13 +1,8 @@
 use crate::{
-    api::ApiConfig,
-    cache::CacheDb,
-    messages::{
-        ClientMessage, MaybeObject, MaybeSnapshot, Request, RequestId, ResponsePart, ServerMessage,
-        Update, UpdateData, Updates, Upload,
-    },
-    timestamp::SystemTimeExt,
-    BinPtr, Db, EventId, ObjectId, Query, QueryId, ResultExt, Session, SessionRef, SessionToken,
-    Updatedness, UpdatesWithSnap, User,
+    cache::CacheDb, timestamp::SystemTimeExt, BinPtr, ClientMessage, Db, EventId, MaybeObject,
+    MaybeSnapshot, ObjectId, Query, QueryId, Request, RequestId, ResponsePart, ResultExt,
+    ServerMessage, Session, SessionRef, SessionToken, Update, UpdateData, Updatedness, Updates,
+    UpdatesWithSnap, Upload, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -43,7 +38,7 @@ type SessionsSenderMap = HashMap<
     HashMap<SessionRef, Vec<mpsc::UnboundedSender<(Updatedness, Arc<UserUpdatesMap>)>>>,
 >;
 
-pub struct Server<C: ApiConfig> {
+pub struct Server<C: crate::Config> {
     cache_db: Arc<CacheDb<PostgresDb<C>>>,
     postgres_db: Arc<PostgresDb<C>>,
     last_completed_updatedness: Arc<Mutex<Updatedness>>,
@@ -53,7 +48,7 @@ pub struct Server<C: ApiConfig> {
     sessions: Arc<Mutex<SessionsSenderMap>>,
 }
 
-impl<C: ApiConfig> Server<C> {
+impl<C: crate::Config> Server<C> {
     /// Returns both the server itself, as well as a `JoinHandle` that will resolve once all the operations
     /// needed for database upgrading are over. The handle resolves with the number of errors that occurred
     /// during the upgrade, normal runs would return 0. There will be one error message in the tracing logs

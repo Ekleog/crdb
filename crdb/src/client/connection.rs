@@ -1,11 +1,7 @@
 use crate::{
-    crdb_internal::Lock,
-    messages::{
-        ClientMessage, MaybeObject, Request, RequestId, ResponsePart, ServerMessage, Update,
-        UpdateData, Updates,
-    },
-    timestamp::SystemTimeExt,
-    CrdbFn, ObjectId, Query, QueryId, SessionToken, TypeId, Updatedness,
+    timestamp::SystemTimeExt, ClientMessage, CrdbFn, Lock, MaybeObject, ObjectId, Query, QueryId,
+    Request, RequestId, ResponsePart, ServerMessage, SessionToken, TypeId, Update, UpdateData,
+    Updatedness, Updates,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};

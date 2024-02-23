@@ -1,9 +1,7 @@
 use crate::{
-    api::UploadId,
     client::{ClientStorageInfo, LoginInfo},
-    messages::Upload,
     normalizer_version, BinPtr, Db, DbPtr, Event, EventId, Lock, Object, ObjectId, Query, QueryId,
-    ResultExt, TypeId, Updatedness,
+    ResultExt, TypeId, Updatedness, Upload, UploadId,
 };
 use anyhow::anyhow;
 use crdb_helpers::parse_snapshot_js;

@@ -4,12 +4,10 @@ macro_rules! fuzz_object_full {
         use super::fuzz_helpers::{
             self,
             crdb::{
-                self,
-                crdb_internal::{Db, Lock, ResultExt},
-                make_fuzzer_stuffs,
+                self, make_fuzzer_stuffs,
                 test_utils::{self, *},
-                BinPtr, DbPtr, EventId, JsonPathItem, ObjectId, Query, SearchableString,
-                Updatedness, User,
+                BinPtr, Db, DbPtr, EventId, JsonPathItem, Lock, ObjectId, Query, ResultExt,
+                SearchableString, Updatedness, User,
             },
             make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
         };

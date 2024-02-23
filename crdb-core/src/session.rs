@@ -1,7 +1,7 @@
 use crate::{SessionRef, User};
 use web_time::SystemTime;
 
-#[cfg(feature = "_tests")]
+#[cfg(feature = "arbitrary")]
 fn any_system_time_opt(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Option<SystemTime>> {
     let d = u.arbitrary::<Option<web_time::Duration>>()?;
     let Some(d) = d else {
@@ -10,15 +10,12 @@ fn any_system_time_opt(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Opt
     Ok(SystemTime::UNIX_EPOCH.checked_add(d))
 }
 
-#[derive(Clone, Debug)]
-#[cfg_attr(
-    feature = "_tests",
-    derive(arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)
-)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct NewSession {
     pub user_id: User,
     pub session_name: String,
-    #[cfg_attr(feature = "_tests", arbitrary(with = any_system_time_opt))]
+    #[cfg_attr(feature = "arbitrary", arbitrary(with = any_system_time_opt))]
     pub expiration_time: Option<SystemTime>,
 }
 

@@ -1,6 +1,6 @@
 use crate::{
-    api::UploadId, messages::Upload, normalizer_version, BinPtr, Db, EventId, Lock, Object,
-    ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness,
+    normalizer_version, BinPtr, Db, EventId, Lock, Object, ObjectId, Query, QueryId, ResultExt,
+    TypeId, Updatedness, Upload, UploadId,
 };
 use anyhow::Context;
 use std::{

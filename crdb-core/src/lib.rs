@@ -1,4 +1,5 @@
 mod check_string;
+mod config;
 mod db_trait;
 mod dbptr;
 mod dyn_sized;
@@ -6,11 +7,14 @@ mod error;
 mod fts;
 mod future;
 mod ids;
+mod messages;
 mod object;
 mod query;
 mod server_side_db;
+mod session;
 
 pub use check_string::*;
+pub use config::*;
 pub use db_trait::*;
 pub use dbptr::*;
 pub use dyn_sized::*;
@@ -18,8 +22,10 @@ pub use error::*;
 pub use fts::*;
 pub use future::*;
 pub use ids::*;
+pub use messages::*;
 pub use object::*;
 pub use query::*;
 pub use server_side_db::*;
+pub use session::*;
 
 pub use rust_decimal::Decimal;

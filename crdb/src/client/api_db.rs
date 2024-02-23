@@ -6,14 +6,10 @@ use super::{
     LocalDb,
 };
 use crate::{
-    api::{ApiConfig, UploadId},
-    crdb_internal::Lock,
-    messages::{
-        MaybeObject, MaybeSnapshot, ObjectData, Request, ResponsePart, SnapshotData, Updates,
-        Upload,
-    },
-    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSyncFn, Db, Event, EventId, Object, ObjectId,
-    Query, QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId, Updatedness,
+    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject,
+    MaybeSnapshot, Object, ObjectData, ObjectId, Query, QueryId, Request, ResponsePart, ResultExt,
+    Session, SessionRef, SessionToken, SnapshotData, TypeId, Updatedness, Updates, Upload,
+    UploadId,
 };
 use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, pin_mut, stream, FutureExt, StreamExt};
@@ -55,7 +51,7 @@ impl ApiDb {
         require_relogin: RRL,
     ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
     where
-        C: ApiConfig,
+        C: crate::Config,
         GSO: 'static + CrdbSend + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
@@ -506,7 +502,7 @@ async fn upload_resender<C, BG, EH, EHF>(
     binary_getter: Arc<BG>,
     error_handler: EH,
 ) where
-    C: ApiConfig,
+    C: crate::Config,
     BG: Db,
     EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
     EHF: 'static + CrdbFuture<Output = OnError>,
@@ -750,7 +746,7 @@ async fn upload_resender<C, BG, EH, EHF>(
     }
 }
 
-async fn undo_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+async fn undo_upload<C: crate::Config>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
     match upload {
         Upload::Object { object_id, .. } => local_db.remove(*object_id).await,
         Upload::Event {
@@ -770,7 +766,7 @@ async fn undo_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate
     }
 }
 
-async fn do_upload<C: ApiConfig>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+async fn do_upload<C: crate::Config>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
     match upload {
         Upload::Object {
             object_id,

@@ -1,12 +1,9 @@
 use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb, LoginInfo};
 use crate::{
-    api::{ApiConfig, UploadId},
-    cache::CacheDb,
-    crdb_internal::Lock,
-    messages::{MaybeObject, MaybeSnapshot, ObjectData, Update, UpdateData, Updates, Upload},
-    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId, Importance, Obj,
-    Object, ObjectId, Query, QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId,
-    Updatedness, User,
+    cache::CacheDb, BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId,
+    Importance, Lock, MaybeObject, MaybeSnapshot, Obj, Object, ObjectData, ObjectId, Query,
+    QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId, Update, UpdateData, Updatedness,
+    Updates, Upload, UploadId, User,
 };
 use anyhow::anyhow;
 use crdb_helpers::parse_snapshot_ref;
@@ -72,7 +69,7 @@ impl ClientDb {
         vacuum_schedule: ClientVacuumSchedule<VS>,
     ) -> anyhow::Result<(Arc<ClientDb>, impl CrdbFuture<Output = usize>)>
     where
-        C: ApiConfig,
+        C: crate::Config,
         RRL: 'static + CrdbSend + Fn(),
         EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + CrdbFuture<Output = OnError>,
@@ -290,7 +287,7 @@ impl ClientDb {
         });
     }
 
-    fn setup_data_saver<C: ApiConfig>(
+    fn setup_data_saver<C: crate::Config>(
         self: &Arc<Self>,
         data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
@@ -319,7 +316,7 @@ impl ClientDb {
     }
 
     #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a good struct
-    async fn data_saver<C: ApiConfig>(
+    async fn data_saver<C: crate::Config>(
         mut data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         mut data_saver_skipper: watch::Receiver<bool>,
         subscribed_objects: Arc<Mutex<SubscribedObjectMap>>,
@@ -451,7 +448,7 @@ impl ClientDb {
     }
 
     #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a good struct
-    async fn save_data<C: ApiConfig>(
+    async fn save_data<C: crate::Config>(
         db: &LocalDb,
         subscribed_objects: &Mutex<SubscribedObjectMap>,
         subscribed_queries: &Mutex<SubscribedQueriesMap>,

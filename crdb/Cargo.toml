@@ -51,6 +51,7 @@ development = [
 [dependencies]
 crdb-core.workspace = true
 crdb-helpers.workspace = true
+crdb-macros.workspace = true
 
 anyhow.workspace = true
 bitflags.workspace = true

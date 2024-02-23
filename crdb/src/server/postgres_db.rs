@@ -1,12 +1,7 @@
 use crate::{
-    api::ApiConfig,
-    cache::CacheDb,
-    crdb_internal::Lock,
-    messages::{ObjectData, SnapshotData, Update, UpdateData},
-    normalizer_version,
-    timestamp::SystemTimeExt,
-    BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Object, ObjectId, Query, ResultExt, Session,
-    SessionRef, SessionToken, TypeId, Updatedness, User,
+    cache::CacheDb, normalizer_version, timestamp::SystemTimeExt, BinPtr, CanDoCallbacks, Db,
+    DbPtr, Event, EventId, Lock, Object, ObjectData, ObjectId, Query, ResultExt, Session,
+    SessionRef, SessionToken, SnapshotData, TypeId, Update, UpdateData, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
 use crdb_core::{ComboLock, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
@@ -26,7 +21,7 @@ use tokio::sync::Mutex;
 #[cfg(test)]
 mod tests;
 
-pub struct PostgresDb<Config: ApiConfig> {
+pub struct PostgresDb<Config: crate::Config> {
     db: sqlx::PgPool,
     cache_db: Weak<CacheDb<PostgresDb<Config>>>,
     event_locks: LockPool<EventId>,
@@ -37,7 +32,7 @@ pub struct PostgresDb<Config: ApiConfig> {
     _phantom: PhantomData<Config>,
 }
 
-impl<Config: ApiConfig> PostgresDb<Config> {
+impl<Config: crate::Config> PostgresDb<Config> {
     pub async fn connect(
         db: sqlx::PgPool,
         cache_watermark: usize,
@@ -1546,7 +1541,7 @@ impl<Config: ApiConfig> PostgresDb<Config> {
     }
 }
 
-impl<Config: ApiConfig> Db for PostgresDb<Config> {
+impl<Config: crate::Config> Db for PostgresDb<Config> {
     async fn create<T: Object>(
         &self,
         object_id: ObjectId,
@@ -1748,7 +1743,7 @@ impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
     }
 }
 
-impl<Config: ApiConfig> ServerSideDb for PostgresDb<Config> {
+impl<Config: crate::Config> ServerSideDb for PostgresDb<Config> {
     /// This function assumes that the lock on `object_id` is already taken.
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
         &'ret self,

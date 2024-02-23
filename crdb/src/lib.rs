@@ -1,8 +1,5 @@
-mod api;
 mod cache;
 mod importance;
-mod messages;
-mod session;
 #[cfg(feature = "_tests")]
 pub mod test_utils;
 mod timestamp;
@@ -11,11 +8,9 @@ mod timestamp;
 const _: () = panic!("running tests without the `_tests` feature enabled");
 
 pub use crdb_core::*;
+pub use crdb_macros::*;
 
-pub use api::{ApiConfig, UpdatesWithSnap};
 pub use importance::Importance;
-pub use messages::{Update, UpdateData};
-pub use session::{NewSession, Session};
 
 #[cfg(feature = "client")]
 mod client;
@@ -53,13 +48,7 @@ pub mod crdb_internal {
     pub use crate::server::{PostgresDb, UpdatesMap};
     #[cfg(feature = "_tests")]
     pub use crate::test_utils;
-    pub use crate::{
-        api::{ApiConfig, UploadId},
-        cache::ObjectCache,
-        messages::{Request, Update, UpdateData, Updates, Upload},
-        session::Session,
-        *,
-    };
+    pub use crate::{cache::ObjectCache, *};
     pub use anyhow;
     pub use crdb_helpers;
     pub use futures::{self, channel::mpsc, future, stream, FutureExt, Stream};
@@ -88,15 +77,6 @@ pub use chrono;
 pub use serde;
 pub use serde_json;
 pub use tokio::sync::broadcast;
-
-// This module needs to actually be public, because the `generate` macros need to be
-// able to implement the traits. However, making it doc(hidden) makes it look as though
-// it is actually sealed in the documentation, which is good because we don't want
-// users to rely on any stability guarantees there.
-#[doc(hidden)]
-pub mod private {
-    pub trait Sealed {}
-}
 
 pub fn hash_binary(data: &[u8]) -> BinPtr {
     use sha3::Digest;

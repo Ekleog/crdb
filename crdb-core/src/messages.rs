@@ -140,7 +140,6 @@ pub struct ObjectData {
 }
 
 impl ObjectData {
-    #[cfg(any(feature = "client", feature = "server"))]
     pub fn into_updates(self) -> Vec<Arc<Update>> {
         let mut res =
             Vec::with_capacity(self.events.len() + self.creation_snapshot.is_some() as usize);
