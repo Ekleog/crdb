@@ -10,7 +10,6 @@ crdb-core = { path = "./crdb-core" }
 crdb-helpers = { path = "./crdb-helpers" }
 
 # Note: think of updating `get-all-docs`'s `Cargo.toml` upon changing things here, to always have all the docs
-# TODO(api-high): make sure dev-features don't actually enter production systems
 anyhow = "1.0"
 arbitrary = { version = "1.3", features = ["derive"] }
 arbitrary-json = "=0.1.1" # very small crate, can we actually trust updates?
