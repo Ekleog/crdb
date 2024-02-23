@@ -1,4 +1,4 @@
-use basic_api::{AuthInfo, Item};
+use basic_api::{AuthInfo, Item, Tag};
 use crdb::{
     fts::SearchableString, ConnectionEvent, Importance, JsonPathItem, Query, QueryId, SessionToken,
     User,
@@ -327,6 +327,8 @@ fn main_view(MainViewProps { connection_status }: &MainViewProps) -> Html {
         </h1>
         <div style="position: relative">
             <div style="height: 100%; width: 55%; position: absolute; top: 0; left: 0">
+                <CreateTag /><br />
+                <hr />
                 <CreateItem /><br />
                 <QueryRemoteItems /><br />
             </div>
@@ -392,11 +394,26 @@ fn create<T: crdb::Object>(
 fn create_item() -> Html {
     let db = use_context::<DbContext>().unwrap().0;
     let text = use_state(|| String::new());
-    create(db, text, "item", |owner, text| Item {
+    create(db, text, "Item", |owner, text| Item {
         owner,
         text: SearchableString::from(text),
         tags: BTreeSet::new(),
         file: None,
+    })
+}
+
+#[function_component(CreateTag)]
+fn create_tag() -> Html {
+    let db = use_context::<DbContext>().unwrap().0;
+    let text = use_state(|| String::new());
+    create(db, text, "Tag", |owner, text| {
+        let mut set = BTreeSet::new();
+        set.insert(owner);
+        Tag {
+            name: String::from(text),
+            users_who_can_read: set.clone(),
+            users_who_can_edit: set,
+        }
     })
 }
 
@@ -643,11 +660,22 @@ fn show_subscribed_queries() -> Html {
 #[function_component(ShowLocalDb)]
 fn show_local_db() -> Html {
     let db = use_context::<DbContext>().unwrap();
-    let local_items = use_future_with(db, |db| {
+    let local_items = use_future_with(db.clone(), |db| {
         let db = db.clone();
         async move {
             Ok::<_, crdb::Error>(
                 db.0.query_local::<basic_api::Item>(Arc::new(Query::All(Vec::new())))
+                    .await?
+                    .collect::<Vec<_>>()
+                    .await,
+            )
+        }
+    });
+    let local_tags = use_future_with(db, |db| {
+        let db = db.clone();
+        async move {
+            Ok::<_, crdb::Error>(
+                db.0.query_local::<basic_api::Tag>(Arc::new(Query::All(Vec::new())))
                     .await?
                     .collect::<Vec<_>>()
                     .await,
@@ -662,9 +690,19 @@ fn show_local_db() -> Html {
         .iter()
         .map(|i| html! {<li><RenderItem data={Rc::new(i.as_ref().unwrap().clone())} /></li>})
         .collect::<Html>();
+    let local_tags = match &local_tags {
+        Err(_) => return html! { <h6>{ "Loading local tags…" }</h6> },
+        Ok(r) => r.as_ref().expect("failed loading local tags"),
+    };
+    let local_tags = local_tags
+        .iter()
+        .map(|i| html! {<li><RenderTag data={Rc::new(i.as_ref().unwrap().clone())} /></li>})
+        .collect::<Html>();
     html! {<>
         <h3>{ "Local DB" }</h3>
         <ul>
+            { local_tags }
+            <hr />
             { local_items }
         </ul>
     </>}
@@ -715,6 +753,63 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
         { ": " }
         <b>{ &*data.text }</b>
         { format!(" {:?} {:?} ", data.tags, data.file) }
+        <input
+            type="button"
+            value="Unlock"
+            onclick={unlock} />
+        <input
+            type="button"
+            value="Unsubscribe"
+            onclick={unsubscribe} />
+    </>}
+}
+
+#[derive(Properties)]
+struct RenderTagProps {
+    data: Rc<crdb::Obj<Tag>>,
+}
+
+impl PartialEq for RenderTagProps {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.data, &other.data)
+    }
+}
+
+#[function_component(RenderTag)]
+fn render_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
+    let db = use_context::<DbContext>().unwrap();
+    let ptr = data.ptr();
+    // TODO(api-high): whether the object is locked or not should be exposed to the user
+    let unlock = {
+        let db = db.clone();
+        move |_| {
+            let db = db.0.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                db.unlock(ptr).await.expect("failed unlocking object")
+            })
+        }
+    };
+    // TODO(api-high): whether the object is subscribed or not should be exposed to the user
+    let unsubscribe = {
+        let db = db.clone();
+        let force_update = db.1.clone();
+        move |_| {
+            let db = db.0.clone();
+            let force_update = force_update.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                db.unsubscribe(ptr)
+                    .await
+                    .expect("failed unsubscribing object");
+                force_update.force_update(); // TODO(blocked): remove once the todos in unsubscribe are solved
+            })
+        }
+    };
+    html! {<>
+        <b>{ &*data.name }</b>
+        { " read=" }
+        { for data.users_who_can_read.iter().map(|u| format!("{},", show_user(*u))) }
+        { " write=" }
+        { for data.users_who_can_edit.iter().map(|u| format!("{},", show_user(*u))) }
         <input
             type="button"
             value="Unlock"

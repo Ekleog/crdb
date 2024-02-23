@@ -128,9 +128,9 @@ impl crdb::Event for ItemEvent {
 
 #[derive(Clone, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
 pub struct Tag {
-    name: String,
-    users_who_can_read: BTreeSet<User>,
-    users_who_can_edit: BTreeSet<User>,
+    pub name: String,
+    pub users_who_can_read: BTreeSet<User>,
+    pub users_who_can_edit: BTreeSet<User>,
 }
 
 impl crdb::Object for Tag {
