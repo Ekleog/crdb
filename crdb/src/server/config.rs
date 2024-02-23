@@ -107,10 +107,11 @@ macro_rules! generate_server {
                 updatedness: crdb::Updatedness,
                 cb: &'a C,
             ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value, crdb::HashSet<crdb::User>)>> {
-                use crdb::Object;
+                use crdb::{Object, ServerSideDb};
+
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
-                        let Some((new_created_at, data)) = call_on.recreate_impl::<$object, C>(object_id, event_id, updatedness, cb).await? else {
+                        let Some((new_created_at, data)) = call_on.recreate_at::<$object, C>(object_id, event_id, updatedness, cb).await? else {
                             return Ok(None);
                         };
                         let users_who_can_read = cb.get_latest::<$object>(crdb::Lock::NONE, object_id)

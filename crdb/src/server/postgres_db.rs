@@ -1093,228 +1093,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(Either::Left(Arc::new(object)))
     }
 
-    /// This function assumes that the lock on `object_id` is already taken
-    ///
-    /// Returns `true` iff the object actually changed
-    pub async fn recreate_impl<T: Object, C: CanDoCallbacks>(
-        &self,
-        object_id: ObjectId,
-        event_id: EventId,
-        updatedness: Updatedness,
-        cb: &C,
-    ) -> crate::Result<Option<(EventId, Arc<T>)>> {
-        if event_id.0.timestamp_ms()
-            > SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|t| t.as_millis())
-                .unwrap_or(0) as u64
-                - 1000 * 3600
-        {
-            tracing::warn!(
-                "Re-creating object {object_id:?} at time {event_id:?} which is less than an hour old"
-            );
-        }
-
-        reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
-        // Get the creation snapshot
-        reord::point().await;
-        let creation_snapshot = sqlx::query!(
-            "SELECT snapshot_id, type_id FROM snapshots WHERE object_id = $1 AND is_creation",
-            object_id as ObjectId,
-        )
-        .fetch_optional(&mut *transaction)
-        .await
-        .wrap_with_context(|| {
-            format!("getting creation snapshot of {object_id:?} for re-creation")
-        })?
-        .ok_or(crate::Error::ObjectDoesNotExist(object_id))?;
-        let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
-        let expected_type_id = *T::type_ulid();
-        if real_type_id != expected_type_id {
-            return Err(crate::Error::WrongType {
-                object_id,
-                expected_type_id,
-                real_type_id,
-            });
-        }
-        if EventId::from_uuid(creation_snapshot.snapshot_id) >= event_id {
-            // Already created after the requested time
-            return Ok(None);
-        }
-
-        // Figure out the cutoff event
-        reord::point().await;
-        let event = sqlx::query!(
-            "
-                SELECT event_id
-                FROM events
-                WHERE object_id = $1
-                AND event_id <= $2
-                ORDER BY event_id DESC
-                LIMIT 1
-            ",
-            object_id as ObjectId,
-            event_id as EventId,
-        )
-        .fetch_optional(&mut *transaction)
-        .await
-        .wrap_with_context(|| {
-            format!("recovering the last event for {object_id:?} before cutoff time {event_id:?}")
-        })?;
-        let cutoff_time = match event {
-            None => return Ok(None), // Nothing to do, there was no event before the cutoff already
-            Some(e) => EventId::from_uuid(e.event_id),
-        };
-
-        // Fetch the last snapshot before cutoff
-        reord::point().await;
-        let snapshot = sqlx::query!(
-            "
-                SELECT snapshot_id, snapshot_version, snapshot
-                FROM snapshots
-                WHERE object_id = $1
-                AND snapshot_id <= $2
-                ORDER BY snapshot_id DESC
-                LIMIT 1
-            ",
-            object_id as ObjectId,
-            cutoff_time as EventId,
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .wrap_with_context(|| {
-            format!("fetching latest snapshot before {cutoff_time:?} for object {object_id:?}")
-        })?;
-
-        // Delete all the snapshots before cutoff
-        reord::maybe_lock().await;
-        sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id < $2")
-            .bind(object_id)
-            .bind(cutoff_time)
-            .execute(&mut *transaction)
-            .await
-            .wrap_with_context(|| {
-                format!("deleting all snapshots for {object_id:?} before {cutoff_time:?}")
-            })?;
-        reord::point().await;
-
-        let latest_object = if EventId::from_uuid(snapshot.snapshot_id) != cutoff_time {
-            // Insert a new snapshot dated at `cutoff_time`
-
-            // Apply all the events between latest snapshot (excluded) and asked recreation time (included)
-            let mut object = parse_snapshot::<T>(snapshot.snapshot_version, snapshot.snapshot)
-                .wrap_with_context(|| {
-                    format!(
-                        "parsing snapshot {:?} as {:?}",
-                        snapshot.snapshot_id,
-                        T::type_ulid()
-                    )
-                })?;
-
-            let snapshot_id = EventId::from_uuid(snapshot.snapshot_id);
-            apply_events_between(
-                &mut transaction,
-                &mut object,
-                object_id,
-                snapshot_id,
-                cutoff_time,
-            )
-            .await
-            .wrap_with_context(|| {
-                format!(
-                    "applying on {object_id:?} events between {snapshot_id:?} and {cutoff_time:?}"
-                )
-            })?;
-
-            // Insert the new creation snapshot. This cannot conflict because we deleted
-            // the previous creation snapshot just above. There was no snapshot at this event
-            // before, so it cannot be the latest snapshot.
-            // Note that we do not save the locks here. This is okay, because this is never a latest snapshot,
-            // and thus cannot need the remote locks.
-            self.write_snapshot(
-                &mut transaction,
-                cutoff_time,
-                object_id,
-                true,
-                false,
-                None, // is_latest = false, we don't care about rdeps
-                &object,
-                updatedness,
-                cb,
-            )
-            .await
-            .wrap_with_context(|| format!("writing snapshot {cutoff_time:?} for {object_id:?}"))?;
-            object
-        } else {
-            // Just update the `cutoff_time` snapshot to record it's the creation snapshot
-            reord::maybe_lock().await;
-            let latest = sqlx::query!(
-                "
-                    UPDATE snapshots
-                    SET is_creation = TRUE
-                    WHERE snapshot_id = $1
-                    RETURNING snapshot_version, snapshot
-                ",
-                cutoff_time as EventId,
-            )
-                .fetch_one(&mut *transaction)
-                .await
-                .wrap_with_context(|| {
-                    format!(
-                        "marking snapshot {cutoff_time:?} as the creation one for {object_id:?} and retrieving its data"
-                    )
-                })?;
-            let object = parse_snapshot::<T>(latest.snapshot_version, latest.snapshot)
-                .wrap_context("deserializing snapshot data")?;
-            reord::point().await;
-            object
-        };
-
-        // We now have all the new information. We can delete the events.
-        reord::maybe_lock().await;
-        sqlx::query("DELETE FROM events WHERE object_id = $1 AND event_id <= $2")
-            .bind(object_id)
-            .bind(cutoff_time)
-            .execute(&mut *transaction)
-            .await
-            .wrap_with_context(|| {
-                format!("deleting all events for {object_id:?} before {cutoff_time:?}")
-            })?;
-        reord::point().await;
-
-        // Mark the corresponding latest snapshot as updated
-        reord::maybe_lock().await;
-        let affected = sqlx::query(
-            "UPDATE snapshots SET last_modified = $1 WHERE is_latest AND object_id = $2",
-        )
-        .bind(updatedness)
-        .bind(object_id)
-        .execute(&mut *transaction)
-        .await
-        .wrap_with_context(|| format!("failed marking last snapshot of {object_id:?} as modified"))?
-        .rows_affected();
-        reord::point().await;
-        assert!(
-            affected == 1,
-            "Object {object_id:?} did not have a latest snapshot, something went very wrong"
-        );
-
-        // Finally, commit the transaction
-        reord::maybe_lock().await;
-        transaction.commit().await.wrap_with_context(|| {
-            format!("committing transaction that recreated {object_id:?} at {cutoff_time:?}")
-        })?;
-        reord::point().await;
-
-        Ok(Some((cutoff_time, Arc::new(latest_object))))
-    }
-
     pub async fn query(
         &self,
         user: User,
@@ -2092,6 +1870,225 @@ impl<Config: ServerConfig> ServerSideDb for PostgresDb<Config> {
             locks.push(l);
         }
         Ok((users_who_can_read, users_who_can_read_depends_on, locks))
+    }
+
+    async fn recreate_at<'ret, 'a: 'ret, T: Object, C: CanDoCallbacks>(
+        &'ret self,
+        object_id: ObjectId,
+        event_id: EventId,
+        updatedness: Updatedness,
+        cb: &'a C,
+    ) -> crate::Result<Option<(EventId, Arc<T>)>> {
+        if event_id.0.timestamp_ms()
+            > SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|t| t.as_millis())
+                .unwrap_or(0) as u64
+                - 1000 * 3600
+        {
+            tracing::warn!(
+                "Re-creating object {object_id:?} at time {event_id:?} which is less than an hour old"
+            );
+        }
+
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // Get the creation snapshot
+        reord::point().await;
+        let creation_snapshot = sqlx::query!(
+            "SELECT snapshot_id, type_id FROM snapshots WHERE object_id = $1 AND is_creation",
+            object_id as ObjectId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| {
+            format!("getting creation snapshot of {object_id:?} for re-creation")
+        })?
+        .ok_or(crate::Error::ObjectDoesNotExist(object_id))?;
+        let real_type_id = TypeId::from_uuid(creation_snapshot.type_id);
+        let expected_type_id = *T::type_ulid();
+        if real_type_id != expected_type_id {
+            return Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id,
+                real_type_id,
+            });
+        }
+        if EventId::from_uuid(creation_snapshot.snapshot_id) >= event_id {
+            // Already created after the requested time
+            return Ok(None);
+        }
+
+        // Figure out the cutoff event
+        reord::point().await;
+        let event = sqlx::query!(
+            "
+                SELECT event_id
+                FROM events
+                WHERE object_id = $1
+                AND event_id <= $2
+                ORDER BY event_id DESC
+                LIMIT 1
+            ",
+            object_id as ObjectId,
+            event_id as EventId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| {
+            format!("recovering the last event for {object_id:?} before cutoff time {event_id:?}")
+        })?;
+        let cutoff_time = match event {
+            None => return Ok(None), // Nothing to do, there was no event before the cutoff already
+            Some(e) => EventId::from_uuid(e.event_id),
+        };
+
+        // Fetch the last snapshot before cutoff
+        reord::point().await;
+        let snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND snapshot_id <= $2
+                ORDER BY snapshot_id DESC
+                LIMIT 1
+            ",
+            object_id as ObjectId,
+            cutoff_time as EventId,
+        )
+        .fetch_one(&mut *transaction)
+        .await
+        .wrap_with_context(|| {
+            format!("fetching latest snapshot before {cutoff_time:?} for object {object_id:?}")
+        })?;
+
+        // Delete all the snapshots before cutoff
+        reord::maybe_lock().await;
+        sqlx::query("DELETE FROM snapshots WHERE object_id = $1 AND snapshot_id < $2")
+            .bind(object_id)
+            .bind(cutoff_time)
+            .execute(&mut *transaction)
+            .await
+            .wrap_with_context(|| {
+                format!("deleting all snapshots for {object_id:?} before {cutoff_time:?}")
+            })?;
+        reord::point().await;
+
+        let latest_object = if EventId::from_uuid(snapshot.snapshot_id) != cutoff_time {
+            // Insert a new snapshot dated at `cutoff_time`
+
+            // Apply all the events between latest snapshot (excluded) and asked recreation time (included)
+            let mut object = parse_snapshot::<T>(snapshot.snapshot_version, snapshot.snapshot)
+                .wrap_with_context(|| {
+                    format!(
+                        "parsing snapshot {:?} as {:?}",
+                        snapshot.snapshot_id,
+                        T::type_ulid()
+                    )
+                })?;
+
+            let snapshot_id = EventId::from_uuid(snapshot.snapshot_id);
+            apply_events_between(
+                &mut transaction,
+                &mut object,
+                object_id,
+                snapshot_id,
+                cutoff_time,
+            )
+            .await
+            .wrap_with_context(|| {
+                format!(
+                    "applying on {object_id:?} events between {snapshot_id:?} and {cutoff_time:?}"
+                )
+            })?;
+
+            // Insert the new creation snapshot. This cannot conflict because we deleted
+            // the previous creation snapshot just above. There was no snapshot at this event
+            // before, so it cannot be the latest snapshot.
+            // Note that we do not save the locks here. This is okay, because this is never a latest snapshot,
+            // and thus cannot need the remote locks.
+            self.write_snapshot(
+                &mut transaction,
+                cutoff_time,
+                object_id,
+                true,
+                false,
+                None, // is_latest = false, we don't care about rdeps
+                &object,
+                updatedness,
+                cb,
+            )
+            .await
+            .wrap_with_context(|| format!("writing snapshot {cutoff_time:?} for {object_id:?}"))?;
+            object
+        } else {
+            // Just update the `cutoff_time` snapshot to record it's the creation snapshot
+            reord::maybe_lock().await;
+            let latest = sqlx::query!(
+                "
+                    UPDATE snapshots
+                    SET is_creation = TRUE
+                    WHERE snapshot_id = $1
+                    RETURNING snapshot_version, snapshot
+                ",
+                cutoff_time as EventId,
+            )
+                .fetch_one(&mut *transaction)
+                .await
+                .wrap_with_context(|| {
+                    format!(
+                        "marking snapshot {cutoff_time:?} as the creation one for {object_id:?} and retrieving its data"
+                    )
+                })?;
+            let object = parse_snapshot::<T>(latest.snapshot_version, latest.snapshot)
+                .wrap_context("deserializing snapshot data")?;
+            reord::point().await;
+            object
+        };
+
+        // We now have all the new information. We can delete the events.
+        reord::maybe_lock().await;
+        sqlx::query("DELETE FROM events WHERE object_id = $1 AND event_id <= $2")
+            .bind(object_id)
+            .bind(cutoff_time)
+            .execute(&mut *transaction)
+            .await
+            .wrap_with_context(|| {
+                format!("deleting all events for {object_id:?} before {cutoff_time:?}")
+            })?;
+        reord::point().await;
+
+        // Mark the corresponding latest snapshot as updated
+        reord::maybe_lock().await;
+        let affected = sqlx::query(
+            "UPDATE snapshots SET last_modified = $1 WHERE is_latest AND object_id = $2",
+        )
+        .bind(updatedness)
+        .bind(object_id)
+        .execute(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("failed marking last snapshot of {object_id:?} as modified"))?
+        .rows_affected();
+        reord::point().await;
+        assert!(
+            affected == 1,
+            "Object {object_id:?} did not have a latest snapshot, something went very wrong"
+        );
+
+        // Finally, commit the transaction
+        reord::maybe_lock().await;
+        transaction.commit().await.wrap_with_context(|| {
+            format!("committing transaction that recreated {object_id:?} at {cutoff_time:?}")
+        })?;
+        reord::point().await;
+
+        Ok(Some((cutoff_time, Arc::new(latest_object))))
     }
 }
 

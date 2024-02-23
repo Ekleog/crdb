@@ -4,6 +4,7 @@ use crate::{
     test_utils::{db::ServerConfig, *},
     Db, EventId, Lock, ObjectId, ResultExt, Updatedness,
 };
+use crdb_core::ServerSideDb;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use ulid::Ulid;
@@ -122,7 +123,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg = db
-                .recreate_impl::<TestObjectFull, _>(o, *event_id, *updatedness, db)
+                .recreate_at::<TestObjectFull, _>(o, *event_id, *updatedness, db)
                 .await;
         }
         Op::Remove { object } => {
