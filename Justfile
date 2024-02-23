@@ -18,7 +18,7 @@ fmt:
 test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 
 clippy:
-    CARGO_TARGET_DIR="target/clippy" cargo clippy --all-features -- -D warnings
+    CARGO_TARGET_DIR="target/clippy" SQLX_OFFLINE="true" cargo clippy --all-features -- -D warnings
 
 udeps:
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude get-all-docs
