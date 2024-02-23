@@ -1,0 +1,9 @@
+[package]
+name = "crdb-cache"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crdb-core.workspace = true
+
+web-time.workspace = true

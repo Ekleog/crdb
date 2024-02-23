@@ -49,6 +49,7 @@ development = [
 ]
 
 [dependencies]
+crdb-cache.workspace = true
 crdb-core.workspace = true
 crdb-helpers.workspace = true
 crdb-macros.workspace = true

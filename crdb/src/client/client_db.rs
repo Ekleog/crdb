@@ -1,11 +1,12 @@
 use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb, LoginInfo};
 use crate::{
-    cache::CacheDb, BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId,
-    Importance, Lock, MaybeObject, MaybeSnapshot, Obj, Object, ObjectData, ObjectId, Query,
-    QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId, Update, UpdateData, Updatedness,
-    Updates, Upload, UploadId, User,
+    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId, Importance, Lock,
+    MaybeObject, MaybeSnapshot, Obj, Object, ObjectData, ObjectId, Query, QueryId, ResultExt,
+    Session, SessionRef, SessionToken, TypeId, Update, UpdateData, Updatedness, Updates, Upload,
+    UploadId, User,
 };
 use anyhow::anyhow;
+use crdb_cache::CacheDb;
 use crdb_helpers::parse_snapshot_ref;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
 use std::{

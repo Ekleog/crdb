@@ -1,4 +1,4 @@
-use crate::BinPtr;
+use crdb_core::BinPtr;
 use std::{
     collections::HashMap,
     sync::{Arc, Weak},

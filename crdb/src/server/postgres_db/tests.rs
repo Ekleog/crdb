@@ -86,10 +86,10 @@ mod fuzz_helpers {
     use std::{collections::HashSet, sync::Arc};
 
     use crate::{
-        cache::CacheDb,
         server::{postgres_db::tests::TmpDb, PostgresDb},
         EventId, Object, Query, ResultExt, Updatedness, User,
     };
+    use crdb_cache::CacheDb;
     use crdb_test_utils::{Config, *};
 
     pub use tokio::test;

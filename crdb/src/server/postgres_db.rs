@@ -1,9 +1,10 @@
 use crate::{
-    cache::CacheDb, normalizer_version, BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Lock,
-    Object, ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken,
-    SnapshotData, SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User,
+    normalizer_version, BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Lock, Object,
+    ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, SnapshotData,
+    SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
+use crdb_cache::CacheDb;
 use crdb_core::{ComboLock, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
 use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};

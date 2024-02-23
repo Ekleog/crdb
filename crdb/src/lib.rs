@@ -1,4 +1,3 @@
-mod cache;
 mod importance;
 
 #[cfg(all(test, not(feature = "_tests")))]
@@ -43,7 +42,7 @@ pub mod crdb_internal {
     };
     #[cfg(feature = "server")]
     pub use crate::server::{PostgresDb, UpdatesMap};
-    pub use crate::{cache::ObjectCache, *};
+    pub use crate::*;
     pub use anyhow;
     pub use crdb_helpers;
     pub use futures::{self, channel::mpsc, future, stream, FutureExt, Stream};

@@ -1,10 +1,11 @@
 use super::{BinariesCache, ObjectCache};
-use crate::{hash_binary, BinPtr, Db, DynSized, EventId, Lock, Object, ObjectId, Updatedness};
+use crdb_core::{hash_binary, BinPtr, Db, DynSized, EventId, Lock, Object, ObjectId, Updatedness};
 use std::{
     ops::Deref,
     sync::{Arc, RwLock},
 };
 
+// TODO(perf-high): de-Arc the D here
 pub struct CacheDb<D: Db> {
     db: Arc<D>,
     cache: Arc<RwLock<ObjectCache>>,
@@ -17,7 +18,7 @@ impl<D: Db> CacheDb<D> {
     /// program) would make cache operation slow.
     /// For this reason, if the cache used size reaches the watermark, then the watermark will be
     /// automatically increased.
-    pub(crate) fn new(db: Arc<D>, watermark: usize) -> CacheDb<D> {
+    pub fn new(db: Arc<D>, watermark: usize) -> CacheDb<D> {
         let cache = Arc::new(RwLock::new(ObjectCache::new(watermark)));
         CacheDb {
             db: db.clone(),
