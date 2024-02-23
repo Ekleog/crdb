@@ -44,9 +44,10 @@ jobs:
       - uses: baptiste0928/cargo-install@1cd874a5478fdca35d868ccc74640c5aabbb8f1b
         with:
           crate: sqlx-cli
-      - uses: baptiste0928/cargo-install@1cd874a5478fdca35d868ccc74640c5aabbb8f1b
+      # TODO(blocked): revert this to upstream install-action once https://github.com/taiki-e/install-action/pull/383 lands
+      - uses: Ekleog/install-action@eac78831c45d9c6783f49e93e94ec78d23c5b9b5
         with:
-          crate: wasm-bindgen-cli
+          tool: wasm-bindgen-cli
 
       # Setup sccache, that'll share build artifacts with all the target directories
       - uses: mozilla-actions/sccache-action@2e7f9ec7921547d4b46598398ca573513895d0bd
