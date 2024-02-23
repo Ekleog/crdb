@@ -23,7 +23,7 @@ jobs:
           - name: Clippy All Features (crates)
             command: cargo hack clippy --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset --optional-deps -- -D warnings
           - name: Test All Features (crates)
-            command: cargo hack nextest run --workspace --exclude crdb --ignore-private --features _tests --feature-powerset --optional-deps
+            command: cargo hack nextest run --workspace --exclude crdb --ignore-private --feature-powerset --optional-deps
           - name: Build All Features (crdb)
             command: cargo hack build -p crdb --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 3
           - name: Clippy All Features (crdb)
