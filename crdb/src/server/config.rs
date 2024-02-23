@@ -189,6 +189,8 @@ macro_rules! generate_server {
                 cb: &'a C,
             ) -> crdb::Result<Option<(crdb::Arc<crdb::UpdatesWithSnap>, Vec<crdb::User>, Vec<crdb::ReadPermsChanges>)>> {
                 use crdb::Object as _;
+                use crdb::ServerSideDb as _;
+
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let event = crdb::Arc::new(<<$object as crdb::Object>::Event as crdb::serde::Deserialize>::deserialize(&*event_data)

@@ -1543,51 +1543,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             snapshot: Arc::new(latest_snapshot.snapshot),
         })
     }
-
-    pub async fn submit_and_return_rdep_changes<T: Object>(
-        &self,
-        object_id: ObjectId,
-        event_id: EventId,
-        event: Arc<T::Event>,
-        updatedness: Updatedness,
-    ) -> crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>> {
-        let cache_db = self
-            .cache_db
-            .upgrade()
-            .expect("Called PostgresDb::submit after CacheDb went away");
-
-        let res = self
-            .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
-            .await?;
-        match res {
-            Either::Left(res) => {
-                // Newly inserted, update rdeps and return
-                // Update the reverse-dependencies, now that we have updated the object itself.
-                let rdeps = self
-                    .update_rdeps(object_id, &*cache_db)
-                    .await
-                    .wrap_with_context(|| {
-                        format!("updating permissions for reverse-dependencies of {object_id:?}")
-                    })?;
-
-                Ok(Some((res, rdeps)))
-            }
-            Either::Right(None) => {
-                // Was already present, and has no pending rdeps
-                Ok(None)
-            }
-            Either::Right(Some(_snapshot_id)) => {
-                // Was already present, but had a task ongoing to update the rdeps
-                // TODO(perf-high): this will duplicate the work done by the other create call
-                self.update_rdeps(object_id, &*cache_db)
-                    .await
-                    .wrap_with_context(|| {
-                        format!("updating permissions for reverse-dependencies of {object_id:?}")
-                    })?;
-                Ok(None)
-            }
-        }
-    }
 }
 
 impl<Config: ServerConfig> Db for PostgresDb<Config> {
@@ -2053,6 +2008,51 @@ impl<Config: ServerConfig> ServerSideDb for PostgresDb<Config> {
 
         let res = self
             .create_impl(object_id, created_at, object, updatedness, &*cache_db)
+            .await?;
+        match res {
+            Either::Left(res) => {
+                // Newly inserted, update rdeps and return
+                // Update the reverse-dependencies, now that we have updated the object itself.
+                let rdeps = self
+                    .update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
+
+                Ok(Some((res, rdeps)))
+            }
+            Either::Right(None) => {
+                // Was already present, and has no pending rdeps
+                Ok(None)
+            }
+            Either::Right(Some(_snapshot_id)) => {
+                // Was already present, but had a task ongoing to update the rdeps
+                // TODO(perf-high): this will duplicate the work done by the other create call
+                self.update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn submit_and_return_rdep_changes<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+        updatedness: Updatedness,
+    ) -> crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>> {
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::submit after CacheDb went away");
+
+        let res = self
+            .submit_impl(object_id, event_id, event, updatedness, &*cache_db)
             .await?;
         match res {
             Either::Left(res) => {

@@ -41,4 +41,12 @@ pub trait ServerSideDb {
         object: Arc<T>,
         updatedness: Updatedness,
     ) -> impl '_ + CrdbFuture<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
+
+    fn submit_and_return_rdep_changes<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+        updatedness: Updatedness,
+    ) -> impl '_ + CrdbFuture<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
 }
