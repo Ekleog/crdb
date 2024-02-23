@@ -518,7 +518,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         // Figure out the new value of users_who_can_read
         let (users_who_can_read, users_who_can_read_depends_on, _locks) =
             Config::get_users_who_can_read(
-                &self,
+                self,
                 object_id,
                 type_id,
                 res.snapshot_version,
@@ -691,6 +691,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a proper struct
     async fn write_snapshot<'a, T: Object, C: CanDoCallbacks>(
         &'a self,
         transaction: &mut sqlx::PgConnection,
@@ -730,7 +731,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         .bind(object_id)
         .bind(is_creation)
         .bind(is_latest)
-        .bind(&fts::normalizer_version())
+        .bind(fts::normalizer_version())
         .bind(T::snapshot_version())
         .bind(sqlx::types::Json(object))
         .bind(users_who_can_read.map(|u| u.into_iter().collect::<Vec<_>>()))
@@ -793,7 +794,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                 .bind(created_at)
                 .bind(type_id)
                 .bind(object_id)
-                .bind(&fts::normalizer_version())
+                .bind(fts::normalizer_version())
                 .bind(snapshot_version)
                 .bind(object_json)
                 .bind(users_who_can_read.iter().copied().collect::<Vec<_>>())
@@ -851,7 +852,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             };
 
             return Ok(Either::Right(
-                rdeps_to_update.num_rdeps.is_some().then(|| created_at),
+                rdeps_to_update.num_rdeps.is_some().then_some(created_at),
             ));
         }
 
@@ -861,14 +862,14 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .bind(created_at)
             .execute(&mut *transaction)
             .await
-            .wrap_with_context(|| format!("checking that no event existed with this id yet"))?
+            .wrap_context("checking that no event existed with this id yet")?
             .rows_affected();
         if affected != 0 {
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
-        check_required_binaries(&mut *transaction, required_binaries)
+        check_required_binaries(&mut transaction, required_binaries)
             .await
             .wrap_with_context(|| {
                 format!("checking that all binaries for object {object_id:?} are already present")
@@ -1043,7 +1044,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         if !last_snapshot.is_latest {
             let from = EventId::from_uuid(last_snapshot.snapshot_id);
             let to = EventId::from_u128(event_id.as_u128() - 1);
-            apply_events_between(&mut *transaction, &mut object, object_id, from, to)
+            apply_events_between(&mut transaction, &mut object, object_id, from, to)
                 .await
                 .wrap_with_context(|| {
                     format!("applying all events on {object_id:?} between {from:?} and {to:?}")
@@ -1060,7 +1061,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             .wrap_with_context(|| format!("fetching reverse dependencies of {object_id:?}"))?;
         let mut _dep_locks = self
             .write_snapshot(
-                &mut *transaction,
+                &mut transaction,
                 event_id,
                 object_id,
                 false,
@@ -1121,7 +1122,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             );
             _dep_locks = self
                 .write_snapshot(
-                    &mut *transaction,
+                    &mut transaction,
                     snapshot_id,
                     object_id,
                     false,
@@ -1138,7 +1139,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         }
 
         // Check that all required binaries are present, always as the last lock obtained in the transaction
-        check_required_binaries(&mut *transaction, event.required_binaries())
+        check_required_binaries(&mut transaction, event.required_binaries())
             .await
             .wrap_with_context(|| {
                 format!("checking that all binaries for object {object_id:?} are already present")
@@ -1279,7 +1280,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
 
             let snapshot_id = EventId::from_uuid(snapshot.snapshot_id);
             apply_events_between(
-                &mut *transaction,
+                &mut transaction,
                 &mut object,
                 object_id,
                 snapshot_id,
@@ -1298,7 +1299,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
             // Note that we do not save the locks here. This is okay, because this is never a latest snapshot,
             // and thus cannot need the remote locks.
             self.write_snapshot(
-                &mut *transaction,
+                &mut transaction,
                 cutoff_time,
                 object_id,
                 true,

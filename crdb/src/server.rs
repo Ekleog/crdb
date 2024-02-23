@@ -119,7 +119,7 @@ impl<C: ServerConfig> Server<C> {
                     "you're either very unlucky, or generated 2**80 updates within one millisecond",
                 ));
                 let (sender, receiver) = oneshot::channel();
-                if let Err(_) = update_sender.send((updatedness, receiver)) {
+                if update_sender.send((updatedness, receiver)).is_err() {
                     tracing::error!(
                         "Update reorderer task went away before updatedness request handler task"
                     );
@@ -186,7 +186,7 @@ impl<C: ServerConfig> Server<C> {
 
                     // Retrieve the updatedness slot
                     let (sender, receiver) = oneshot::channel();
-                    if let Err(_) = updatedness_requester.send(sender) {
+                    if updatedness_requester.send(sender).is_err() {
                         tracing::error!(
                             "Updatedness request handler thread went away before autovacuum thread"
                         );
@@ -362,9 +362,9 @@ impl<C: ServerConfig> Server<C> {
                             .lock()
                             .unwrap()
                             .entry(session.user_id)
-                            .or_insert_with(HashMap::new)
+                            .or_default()
                             .entry(session.session_ref)
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(updates_sender);
                         conn.session = Some(SessionInfo {
                             token: *token,
@@ -383,7 +383,7 @@ impl<C: ServerConfig> Server<C> {
                     None => Err(crate::Error::ProtocolViolation),
                     Some(sess) => self
                         .postgres_db
-                        .rename_session(sess.token, &name)
+                        .rename_session(sess.token, name)
                         .await
                         .map(|()| ResponsePart::Success),
                 };
@@ -697,7 +697,7 @@ impl<C: ServerConfig> Server<C> {
     ) -> crate::Result<()> {
         for c in rdeps {
             for u in c.lost_read {
-                updates.entry(u).or_insert_with(HashMap::new).insert(
+                updates.entry(u).or_default().insert(
                     c.object_id,
                     Arc::new(UpdatesWithSnap {
                         updates: vec![Arc::new(Update {
@@ -712,11 +712,11 @@ impl<C: ServerConfig> Server<C> {
                 let mut t = self.postgres_db.get_transaction().await?;
                 let object = self
                     .postgres_db
-                    .get_all(&mut *t, *one_user, c.object_id, None)
+                    .get_all(&mut t, *one_user, c.object_id, None)
                     .await?;
                 let last_snapshot = self
                     .postgres_db
-                    .get_latest_snapshot(&mut *t, *one_user, c.object_id)
+                    .get_latest_snapshot(&mut t, *one_user, c.object_id)
                     .await?;
                 let new_updates = object.into_updates();
                 for u in c.gained_read {
@@ -758,7 +758,7 @@ impl<C: ServerConfig> Server<C> {
                     let mut t = self.postgres_db.get_transaction().await?;
                     let object = self
                         .postgres_db
-                        .get_all(&mut *t, user, object_id, updatedness)
+                        .get_all(&mut t, user, object_id, updatedness)
                         .await?;
                     Ok(MaybeObject::NotYetSubscribed(object))
                 }
@@ -773,7 +773,7 @@ impl<C: ServerConfig> Server<C> {
         while let Some(object) = objects.next().await {
             if size_of_message >= 1024 * 1024 {
                 // TODO(perf-low): is 1MiB a good number?
-                let data = std::mem::replace(&mut current_data, Vec::new());
+                let data = std::mem::take(&mut current_data);
                 size_of_message = 0;
                 Self::send(
                     &mut conn.socket,
