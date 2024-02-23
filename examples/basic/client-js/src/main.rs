@@ -844,6 +844,7 @@ impl PartialEq for RenderTagProps {
 #[function_component(RenderTag)]
 fn render_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
     let db = use_context::<DbContext>().unwrap();
+    let show_edit = use_state(|| false);
     let ptr = data.ptr();
     // TODO(api-high): whether the object is locked or not should be exposed to the user
     let unlock = {
@@ -870,6 +871,10 @@ fn render_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
             })
         }
     };
+    let click_edit = {
+        let show_edit = show_edit.clone();
+        move |_| show_edit.set(!*show_edit)
+    };
     html! {<>
         <small>{ format!("{}: ", data.ptr().to_object_id().0) }</small>
         <b>{ &*data.name }</b>
@@ -885,5 +890,17 @@ fn render_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
             type="button"
             value="Unsubscribe"
             onclick={unsubscribe} />
+        <input
+            type="button"
+            value="Edit"
+            onclick={click_edit} />
+        { (*show_edit).then(|| html! { <div><EditTag {data} /></div> }) }
     </>}
+}
+
+#[function_component(EditTag)]
+fn edit_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
+    html! {
+        { "edit" }
+    }
 }
