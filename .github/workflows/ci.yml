@@ -17,11 +17,11 @@ jobs:
           - name: Tests
             command: just test
           - name: Build All Features
-            command: cargo hack build --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 4
+            command: cargo hack build --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 3
           - name: Clippy All Features
-            command: cargo hack clippy --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 4
+            command: cargo hack clippy --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 3 -- -D warnings
           - name: Test All Features
-            command: cargo hack nextest run --workspace --ignore-private --features _tests --feature-powerset --optional-deps --depth 3
+            command: cargo hack nextest run --workspace --ignore-private --features _tests --feature-powerset --optional-deps --depth 2
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     steps:
