@@ -80,8 +80,7 @@ jobs:
       - uses: taiki-e/install-action@6943331e01261cdff7420bbc2508cb463574e404
         with:
           tool: just, cargo-hack, cargo-udeps
-      - run: cargo hack udeps --each-feature
-      - run: cargo hack udeps --tests --each-feature
+      - run: just udeps-full
 
   just-doc:
     name: Doc

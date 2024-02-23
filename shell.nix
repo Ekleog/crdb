@@ -6,6 +6,7 @@ pkgs.stdenv.mkDerivation {
   buildInputs = (
     (with pkgs; [
       cargo-bolero
+      cargo-hack
       cargo-nextest
       cargo-udeps
       # chromedriver # Use geckodriver for local tests, as chromedriver is used in CI
