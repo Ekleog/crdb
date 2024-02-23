@@ -340,10 +340,12 @@ fn main_view(MainViewProps { connection_status }: &MainViewProps) -> Html {
     </>}
 }
 
-#[function_component(CreateItem)]
-fn create_item() -> Html {
-    let db = use_context::<DbContext>().unwrap().0;
-    let text = use_state(|| String::new());
+fn create<T: crdb::Object>(
+    db: Arc<crdb::ClientDb>,
+    text: UseStateHandle<String>,
+    name: &'static str,
+    creator: impl 'static + Fn(User, &str) -> T,
+) -> Html {
     let onchange = {
         let text = text.clone();
         move |e: Event| {
@@ -351,26 +353,21 @@ fn create_item() -> Html {
             text.set(input.value());
         }
     };
-    let create_item = Callback::from({
+    let create_it = Callback::from({
         let text = text.clone();
         move |importance| {
-            let item = Item {
-                owner: db.user().unwrap(),
-                text: SearchableString::from(&*text),
-                tags: BTreeSet::new(),
-                file: None,
-            };
+            let object = creator(db.user().unwrap(), &*text);
             let db = db.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let _ = db
-                    .create(importance, Arc::new(item))
+                    .create(importance, Arc::new(object))
                     .await
                     .expect("failed creating item");
             })
         }
     });
     html! {<>
-        { "Create Item: "}
+        { format!("Create {name}: ") }
         <input
             type="text"
             placeholder="text"
@@ -378,17 +375,29 @@ fn create_item() -> Html {
             {onchange} />
         <input
             type="button"
-            value="Create Item"
-            onclick={create_item.reform(|_| Importance::Latest)} />
+            value={ format!("Create {name}") }
+            onclick={create_it.reform(|_| Importance::Latest)} />
         <input
             type="button"
-            value="Create Item & Subscribe"
-            onclick={create_item.reform(|_| Importance::Subscribe)} />
+            value={ format!("Create {name} & Subscribe") }
+            onclick={create_it.reform(|_| Importance::Subscribe)} />
         <input
             type="button"
-            value="Create Item & Lock"
-            onclick={create_item.reform(|_| Importance::Lock)} />
+            value={ format!("Create {name} & Lock") }
+            onclick={create_it.reform(|_| Importance::Lock)} />
     </>}
+}
+
+#[function_component(CreateItem)]
+fn create_item() -> Html {
+    let db = use_context::<DbContext>().unwrap().0;
+    let text = use_state(|| String::new());
+    create(db, text, "item", |owner, text| Item {
+        owner,
+        text: SearchableString::from(text),
+        tags: BTreeSet::new(),
+        file: None,
+    })
 }
 
 #[function_component(QueryRemoteItems)]
