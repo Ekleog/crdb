@@ -39,12 +39,7 @@ jobs:
       # Install cargo dependencies
       - uses: taiki-e/install-action@6943331e01261cdff7420bbc2508cb463574e404
         with:
-          tool: just, cargo-nextest, cargo-hack, sqlx-cli
-          # TODO(misc-low): sqlx-cli is currently supported only through binstall, introduce proper support for it?
-      # TODO(blocked): revert this to upstream install-action once https://github.com/taiki-e/install-action/pull/383 lands
-      - uses: Ekleog/install-action@a9a6264a6a243053242c1e5f1bd89ddd01ec0992
-        with:
-          tool: wasm-bindgen-test-runner
+          tool: just, cargo-nextest, cargo-hack, sqlx-cli, wasm-bindgen-test-runner
 
       # Setup sccache, that'll share build artifacts with all the target directories
       - uses: mozilla-actions/sccache-action@2e7f9ec7921547d4b46598398ca573513895d0bd
