@@ -12,7 +12,9 @@ const _: () = panic!("running tests without the `_tests` feature enabled");
 
 pub use crdb_core::*;
 
+pub use api::{ApiConfig, UpdatesWithSnap};
 pub use importance::Importance;
+pub use messages::{Update, UpdateData};
 pub use session::{NewSession, Session};
 
 #[cfg(feature = "client")]
@@ -48,7 +50,7 @@ pub mod crdb_internal {
         ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb, Obj, OnError,
     };
     #[cfg(feature = "server")]
-    pub use crate::server::{PostgresDb, ServerConfig, UpdatesMap, UpdatesWithSnap};
+    pub use crate::server::{PostgresDb, UpdatesMap};
     #[cfg(feature = "_tests")]
     pub use crate::test_utils;
     pub use crate::{
@@ -83,6 +85,8 @@ pub use sqlx;
 pub use cron;
 
 pub use chrono;
+pub use serde;
+pub use serde_json;
 pub use tokio::sync::broadcast;
 
 // This module needs to actually be public, because the `generate` macros need to be
@@ -101,31 +105,4 @@ pub fn hash_binary(data: &[u8]) -> BinPtr {
     BinPtr(ulid::Ulid::from_bytes(
         hasher.finalize()[..16].try_into().unwrap(),
     ))
-}
-
-#[macro_export]
-macro_rules! db {
-    (
-        // TODO(api-high): have a single `config` type defined here, by using a ServerDb trait and not directly PostgresDb
-        $v:vis mod $module:ident {
-            api_config: $api_config:ident,
-            server_config: $server_config:ident,
-            objects: {
-                $( $name:ident : $object:ty, )*
-            },
-        }
-    ) => {
-        #[allow(unused_imports)]
-        $v mod $module {
-
-            use $crate::crdb_internal as crdb;
-            use crdb::crdb_helpers;
-            use crdb::Db as CrdbDb;
-            use crdb::ResultExt as CrdbResultExt;
-            use crdb::stream::StreamExt as CrdbStreamExt;
-
-            $crate::generate_api!($api_config | $($object),*);
-            $crate::generate_server!($api_config | $server_config | $($object),*);
-        }
-    }
 }

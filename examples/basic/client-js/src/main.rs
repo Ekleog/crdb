@@ -51,7 +51,7 @@ fn app() -> Html {
         let connection_status = connection_status.clone();
         move |_| async move {
             let (db, upgrade_handle) = crdb::ClientDb::connect(
-                basic_api::db::ApiConfig,
+                basic_api::Config,
                 "basic-crdb",
                 CACHE_WATERMARK,
                 move || {

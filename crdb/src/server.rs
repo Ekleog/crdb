@@ -7,7 +7,7 @@ use crate::{
     },
     timestamp::SystemTimeExt,
     BinPtr, Db, EventId, ObjectId, Query, QueryId, ResultExt, Session, SessionRef, SessionToken,
-    Updatedness, User,
+    Updatedness, UpdatesWithSnap, User,
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
@@ -28,24 +28,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;
 
-mod config;
 mod postgres_db;
 
 pub use self::postgres_db::PostgresDb;
-pub use config::ServerConfig;
-
-// Each update is both the list of updates itself, and the new latest snapshot
-// for query matching, available if the latest snapshot actually changed. Also,
-// the list of users allowed to read this object.
-#[derive(Debug)]
-pub struct UpdatesWithSnap {
-    // The list of actual updates
-    pub updates: Vec<Arc<Update>>,
-
-    // The new last snapshot, if the update did change it (ie. no vacuum) and if the users affected
-    // actually do have access to it. This is used for query matching.
-    pub new_last_snapshot: Option<Arc<serde_json::Value>>,
-}
 
 pub type UserUpdatesMap = HashMap<ObjectId, Arc<UpdatesWithSnap>>;
 
@@ -58,7 +43,7 @@ type SessionsSenderMap = HashMap<
     HashMap<SessionRef, Vec<mpsc::UnboundedSender<(Updatedness, Arc<UserUpdatesMap>)>>>,
 >;
 
-pub struct Server<C: ServerConfig> {
+pub struct Server<C: ApiConfig> {
     cache_db: Arc<CacheDb<PostgresDb<C>>>,
     postgres_db: Arc<PostgresDb<C>>,
     last_completed_updatedness: Arc<Mutex<Updatedness>>,
@@ -68,7 +53,7 @@ pub struct Server<C: ServerConfig> {
     sessions: Arc<Mutex<SessionsSenderMap>>,
 }
 
-impl<C: ServerConfig> Server<C> {
+impl<C: ApiConfig> Server<C> {
     /// Returns both the server itself, as well as a `JoinHandle` that will resolve once all the operations
     /// needed for database upgrading are over. The handle resolves with the number of errors that occurred
     /// during the upgrade, normal runs would return 0. There will be one error message in the tracing logs
@@ -86,7 +71,7 @@ impl<C: ServerConfig> Server<C> {
         let _ = config; // ignore argument
 
         // Check that all type ULIDs are distinct
-        <C::ApiConfig as ApiConfig>::check_ulids();
+        C::check_ulids();
 
         // Connect to the database and setup the cache
         let (postgres_db, cache_db) = postgres_db::PostgresDb::connect(db, cache_watermark).await?;
@@ -101,7 +86,7 @@ impl<C: ServerConfig> Server<C> {
         // Start the upgrading task
         let upgrade_handle = tokio::task::spawn({
             let postgres_db = postgres_db.clone();
-            async move { C::ApiConfig::reencode_old_versions(&*postgres_db).await }
+            async move { C::reencode_old_versions(&*postgres_db).await }
         });
 
         // Setup the update reorderer task

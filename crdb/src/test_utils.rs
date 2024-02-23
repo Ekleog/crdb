@@ -26,15 +26,11 @@ pub use object_simple::{TestEventSimple, TestObjectSimple};
 pub use stubs::*;
 
 crate::db! {
-    pub mod db {
-        api_config: ApiConfig,
-        server_config: ServerConfig,
-        objects: {
-            delegate_perms: super::TestObjectDelegatePerms,
-            full: super::TestObjectFull,
-            perms: super::TestObjectPerms,
-            simple: super::TestObjectSimple,
-        },
+    pub struct Config {
+        delegate_perms: TestObjectDelegatePerms,
+        full: TestObjectFull,
+        perms: TestObjectPerms,
+        simple: TestObjectSimple,
     }
 }
 

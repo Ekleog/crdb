@@ -214,12 +214,8 @@ impl crdb::Event for TagEvent {
 }
 
 crdb::db! {
-    pub mod db {
-        api_config: ApiConfig,
-        server_config: ServerConfig,
-        objects: {
-            item: super::Item,
-            tag: super::Tag,
-        },
+    pub struct Config {
+        item: Item,
+        tag: Tag,
     }
 }

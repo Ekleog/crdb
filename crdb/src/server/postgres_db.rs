@@ -1,5 +1,5 @@
-use super::ServerConfig;
 use crate::{
+    api::ApiConfig,
     cache::CacheDb,
     crdb_internal::Lock,
     messages::{ObjectData, SnapshotData, Update, UpdateData},
@@ -26,7 +26,7 @@ use tokio::sync::Mutex;
 #[cfg(test)]
 mod tests;
 
-pub struct PostgresDb<Config: ServerConfig> {
+pub struct PostgresDb<Config: ApiConfig> {
     db: sqlx::PgPool,
     cache_db: Weak<CacheDb<PostgresDb<Config>>>,
     event_locks: LockPool<EventId>,
@@ -37,7 +37,7 @@ pub struct PostgresDb<Config: ServerConfig> {
     _phantom: PhantomData<Config>,
 }
 
-impl<Config: ServerConfig> PostgresDb<Config> {
+impl<Config: ApiConfig> PostgresDb<Config> {
     pub async fn connect(
         db: sqlx::PgPool,
         cache_watermark: usize,
@@ -1546,7 +1546,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     }
 }
 
-impl<Config: ServerConfig> Db for PostgresDb<Config> {
+impl<Config: ApiConfig> Db for PostgresDb<Config> {
     async fn create<T: Object>(
         &self,
         object_id: ObjectId,
@@ -1748,7 +1748,7 @@ impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
     }
 }
 
-impl<Config: ServerConfig> ServerSideDb for PostgresDb<Config> {
+impl<Config: ApiConfig> ServerSideDb for PostgresDb<Config> {
     /// This function assumes that the lock on `object_id` is already taken.
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
         &'ret self,

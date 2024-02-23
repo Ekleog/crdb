@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Json,
 };
-use basic_api::{db::ServerConfig, AuthInfo};
+use basic_api::AuthInfo;
 use crdb::SessionToken;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tower_http::trace::TraceLayer;
@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Start the CRDB server
     let (crdb_server, upgrade_finished) = crdb::Server::new(
-        ServerConfig,
+        basic_api::Config,
         db,
         CACHE_SIZE,
         // Vacuum every 2 minutes, recreating objects older than 5 minutes
@@ -72,7 +72,7 @@ fn err_to_string(err: anyhow::Error) -> (StatusCode, String) {
 }
 
 pub async fn login(
-    State(db): State<Arc<crdb::Server<ServerConfig>>>,
+    State(db): State<Arc<crdb::Server<basic_api::Config>>>,
     Json(data): Json<AuthInfo>,
 ) -> Result<Json<SessionToken>, (StatusCode, String)> {
     if data.pass != PASSWORD {
@@ -88,7 +88,7 @@ pub async fn login(
 
 async fn websocket_handler(
     ws: WebSocketUpgrade,
-    State(db): State<Arc<crdb::Server<ServerConfig>>>,
+    State(db): State<Arc<crdb::Server<basic_api::Config>>>,
 ) -> Result<axum::response::Response, String> {
     Ok(ws.on_upgrade(move |sock| async move { db.answer(sock).await }))
 }

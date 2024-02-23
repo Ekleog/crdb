@@ -1,7 +1,7 @@
 use super::{TmpDb, CHECK_NAMED_LOCKS_FOR, MAYBE_LOCK_TIMEOUT};
 use crate::{
     server::postgres_db::PostgresDb,
-    test_utils::{db::ServerConfig, *},
+    test_utils::{Config, *},
     Db, EventId, Lock, ObjectId, ResultExt, Updatedness,
 };
 use crdb_core::ServerSideDb;
@@ -53,7 +53,7 @@ impl FuzzState {
     }
 }
 
-async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(db: &PostgresDb<Config>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Create {
             object_id,
@@ -153,7 +153,7 @@ async fn apply_op(db: &PostgresDb<ServerConfig>, s: &FuzzState, op: &Op) -> anyh
 
 async fn apply_ops(
     thread: usize,
-    db: Arc<PostgresDb<ServerConfig>>,
+    db: Arc<PostgresDb<Config>>,
     s: Arc<FuzzState>,
     ops: Arc<Vec<Op>>,
 ) {

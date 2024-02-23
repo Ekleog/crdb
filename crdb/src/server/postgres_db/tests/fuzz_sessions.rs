@@ -1,7 +1,7 @@
 use super::TmpDb;
 use crate::{
     server::PostgresDb,
-    test_utils::{cmp, db::ServerConfig, USER_ID_1},
+    test_utils::{cmp, Config, USER_ID_1},
     timestamp::SystemTimeExt,
     NewSession, Session, SessionRef, SessionToken, User,
 };
@@ -84,7 +84,7 @@ impl FuzzState {
     }
 }
 
-async fn apply_op(db: &PostgresDb<ServerConfig>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(db: &PostgresDb<Config>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Login(session) => {
             let session = Session::new(session.clone());

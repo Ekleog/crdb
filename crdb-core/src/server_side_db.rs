@@ -5,6 +5,7 @@ use crate::{
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 // TODO(blocked): replace with an associated type of ServerSideDb once https://github.com/rust-lang/rust/pull/120700 stabilizes
+// This will allow removing the `reord` and `lockable` deps.
 pub type ComboLock<'a> = (
     reord::Lock,
     <lockable::LockPool<ObjectId> as lockable::Lockable<ObjectId, ()>>::Guard<'a>,

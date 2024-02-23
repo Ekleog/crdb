@@ -1,5 +1,5 @@
 use super::PostgresDb;
-use crate::{test_utils::db::ServerConfig, timestamp::SystemTimeExt, Object};
+use crate::{timestamp::SystemTimeExt, Object};
 use std::time::Duration;
 use web_time::SystemTime;
 
@@ -12,7 +12,7 @@ const MAYBE_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
-    let (db, _keepalive) = PostgresDb::<ServerConfig>::connect(db, 0)
+    let (db, _keepalive) = PostgresDb::<Config>::connect(db, 0)
         .await
         .expect("connecting to db");
     crate::smoke_test!(
@@ -89,15 +89,15 @@ mod fuzz_helpers {
     use crate::{
         cache::CacheDb,
         server::{postgres_db::tests::TmpDb, PostgresDb},
-        test_utils::{db::ServerConfig, *},
+        test_utils::{Config, *},
         EventId, Object, Query, ResultExt, Updatedness, User,
     };
 
     pub use crate as crdb;
     pub use tokio::test;
 
-    pub type Database = Arc<PostgresDb<ServerConfig>>;
-    pub type KeepAlive = Arc<CacheDb<PostgresDb<ServerConfig>>>;
+    pub type Database = Arc<PostgresDb<Config>>;
+    pub type KeepAlive = Arc<CacheDb<PostgresDb<Config>>>;
     pub type SetupState = TmpDb;
 
     pub fn setup() -> (TmpDb, bool) {
