@@ -11,6 +11,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
+use crdb_core::ReadPermsChanges;
 use futures::{
     future::{self, Either, OptionFuture},
     pin_mut, stream, FutureExt, StreamExt,
@@ -30,7 +31,7 @@ use ulid::Ulid;
 mod config;
 mod postgres_db;
 
-pub use self::postgres_db::{PostgresDb, ReadPermsChanges};
+pub use self::postgres_db::PostgresDb;
 pub use config::ServerConfig;
 
 // Each update is both the list of updates itself, and the new latest snapshot

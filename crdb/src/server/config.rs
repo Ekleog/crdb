@@ -1,8 +1,8 @@
-use super::{postgres_db::PostgresDb, ReadPermsChanges, UpdatesWithSnap};
+use super::{postgres_db::PostgresDb, UpdatesWithSnap};
 use crate::{
     api::ApiConfig, CanDoCallbacks, CrdbFuture, Db, EventId, ObjectId, TypeId, Updatedness, User,
 };
-use crdb_core::ComboLock;
+use crdb_core::{ComboLock, ReadPermsChanges};
 use std::{collections::HashSet, sync::Arc};
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
@@ -85,7 +85,7 @@ macro_rules! generate_server {
                 snapshot: crdb::serde_json::Value,
                 cb: &'a C,
             ) -> crdb::Result<(crdb::HashSet<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
-                use crdb::ServerSideDb;
+                use crdb::ServerSideDb as _;
 
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -107,7 +107,8 @@ macro_rules! generate_server {
                 updatedness: crdb::Updatedness,
                 cb: &'a C,
             ) -> crdb::Result<Option<(crdb::EventId, i32, crdb::serde_json::Value, crdb::HashSet<crdb::User>)>> {
-                use crdb::{Object, ServerSideDb};
+                use crdb::Object as _;
+                use crdb::ServerSideDb as _;
 
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
@@ -140,6 +141,8 @@ macro_rules! generate_server {
                 cb: &'a C,
             ) -> crdb::Result<Option<(crdb::Arc<crdb::UpdatesWithSnap>, crdb::HashSet<crdb::User>, Vec<crdb::ReadPermsChanges>)>> {
                 use crdb::Object as _;
+                use crdb::ServerSideDb as _;
+
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let object = crdb::Arc::new(crdb_helpers::parse_snapshot_ref::<$object>(snapshot_version, &*snapshot)

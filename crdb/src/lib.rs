@@ -48,9 +48,7 @@ pub mod crdb_internal {
         ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb, Obj, OnError,
     };
     #[cfg(feature = "server")]
-    pub use crate::server::{
-        PostgresDb, ReadPermsChanges, ServerConfig, UpdatesMap, UpdatesWithSnap,
-    };
+    pub use crate::server::{PostgresDb, ServerConfig, UpdatesMap, UpdatesWithSnap};
     #[cfg(feature = "_tests")]
     pub use crate::test_utils;
     pub use crate::{

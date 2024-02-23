@@ -9,7 +9,7 @@ use crate::{
     SessionRef, SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
-use crdb_core::{ComboLock, Decimal, JsonPathItem, ServerSideDb};
+use crdb_core::{ComboLock, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
 use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
@@ -34,13 +34,6 @@ pub struct PostgresDb<Config: ServerConfig> {
     // take a read(). This should significantly improve performance
     object_locks: LockPool<ObjectId>,
     _phantom: PhantomData<Config>,
-}
-
-pub struct ReadPermsChanges {
-    pub object_id: ObjectId,
-    pub type_id: TypeId,
-    pub lost_read: HashSet<User>,
-    pub gained_read: HashSet<User>,
 }
 
 impl<Config: ServerConfig> PostgresDb<Config> {
@@ -1551,51 +1544,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         })
     }
 
-    pub async fn create_and_return_rdep_changes<T: Object>(
-        &self,
-        object_id: ObjectId,
-        created_at: EventId,
-        object: Arc<T>,
-        updatedness: Updatedness,
-    ) -> crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>> {
-        let cache_db = self
-            .cache_db
-            .upgrade()
-            .expect("Called PostgresDb::create after CacheDb went away");
-
-        let res = self
-            .create_impl(object_id, created_at, object, updatedness, &*cache_db)
-            .await?;
-        match res {
-            Either::Left(res) => {
-                // Newly inserted, update rdeps and return
-                // Update the reverse-dependencies, now that we have updated the object itself.
-                let rdeps = self
-                    .update_rdeps(object_id, &*cache_db)
-                    .await
-                    .wrap_with_context(|| {
-                        format!("updating permissions for reverse-dependencies of {object_id:?}")
-                    })?;
-
-                Ok(Some((res, rdeps)))
-            }
-            Either::Right(None) => {
-                // Was already present, and has no pending rdeps
-                Ok(None)
-            }
-            Either::Right(Some(_snapshot_id)) => {
-                // Was already present, but had a task ongoing to update the rdeps
-                // TODO(perf-high): this will duplicate the work done by the other create call
-                self.update_rdeps(object_id, &*cache_db)
-                    .await
-                    .wrap_with_context(|| {
-                        format!("updating permissions for reverse-dependencies of {object_id:?}")
-                    })?;
-                Ok(None)
-            }
-        }
-    }
-
     pub async fn submit_and_return_rdep_changes<T: Object>(
         &self,
         object_id: ObjectId,
@@ -2089,6 +2037,51 @@ impl<Config: ServerConfig> ServerSideDb for PostgresDb<Config> {
         reord::point().await;
 
         Ok(Some((cutoff_time, Arc::new(latest_object))))
+    }
+
+    async fn create_and_return_rdep_changes<T: Object>(
+        &self,
+        object_id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+        updatedness: Updatedness,
+    ) -> crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>> {
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::create after CacheDb went away");
+
+        let res = self
+            .create_impl(object_id, created_at, object, updatedness, &*cache_db)
+            .await?;
+        match res {
+            Either::Left(res) => {
+                // Newly inserted, update rdeps and return
+                // Update the reverse-dependencies, now that we have updated the object itself.
+                let rdeps = self
+                    .update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
+
+                Ok(Some((res, rdeps)))
+            }
+            Either::Right(None) => {
+                // Was already present, and has no pending rdeps
+                Ok(None)
+            }
+            Either::Right(Some(_snapshot_id)) => {
+                // Was already present, but had a task ongoing to update the rdeps
+                // TODO(perf-high): this will duplicate the work done by the other create call
+                self.update_rdeps(object_id, &*cache_db)
+                    .await
+                    .wrap_with_context(|| {
+                        format!("updating permissions for reverse-dependencies of {object_id:?}")
+                    })?;
+                Ok(None)
+            }
+        }
     }
 }
 
