@@ -1,7 +1,8 @@
-use crate::{BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, ResultExt, Updatedness};
 use anyhow::anyhow;
+use crdb_core::{
+    BinPtr, DbPtr, DynSized, Event, EventId, Object, ObjectId, ResultExt, Updatedness,
+};
 use std::{
-    any::Any,
     collections::{BTreeMap, HashSet},
     ops::{Bound, RangeBounds},
     sync::{Arc, RwLock},

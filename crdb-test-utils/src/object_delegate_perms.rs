@@ -1,7 +1,5 @@
-use super::{ulid, TestObjectPerms};
-use crate::{
-    test_utils::USER_ID_NULL, BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User,
-};
+use crate::{ulid, TestObjectPerms, USER_ID_NULL};
+use crdb_core::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, TypeId, User};
 use std::collections::HashSet;
 
 #[derive(
@@ -86,7 +84,7 @@ impl Object for TestObjectDelegatePerms {
     }
 }
 
-impl crate::Event for TestEventDelegatePerms {
+impl crdb_core::Event for TestEventDelegatePerms {
     fn required_binaries(&self) -> Vec<BinPtr> {
         Vec::new()
     }

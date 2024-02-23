@@ -1,14 +1,9 @@
-use super::{stubs::USER_ID_NULL, ulid};
-use crate::{
-    BinPtr, CanDoCallbacks, CrdbFuture, CrdbFutureExt, DbPtr, Object, ObjectId, SearchableString,
-    TypeId, User,
-};
+use crate::{stubs::USER_ID_NULL, ulid};
 use anyhow::Context;
-use bolero::ValueGenerator;
-use std::{
-    collections::{BTreeSet, HashSet, VecDeque},
-    future::Future,
+use crdb_core::{
+    BinPtr, CanDoCallbacks, CrdbFuture, DbPtr, Object, ObjectId, SearchableString, TypeId, User,
 };
+use std::collections::{BTreeSet, HashSet, VecDeque};
 
 #[derive(
     Clone,
@@ -150,7 +145,7 @@ impl Object for TestObjectFull {
     }
 }
 
-impl crate::Event for TestEventFull {
+impl crdb_core::Event for TestEventFull {
     fn required_binaries(&self) -> Vec<BinPtr> {
         match self {
             TestEventFull::AddBin(b) => vec![*b],

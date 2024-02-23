@@ -1,7 +1,5 @@
 mod cache;
 mod importance;
-#[cfg(feature = "_tests")]
-pub mod test_utils;
 mod timestamp;
 
 #[cfg(all(test, not(feature = "_tests")))]
@@ -46,8 +44,6 @@ pub mod crdb_internal {
     };
     #[cfg(feature = "server")]
     pub use crate::server::{PostgresDb, UpdatesMap};
-    #[cfg(feature = "_tests")]
-    pub use crate::test_utils;
     pub use crate::{cache::ObjectCache, *};
     pub use anyhow;
     pub use crdb_helpers;
@@ -77,12 +73,3 @@ pub use chrono;
 pub use serde;
 pub use serde_json;
 pub use tokio::sync::broadcast;
-
-pub fn hash_binary(data: &[u8]) -> BinPtr {
-    use sha3::Digest;
-    let mut hasher = sha3::Sha3_224::new();
-    hasher.update(data);
-    BinPtr(ulid::Ulid::from_bytes(
-        hasher.finalize()[..16].try_into().unwrap(),
-    ))
-}

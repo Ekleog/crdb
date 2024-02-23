@@ -1,4 +1,4 @@
-use crate::{EventId, ObjectId, TypeId, Updatedness, User};
+use crdb_core::{EventId, ObjectId, TypeId, Updatedness, User};
 use ulid::Ulid;
 
 pub const fn ulid(s: &str) -> Ulid {

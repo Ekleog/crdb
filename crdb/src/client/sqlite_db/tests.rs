@@ -1,14 +1,12 @@
 #![allow(unused_variables, dead_code, unused_imports)] // TODO(sqlite-high): remove
 
 use super::SqliteDb;
-use crate::{
-    test_utils::{
-        self, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
-        OBJECT_ID_1, OBJECT_ID_2,
-    },
-    Db, EventId, Lock, ObjectId, Updatedness,
-};
+use crate::{Db, EventId, Lock, ObjectId, Updatedness};
 use anyhow::Context;
+use crdb_test_utils::{
+    self, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
+    OBJECT_ID_1, OBJECT_ID_2,
+};
 use std::{fmt::Debug, sync::Arc};
 use ulid::Ulid;
 

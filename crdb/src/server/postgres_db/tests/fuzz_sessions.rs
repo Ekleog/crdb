@@ -1,11 +1,10 @@
 use super::TmpDb;
 use crate::{
-    server::PostgresDb,
-    test_utils::{cmp, Config, USER_ID_1},
-    timestamp::SystemTimeExt,
-    NewSession, Session, SessionRef, SessionToken, User,
+    server::PostgresDb, timestamp::SystemTimeExt, NewSession, Session, SessionRef, SessionToken,
+    User,
 };
 use anyhow::Context;
+use crdb_test_utils::{cmp, Config, USER_ID_1};
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,

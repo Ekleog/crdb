@@ -2,18 +2,12 @@
 macro_rules! fuzz_object_full {
     () => {
         use super::fuzz_helpers::{
-            self,
-            crdb::{
-                self, make_fuzzer_stuffs,
-                test_utils::{self, *},
-                BinPtr, Db, DbPtr, EventId, JsonPathItem, Lock, ObjectId, Query, ResultExt,
-                SearchableString, Updatedness, User,
-            },
-            make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
+            self, make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
         };
         use anyhow::Context;
         use std::{collections::BTreeSet, sync::Arc};
         use ulid::Ulid;
+        use $crate::*;
 
         make_fuzzer_stuffs! {
             (Full, TestObjectFull, TestEventFull),

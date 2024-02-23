@@ -1,5 +1,5 @@
 use super::PostgresDb;
-use crate::{timestamp::SystemTimeExt, Object};
+use crate::timestamp::SystemTimeExt;
 use std::time::Duration;
 use web_time::SystemTime;
 
@@ -12,10 +12,10 @@ const MAYBE_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
-    let (db, _keepalive) = PostgresDb::<Config>::connect(db, 0)
+    let (db, _keepalive) = PostgresDb::<crdb_test_utils::Config>::connect(db, 0)
         .await
         .expect("connecting to db");
-    crate::smoke_test!(
+    crdb_test_utils::smoke_test!(
         db: db,
         vacuum: db.vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(SystemTime::from_ms_since_posix(1024).unwrap()), |_, _| ()),
         query_all: db
@@ -89,11 +89,10 @@ mod fuzz_helpers {
     use crate::{
         cache::CacheDb,
         server::{postgres_db::tests::TmpDb, PostgresDb},
-        test_utils::{Config, *},
         EventId, Object, Query, ResultExt, Updatedness, User,
     };
+    use crdb_test_utils::{Config, *};
 
-    pub use crate as crdb;
     pub use tokio::test;
 
     pub type Database = Arc<PostgresDb<Config>>;
@@ -199,13 +198,13 @@ mod fuzz_helpers {
 // TODO(test-high): add tests that validate that upgrading the version of objects or normalizer works fine
 
 mod fuzz_simple {
-    crate::fuzz_simple!();
+    crdb_test_utils::fuzz_simple!();
 }
 
 mod fuzz_remote_perms {
-    crate::fuzz_remote_perms!();
+    crdb_test_utils::fuzz_remote_perms!();
 }
 
 mod fuzz_object_full {
-    crate::fuzz_object_full!();
+    crdb_test_utils::fuzz_object_full!();
 }

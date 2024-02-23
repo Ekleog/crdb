@@ -1,9 +1,6 @@
-#![allow(dead_code, unused_imports)] // test utils can be or not be used but get copy-pasted anyway
-
-use crate::{CrdbStream, DynSized, Object};
 use anyhow::Context;
-use futures::StreamExt;
-use std::{any::Any, fmt::Debug, sync::Arc};
+use crdb_core::DynSized;
+use std::{any::Any, fmt::Debug};
 
 mod full_object;
 mod fuzz_object_full;
@@ -17,6 +14,12 @@ mod object_simple;
 mod smoke_test;
 mod stubs;
 
+pub use crdb_core::{self, Error, Result};
+
+pub use anyhow;
+pub use rust_decimal;
+pub use ulid;
+
 pub use full_object::FullObject;
 pub use mem_db::MemDb;
 pub use object_delegate_perms::{TestEventDelegatePerms, TestObjectDelegatePerms};
@@ -25,7 +28,7 @@ pub use object_perms::{TestEventPerms, TestObjectPerms};
 pub use object_simple::{TestEventSimple, TestObjectSimple};
 pub use stubs::*;
 
-crate::db! {
+crdb_macros::db! {
     pub struct Config {
         delegate_perms: TestObjectDelegatePerms,
         full: TestObjectFull,
@@ -46,7 +49,6 @@ fn eq<T: 'static + Any + Send + Sync + Eq>(
             .context("downcasting rhs")?)
 }
 
-#[cfg(feature = "_tests")]
 pub fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
     use crate::Error::*;
     match (pg, mem) {
@@ -91,21 +93,6 @@ pub fn cmp_err(pg: &crate::Error, mem: &crate::Error) -> bool {
     }
 }
 
-pub(crate) fn cmp_just_errs<T, U>(
-    testdb_res: &crate::Result<T>,
-    mem_res: &crate::Result<U>,
-) -> anyhow::Result<()> {
-    match (&testdb_res, &mem_res) {
-        (Ok(_), Ok(_)) => (),
-        (Err(testdb_err), Err(mem_err)) =>
-            anyhow::ensure!(cmp_err(testdb_err, mem_err), "tested db err != mem err:\n==========\nTested DB:\n{testdb_err:?}\n==========\nMem:\n{mem_err:?}\n=========="),
-        (Ok(_), Err(mem_err)) => anyhow::bail!("tested db is ok but mem had an error:\n==========\nMem:\n{mem_err:?}\n=========="),
-        (Err(testdb_err), Ok(_)) => anyhow::bail!("mem is ok but tested db had an error:\n==========\nTested DB:\n{testdb_err:?}\n=========="),
-    }
-    Ok(())
-}
-
-#[cfg(feature = "_tests")]
 pub fn cmp<T: Debug + Eq>(
     testdb_res: crate::Result<T>,
     mem_res: crate::Result<T>,
@@ -123,6 +110,8 @@ pub fn cmp<T: Debug + Eq>(
 #[macro_export] // used by the client-js.rs integration test
 macro_rules! make_fuzzer_stuffs {
     ( $( ($name:ident, $object:ident, $event:ident), )* ) => { paste::paste! {
+        use $crate::{*, crdb_core::*};
+
         #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
         enum Op {
             $(
@@ -275,7 +264,7 @@ macro_rules! make_fuzzer_stuffs {
                         }
                     )*
                     Op::CreateBinary { data, fake_id } => {
-                        let real_hash = crdb::hash_binary(&data);
+                        let real_hash = hash_binary(&data);
                         s.add_binary(real_hash);
                         let binary_id = match fake_id {
                             Some(id) => {
@@ -323,7 +312,7 @@ macro_rules! make_fuzzer_stuffs {
         struct FuzzState {
             is_server: bool,
             ulids: Vec<Ulid>,
-            mem_db: test_utils::MemDb,
+            mem_db: MemDb,
         }
 
         impl FuzzState {
@@ -331,7 +320,7 @@ macro_rules! make_fuzzer_stuffs {
                 FuzzState {
                     is_server,
                     ulids: Vec::new(),
-                    mem_db: test_utils::MemDb::new(is_server),
+                    mem_db: MemDb::new(is_server),
                 }
             }
 

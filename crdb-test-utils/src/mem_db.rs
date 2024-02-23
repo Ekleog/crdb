@@ -1,9 +1,9 @@
 use super::{eq, FullObject};
-use crate::{
-    BinPtr, CanDoCallbacks, CrdbStream, Db, DynSized, Event, EventId, Lock, Object, ObjectId,
-    Query, ResultExt, TypeId, Updatedness, User,
+use crdb_core::{
+    BinPtr, Db, DynSized, Event, EventId, Lock, Object, ObjectId, Query, ResultExt, TypeId,
+    Updatedness, User,
 };
-use futures::{stream, Stream, StreamExt};
+use futures::{stream, StreamExt};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -167,7 +167,7 @@ impl Db for MemDb {
 
         // First, check for duplicates
         if let Some((ty, locked, _, o)) = this.objects.get_mut(&object_id) {
-            crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
+            crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
             let c = o.creation_info();
             if ty != T::type_ulid()
                 || created_at != c.created_at
@@ -179,12 +179,12 @@ impl Db for MemDb {
             return Ok(None);
         }
         if this.events.get(&created_at).is_some() {
-            crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
+            crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
 
         // Then, check that the data is correct
-        crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
+        crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
 
         // Then, check for required binaries
         let required_binaries = object.required_binaries();
@@ -239,7 +239,7 @@ impl Db for MemDb {
             Some((_, _, _, o)) => {
                 // First, check for duplicates
                 if let Some((o, e)) = this.events.get(&event_id) {
-                    crate::check_strings(&serde_json::to_value(&*event).unwrap())?;
+                    crdb_core::check_strings(&serde_json::to_value(&*event).unwrap())?;
                     let Some(e) = e else {
                         // else if creation snapshot
                         return Err(crate::Error::EventAlreadyExists(event_id));
@@ -253,7 +253,7 @@ impl Db for MemDb {
                 }
 
                 // Then, check that the data is correct
-                crate::check_strings(&serde_json::to_value(&*event).unwrap())?;
+                crdb_core::check_strings(&serde_json::to_value(&*event).unwrap())?;
 
                 // Then, check for required binaries
                 let required_binaries = event.required_binaries();
@@ -321,13 +321,13 @@ impl Db for MemDb {
         }
         if let Some(e) = this.events.get(&new_created_at) {
             if e.0 != object_id {
-                crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
+                crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
                 return Err(crate::Error::EventAlreadyExists(new_created_at));
             }
         }
 
         // Then, check that the data is correct
-        crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
+        crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
 
         // Then, check for required binaries
         let required_binaries = object.required_binaries();
@@ -366,7 +366,7 @@ impl Db for MemDb {
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        if binary_id != crate::hash_binary(&data) {
+        if binary_id != crdb_core::hash_binary(&data) {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
         self.0.lock().await.binaries.insert(binary_id, data);

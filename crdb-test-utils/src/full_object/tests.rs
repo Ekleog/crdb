@@ -1,10 +1,6 @@
 use super::FullObject;
 use crate::{
-    test_utils::{
-        TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
-        OBJECT_ID_1,
-    },
-    Updatedness,
+    TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4, OBJECT_ID_1,
 };
 use std::sync::Arc;
 

@@ -1,4 +1,3 @@
-#[cfg(feature = "_tests")]
 #[macro_export]
 macro_rules! smoke_test {
     (
@@ -8,10 +7,7 @@ macro_rules! smoke_test {
         test_remove: $test_remove:expr,
     ) => {
         use std::sync::Arc;
-        use $crate::{
-            crdb_internal::{test_utils::*, Db, Lock},
-            Query, Updatedness,
-        };
+        use $crate::{crdb_core::*, *};
 
         let mut updatedness = Updatedness::from_u128(1);
         let mut next_updatedness = move || {
@@ -141,7 +137,7 @@ macro_rules! smoke_test {
             assert_eq!(all_objects.len(), 0);
         }
         let data = Arc::new([1u8, 2, 3]) as Arc<[u8]>;
-        let ptr = $crate::hash_binary(&data);
+        let ptr = hash_binary(&data);
         assert!($db.get_binary(ptr).await.unwrap().is_none());
         $db.create_binary(ptr, data.clone()).await.unwrap();
         $db.assert_invariants_generic().await;

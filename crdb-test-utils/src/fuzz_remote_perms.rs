@@ -2,21 +2,12 @@
 macro_rules! fuzz_remote_perms {
     () => {
         use super::fuzz_helpers::{
-            self,
-            crdb::{
-                self,
-                crdb_internal::{
-                    test_utils::{self, *},
-                    BinPtr, Db, DbPtr, EventId, Lock, ObjectId, Query, ResultExt, Updatedness,
-                    User,
-                },
-                make_fuzzer_stuffs,
-            },
-            make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
+            self, make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
         };
         use anyhow::Context;
         use std::sync::Arc;
         use ulid::Ulid;
+        use $crate::*;
 
         make_fuzzer_stuffs! {
             (Perm, TestObjectPerms, TestEventPerms),
@@ -168,7 +159,7 @@ macro_rules! fuzz_remote_perms {
                         user: User(Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap()),
                         only_updated_since: None,
                         query: Arc::new(Query::Not(Box::new(Query::Eq(
-                            vec![crdb::JsonPathItem::Key("".to_string())],
+                            vec![JsonPathItem::Key("".to_string())],
                             serde_json::Value::Null,
                         )))),
                     },

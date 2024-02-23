@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crdb", "crdb-core", "crdb-helpers", "crdb-macros", "get-all-docs",
+    "crdb", "crdb-core", "crdb-helpers", "crdb-macros", "crdb-test-utils", "get-all-docs",
 ]
 
 [workspace.dependencies]
@@ -9,6 +9,7 @@ crdb = { path = "./crdb" }
 crdb-core = { path = "./crdb-core" }
 crdb-helpers = { path = "./crdb-helpers" }
 crdb-macros = { path = "./crdb-macros" }
+crdb-test-utils = { path = "./crdb-test-utils" }
 
 # Note: think of updating `get-all-docs`'s `Cargo.toml` upon changing things here, to always have all the docs
 anyhow = "1.0"

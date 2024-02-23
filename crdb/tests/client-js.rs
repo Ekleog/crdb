@@ -10,7 +10,7 @@ async fn smoke_test() {
     tracing_wasm::set_as_global_default();
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     let db = LocalDb::connect("smoke-test").await.unwrap();
-    crdb::smoke_test!(
+    crdb_test_utils::smoke_test!(
         db: db,
         vacuum: db.vacuum(|_| (), |_| ()),
         query_all: db
@@ -24,9 +24,10 @@ async fn smoke_test() {
 mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
     use crdb::{
-        crdb_internal::{test_utils::*, LocalDb, ResultExt},
+        crdb_internal::{LocalDb, ResultExt},
         EventId, Object, Query, Updatedness, User,
     };
+    use crdb_test_utils::*;
     use rand::{rngs::StdRng, SeedableRng};
     use std::{
         collections::HashSet,
@@ -162,7 +163,7 @@ mod fuzz_helpers {
 }
 
 mod fuzz_simple {
-    crdb::fuzz_simple!();
+    crdb_test_utils::fuzz_simple!();
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]
@@ -172,7 +173,7 @@ mod fuzz_simple {
 }
 
 mod fuzz_remote_perms {
-    crdb::fuzz_remote_perms!();
+    crdb_test_utils::fuzz_remote_perms!();
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]
@@ -182,7 +183,7 @@ mod fuzz_remote_perms {
 }
 
 mod fuzz_object_full {
-    crdb::fuzz_object_full!();
+    crdb_test_utils::fuzz_object_full!();
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]
