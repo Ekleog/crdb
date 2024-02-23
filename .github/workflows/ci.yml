@@ -11,7 +11,18 @@ env:
 
 jobs:
   just-test:
-    name: Tests
+    strategy:
+      matrix:
+        include:
+          - name: Tests
+            command: just test
+          - name: Build All Features
+            command: cargo hack build --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 4
+          - name: Clippy All Features
+            command: cargo hack clippy --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 4
+          - name: Test All Features
+            command: cargo hack test --workspace --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 4
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     steps:
       # Checkout the repository
@@ -20,7 +31,7 @@ jobs:
       # Install cargo dependencies
       - uses: taiki-e/install-action@6943331e01261cdff7420bbc2508cb463574e404
         with:
-          tool: just, cargo-nextest
+          tool: just, cargo-nextest, cargo-hack
       # TODO(misc-low): contribute these to taiki-e/install-action upstream?
       - uses: baptiste0928/cargo-install@1cd874a5478fdca35d868ccc74640c5aabbb8f1b
         with:
@@ -48,7 +59,7 @@ jobs:
       - run: sqlx migrate run --source crdb/src/server/migrations
 
       # Run the tests
-      - run: just test
+      - run: ${{ matrix.command }}
 
   just-clippy:
     name: Clippy
