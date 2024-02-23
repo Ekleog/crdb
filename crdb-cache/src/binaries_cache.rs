@@ -23,3 +23,9 @@ impl BinariesCache {
         self.data.get(binary_id).and_then(|b| b.upgrade())
     }
 }
+
+impl Default for BinariesCache {
+    fn default() -> BinariesCache {
+        BinariesCache::new()
+    }
+}
