@@ -1,8 +1,7 @@
 use super::TmpDb;
-use crate::{
-    server::PostgresDb, NewSession, Session, SessionRef, SessionToken, SystemTimeExt, User,
-};
+use crate::PostgresDb;
 use anyhow::Context;
+use crdb_core::{NewSession, Session, SessionRef, SessionToken, SystemTimeExt, User};
 use crdb_test_utils::{cmp, Config, USER_ID_1};
 use std::{
     collections::{HashMap, HashSet},
@@ -130,7 +129,7 @@ async fn apply_op(db: &PostgresDb<Config>, s: &mut FuzzState, op: &Op) -> anyhow
         Op::Rename(session, new_name) => {
             let token = s.token_for(*session);
             let pg = db.rename_session(token, new_name).await;
-            if let Err(e) = crate::check_string(new_name) {
+            if let Err(e) = crdb_core::check_string(new_name) {
                 return cmp(pg, Err(e));
             }
             match s.sessions.get_mut(&token) {

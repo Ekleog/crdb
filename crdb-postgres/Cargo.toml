@@ -1,0 +1,30 @@
+[package]
+name = "crdb-postgres"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crdb-cache.workspace = true
+crdb-core = { workspace = true, features = ["server"] }
+crdb-helpers.workspace = true
+
+anyhow.workspace = true
+futures.workspace = true
+lockable.workspace = true
+reord.workspace = true
+serde_json.workspace = true
+sqlx = { workspace = true, features = ["rust_decimal", "uuid"] }
+tokio.workspace = true
+tracing.workspace = true
+ulid.workspace = true
+uuid.workspace = true
+web-time.workspace = true
+
+[dev-dependencies]
+crdb-test-utils.workspace = true
+
+arbitrary.workspace = true
+bolero.workspace = true
+reord = { workspace = true, features = ["test"] }
+serde.workspace = true
+tempfile.workspace = true

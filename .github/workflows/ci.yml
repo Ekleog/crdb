@@ -57,7 +57,7 @@ jobs:
           username: postgres
           password: postgres
           database: crdb-test
-      - run: sqlx migrate run --source crdb/src/server/migrations
+      - run: sqlx migrate run --source crdb-postgres/migrations
 
       # Run the tests
       - run: ${{ matrix.command }}

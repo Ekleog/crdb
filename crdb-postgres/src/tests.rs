@@ -85,11 +85,9 @@ impl Drop for TmpDb {
 mod fuzz_helpers {
     use std::{collections::HashSet, sync::Arc};
 
-    use crate::{
-        server::{postgres_db::tests::TmpDb, PostgresDb},
-        EventId, Object, Query, ResultExt, Updatedness, User,
-    };
+    use crate::{tests::TmpDb, PostgresDb};
     use crdb_cache::CacheDb;
+    use crdb_core::{EventId, Object, Query, ResultExt, Updatedness, User};
     use crdb_test_utils::{Config, *};
 
     pub use tokio::test;

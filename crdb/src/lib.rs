@@ -46,8 +46,6 @@ pub mod crdb_internal {
     pub use anyhow;
     pub use crdb_helpers;
     pub use futures::{self, channel::mpsc, future, stream, FutureExt, Stream};
-    #[cfg(feature = "client")]
-    pub use paste::paste;
     pub use serde;
     pub use serde_json;
     pub use std::{

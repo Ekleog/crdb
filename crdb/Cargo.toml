@@ -11,7 +11,6 @@ all-features = true
 client = [
     "async-stream",
     "crdb-cache",
-    "paste",
     "sqlx/sqlite",
     "sqlx/uuid",
     "tokio-tungstenite",
@@ -21,6 +20,7 @@ server = [
     "axum",
     "crdb-cache",
     "crdb-core/server",
+    "crdb-postgres",
     "cron",
     "lockable",
     "rand",
@@ -36,7 +36,6 @@ _tests = [ # internal feature, for use by wasm tests in particular and thus all 
     "bolero",
     "console_error_panic_hook",
     "crdb-core/arbitrary",
-    "paste",
     "rand",
     "reord/test",
     "tracing-wasm",
@@ -72,12 +71,12 @@ web-time.workspace = true
 
 # Optional dependencies
 crdb-cache = { workspace = true, optional = true }
+crdb-postgres = { workspace = true, optional = true }
 
 async-stream = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 cron = { workspace = true, optional = true }
 lockable = { workspace = true, optional = true }
-paste = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 

@@ -7,7 +7,8 @@ edition = "2021"
 arbitrary = [ "dep:arbitrary", "arbitrary-json", "rust_decimal/rust-fuzz" ]
 client-js = [ "indexed-db", "serde-wasm-bindgen", "web-sys" ]
 client-native = [ "sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid" ]
-server = [ "axum", "rand", "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
+server = [ "axum", "rand", "sqlx-postgres" ]
+sqlx-postgres = [ "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
 uuid = [ "dep:uuid" ]
 
 [dependencies]

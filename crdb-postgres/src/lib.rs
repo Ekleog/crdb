@@ -1,11 +1,11 @@
-use crate::{
+use anyhow::{anyhow, Context};
+use crdb_cache::CacheDb;
+use crdb_core::{
     normalizer_version, BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Lock, Object,
     ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, SnapshotData,
     SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User,
 };
-use anyhow::{anyhow, Context};
-use crdb_cache::CacheDb;
-use crdb_core::{ComboLock, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
+use crdb_core::{ComboLock, CrdbFuture, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
 use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
@@ -22,7 +22,9 @@ use tokio::sync::Mutex;
 #[cfg(test)]
 mod tests;
 
-pub struct PostgresDb<Config: crate::Config> {
+pub use crdb_core::{Error, Result};
+
+pub struct PostgresDb<Config: crdb_core::Config> {
     db: sqlx::PgPool,
     cache_db: Weak<CacheDb<PostgresDb<Config>>>,
     event_locks: LockPool<EventId>,
@@ -33,12 +35,12 @@ pub struct PostgresDb<Config: crate::Config> {
     _phantom: PhantomData<Config>,
 }
 
-impl<Config: crate::Config> PostgresDb<Config> {
+impl<Config: crdb_core::Config> PostgresDb<Config> {
     pub async fn connect(
         db: sqlx::PgPool,
         cache_watermark: usize,
     ) -> anyhow::Result<(Arc<PostgresDb<Config>>, Arc<CacheDb<PostgresDb<Config>>>)> {
-        sqlx::migrate!("src/server/migrations")
+        sqlx::migrate!("./migrations")
             .run(&db)
             .await
             .context("running migrations on postgresql database")?;
@@ -1389,8 +1391,7 @@ impl<Config: crate::Config> PostgresDb<Config> {
         }
     }
 
-    #[cfg(feature = "_tests")]
-    #[allow(dead_code)] // Used by fuzzers
+    #[cfg(test)] // TODO(test-high): remove, but it's currently in use by fuzzers
     async fn change_locks(
         &self,
         _unlock: Lock,
@@ -1542,7 +1543,7 @@ impl<Config: crate::Config> PostgresDb<Config> {
     }
 }
 
-impl<Config: crate::Config> Db for PostgresDb<Config> {
+impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
     async fn create<T: Object>(
         &self,
         object_id: ObjectId,
@@ -1646,7 +1647,7 @@ impl<Config: crate::Config> Db for PostgresDb<Config> {
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        if crate::hash_binary(&data) != binary_id {
+        if crdb_core::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
         reord::maybe_lock().await;
@@ -1744,7 +1745,7 @@ impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
     }
 }
 
-impl<Config: crate::Config> ServerSideDb for PostgresDb<Config> {
+impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
     /// This function assumes that the lock on `object_id` is already taken.
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
         &'ret self,
@@ -1754,7 +1755,7 @@ impl<Config: crate::Config> ServerSideDb for PostgresDb<Config> {
     ) -> Pin<
         Box<
             dyn 'a
-                + crate::CrdbFuture<
+                + CrdbFuture<
                     Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>,
                 >,
         >,
@@ -2337,8 +2338,8 @@ fn add_to_binds<'a>(res: &mut Vec<Bind<'a>>, query: &'a Query) -> crate::Result<
         }
         Query::ContainsStr(p, v) => {
             add_path_to_binds(&mut *res, p);
-            crate::check_string(v)?;
-            res.push(Bind::String(crate::normalize(v)));
+            crdb_core::check_string(v)?;
+            res.push(Bind::String(crdb_core::normalize(v)));
         }
     }
     Ok(())

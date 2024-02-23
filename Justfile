@@ -4,7 +4,7 @@ all *ARGS: fmt (test ARGS) clippy udeps doc
 
 run-example-basic-server *ARGS:
     createdb basic-crdb || true
-    sqlx migrate run --source crdb/src/server/migrations/ --database-url "postgres:///basic-crdb"
+    sqlx migrate run --source crdb-postgres/migrations --database-url "postgres:///basic-crdb"
     cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" RUST_LOG="trace,tokio_tungstenite=debug,tungstenite=debug" cargo run -p basic-server -- {{ARGS}}
 
 serve-example-basic-client-js *ARGS:
@@ -23,7 +23,7 @@ udeps:
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --features client
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --features server
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --features client --target wasm32-unknown-unknown
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --features client --target wasm32-unknown-unknown
 
 doc:
     CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
@@ -33,7 +33,7 @@ test-standalone *ARGS: (test-crate-standalone ARGS) (test-example-basic ARGS)
 make-test-db:
     dropdb crdb-test || true
     createdb crdb-test
-    sqlx migrate run --source crdb/src/server/migrations/ --database-url "postgres:///crdb-test"
+    sqlx migrate run --source crdb-postgres/migrations --database-url "postgres:///crdb-test"
 
 rebuild-offline-queries: make-test-db
     cargo sqlx prepare --database-url "postgres:///crdb-test" -- --all-features --tests

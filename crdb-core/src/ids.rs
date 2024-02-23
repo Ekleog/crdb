@@ -47,7 +47,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(feature = "server")]
+        #[cfg(feature = "sqlx-postgres")]
         impl<'q> sqlx::encode::Encode<'q, sqlx::Postgres> for $type {
             fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode_by_ref(&self.to_uuid(), buf)
@@ -63,7 +63,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(feature = "server")]
+        #[cfg(feature = "sqlx-postgres")]
         impl sqlx::Type<sqlx::Postgres> for $type {
             fn type_info() -> sqlx::postgres::PgTypeInfo {
                 <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
@@ -73,7 +73,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(feature = "server")]
+        #[cfg(feature = "sqlx-postgres")]
         impl sqlx::postgres::PgHasArrayType for $type {
             fn array_type_info() -> sqlx::postgres::PgTypeInfo {
                 <uuid::Uuid as sqlx::postgres::PgHasArrayType>::array_type_info()

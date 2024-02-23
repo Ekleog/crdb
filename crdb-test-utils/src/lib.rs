@@ -17,6 +17,7 @@ mod stubs;
 pub use crdb_core::{self, Error, Result};
 
 pub use anyhow;
+pub use paste;
 pub use rust_decimal;
 pub use ulid;
 
@@ -109,7 +110,7 @@ pub fn cmp<T: Debug + Eq>(
 
 #[macro_export] // used by the client-js.rs integration test
 macro_rules! make_fuzzer_stuffs {
-    ( $( ($name:ident, $object:ident, $event:ident), )* ) => { paste::paste! {
+    ( $( ($name:ident, $object:ident, $event:ident), )* ) => { $crate::paste::paste! {
         use $crate::{*, crdb_core::*};
 
         #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
