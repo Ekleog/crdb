@@ -153,7 +153,7 @@ impl Db for SqliteDb {
         .bind(created_at)
         .bind(type_id)
         .bind(object_id)
-        .bind(&fts::normalizer_version())
+        .bind(fts::normalizer_version())
         .bind(snapshot_version)
         .bind(object_json)
         .bind(updatedness)
@@ -195,7 +195,7 @@ impl Db for SqliteDb {
             .bind(created_at)
             .fetch_all(&mut *t)
             .await
-            .wrap_with_context(|| format!("checking that no event existed with this id yet"))?
+            .wrap_context("checking that no event existed with this id yet")?
             .len();
         if affected != 0 {
             return Err(crate::Error::EventAlreadyExists(created_at));

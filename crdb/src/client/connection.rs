@@ -333,7 +333,7 @@ where
                     Ok(IncomingMessage::Binary(message)) => {
                         tracing::trace!("received server binary message");
                         if let State::Connected { expected_binaries: Some((request_id, num_bins)), .. } = &mut self.state {
-                            if let Some((_, sender, already_sent)) = self.pending_requests.get_mut(&request_id) {
+                            if let Some((_, sender, already_sent)) = self.pending_requests.get_mut(request_id) {
                                 *already_sent = true;
                                 let _ = sender.unbounded_send(ResponsePartWithSidecar {
                                     response: ResponsePart::Binaries(1),
@@ -358,8 +358,7 @@ where
 
             if let State::Connected { .. } = self.state {
                 if !self.not_sent_requests.is_empty() {
-                    let not_sent_requests =
-                        std::mem::replace(&mut self.not_sent_requests, VecDeque::new());
+                    let not_sent_requests = std::mem::take(&mut self.not_sent_requests);
                     tracing::trace!(?not_sent_requests, "sending not-sent requests");
                     for (request_id, request, sender) in not_sent_requests {
                         self.handle_request(request_id, request, sender).await;
@@ -372,7 +371,7 @@ where
                 let url = url.clone();
                 let token = *token;
                 tracing::trace!(%url, "connecting to websocket");
-                let mut socket = match implem::connect(&*url).await {
+                let mut socket = match implem::connect(&url).await {
                     Ok(socket) => socket,
                     Err(err) => {
                         (self.event_cb)(ConnectionEvent::FailedConnecting(err));
@@ -609,7 +608,7 @@ where
         }
     }
 
-    async fn send_connected_sidecar(&mut self, sidecar: &Vec<Arc<[u8]>>) {
+    async fn send_connected_sidecar(&mut self, sidecar: &[Arc<[u8]>]) {
         let State::Connected {
             socket, url, token, ..
         } = &mut self.state
@@ -632,7 +631,7 @@ where
         else {
             panic!("Called send_connected while not connected");
         };
-        if let Err(err) = Self::send(socket, &message).await {
+        if let Err(err) = Self::send(socket, message).await {
             (self.event_cb)(ConnectionEvent::LostConnection(err));
             self.state = State::Disconnected {
                 url: url.clone(),

@@ -328,7 +328,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
                     let type_id = TypeId::from_uuid(row.type_id);
                     reord::point().await;
                     let recreation_result = Config::recreate_no_lock(
-                        &self,
+                        self,
                         type_id,
                         object_id,
                         event_id,
@@ -397,19 +397,15 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         object: &T,
         cb: &C,
     ) -> anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)> {
+        type TrackedLock<'b> = (
+            reord::Lock,
+            <LockPool<ObjectId> as Lockable<ObjectId, ()>>::Guard<'b>,
+        );
         struct TrackingCanDoCallbacks<'a, 'b, C: CanDoCallbacks> {
             cb: &'a C,
             already_taken_lock: ObjectId,
             object_locks: &'b LockPool<ObjectId>,
-            locks: Mutex<
-                HashMap<
-                    ObjectId,
-                    (
-                        reord::Lock,
-                        <LockPool<ObjectId> as Lockable<ObjectId, ()>>::Guard<'b>,
-                    ),
-                >,
-            >,
+            locks: Mutex<HashMap<ObjectId, TrackedLock<'b>>>,
         }
 
         impl<'a, 'b, C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'a, 'b, C> {

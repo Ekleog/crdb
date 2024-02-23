@@ -1309,7 +1309,7 @@ async fn locally_create_all<T: Object>(
                         data: snapshot_data,
                     },
                 }),
-                now_have_all_until: data.events.is_empty().then(|| data.now_have_all_until),
+                now_have_all_until: data.events.is_empty().then_some(data.now_have_all_until),
                 lock,
                 reply,
             })
@@ -1336,7 +1336,7 @@ async fn locally_create_all<T: Object>(
                         data: event,
                     },
                 }),
-                now_have_all_until: (i + 1 == events_len).then(|| data.now_have_all_until),
+                now_have_all_until: (i + 1 == events_len).then_some(data.now_have_all_until),
                 lock: Lock::NONE,
                 reply,
             })
@@ -1381,7 +1381,7 @@ async fn save_object_data_locally<T: Object>(
             real_type_id: type_id,
         });
     }
-    let res_json = locally_create_all::<T>(&data_saver, &db, lock, data).await?;
+    let res_json = locally_create_all::<T>(data_saver, db, lock, data).await?;
     let (res, res_json) = match res_json {
         Some(res_json) => (
             Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),

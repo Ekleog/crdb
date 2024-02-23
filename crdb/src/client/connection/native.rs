@@ -19,6 +19,6 @@ pub async fn next(_sock: &mut WebSocket) -> anyhow::Result<IncomingMessage<Strin
     unimplemented!() // TODO(sqlite-high)
 }
 
-pub async fn send_sidecar(_sock: &mut WebSocket, _sidecar: &Vec<Arc<[u8]>>) -> anyhow::Result<()> {
+pub async fn send_sidecar(_sock: &mut WebSocket, _sidecar: &[Arc<[u8]>]) -> anyhow::Result<()> {
     unimplemented!() // TODO(sqlite-high)
 }

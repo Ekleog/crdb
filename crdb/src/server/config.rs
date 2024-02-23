@@ -32,6 +32,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
         Output = crate::Result<Option<(EventId, i32, serde_json::Value, HashSet<User>)>>,
     >;
 
+    #[allow(clippy::too_many_arguments)] // This is only used to proxy to a real function
     fn upload_object<'a, C: Db>(
         call_on: &'a PostgresDb<Self>,
         user: User,
@@ -51,6 +52,7 @@ pub trait ServerConfig: 'static + Sized + Send + Sync + crate::private::Sealed {
 
     /// The [`Vec<User>`] in return type is the list of users who can read the object both before and after the change. Users who gained or
     /// lost access to `object_id` are returned as part of the `Vec<ReadPermsChanges>`.
+    #[allow(clippy::too_many_arguments)] // This is only used to proxy the call to a real function
     fn upload_event<'a, C: Db>(
         call_on: &'a PostgresDb<Self>,
         user: User,

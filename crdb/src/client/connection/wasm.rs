@@ -23,7 +23,7 @@ pub async fn next(sock: &mut WebSocket) -> anyhow::Result<IncomingMessage<String
     }
 }
 
-pub async fn send_sidecar(sock: &mut WebSocket, sidecar: &Vec<Arc<[u8]>>) -> anyhow::Result<()> {
+pub async fn send_sidecar(sock: &mut WebSocket, sidecar: &[Arc<[u8]>]) -> anyhow::Result<()> {
     for bin in sidecar {
         // TODO(perf-med): have gloo-websocket not require a full copy of the binary
         sock.send(Message::Bytes((&**bin).to_vec())).await?;
