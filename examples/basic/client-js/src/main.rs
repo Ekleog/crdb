@@ -576,7 +576,9 @@ fn show_session_list() -> Html {
                 value="Rename current session"
                 onclick={ rename_current_session } />
         </h3>
-        { sessions }
+        <ul>
+            { sessions }
+        </ul>
     </>}
 }
 
