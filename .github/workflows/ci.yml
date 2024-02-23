@@ -45,7 +45,7 @@ jobs:
         with:
           crate: sqlx-cli
       # TODO(blocked): revert this to upstream install-action once https://github.com/taiki-e/install-action/pull/383 lands
-      - uses: Ekleog/install-action@eac78831c45d9c6783f49e93e94ec78d23c5b9b5
+      - uses: Ekleog/install-action@bd81c96f92d2451c4d7a3a8df68f476ec89b4bae
         with:
           tool: wasm-bindgen-cli
 
