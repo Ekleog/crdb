@@ -28,7 +28,6 @@ icu_segmenter.workspace = true
 indexed-db.workspace = true
 js-sys.workspace = true
 lockable.workspace = true
-num-bigint.workspace = true
 paste.workspace = true
 rand.workspace = true
 reord.workspace = true

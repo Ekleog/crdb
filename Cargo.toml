@@ -34,7 +34,6 @@ icu_segmenter = "1.4"
 indexed-db = "0.4.0"
 js-sys = "0.3.67"
 lockable = "0.0.8"
-num-bigint = { version = "0.4.4", features = ["arbitrary"] }
 paste = "1.0"
 rand = "0.8.5"
 reord = "0.2.3"
