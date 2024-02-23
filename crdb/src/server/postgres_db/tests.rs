@@ -199,7 +199,7 @@ mod fuzz_helpers {
 // TODO(test-high): add tests that validate that upgrading the version of objects or normalizer works fine
 
 mod fuzz_simple {
-    include!("../../test_utils/fuzz_simple.rs");
+    crate::fuzz_simple!();
 }
 
 mod fuzz_remote_perms {

@@ -162,7 +162,7 @@ mod fuzz_helpers {
 }
 
 mod fuzz_simple {
-    include!("../src/test_utils/fuzz_simple.rs");
+    crdb::fuzz_simple!();
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]

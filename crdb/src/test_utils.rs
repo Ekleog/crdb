@@ -8,6 +8,7 @@ use std::{any::Any, fmt::Debug, sync::Arc};
 mod full_object;
 mod fuzz_object_full;
 mod fuzz_remote_perms;
+mod fuzz_simple;
 mod mem_db;
 mod object_delegate_perms;
 mod object_full;
