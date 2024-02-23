@@ -4,12 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-crdb-core.workspace = true
+crdb-core = { workspace = true, features = ["arbitrary"] }
 crdb-macros.workspace = true
 
 anyhow.workspace = true
 arbitrary.workspace = true
-bolero.workspace = true
 deepsize.workspace = true
 educe.workspace = true
 futures.workspace = true
