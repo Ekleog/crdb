@@ -33,7 +33,7 @@ macro_rules! impl_id {
                 Self(Ulid::from_bytes(*id.as_bytes()))
             }
 
-            #[cfg(feature = "web-sys")]
+            #[cfg(feature = "client-js")]
             pub fn to_js_string(&self) -> web_sys::js_sys::JsString {
                 web_sys::js_sys::JsString::from(format!("{}", self.0))
             }

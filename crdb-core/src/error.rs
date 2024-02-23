@@ -243,7 +243,7 @@ impl<T> ResultExt for anyhow::Result<T> {
     }
 }
 
-#[cfg(feature = "sqlx")]
+#[cfg(any(feature = "client-native", feature = "server"))]
 impl<T> ResultExt for sqlx::Result<T> {
     type Ok = T;
 
@@ -262,7 +262,7 @@ impl<T> ResultExt for sqlx::Result<T> {
     }
 }
 
-#[cfg(feature = "web-sys")]
+#[cfg(feature = "client-js")]
 impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     type Ok = T;
 
@@ -276,7 +276,7 @@ impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     }
 }
 
-#[cfg(feature = "web-sys")]
+#[cfg(feature = "client-js")]
 impl<T> ResultExt for std::result::Result<T, web_sys::wasm_bindgen::JsValue> {
     type Ok = T;
 
@@ -297,7 +297,7 @@ impl<T> ResultExt for std::result::Result<T, web_sys::wasm_bindgen::JsValue> {
     }
 }
 
-#[cfg(feature = "serde-wasm-bindgen")]
+#[cfg(feature = "client-js")]
 impl<T> ResultExt for std::result::Result<T, serde_wasm_bindgen::Error> {
     type Ok = T;
 
@@ -309,7 +309,7 @@ impl<T> ResultExt for std::result::Result<T, serde_wasm_bindgen::Error> {
     }
 }
 
-#[cfg(feature = "indexed-db")]
+#[cfg(feature = "client-js")]
 impl<T> ResultExt for std::result::Result<T, indexed_db::Error<crate::Error>> {
     type Ok = T;
 
@@ -322,7 +322,7 @@ impl<T> ResultExt for std::result::Result<T, indexed_db::Error<crate::Error>> {
     }
 }
 
-#[cfg(feature = "axum")]
+#[cfg(feature = "server")]
 impl<T> ResultExt for std::result::Result<T, axum::Error> {
     type Ok = T;
 
