@@ -814,6 +814,7 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
         }
     };
     html! {<>
+        <small>{ format!("{}: ", data.ptr().to_object_id().0) }</small>
         <i>{ show_user(data.owner) }</i>
         { ": " }
         <b>{ &*data.text }</b>
@@ -870,6 +871,7 @@ fn render_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
         }
     };
     html! {<>
+        <small>{ format!("{}: ", data.ptr().to_object_id().0) }</small>
         <b>{ &*data.name }</b>
         { " read=" }
         { for data.users_who_can_read.iter().map(|u| format!("{},", show_user(*u))) }
