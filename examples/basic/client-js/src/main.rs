@@ -328,6 +328,7 @@ fn main_view(MainViewProps { connection_status }: &MainViewProps) -> Html {
         <div style="position: relative">
             <div style="height: 100%; width: 55%; position: absolute; top: 0; left: 0">
                 <CreateTag /><br />
+                <QueryRemoteTags /><br />
                 <hr />
                 <CreateItem /><br />
                 <QueryRemoteItems /><br />
@@ -443,7 +444,7 @@ fn query_remote_items() -> Html {
                 let res = db
                     .query_remote::<basic_api::Item>(importance, QueryId::now(), Arc::new(query))
                     .await
-                    .expect("failed creating item")
+                    .expect("failed querying item")
                     .collect::<Vec<_>>()
                     .await;
                 query_res.set(res);
@@ -472,6 +473,68 @@ fn query_remote_items() -> Html {
         <input
             type="button"
             value="Query Items & Lock"
+            onclick={run_query_remote.reform(|_| Importance::Lock)} />
+        <ul>
+            { query_results }
+        </ul>
+    </>}
+}
+
+#[function_component(QueryRemoteTags)]
+fn query_remote_tags() -> Html {
+    let db = use_context::<DbContext>().unwrap().0;
+    let query = use_state(|| String::new());
+    let query_res = use_state(|| Vec::new());
+    let onchange = {
+        let query = query.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            query.set(input.value());
+        }
+    };
+    let run_query_remote = Callback::from({
+        let query = query.clone();
+        let query_res = query_res.clone();
+        move |importance| {
+            let query = Query::Eq(
+                vec![JsonPathItem::Key(String::from("name"))],
+                serde_json::Value::String((*query).clone()),
+            );
+            let db = db.clone();
+            let query_res = query_res.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let res = db
+                    .query_remote::<basic_api::Tag>(importance, QueryId::now(), Arc::new(query))
+                    .await
+                    .expect("failed querying tags")
+                    .collect::<Vec<_>>()
+                    .await;
+                query_res.set(res);
+            })
+        }
+    });
+    let query_results = query_res
+        .iter()
+        .map(|i| html! {<li><RenderTag data={Rc::new(i.as_ref().unwrap().clone())} /></li>})
+        .collect::<Html>();
+    html! {<>
+        { "Query Remote Tags: "}
+        <input
+            type="text"
+            placeholder="text"
+            value={(*query).clone()}
+            {onchange} />
+        <input
+            type="button"
+            value="Query Tags"
+            onclick={run_query_remote.reform(|_| Importance::Latest)} />
+        <input
+            type="button"
+            value="Query Tags & Subscribe"
+            onclick={run_query_remote.reform(|_| Importance::Subscribe)} />
+        <input
+            type="button"
+            value="Query Tags & Lock"
             onclick={run_query_remote.reform(|_| Importance::Lock)} />
         <ul>
             { query_results }
