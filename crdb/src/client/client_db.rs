@@ -981,6 +981,10 @@ impl ClientDb {
         // TODO(api-high): consider introducing a ManuallyUpdated importance level, though it will be quite a big refactor
         // TODO(api-high): make Importance actually be two-dimensional, with both subscription level and lock level
         // TODO(api-high): remove Importance::Latest, and just have separate functions for that
+        // Detailed steps:
+        // - Remove Importance::Latest, and just have separate functions for that
+        // - Make Importance be two-dimensional, with both Subscribed (y/n) and Lock (y/n), so 4 possible values
+        // - Add Subscribe and Lock values (the struct, that also has info about queries) to Obj
         self.api
             .submit::<T>(object_id, event_id, event, do_subscribe)
             .await
