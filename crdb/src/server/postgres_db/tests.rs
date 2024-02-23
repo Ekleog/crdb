@@ -203,7 +203,7 @@ mod fuzz_simple {
 }
 
 mod fuzz_remote_perms {
-    include!("../../test_utils/fuzz_remote_perms.rs");
+    crate::fuzz_remote_perms!();
 }
 
 mod fuzz_object_full {
