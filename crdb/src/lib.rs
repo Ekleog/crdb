@@ -1,8 +1,5 @@
 mod importance;
 
-#[cfg(all(test, not(feature = "_tests")))]
-const _: () = panic!("running tests without the `_tests` feature enabled");
-
 pub use crdb_core::*;
 pub use crdb_macros::*;
 
