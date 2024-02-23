@@ -28,3 +28,4 @@ bolero.workspace = true
 reord = { workspace = true, features = ["test"] }
 serde.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }
