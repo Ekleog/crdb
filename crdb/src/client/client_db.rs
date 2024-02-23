@@ -27,6 +27,11 @@ enum UpdateResult {
     LatestChanged(TypeId, serde_json::Value),
 }
 
+type SubscribedObjectMap = HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>;
+pub type SubscribedQueriesMap = HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>;
+type QueryUpdatesBroadcastMap =
+    HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>;
+
 pub struct ClientDb {
     user: RwLock<Option<User>>,
     ulid: Mutex<ulid::Generator>,
@@ -34,15 +39,12 @@ pub struct ClientDb {
     db: Arc<CacheDb<LocalDb>>,
     // The `Lock` here is ONLY the accumulated queries lock for this object! The object lock is
     // handled directly in the database only.
-    subscribed_objects:
-        Arc<Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>>,
-    subscribed_queries:
-        Arc<Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>>,
+    subscribed_objects: Arc<Mutex<SubscribedObjectMap>>,
+    subscribed_queries: Arc<Mutex<SubscribedQueriesMap>>,
     data_saver: mpsc::UnboundedSender<DataSaverMessage>,
     data_saver_skipper: watch::Sender<bool>,
     updates_broadcastee: broadcast::Receiver<ObjectId>,
-    query_updates_broadcastees:
-        Arc<Mutex<HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>>>,
+    query_updates_broadcastees: Arc<Mutex<QueryUpdatesBroadcastMap>>,
     vacuum_guard: Arc<tokio::sync::RwLock<()>>,
     _cleanup_token: tokio_util::sync::DropGuard,
 }
@@ -270,10 +272,7 @@ impl ClientDb {
                                         subscribed_objects.remove(object_id);
                                     }
                                 }
-                                api.unsubscribe(std::mem::replace(
-                                    &mut to_unsubscribe,
-                                    HashSet::new(),
-                                ));
+                                api.unsubscribe(std::mem::take(&mut to_unsubscribe));
                             }
                         }
                     }
@@ -319,22 +318,17 @@ impl ClientDb {
         });
     }
 
+    #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a good struct
     async fn data_saver<C: ApiConfig>(
         mut data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         mut data_saver_skipper: watch::Receiver<bool>,
-        subscribed_objects: Arc<
-            Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>,
-        >,
-        subscribed_queries: Arc<
-            Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
-        >,
+        subscribed_objects: Arc<Mutex<SubscribedObjectMap>>,
+        subscribed_queries: Arc<Mutex<SubscribedQueriesMap>>,
         vacuum_guard: Arc<tokio::sync::RwLock<()>>,
         db: Arc<CacheDb<LocalDb>>,
         api: Arc<ApiDb>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
-        query_updates_broadcasters: Arc<
-            Mutex<HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>>,
-        >,
+        query_updates_broadcasters: Arc<Mutex<QueryUpdatesBroadcastMap>>,
     ) {
         // Handle all updates in-order! Without that, the updatedness checks will get completely borken up
         while let Some(msg) = data_receiver.next().await {
@@ -456,21 +450,16 @@ impl ClientDb {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a good struct
     async fn save_data<C: ApiConfig>(
         db: &LocalDb,
-        subscribed_objects: &Mutex<
-            HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>,
-        >,
-        subscribed_queries: &Mutex<
-            HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
-        >,
+        subscribed_objects: &Mutex<SubscribedObjectMap>,
+        subscribed_queries: &Mutex<SubscribedQueriesMap>,
         u: &Update,
         now_have_all_until: Option<Updatedness>,
         lock: Lock,
         updates_broadcaster: &broadcast::Sender<ObjectId>,
-        query_updates_broadcasters: &Mutex<
-            HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>,
-        >,
+        query_updates_broadcasters: &Mutex<QueryUpdatesBroadcastMap>,
     ) -> crate::Result<UpdateResult> {
         let object_id = u.object_id;
         let res = match &u.data {
@@ -485,7 +474,7 @@ impl ClientDb {
                 object_id,
                 *created_at,
                 *snapshot_version,
-                &data,
+                data,
                 now_have_all_until,
                 lock,
             )
@@ -499,11 +488,11 @@ impl ClientDb {
                 event_id,
                 data,
             } => match C::submit(
-                &*db,
+                db,
                 *type_id,
                 object_id,
                 *event_id,
-                &data,
+                data,
                 now_have_all_until,
                 lock,
             )
@@ -787,9 +776,7 @@ impl ClientDb {
         Ok(())
     }
 
-    pub fn list_subscribed_queries(
-        self: &Arc<Self>,
-    ) -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)> {
+    pub fn list_subscribed_queries(self: &Arc<Self>) -> SubscribedQueriesMap {
         self.subscribed_queries.lock().unwrap().clone()
     }
 
@@ -1005,7 +992,7 @@ impl ClientDb {
         }
         let res = if subscribe {
             let data = self.api.get_subscribe(object_id).await?;
-            let res = save_object_data_locally::<T>(
+            save_object_data_locally::<T>(
                 data,
                 &self.data_saver,
                 &self.db,
@@ -1013,8 +1000,7 @@ impl ClientDb {
                 &self.subscribed_objects,
                 &self.subscribed_queries,
             )
-            .await?;
-            res
+            .await?
         } else {
             let res = self.api.get_latest(object_id).await?;
             let res = parse_snapshot_ref::<T>(res.snapshot_version, &res.snapshot)
@@ -1271,7 +1257,7 @@ impl<F> ClientVacuumSchedule<F> {
 }
 
 fn queries_for(
-    subscribed_queries: &HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
+    subscribed_queries: &SubscribedQueriesMap,
     type_id: TypeId,
     value: &serde_json::Value,
 ) -> (HashSet<QueryId>, Lock) {
@@ -1279,7 +1265,7 @@ fn queries_for(
     let queries = subscribed_queries
         .iter()
         .filter(|(_, (query, q_type_id, _, query_lock))| {
-            if type_id == *q_type_id && query.matches_json(&value) {
+            if type_id == *q_type_id && query.matches_json(value) {
                 lock |= *query_lock;
                 true
             } else {
@@ -1382,8 +1368,8 @@ async fn save_object_data_locally<T: Object>(
     data_saver: &mpsc::UnboundedSender<DataSaverMessage>,
     db: &CacheDb<LocalDb>,
     lock: Lock,
-    subscribed_objects: &Mutex<HashMap<ObjectId, (Option<Updatedness>, HashSet<QueryId>, Lock)>>,
-    subscribed_queries: &Mutex<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
+    subscribed_objects: &Mutex<SubscribedObjectMap>,
+    subscribed_queries: &Mutex<SubscribedQueriesMap>,
 ) -> crate::Result<Arc<T>> {
     let now_have_all_until = data.now_have_all_until;
     let object_id = data.object_id;

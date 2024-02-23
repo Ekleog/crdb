@@ -147,7 +147,7 @@ fn recreate_at<T: Object>(
     events_after.insert(o.created_at());
     // Discard all removed events from self.events too
     for e in events_before.difference(&events_after) {
-        this_events.remove(&e);
+        this_events.remove(e);
     }
     // And mark the new "creation event" as a creation event
     this_events.get_mut(&o.created_at()).unwrap().1 = None;
@@ -178,7 +178,7 @@ impl Db for MemDb {
             *locked |= lock;
             return Ok(None);
         }
-        if let Some(_) = this.events.get(&created_at) {
+        if this.events.get(&created_at).is_some() {
             crate::check_strings(&serde_json::to_value(&*object).unwrap())?;
             return Err(crate::Error::EventAlreadyExists(created_at));
         }

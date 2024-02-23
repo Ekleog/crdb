@@ -24,6 +24,6 @@ impl SystemTimeExt for SystemTime {
                 "Cannot convert negative milliseconds into SystemTime"
             ))
         })?;
-        Ok(SystemTime::UNIX_EPOCH + Duration::from_millis(ms as u64))
+        Ok(SystemTime::UNIX_EPOCH + Duration::from_millis(ms))
     }
 }
