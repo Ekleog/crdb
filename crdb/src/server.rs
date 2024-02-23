@@ -30,7 +30,7 @@ use ulid::Ulid;
 mod config;
 mod postgres_db;
 
-pub use self::postgres_db::{ComboLock, PostgresDb, ReadPermsChanges};
+pub use self::postgres_db::{PostgresDb, ReadPermsChanges};
 pub use config::ServerConfig;
 
 // Each update is both the list of updates itself, and the new latest snapshot

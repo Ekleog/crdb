@@ -7,7 +7,7 @@ edition = "2021"
 arbitrary = [ "dep:arbitrary", "arbitrary-json", "rust_decimal/rust-fuzz" ]
 client-js = [ "indexed-db", "serde-wasm-bindgen", "web-sys" ]
 client-native = [ "sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid" ]
-server = [ "axum", "rand", "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
+server = [ "axum", "lockable", "rand", "reord", "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
 uuid = [ "dep:uuid" ]
 
 [dependencies]
@@ -34,7 +34,9 @@ arbitrary = { workspace = true, optional = true }
 arbitrary-json = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 indexed-db = { workspace = true, optional = true }
+lockable = { workspace = true, optional = true }
 rand = { workspace = true, optional = true}
+reord = { workspace = true, optional = true }
 serde-wasm-bindgen = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }

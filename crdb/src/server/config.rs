@@ -1,10 +1,8 @@
-use super::{
-    postgres_db::{ComboLock, PostgresDb},
-    ReadPermsChanges, UpdatesWithSnap,
-};
+use super::{postgres_db::PostgresDb, ReadPermsChanges, UpdatesWithSnap};
 use crate::{
     api::ApiConfig, CanDoCallbacks, CrdbFuture, Db, EventId, ObjectId, TypeId, Updatedness, User,
 };
+use crdb_core::ComboLock;
 use std::{collections::HashSet, sync::Arc};
 
 /// Note: Implementation of this trait is supposed to be provided by `crdb::db!`
@@ -87,11 +85,13 @@ macro_rules! generate_server {
                 snapshot: crdb::serde_json::Value,
                 cb: &'a C,
             ) -> crdb::Result<(crdb::HashSet<crdb::User>, Vec<crdb::ObjectId>, Vec<crdb::ComboLock<'a>>)> {
+                use crdb::ServerSideDb;
+
                 $(
                     if type_id == *<$object as crdb::Object>::type_ulid() {
                         let snapshot = crdb_helpers::parse_snapshot::<$object>(snapshot_version, snapshot)
                             .wrap_with_context(|| format!("parsing snapshot for {object_id:?}"))?;
-                        let res = call_on.get_users_who_can_read(&object_id, &snapshot, cb).await
+                        let res = call_on.get_users_who_can_read(object_id, &snapshot, cb).await
                             .wrap_with_context(|| format!("listing users who can read {object_id:?}"))?;
                         return Ok(res);
                     }

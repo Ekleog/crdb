@@ -9,7 +9,7 @@ use crate::{
     SessionRef, SessionToken, TypeId, Updatedness, User,
 };
 use anyhow::{anyhow, Context};
-use crdb_core::{Decimal, JsonPathItem};
+use crdb_core::{ComboLock, Decimal, JsonPathItem, ServerSideDb};
 use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
@@ -42,11 +42,6 @@ pub struct ReadPermsChanges {
     pub lost_read: HashSet<User>,
     pub gained_read: HashSet<User>,
 }
-
-pub type ComboLock<'a> = (
-    reord::Lock,
-    <lockable::LockPool<ObjectId> as lockable::Lockable<ObjectId, ()>>::Guard<'a>,
-);
 
 impl<Config: ServerConfig> PostgresDb<Config> {
     pub async fn connect(
@@ -390,62 +385,6 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         Ok(())
     }
 
-    /// This function assumes that the lock on `object_id` is already taken.
-    pub async fn get_users_who_can_read<'a, T: Object, C: CanDoCallbacks>(
-        &'a self,
-        object_id: &ObjectId,
-        object: &T,
-        cb: &C,
-    ) -> anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)> {
-        type TrackedLock<'b> = (
-            reord::Lock,
-            <LockPool<ObjectId> as Lockable<ObjectId, ()>>::Guard<'b>,
-        );
-        struct TrackingCanDoCallbacks<'a, 'b, C: CanDoCallbacks> {
-            cb: &'a C,
-            already_taken_lock: ObjectId,
-            object_locks: &'b LockPool<ObjectId>,
-            locks: Mutex<HashMap<ObjectId, TrackedLock<'b>>>,
-        }
-
-        impl<'a, 'b, C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'a, 'b, C> {
-            async fn get<T: Object>(&self, object_id: crate::DbPtr<T>) -> crate::Result<Arc<T>> {
-                let id = ObjectId(object_id.id);
-                if id != self.already_taken_lock {
-                    if let hash_map::Entry::Vacant(v) = self.locks.lock().await.entry(id) {
-                        v.insert((
-                            reord::Lock::take_named(format!("{id:?}")).await,
-                            self.object_locks.async_lock(id).await,
-                        ));
-                    }
-                }
-                self.cb
-                    .get::<T>(DbPtr::from(ObjectId(object_id.id)))
-                    .await
-                    .wrap_with_context(|| format!("requesting {object_id:?} from database"))
-            }
-        }
-
-        let cb = TrackingCanDoCallbacks {
-            cb,
-            already_taken_lock: *object_id,
-            object_locks: &self.object_locks,
-            locks: Mutex::new(HashMap::new()),
-        };
-
-        let users_who_can_read = object.users_who_can_read(&cb).await.with_context(|| {
-            format!("figuring out the list of users who can read {object_id:?}")
-        })?;
-        let cb_locks = cb.locks.into_inner();
-        let mut users_who_can_read_depends_on = Vec::with_capacity(cb_locks.len());
-        let mut locks = Vec::with_capacity(cb_locks.len());
-        for (o, l) in cb_locks {
-            users_who_can_read_depends_on.push(o);
-            locks.push(l);
-        }
-        Ok((users_who_can_read, users_who_can_read_depends_on, locks))
-    }
-
     /// Returns the list of all reverse-dependencies of `object_id`
     async fn get_rdeps<'a, E: sqlx::Executor<'a, Database = sqlx::Postgres>>(
         &self,
@@ -706,7 +645,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
     ) -> crate::Result<Vec<ComboLock<'a>>> {
         let (users_who_can_read, users_who_can_read_depends_on, locks) = if is_latest {
             let (a, b, c) = self
-                .get_users_who_can_read::<T, _>(&object_id, object, cb)
+                .get_users_who_can_read::<T, _>(object_id, object, cb)
                 .await
                 .wrap_with_context(|| {
                     format!(
@@ -780,7 +719,7 @@ impl<Config: ServerConfig> PostgresDb<Config> {
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
         let (users_who_can_read, users_who_can_read_depends_on, _locks) = self
-            .get_users_who_can_read(&object_id, &*object, cb)
+            .get_users_who_can_read(object_id, &*object, cb)
             .await
             .wrap_with_context(|| format!("listing users who can read object {object_id:?}"))?;
         let rdeps = self
@@ -2092,6 +2031,67 @@ impl<Config: ServerConfig> Db for PostgresDb<Config> {
             }
         }
         num_errors
+    }
+}
+
+type TrackedLock<'cb> = (
+    reord::Lock,
+    <LockPool<ObjectId> as Lockable<ObjectId, ()>>::Guard<'cb>,
+);
+
+struct TrackingCanDoCallbacks<'cb, 'lockpool, C: CanDoCallbacks> {
+    cb: &'cb C,
+    already_taken_lock: ObjectId,
+    object_locks: &'lockpool LockPool<ObjectId>,
+    locks: Mutex<HashMap<ObjectId, TrackedLock<'lockpool>>>,
+}
+
+impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
+    for TrackingCanDoCallbacks<'cb, 'lockpool, C>
+{
+    async fn get<T: Object>(&self, object_id: crate::DbPtr<T>) -> crate::Result<Arc<T>> {
+        let id = ObjectId(object_id.id);
+        if id != self.already_taken_lock {
+            if let hash_map::Entry::Vacant(v) = self.locks.lock().await.entry(id) {
+                v.insert((
+                    reord::Lock::take_named(format!("{id:?}")).await,
+                    self.object_locks.async_lock(id).await,
+                ));
+            }
+        }
+        self.cb
+            .get::<T>(DbPtr::from(ObjectId(object_id.id)))
+            .await
+            .wrap_with_context(|| format!("requesting {object_id:?} from database"))
+    }
+}
+
+impl<Config: ServerConfig> ServerSideDb for PostgresDb<Config> {
+    /// This function assumes that the lock on `object_id` is already taken.
+    async fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
+        &'ret self,
+        object_id: ObjectId,
+        object: &'a T,
+        cb: &'a C,
+    ) -> anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)> {
+        let cb = TrackingCanDoCallbacks {
+            cb,
+            already_taken_lock: object_id,
+            object_locks: &self.object_locks,
+            locks: Mutex::new(HashMap::new()),
+        };
+
+        let users_who_can_read = object.users_who_can_read(&cb).await.with_context(|| {
+            format!("figuring out the list of users who can read {object_id:?}")
+        })?;
+        let cb_locks = cb.locks.into_inner();
+        let mut users_who_can_read_depends_on = Vec::with_capacity(cb_locks.len());
+        let mut locks = Vec::with_capacity(cb_locks.len());
+        for (o, l) in cb_locks {
+            users_who_can_read_depends_on.push(o);
+            locks.push(l);
+        }
+        Ok((users_who_can_read, users_who_can_read_depends_on, locks))
     }
 }
 

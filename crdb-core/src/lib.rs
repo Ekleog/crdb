@@ -8,6 +8,8 @@ mod future;
 mod ids;
 mod object;
 mod query;
+#[cfg(feature = "server")]
+mod server_side_db;
 
 pub use check_string::*;
 pub use db_trait::*;
@@ -19,5 +21,7 @@ pub use future::*;
 pub use ids::*;
 pub use object::*;
 pub use query::*;
+#[cfg(feature = "server")]
+pub use server_side_db::*;
 
 pub use rust_decimal::Decimal;
