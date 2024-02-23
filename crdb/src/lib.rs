@@ -1,6 +1,5 @@
 mod cache;
 mod importance;
-mod timestamp;
 
 #[cfg(all(test, not(feature = "_tests")))]
 const _: () = panic!("running tests without the `_tests` feature enabled");

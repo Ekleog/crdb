@@ -1,5 +1,4 @@
 use super::PostgresDb;
-use crate::timestamp::SystemTimeExt;
 use std::time::Duration;
 use web_time::SystemTime;
 

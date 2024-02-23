@@ -13,6 +13,7 @@ mod object;
 mod query;
 mod server_side_db;
 mod session;
+mod timestamp;
 
 pub use check_string::*;
 pub use config::*;
@@ -29,5 +30,6 @@ pub use object::*;
 pub use query::*;
 pub use server_side_db::*;
 pub use session::*;
+pub use timestamp::*;
 
 pub use rust_decimal::Decimal;

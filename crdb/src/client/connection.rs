@@ -1,6 +1,6 @@
 use crate::{
-    timestamp::SystemTimeExt, ClientMessage, CrdbFn, Lock, MaybeObject, ObjectId, Query, QueryId,
-    Request, RequestId, ResponsePart, ServerMessage, SessionToken, TypeId, Update, UpdateData,
+    ClientMessage, CrdbFn, Lock, MaybeObject, ObjectId, Query, QueryId, Request, RequestId,
+    ResponsePart, ServerMessage, SessionToken, SystemTimeExt, TypeId, Update, UpdateData,
     Updatedness, Updates,
 };
 use anyhow::anyhow;

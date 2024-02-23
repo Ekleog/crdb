@@ -1,7 +1,6 @@
 use super::TmpDb;
 use crate::{
-    server::PostgresDb, timestamp::SystemTimeExt, NewSession, Session, SessionRef, SessionToken,
-    User,
+    server::PostgresDb, NewSession, Session, SessionRef, SessionToken, SystemTimeExt, User,
 };
 use anyhow::Context;
 use crdb_test_utils::{cmp, Config, USER_ID_1};

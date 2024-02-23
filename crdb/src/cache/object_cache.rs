@@ -1,4 +1,5 @@
-use crate::{timestamp::SystemTimeExt, DynSized, ObjectId};
+use crate::{DynSized, ObjectId};
+use crdb_core::SystemTimeExt;
 use std::{
     collections::HashMap,
     sync::{
