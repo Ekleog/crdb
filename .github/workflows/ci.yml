@@ -16,20 +16,12 @@ jobs:
         include:
           - name: Tests
             command: just test
-          # TODO(misc-med): unify these two sets of tests by removing the `crdb` version. But for now `crdb` just has way too many features and
-          # slow tests, so it'd take a prohibitive amount of CI time.
           - name: Build All Features (crates)
             command: cargo hack build --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset
           - name: Clippy All Features (crates)
             command: cargo hack clippy --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset -- -D warnings
           - name: Test All Features (crates)
             command: cargo hack nextest run --workspace --exclude crdb --ignore-private --feature-powerset
-          - name: Build All Features (crdb)
-            command: cargo hack build -p crdb --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 2
-          - name: Clippy All Features (crdb)
-            command: cargo hack clippy -p crdb --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 2 -- -D warnings
-          - name: Test All Features (crdb)
-            command: cargo hack nextest run -p crdb --ignore-private --feature-powerset --depth 2
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     steps:
