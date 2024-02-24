@@ -67,7 +67,6 @@ test-example-basic-host *ARGS:
     cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p basic-api -p basic-server -p basic-client-native {{ARGS}}
 
 fuzz-pg-simple ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -85,7 +84,6 @@ fuzz-idb-simple ARGS='':
         -- --include-ignored
 
 fuzz-pg-perms ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -103,7 +101,6 @@ fuzz-idb-perms ARGS='':
         -- --include-ignored
 
 fuzz-pg-threads ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -111,7 +108,6 @@ fuzz-pg-threads ARGS='':
         {{ARGS}}
 
 fuzz-pg-locks ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -119,7 +115,6 @@ fuzz-pg-locks ARGS='':
         {{ARGS}}
 
 fuzz-pg-full ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -137,7 +132,6 @@ fuzz-idb-full ARGS='':
         -- --include-ignored
 
 fuzz-pg-threads-royale ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -145,7 +139,6 @@ fuzz-pg-threads-royale ARGS='':
         {{ARGS}}
 
 fuzz-pg-locks-royale ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -153,7 +146,6 @@ fuzz-pg-locks-royale ARGS='':
         {{ARGS}}
 
 fuzz-pg-sessions ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-postgres" \
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
@@ -161,7 +153,6 @@ fuzz-pg-sessions ARGS='':
         {{ARGS}}
 
 fuzz-fts-normalizer ARGS='':
-    CARGO_TARGET_DIR="target/fuzz-core" \
     cargo bolero test \
         --all-features \
         -p crdb-core \
