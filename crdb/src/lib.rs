@@ -1,9 +1,5 @@
-mod importance;
-
 pub use crdb_core::*;
 pub use crdb_macros::*;
-
-pub use importance::Importance;
 
 #[cfg(feature = "client")]
 mod client;

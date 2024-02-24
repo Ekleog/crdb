@@ -1,4 +1,3 @@
-#[cfg(feature = "client")]
 use crate::Lock;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -16,9 +15,8 @@ pub enum Importance {
     Lock,
 }
 
-#[cfg(feature = "client")]
 impl Importance {
-    pub(crate) fn to_object_lock(self) -> Lock {
+    pub fn to_object_lock(self) -> Lock {
         if self >= Importance::Lock {
             Lock::OBJECT
         } else {
@@ -26,7 +24,7 @@ impl Importance {
         }
     }
 
-    pub(crate) fn to_query_lock(self) -> Lock {
+    pub fn to_query_lock(self) -> Lock {
         if self >= Importance::Lock {
             Lock::FOR_QUERIES
         } else {
@@ -34,7 +32,7 @@ impl Importance {
         }
     }
 
-    pub(crate) fn to_subscribe(self) -> bool {
+    pub fn to_subscribe(self) -> bool {
         self >= Importance::Subscribe
     }
 }
