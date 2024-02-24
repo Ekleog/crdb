@@ -19,14 +19,6 @@ client = [
 ]
 server = [ "crdb-server" ]
 
-[package.metadata.cargo-udeps.ignore]
-normal = [
-    "reord", # TODO(test-low): this should probably actually be used in all the builds
-]
-development = [
-    "reord", # TODO(test-low): this should probably actually be used in all the builds
-]
-
 [dependencies]
 crdb-core.workspace = true
 crdb-helpers.workspace = true
@@ -38,7 +30,6 @@ chrono.workspace = true
 deepsize.workspace = true
 educe.workspace = true
 futures.workspace = true
-reord.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
