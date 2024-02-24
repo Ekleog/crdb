@@ -1,6 +1,6 @@
-#![cfg(all(feature = "client", target_arch = "wasm32"))]
+#![cfg(all(feature = "_tests", target_arch = "wasm32"))]
 
-use crdb::crdb_internal::LocalDb;
+use crdb_indexed_db::IndexedDb;
 use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -9,7 +9,7 @@ wasm_bindgen_test_configure!(run_in_browser);
 async fn smoke_test() {
     tracing_wasm::set_as_global_default();
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    let db = LocalDb::connect("smoke-test").await.unwrap();
+    let db = IndexedDb::connect("smoke-test").await.unwrap();
     crdb_test_utils::smoke_test!(
         db: db,
         vacuum: db.vacuum(|_| (), |_| ()),
@@ -23,10 +23,8 @@ async fn smoke_test() {
 
 mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
-    use crdb::{
-        crdb_internal::{LocalDb, ResultExt},
-        EventId, Object, Query, Updatedness, User,
-    };
+    use crdb_core::{EventId, Object, Query, ResultExt, Updatedness, User};
+    use crdb_indexed_db::IndexedDb;
     use crdb_test_utils::*;
     use rand::{rngs::StdRng, SeedableRng};
     use std::{
@@ -38,10 +36,9 @@ mod fuzz_helpers {
         },
     };
 
-    pub use crdb;
     pub use wasm_bindgen_test::wasm_bindgen_test as test;
 
-    pub type Database = LocalDb;
+    pub type Database = IndexedDb;
     pub type KeepAlive = ();
     pub type SetupState = ();
 
@@ -53,7 +50,7 @@ mod fuzz_helpers {
 
     pub async fn make_db(_cluster: &()) -> (Database, KeepAlive) {
         (
-            LocalDb::connect(&format!("db{}", COUNTER.fetch_add(1, Ordering::Relaxed)))
+            IndexedDb::connect(&format!("db{}", COUNTER.fetch_add(1, Ordering::Relaxed)))
                 .await
                 .unwrap(),
             (),
