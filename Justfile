@@ -21,12 +21,12 @@ clippy:
 
 udeps:
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --all-features
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-sqlite --target wasm32-unknown-unknown
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
 
 udeps-full:
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --each-feature
     CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --tests --each-feature
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-sqlite --target wasm32-unknown-unknown
+    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
 
 doc:
     CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
