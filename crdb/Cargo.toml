@@ -12,6 +12,7 @@ client = [
     "async-stream",
     "crdb-cache",
     "crdb-sqlite",
+    "gloo-net",
     "tokio-tungstenite",
     "tokio-util",
 ]
@@ -82,7 +83,7 @@ crdb-core = { workspace = true, features = ["indexed-db", "web-sys"] }
 crdb-helpers = { workspace = true, features = ["js"] }
 
 getrandom = { workspace = true, features = ["js"] } # TODO(api-high): introduce a `js` feature here too and enable conditionally
-gloo-net.workspace = true
+gloo-net = { workspace = true, optional = true }
 gloo-timers.workspace = true
 indexed-db.workspace = true
 js-sys.workspace = true
@@ -104,13 +105,10 @@ tokio-tungstenite = { workspace = true, optional = true }
 [dev-dependencies]
 crdb-test-utils.workspace = true
 
-tempfile.workspace = true
-tracing-subscriber.workspace = true
-wasm-bindgen-test.workspace = true
-
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
 
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 rand.workspace = true
+wasm-bindgen-test.workspace = true
