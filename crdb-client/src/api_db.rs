@@ -7,10 +7,9 @@ use super::{
 };
 use anyhow::anyhow;
 use crdb_core::{
-    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject,
-    MaybeSnapshot, Object, ObjectData, ObjectId, Query, QueryId, Request, ResponsePart, ResultExt,
-    Session, SessionRef, SessionToken, SnapshotData, TypeId, Updatedness, Updates, Upload,
-    UploadId,
+    BinPtr, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject, MaybeSnapshot, Object, ObjectData,
+    ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, Session, SessionRef, SessionToken,
+    SnapshotData, TypeId, Updatedness, Updates, Upload, UploadId,
 };
 use futures::{channel::mpsc, future::Either, pin_mut, stream, FutureExt, StreamExt};
 use std::{
@@ -52,14 +51,14 @@ impl ApiDb {
     ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
     where
         C: crdb_core::Config,
-        GSO: 'static + CrdbSend + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
+        GSO: 'static + waaaa::Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
             + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
         BG: 'static + Db,
-        EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
-        EHF: 'static + CrdbFuture<Output = OnError>,
-        RRL: 'static + CrdbSend + Fn(),
+        EH: 'static + waaaa::Send + Fn(Upload, crate::Error) -> EHF,
+        EHF: 'static + waaaa::Future<Output = OnError>,
+        RRL: 'static + waaaa::Send + Fn(),
     {
         let (update_sender, update_receiver) = mpsc::unbounded();
         let connection_event_cb: Arc<RwLock<Box<dyn CrdbSyncFn<ConnectionEvent>>>> =
@@ -85,7 +84,7 @@ impl ApiDb {
         };
         let (connection, commands) = mpsc::unbounded();
         let (requests, requests_receiver) = mpsc::unbounded();
-        crdb_core::spawn(
+        waaaa::spawn(
             Connection::new(
                 commands,
                 requests_receiver,
@@ -104,7 +103,7 @@ impl ApiDb {
             watch::channel(all_uploads.clone());
         let upload_queue_watcher_sender = Arc::new(Mutex::new(upload_queue_watcher_sender));
         let (upload_resender_sender, upload_resender_receiver) = mpsc::unbounded();
-        crdb_core::spawn(upload_resender::<C, _, _, _>(
+        waaaa::spawn(upload_resender::<C, _, _, _>(
             upload_queue.clone(),
             upload_resender_receiver,
             requests,
@@ -391,7 +390,7 @@ impl ApiDb {
         query_id: QueryId,
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
-    ) -> impl CrdbStream<Item = crate::Result<(MaybeObject, Option<Updatedness>)>> {
+    ) -> impl waaaa::Stream<Item = crate::Result<(MaybeObject, Option<Updatedness>)>> {
         let request = Arc::new(Request::QuerySubscribe {
             query_id,
             type_id: *T::type_ulid(),
@@ -429,7 +428,7 @@ impl ApiDb {
         &self,
         only_updated_since: Option<Updatedness>,
         query: Arc<Query>,
-    ) -> impl CrdbStream<Item = crate::Result<(MaybeSnapshot, Option<Updatedness>)>> {
+    ) -> impl waaaa::Stream<Item = crate::Result<(MaybeSnapshot, Option<Updatedness>)>> {
         let request = Arc::new(Request::QueryLatest {
             type_id: *T::type_ulid(),
             query,
@@ -504,8 +503,8 @@ async fn upload_resender<C, BG, EH, EHF>(
 ) where
     C: crdb_core::Config,
     BG: Db,
-    EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
-    EHF: 'static + CrdbFuture<Output = OnError>,
+    EH: 'static + waaaa::Send + Fn(Upload, crate::Error) -> EHF,
+    EHF: 'static + waaaa::Future<Output = OnError>,
 {
     // The below loop is split into two sub parts: all that is just sent once, and all that requires
     // re-sending if there were missing binaries
@@ -816,7 +815,7 @@ fn expect_simple_response(
 ) -> oneshot::Receiver<crate::Result<()>> {
     // TODO(perf-med): handle this like handle_upload_response: probably with a not-must-use wrapper and removing the crdb_core::spawn?
     let (sender, receiver) = oneshot::channel();
-    crdb_core::spawn(async move {
+    waaaa::spawn(async move {
         let Some(response) = response_receiver.next().await else {
             let _ = sender.send(Err(crate::Error::Other(anyhow!(
                 "Connection thread went down too ealy"

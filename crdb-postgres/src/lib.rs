@@ -5,7 +5,7 @@ use crdb_core::{
     ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, SnapshotData,
     SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User,
 };
-use crdb_core::{ComboLock, CrdbFuture, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
+use crdb_core::{ComboLock, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
 use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
@@ -1755,7 +1755,7 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
     ) -> Pin<
         Box<
             dyn 'a
-                + CrdbFuture<
+                + waaaa::Future<
                     Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>,
                 >,
         >,

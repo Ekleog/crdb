@@ -153,7 +153,7 @@ impl<C: crdb_core::Config> Server<C> {
                         .to_std()
                         .unwrap_or_else(|_| Duration::from_secs(0));
                     tokio::select! {
-                        _ = crdb_core::sleep(sleep_for) => (),
+                        _ = tokio::time::sleep(sleep_for) => (),
                         _ = cancellation_token.cancelled() => break,
                     }
 

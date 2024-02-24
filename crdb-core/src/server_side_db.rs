@@ -1,7 +1,4 @@
-use crate::{
-    CanDoCallbacks, CrdbFuture, CrdbSend, CrdbSync, EventId, Object, ObjectId, TypeId, Updatedness,
-    User,
-};
+use crate::{CanDoCallbacks, EventId, Object, ObjectId, TypeId, Updatedness, User};
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 // TODO(blocked): replace with an associated type of ServerSideDb once https://github.com/rust-lang/rust/pull/120700 stabilizes
@@ -18,7 +15,7 @@ pub struct ReadPermsChanges {
     pub gained_read: HashSet<User>,
 }
 
-pub trait ServerSideDb: 'static + CrdbSend + CrdbSync {
+pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync {
     // TODO(blocked): replace with -> impl once https://github.com/rust-lang/rust/issues/100013 is fixed
     // This will also remove the clippy lint
     #[allow(clippy::type_complexity)]
@@ -30,7 +27,7 @@ pub trait ServerSideDb: 'static + CrdbSend + CrdbSync {
     ) -> Pin<
         Box<
             dyn 'a
-                + CrdbFuture<
+                + waaaa::Future<
                     Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>,
                 >,
         >,
@@ -45,7 +42,7 @@ pub trait ServerSideDb: 'static + CrdbSend + CrdbSync {
         event_id: EventId,
         updatedness: Updatedness,
         cb: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = crate::Result<Option<(EventId, Arc<T>)>>>;
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<Option<(EventId, Arc<T>)>>>;
 
     fn create_and_return_rdep_changes<T: Object>(
         &self,
@@ -53,7 +50,7 @@ pub trait ServerSideDb: 'static + CrdbSend + CrdbSync {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Updatedness,
-    ) -> impl '_ + CrdbFuture<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
 
     fn submit_and_return_rdep_changes<T: Object>(
         &self,
@@ -61,5 +58,5 @@ pub trait ServerSideDb: 'static + CrdbSend + CrdbSync {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Updatedness,
-    ) -> impl '_ + CrdbFuture<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
 }

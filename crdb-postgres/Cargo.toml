@@ -18,6 +18,7 @@ tokio.workspace = true
 tracing.workspace = true
 ulid.workspace = true
 uuid.workspace = true
+waaaa.workspace = true
 web-time.workspace = true
 
 [dev-dependencies]

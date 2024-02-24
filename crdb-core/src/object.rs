@@ -1,13 +1,13 @@
-use crate::{
-    BinPtr, CrdbFuture, CrdbSend, CrdbSync, Db, DbPtr, Lock, ObjectId, ResultExt, TypeId, User,
-};
+use crate::{BinPtr, Db, DbPtr, Lock, ObjectId, ResultExt, TypeId, User};
 #[cfg(doc)]
 use std::collections::{BTreeMap, HashMap};
 use std::{any::Any, collections::HashSet, sync::Arc};
 
-pub trait CanDoCallbacks: CrdbSend + CrdbSync {
-    fn get<T: Object>(&self, ptr: DbPtr<T>)
-        -> impl '_ + CrdbFuture<Output = crate::Result<Arc<T>>>;
+pub trait CanDoCallbacks: waaaa::Send + waaaa::Sync {
+    fn get<T: Object>(
+        &self,
+        ptr: DbPtr<T>,
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<Arc<T>>>;
 }
 
 impl<D: Db> CanDoCallbacks for D {
@@ -72,7 +72,7 @@ pub trait Object:
         user: User,
         self_id: ObjectId,
         db: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<bool>>;
+    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<bool>>;
     /// Note that permissions are always checked with the latest version of the object on the server.
     /// So, due to this, CRDB objects are not strictly speaking a CRDT. However, it is required to do
     /// so for security, because otherwise a user who lost permissions would still be allowed to
@@ -84,7 +84,7 @@ pub trait Object:
         self_id: ObjectId,
         event: &'a Self::Event,
         db: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<bool>>;
+    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<bool>>;
     /// Note that `db.get` calls will be cached. So:
     /// - Use `db.get` as little as possible, to avoid useless cache thrashing
     /// - Make sure to always read objects in a given order. You should consider all your objects as
@@ -107,7 +107,7 @@ pub trait Object:
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<HashSet<User>>>;
+    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<HashSet<User>>>;
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 

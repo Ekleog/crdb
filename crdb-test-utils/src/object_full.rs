@@ -1,8 +1,6 @@
 use crate::{stubs::USER_ID_NULL, ulid};
 use anyhow::Context;
-use crdb_core::{
-    BinPtr, CanDoCallbacks, CrdbFuture, DbPtr, Object, ObjectId, SearchableString, TypeId, User,
-};
+use crdb_core::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, SearchableString, TypeId, User};
 use std::collections::{BTreeSet, HashSet, VecDeque};
 
 #[derive(
@@ -85,7 +83,7 @@ impl Object for TestObjectFull {
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + CrdbFuture<Output = anyhow::Result<HashSet<User>>> {
+    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<HashSet<User>>> {
         async move {
             let mut res = self.users.iter().copied().collect::<HashSet<_>>();
             res.insert(USER_ID_NULL);

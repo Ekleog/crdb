@@ -3,10 +3,9 @@ use crate::Obj;
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
 use crdb_core::{
-    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId, Importance, Lock,
-    MaybeObject, MaybeSnapshot, Object, ObjectData, ObjectId, Query, QueryId, ResultExt, Session,
-    SessionRef, SessionToken, TypeId, Update, UpdateData, Updatedness, Updates, Upload, UploadId,
-    User,
+    BinPtr, Db, DbPtr, EventId, Importance, Lock, MaybeObject, MaybeSnapshot, Object, ObjectData,
+    ObjectId, Query, QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId, Update,
+    UpdateData, Updatedness, Updates, Upload, UploadId, User,
 };
 use crdb_core::{ClientStorageInfo, LoginInfo};
 use crdb_helpers::parse_snapshot_ref;
@@ -70,12 +69,12 @@ impl ClientDb {
         require_relogin: RRL,
         error_handler: EH,
         vacuum_schedule: ClientVacuumSchedule<VS>,
-    ) -> anyhow::Result<(Arc<ClientDb>, impl CrdbFuture<Output = usize>)>
+    ) -> anyhow::Result<(Arc<ClientDb>, impl waaaa::Future<Output = usize>)>
     where
         C: crdb_core::Config,
-        RRL: 'static + CrdbSend + Fn(),
-        EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
-        EHF: 'static + CrdbFuture<Output = OnError>,
+        RRL: 'static + waaaa::Send + Fn(),
+        EH: 'static + waaaa::Send + Fn(Upload, crate::Error) -> EHF,
+        EHF: 'static + waaaa::Future<Output = OnError>,
         VS: 'static + Send + Fn(ClientStorageInfo) -> bool,
     {
         let _ = config; // mark used
@@ -157,7 +156,7 @@ impl ClientDb {
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
         this.setup_data_saver::<C>(data_saver_receiver, updates_broadcaster);
         let (upgrade_finished_sender, upgrade_finished) = oneshot::channel();
-        crdb_core::spawn({
+        waaaa::spawn({
             let db = this.db.clone();
             async move {
                 let num_errors = C::reencode_old_versions(&*db).await;
@@ -205,7 +204,7 @@ impl ClientDb {
     ) {
         // No need for a cancellation token: this task will automatically end as soon as the stream
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
-        crdb_core::spawn({
+        waaaa::spawn({
             let data_saver = self.data_saver.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
@@ -236,7 +235,7 @@ impl ClientDb {
         let subscribed_objects = self.subscribed_objects.clone();
         let subscribed_queries = self.subscribed_queries.clone();
         let api = self.api.clone();
-        crdb_core::spawn(async move {
+        waaaa::spawn(async move {
             loop {
                 match db.storage_info().await {
                     Ok(storage_info) => {
@@ -283,7 +282,7 @@ impl ClientDb {
                 };
 
                 tokio::select! {
-                    _ = crdb_core::sleep(vacuum_schedule.frequency) => (),
+                    _ = waaaa::sleep(vacuum_schedule.frequency) => (),
                     _ = cancellation_token.cancelled() => break,
                 }
             }
@@ -302,7 +301,7 @@ impl ClientDb {
         let vacuum_guard = self.vacuum_guard.clone();
         let query_updates_broadcasters = self.query_updates_broadcastees.clone();
         let data_saver_skipper = self.data_saver_skipper.subscribe();
-        crdb_core::spawn(async move {
+        waaaa::spawn(async move {
             Self::data_saver::<C>(
                 data_receiver,
                 data_saver_skipper,
@@ -641,7 +640,7 @@ impl ClientDb {
 
     pub fn on_connection_event(
         self: &Arc<Self>,
-        cb: impl 'static + CrdbSend + CrdbSync + Fn(ConnectionEvent),
+        cb: impl 'static + waaaa::Send + waaaa::Sync + Fn(ConnectionEvent),
     ) {
         self.api.on_connection_event(cb)
     }
@@ -1030,7 +1029,7 @@ impl ClientDb {
     pub async fn query_local<'a, T: Object>(
         self: &'a Arc<Self>,
         query: Arc<Query>,
-    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<Obj<T>>>> {
+    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T>>>> {
         let object_ids = self
             .db
             .query::<T>(query)
@@ -1060,7 +1059,7 @@ impl ClientDb {
         importance: Importance,
         query_id: QueryId,
         query: Arc<Query>,
-    ) -> crate::Result<impl 'a + CrdbStream<Item = crate::Result<Obj<T>>>> {
+    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T>>>> {
         if importance >= Importance::Subscribe {
             self.query_updates_broadcastees
                 .lock()

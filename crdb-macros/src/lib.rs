@@ -2,6 +2,7 @@ pub use crdb_core::*;
 pub use crdb_helpers;
 pub use serde;
 pub use serde_json;
+pub use waaaa;
 
 #[macro_export]
 macro_rules! db {
@@ -132,7 +133,7 @@ macro_rules! db {
                 snapshot_version: i32,
                 snapshot: $crate::serde_json::Value,
                 cb: &'a C,
-            ) -> impl 'a + $crate::CrdbFuture<Output = $crate::Result<(std::collections::HashSet<$crate::User>, Vec<$crate::ObjectId>, Vec<$crate::ComboLock<'a>>)>> {
+            ) -> impl 'a + $crate::waaaa::Future<Output = $crate::Result<(std::collections::HashSet<$crate::User>, Vec<$crate::ObjectId>, Vec<$crate::ComboLock<'a>>)>> {
                 use $crate::{Object, ResultExt, ServerSideDb, crdb_helpers::parse_snapshot};
 
                 Box::pin(async move { // TODO(api-high): remove this pin-box if it doesn't break the build

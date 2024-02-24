@@ -1,7 +1,4 @@
-use crate::{
-    future::{CrdbSend, CrdbSync},
-    BinPtr, CrdbFuture, EventId, Object, ObjectId, Updatedness,
-};
+use crate::{BinPtr, EventId, Object, ObjectId, Updatedness};
 use std::sync::Arc;
 
 bitflags::bitflags! {
@@ -22,7 +19,7 @@ impl Lock {
     }
 }
 
-pub trait Db: 'static + CrdbSend + CrdbSync {
+pub trait Db: 'static + waaaa::Send + waaaa::Sync {
     /// Returns the new latest snapshot if it actually changed
     ///
     /// `updatedness` is the up-to-date-ness of this creation, or `None` if it is not known yet
@@ -34,7 +31,7 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         object: Arc<T>,
         updatedness: Option<Updatedness>,
         lock: Lock,
-    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
+    ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
 
     /// Returns the new latest snapshot if it actually changed
     ///
@@ -47,13 +44,13 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
         force_lock: Lock,
-    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
+    ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
 
     fn get_latest<T: Object>(
         &self,
         lock: Lock,
         object_id: ObjectId,
-    ) -> impl CrdbFuture<Output = crate::Result<Arc<T>>>;
+    ) -> impl waaaa::Future<Output = crate::Result<Arc<T>>>;
 
     /// Either create an object if it did not exist yet, or recreate it
     ///
@@ -68,28 +65,28 @@ pub trait Db: 'static + CrdbSend + CrdbSync {
         creation_value: Arc<T>,
         updatedness: Option<Updatedness>,
         force_lock: Lock,
-    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<T>>>>;
+    ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
 
-    fn remove(&self, object_id: ObjectId) -> impl CrdbFuture<Output = crate::Result<()>>;
+    fn remove(&self, object_id: ObjectId) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     fn create_binary(
         &self,
         binary_id: BinPtr,
         data: Arc<[u8]>,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     fn get_binary(
         &self,
         binary_id: BinPtr,
-    ) -> impl CrdbFuture<Output = crate::Result<Option<Arc<[u8]>>>>;
+    ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<[u8]>>>>;
 
     // TODO(test-high): introduce in db fuzzers
     fn remove_event<T: Object>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
-    ) -> impl CrdbFuture<Output = crate::Result<()>>;
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     /// Returns the number of errors that happened while re-encoding
-    fn reencode_old_versions<T: Object>(&self) -> impl CrdbFuture<Output = usize>;
+    fn reencode_old_versions<T: Object>(&self) -> impl waaaa::Future<Output = usize>;
 }

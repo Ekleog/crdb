@@ -10,18 +10,9 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use waaaa::{WebSocket, WsMessage};
 use web_time::Instant;
 use web_time::SystemTime;
-
-#[cfg(not(target_arch = "wasm32"))]
-mod native;
-#[cfg(target_arch = "wasm32")]
-mod wasm;
-
-#[cfg(not(target_arch = "wasm32"))]
-use native as implem;
-#[cfg(target_arch = "wasm32")]
-use wasm as implem;
 
 const RECONNECT_INTERVAL: Duration = Duration::from_secs(10);
 const PING_INTERVAL: Duration = Duration::from_secs(10);
@@ -74,13 +65,13 @@ pub enum State {
     TokenSent {
         url: Arc<String>,
         token: SessionToken,
-        socket: implem::WebSocket,
+        socket: WebSocket,
         request_id: RequestId,
     },
     Connected {
         url: Arc<String>,
         token: SessionToken,
-        socket: implem::WebSocket,
+        socket: WebSocket,
         // Currently expecting `usize` more binaries for the request `RequestId`
         expected_binaries: Option<(RequestId, usize)>,
     },
@@ -109,10 +100,15 @@ impl State {
         match self {
             State::NoValidInfo | State::Disconnected { .. } => None,
             State::TokenSent { socket, .. } | State::Connected { socket, .. } => {
-                match implem::next(socket).await {
+                match socket.recv().await {
                     Err(err) => Some(Err(err)),
-                    Ok(IncomingMessage::Binary(b)) => Some(Ok(IncomingMessage::Binary(b))),
-                    Ok(IncomingMessage::Text(msg)) => match serde_json::from_str(&msg) {
+                    Ok(None) => Some(Err(anyhow!(
+                        "Got websocket end-of-stream, expected a message"
+                    ))),
+                    Ok(Some(WsMessage::Binary(b))) => {
+                        Some(Ok(IncomingMessage::Binary(b.into_boxed_slice().into())))
+                    }
+                    Ok(Some(WsMessage::Text(msg))) => match serde_json::from_str(&msg) {
                         Ok(msg) => Some(Ok(IncomingMessage::Text(msg))),
                         Err(err) => Some(Err(err.into())),
                     },
@@ -179,13 +175,13 @@ where
                 // Retry connecting if we're looping there
                 // TODO(perf-low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
-                _reconnect_attempt_interval = crdb_core::sleep(RECONNECT_INTERVAL),
+                _reconnect_attempt_interval = waaaa::sleep(RECONNECT_INTERVAL),
                     if self.is_trying_to_connect() => {
                     tracing::trace!("reconnect interval elapsed");
                 },
 
                 // Send the next ping, if it's time to do it
-                Some(_) = OptionFuture::from(self.next_ping.map(crdb_core::sleep_until)), if self.is_connected() => {
+                Some(_) = OptionFuture::from(self.next_ping.map(waaaa::sleep_until)), if self.is_connected() => {
                     tracing::trace!("sending ping request");
                     let request_id = self.next_request_id();
                     let _ = self.send_connected(&ClientMessage {
@@ -198,7 +194,7 @@ where
                 }
 
                 // Next pong did not come in time, disconnect
-                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| crdb_core::sleep_until(t))), if self.is_connecting() => {
+                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| waaaa::sleep_until(t))), if self.is_connecting() => {
                     tracing::trace!("pong did not come in time, disconnecting");
                     self.state = self.state.disconnect();
                     self.next_pong_deadline = None;
@@ -270,7 +266,7 @@ where
                                         }),
                                         responses_sender,
                                     ).await;
-                                    crdb_core::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                    waaaa::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                                 for (query_id, (query, type_id, have_all_until, _)) in subscribed_queries {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
@@ -288,7 +284,7 @@ where
                                         }),
                                         responses_sender,
                                     ).await;
-                                    crdb_core::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                    waaaa::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                             }
                             ServerMessage::Response {
@@ -367,7 +363,7 @@ where
                 let url = url.clone();
                 let token = *token;
                 tracing::trace!(%url, "connecting to websocket");
-                let mut socket = match implem::connect(&url).await {
+                let mut socket = match WebSocket::connect(&url).await {
                     Ok(socket) => socket,
                     Err(err) => {
                         (self.event_cb)(ConnectionEvent::FailedConnecting(err));
@@ -613,7 +609,7 @@ where
         else {
             panic!("Called send_connected while not connected");
         };
-        if let Err(err) = implem::send_sidecar(socket, sidecar).await {
+        if let Err(err) = send_sidecar(socket, sidecar).await {
             (self.event_cb)(ConnectionEvent::LostConnection(err));
             self.state = State::Disconnected {
                 url: url.clone(),
@@ -638,8 +634,18 @@ where
         }
     }
 
-    async fn send(sock: &mut implem::WebSocket, msg: &ClientMessage) -> anyhow::Result<()> {
+    async fn send(sock: &mut WebSocket, msg: &ClientMessage) -> anyhow::Result<()> {
         let msg = serde_json::to_string(msg)?;
-        implem::send_text(sock, msg).await
+        sock.send(WsMessage::Text(msg)).await
     }
+}
+
+async fn send_sidecar(socket: &mut WebSocket, sidecar: &[Arc<[u8]>]) -> anyhow::Result<()> {
+    for bin in sidecar {
+        // Unfortunately both tungstenite and gloo-net seem to require ownership… it's probably not worth thinking
+        // too much about it.
+        socket.send(WsMessage::Binary(bin.to_vec())).await?;
+    }
+
+    Ok(())
 }
