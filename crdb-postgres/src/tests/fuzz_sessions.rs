@@ -81,10 +81,16 @@ impl FuzzState {
     }
 }
 
+fn floor_time(t: SystemTime) -> SystemTime {
+    let d = t.duration_since(SystemTime::UNIX_EPOCH).unwrap();
+    let d = Duration::from_millis(d.as_millis() as u64);
+    SystemTime::UNIX_EPOCH + d
+}
+
 async fn apply_op(db: &PostgresDb<Config>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Login(session) => {
-            let session = Session::new(session.clone());
+            let mut session = Session::new(session.clone());
             let tok = match db.login_session(session.clone()).await {
                 Ok((tok, _)) => tok,
                 Err(crate::Error::NullByteInString) if session.session_name.contains('\0') => {
@@ -97,6 +103,9 @@ async fn apply_op(db: &PostgresDb<Config>, s: &mut FuzzState, op: &Op) -> anyhow
                 }
                 Err(e) => Err(e).context("logging session in")?,
             };
+            session.login_time = floor_time(session.login_time);
+            session.last_active = floor_time(session.last_active);
+            session.expiration_time = session.expiration_time.map(floor_time);
             anyhow::ensure!(
                 s.sessions.insert(tok, session.clone()).is_none(),
                 "db returned a session token conflict"
@@ -121,7 +130,7 @@ async fn apply_op(db: &PostgresDb<Config>, s: &mut FuzzState, op: &Op) -> anyhow
             match s.sessions.get_mut(&token) {
                 None => cmp(pg, Err(crate::Error::InvalidToken(token)))?,
                 Some(session) => {
-                    session.last_active = *at;
+                    session.last_active = floor_time(*at);
                     cmp(pg, Ok(()))?;
                 }
             }
