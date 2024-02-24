@@ -69,7 +69,6 @@ test-example-basic-host *ARGS:
 fuzz-pg-simple ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_simple::fuzz \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_simple__fuzz/corpus.nounit \
         {{ARGS}}
 
 fuzz-idb-simple ARGS='':
@@ -85,7 +84,6 @@ fuzz-idb-simple ARGS='':
 fuzz-pg-perms ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_remote_perms::fuzz \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_remote_perms__fuzz/corpus.nounit \
         {{ARGS}}
 
 fuzz-idb-perms ARGS='':
@@ -101,19 +99,16 @@ fuzz-idb-perms ARGS='':
 fuzz-pg-threads ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_two_threads::fuzz_no_lock_check \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_two_threads__fuzz_no_lock_check/corpus.nounit \
         {{ARGS}}
 
 fuzz-pg-locks ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_two_threads::fuzz_checking_locks \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_two_threads__fuzz_checking_locks/corpus.nounit \
         {{ARGS}}
 
 fuzz-pg-full ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_object_full::fuzz \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_object_full__fuzz/corpus.nounit \
         {{ARGS}}
 
 fuzz-idb-full ARGS='':
@@ -129,23 +124,19 @@ fuzz-idb-full ARGS='':
 fuzz-pg-threads-royale ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_battle_royale::fuzz_no_lock_check \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_battle_royale__fuzz_no_lock_check/corpus.nounit \
         {{ARGS}}
 
 fuzz-pg-locks-royale ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_battle_royale::fuzz_checking_locks \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_battle_royale__fuzz_checking_locks/corpus.nounit \
         {{ARGS}}
 
 fuzz-pg-sessions ARGS='':
     cargo bolero test --all-features \
         server::postgres_db::tests::fuzz_sessions::fuzz \
-        --corpus-dir src/server/postgres_db/tests/__fuzz__/server__postgres_db__tests__fuzz_sessions__fuzz/corpus.nounit \
         {{ARGS}}
 
 fuzz-fts-normalizer ARGS='':
     cargo bolero test --all-features \
         fts::tests::fuzz_normalizer \
-        --corpus-dir src/__fuzz__/fts__tests__fuzz_normalizer/corpus.nounit \
         {{ARGS}}
