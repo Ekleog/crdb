@@ -16,8 +16,8 @@ jobs:
         hardcoded:
           - false
         type:
-          - { name: Build, command: --no-dev-deps build }
-          - { name: Clippy, command: --no-dev-deps clippy -- -D warnings }
+          - { name: Build, command: build --no-dev-deps }
+          - { name: Clippy, command: clippy --no-dev-deps, extra: -- -D warnings }
           - { name: Test, command: nextest run }
         rust:
           - { name: Nightly }
@@ -60,7 +60,7 @@ jobs:
       - run: ${{ matrix.rust.setup }}
 
       # Run the tests
-      - run: ${{ matrix.hardcoded && matrix.command || format('cargo {0} hack --workspace --feature-powerset {1}', matrix.rust.sigil, matrix.test.command) }}
+      - run: ${{ matrix.hardcoded && matrix.command || format('cargo {0} hack {1} --workspace --feature-powerset {2}', matrix.rust.sigil, matrix.test.command, matrix.test.extra) }}
 
   just-clippy:
     name: Clippy
