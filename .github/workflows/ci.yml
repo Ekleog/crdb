@@ -21,8 +21,8 @@ jobs:
           - { name: Test, command: nextest run }
         rust:
           - { name: Nightly }
-          - { name: Stable, sigil: "+stable", setup: rustup toolchain install stable }
-          - { name: MSRV, sigil: "+1.75.0", setup: rustup toolchain install 1.75.0 }
+          - { name: Stable, sigil: '+stable', toolchain: 'stable' }
+          - { name: MSRV, sigil: '+1.75.0', toolchain: '1.75.0' }
         include:
           - hardcoded: true
             name: Just Test
@@ -57,7 +57,8 @@ jobs:
       - run: sqlx migrate run --source crdb-postgres/migrations
 
       # Prepare rustup
-      - run: ${{ matrix.rust.setup }}
+      - run: ${{ matrix.rust.toolchain && format('rustup toolchain install {0}', matrix.rust.toolchain) }}
+      - run: ${{ matrix.rust.toolchain && format('rustup component add clippy --toolchain {0}', matrix.rust.toolchain) }}
 
       # Run the tests
       - run: ${{ matrix.hardcoded && matrix.command || format('cargo {0} hack {1} --workspace --feature-powerset {2}', matrix.rust.sigil, matrix.test.command, matrix.test.extra) }}
