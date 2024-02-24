@@ -13,28 +13,18 @@ jobs:
   just-test:
     strategy:
       matrix:
+        type:
+          - { name: Build, command: --no-dev-deps build }
+          - { name: Clippy, command: --no-dev-deps clippy -- -D warnings }
+          - { name: Test, command: nextest run }
+        rust:
+          - { name: Nightly }
+          - { name: Stable, sigil: "+stable" }
+          - { name: MSRV, sigil: "+1.75.0" }
         include:
-          - name: Tests
-            command: just test
-          - name: Build All Features (nightly)
-            command: cargo hack build --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset
-          - name: Clippy All Features (nightly)
-            command: cargo hack clippy --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset -- -D warnings
-          - name: Test All Features (nightly)
-            command: cargo hack nextest run --workspace --exclude crdb --ignore-private --feature-powerset
-          - name: Build All Features (stable)
-            command: cargo +stable hack build --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset
-          - name: Clippy All Features (stable)
-            command: cargo +stable hack clippy --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset -- -D warnings
-          - name: Test All Features (stable)
-            command: cargo +stable hack nextest run --workspace --exclude crdb --ignore-private --feature-powerset
-          - name: Build All Features (msrv)
-            command: cargo +1.75.0 hack build --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset
-          - name: Clippy All Features (msrv)
-            command: cargo +1.75.0 hack clippy --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset -- -D warnings
-          - name: Test All Features (msrv)
-            command: cargo +1.75.0 hack nextest run --workspace --exclude crdb --ignore-private --feature-powerset
-    name: ${{ matrix.name }}
+          - name_override: Tests
+            command_override: just test
+    name: ${{ matrix.name_override || "${{ matrix.type.name }} All Features (${{ matrix.rust.name }})" }}
     runs-on: ubuntu-latest
     steps:
       # Checkout the repository
@@ -64,7 +54,7 @@ jobs:
       - run: sqlx migrate run --source crdb-postgres/migrations
 
       # Run the tests
-      - run: ${{ matrix.command }}
+      - run: ${{ matrix.command_override || "cargo ${{ matrix.rust.sigil }} hack --workspace --feature-powerset ${{ matrix.test.command }}" }}
 
   just-clippy:
     name: Clippy
