@@ -67,7 +67,10 @@ test-example-basic-host *ARGS:
     cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p basic-api -p basic-server -p basic-client-native {{ARGS}}
 
 fuzz-pg-simple ARGS='':
-    cargo bolero test --all-features \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
         server::postgres_db::tests::fuzz_simple::fuzz \
         {{ARGS}}
 
@@ -82,7 +85,10 @@ fuzz-idb-simple ARGS='':
         -- --include-ignored
 
 fuzz-pg-perms ARGS='':
-    cargo bolero test --all-features \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
         server::postgres_db::tests::fuzz_remote_perms::fuzz \
         {{ARGS}}
 
@@ -97,17 +103,26 @@ fuzz-idb-perms ARGS='':
         -- --include-ignored
 
 fuzz-pg-threads ARGS='':
-    cargo bolero test --all-features \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
         server::postgres_db::tests::fuzz_two_threads::fuzz_no_lock_check \
         {{ARGS}}
 
 fuzz-pg-locks ARGS='':
-    cargo bolero test --all-features \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
         server::postgres_db::tests::fuzz_two_threads::fuzz_checking_locks \
         {{ARGS}}
 
 fuzz-pg-full ARGS='':
-    cargo bolero test --all-features \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
         server::postgres_db::tests::fuzz_object_full::fuzz \
         {{ARGS}}
 
@@ -122,21 +137,33 @@ fuzz-idb-full ARGS='':
         -- --include-ignored
 
 fuzz-pg-threads-royale ARGS='':
-    cargo bolero test --all-features \
-        server::postgres_db::tests::fuzz_battle_royale::fuzz_no_lock_check \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
+        tests::fuzz_battle_royale::fuzz_no_lock_check \
         {{ARGS}}
 
 fuzz-pg-locks-royale ARGS='':
-    cargo bolero test --all-features \
-        server::postgres_db::tests::fuzz_battle_royale::fuzz_checking_locks \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
+        tests::fuzz_battle_royale::fuzz_checking_locks \
         {{ARGS}}
 
 fuzz-pg-sessions ARGS='':
-    cargo bolero test --all-features \
-        server::postgres_db::tests::fuzz_sessions::fuzz \
+    CARGO_TARGET_DIR="target/fuzz-postgres" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-postgres \
+        tests::fuzz_sessions::fuzz \
         {{ARGS}}
 
 fuzz-fts-normalizer ARGS='':
-    cargo bolero test --all-features \
+    CARGO_TARGET_DIR="target/fuzz-core" \
+    cargo bolero test \
+        --all-features \
+        -p crdb-core \
         fts::tests::fuzz_normalizer \
         {{ARGS}}
