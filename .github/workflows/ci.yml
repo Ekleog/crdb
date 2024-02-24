@@ -15,7 +15,7 @@ jobs:
       matrix:
         hardcoded:
           - false
-        type:
+        test:
           - { name: Build, command: build --no-dev-deps }
           - { name: Clippy, command: clippy --no-dev-deps, extra: -- -D warnings }
           - { name: Test, command: nextest run }
@@ -27,7 +27,7 @@ jobs:
           - hardcoded: true
             name: Just Test
             command: just test
-    name: ${{ matrix.hardcoded && matrix.name || format('{0} All Features ({1})', matrix.type.name, matrix.rust.name) }}
+    name: ${{ matrix.hardcoded && matrix.name || format('{0} All Features ({1})', matrix.test.name, matrix.rust.name) }}
     runs-on: ubuntu-latest
     steps:
       # Checkout the repository
