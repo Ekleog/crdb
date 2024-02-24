@@ -1,9 +1,9 @@
-use crate::{
+use anyhow::anyhow;
+use crdb_core::{
     ClientMessage, CrdbFn, Lock, MaybeObject, ObjectId, Query, QueryId, Request, RequestId,
     ResponsePart, ServerMessage, SessionToken, SystemTimeExt, TypeId, Update, UpdateData,
     Updatedness, Updates,
 };
-use anyhow::anyhow;
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
@@ -179,13 +179,13 @@ where
                 // Retry connecting if we're looping there
                 // TODO(perf-low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
-                _reconnect_attempt_interval = crate::sleep(RECONNECT_INTERVAL),
+                _reconnect_attempt_interval = crdb_core::sleep(RECONNECT_INTERVAL),
                     if self.is_trying_to_connect() => {
                     tracing::trace!("reconnect interval elapsed");
                 },
 
                 // Send the next ping, if it's time to do it
-                Some(_) = OptionFuture::from(self.next_ping.map(crate::sleep_until)), if self.is_connected() => {
+                Some(_) = OptionFuture::from(self.next_ping.map(crdb_core::sleep_until)), if self.is_connected() => {
                     tracing::trace!("sending ping request");
                     let request_id = self.next_request_id();
                     let _ = self.send_connected(&ClientMessage {
@@ -198,7 +198,7 @@ where
                 }
 
                 // Next pong did not come in time, disconnect
-                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| crate::sleep_until(t))), if self.is_connecting() => {
+                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| crdb_core::sleep_until(t))), if self.is_connecting() => {
                     tracing::trace!("pong did not come in time, disconnecting");
                     self.state = self.state.disconnect();
                     self.next_pong_deadline = None;
@@ -270,7 +270,7 @@ where
                                         }),
                                         responses_sender,
                                     ).await;
-                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                    crdb_core::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                                 for (query_id, (query, type_id, have_all_until, _)) in subscribed_queries {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
@@ -288,12 +288,12 @@ where
                                         }),
                                         responses_sender,
                                     ).await;
-                                    crate::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                    crdb_core::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                             }
                             ServerMessage::Response {
                                 request_id,
-                                response: ResponsePart::Error(crate::SerializableError::InvalidToken(tok)),
+                                response: ResponsePart::Error(crdb_core::SerializableError::InvalidToken(tok)),
                                 last_response: true
                             } if req == request_id && tok == token => {
                                 tracing::trace!("server answered that token is invalid");
@@ -401,7 +401,7 @@ where
                         if already_sent {
                             let _ = sender.unbounded_send(ResponsePartWithSidecar {
                                 response: ResponsePart::Error(
-                                    crate::SerializableError::ConnectionLoss,
+                                    crdb_core::SerializableError::ConnectionLoss,
                                 ),
                                 sidecar: None,
                             });
@@ -557,8 +557,10 @@ where
         while let Some(response) = responses_receiver.next().await {
             // Ignore the sidecar here. We're not requesting any binaries so there can't be anything anyway
             match response.response {
-                ResponsePart::Error(crate::SerializableError::ConnectionLoss) => (), // too bad, let's empty the feed and try again next reconnection
-                ResponsePart::Error(crate::SerializableError::ObjectDoesNotExist(object_id)) => {
+                ResponsePart::Error(crdb_core::SerializableError::ConnectionLoss) => (), // too bad, let's empty the feed and try again next reconnection
+                ResponsePart::Error(crdb_core::SerializableError::ObjectDoesNotExist(
+                    object_id,
+                )) => {
                     // Server claimed this object doesn't exist, but we actually knew about it already
                     // The only possible conclusion is that we lost the rights to read the object.
                     let _ = update_sender.unbounded_send(Updates {

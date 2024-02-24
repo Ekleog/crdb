@@ -1,12 +1,13 @@
 use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb};
-use crate::{
-    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId, Importance, Lock,
-    MaybeObject, MaybeSnapshot, Obj, Object, ObjectData, ObjectId, Query, QueryId, ResultExt,
-    Session, SessionRef, SessionToken, TypeId, Update, UpdateData, Updatedness, Updates, Upload,
-    UploadId, User,
-};
+use crate::Obj;
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
+use crdb_core::{
+    BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId, Importance, Lock,
+    MaybeObject, MaybeSnapshot, Object, ObjectData, ObjectId, Query, QueryId, ResultExt, Session,
+    SessionRef, SessionToken, TypeId, Update, UpdateData, Updatedness, Updates, Upload, UploadId,
+    User,
+};
 use crdb_core::{ClientStorageInfo, LoginInfo};
 use crdb_helpers::parse_snapshot_ref;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
@@ -71,7 +72,7 @@ impl ClientDb {
         vacuum_schedule: ClientVacuumSchedule<VS>,
     ) -> anyhow::Result<(Arc<ClientDb>, impl CrdbFuture<Output = usize>)>
     where
-        C: crate::Config,
+        C: crdb_core::Config,
         RRL: 'static + CrdbSend + Fn(),
         EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + CrdbFuture<Output = OnError>,
@@ -156,7 +157,7 @@ impl ClientDb {
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
         this.setup_data_saver::<C>(data_saver_receiver, updates_broadcaster);
         let (upgrade_finished_sender, upgrade_finished) = oneshot::channel();
-        crate::spawn({
+        crdb_core::spawn({
             let db = this.db.clone();
             async move {
                 let num_errors = C::reencode_old_versions(&*db).await;
@@ -204,7 +205,7 @@ impl ClientDb {
     ) {
         // No need for a cancellation token: this task will automatically end as soon as the stream
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
-        crate::spawn({
+        crdb_core::spawn({
             let data_saver = self.data_saver.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
@@ -235,7 +236,7 @@ impl ClientDb {
         let subscribed_objects = self.subscribed_objects.clone();
         let subscribed_queries = self.subscribed_queries.clone();
         let api = self.api.clone();
-        crate::spawn(async move {
+        crdb_core::spawn(async move {
             loop {
                 match db.storage_info().await {
                     Ok(storage_info) => {
@@ -282,14 +283,14 @@ impl ClientDb {
                 };
 
                 tokio::select! {
-                    _ = crate::sleep(vacuum_schedule.frequency) => (),
+                    _ = crdb_core::sleep(vacuum_schedule.frequency) => (),
                     _ = cancellation_token.cancelled() => break,
                 }
             }
         });
     }
 
-    fn setup_data_saver<C: crate::Config>(
+    fn setup_data_saver<C: crdb_core::Config>(
         self: &Arc<Self>,
         data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
@@ -301,7 +302,7 @@ impl ClientDb {
         let vacuum_guard = self.vacuum_guard.clone();
         let query_updates_broadcasters = self.query_updates_broadcastees.clone();
         let data_saver_skipper = self.data_saver_skipper.subscribe();
-        crate::spawn(async move {
+        crdb_core::spawn(async move {
             Self::data_saver::<C>(
                 data_receiver,
                 data_saver_skipper,
@@ -318,7 +319,7 @@ impl ClientDb {
     }
 
     #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a good struct
-    async fn data_saver<C: crate::Config>(
+    async fn data_saver<C: crdb_core::Config>(
         mut data_receiver: mpsc::UnboundedReceiver<DataSaverMessage>,
         mut data_saver_skipper: watch::Receiver<bool>,
         subscribed_objects: Arc<Mutex<SubscribedObjectMap>>,
@@ -450,7 +451,7 @@ impl ClientDb {
     }
 
     #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a good struct
-    async fn save_data<C: crate::Config>(
+    async fn save_data<C: crdb_core::Config>(
         db: &LocalDb,
         subscribed_objects: &Mutex<SubscribedObjectMap>,
         subscribed_queries: &Mutex<SubscribedQueriesMap>,
@@ -1192,7 +1193,7 @@ impl ClientDb {
     /// to make sure the created binary is not vacuumed away before the object or event
     /// had enough time to get created.
     pub async fn create_binary(self: &Arc<Self>, data: Arc<[u8]>) -> crate::Result<()> {
-        let binary_id = crate::hash_binary(&data);
+        let binary_id = crdb_core::hash_binary(&data);
         self.db.create_binary(binary_id, data.clone()).await
         // Do not create the binary over the API. We'll try uploading the object that requires it when
         // that happens, hoping for the binary to already be known by the server. If it is not, then we'll

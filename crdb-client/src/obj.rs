@@ -1,4 +1,5 @@
-use crate::{client::ClientDb, DbPtr, Object};
+use crate::ClientDb;
+use crdb_core::{DbPtr, Object};
 use educe::Educe;
 use std::{fmt::Debug, future::Future, ops::Deref, sync::Arc};
 

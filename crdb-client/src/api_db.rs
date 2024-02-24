@@ -5,13 +5,13 @@ use super::{
     },
     LocalDb,
 };
-use crate::{
+use anyhow::anyhow;
+use crdb_core::{
     BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject,
     MaybeSnapshot, Object, ObjectData, ObjectId, Query, QueryId, Request, ResponsePart, ResultExt,
     Session, SessionRef, SessionToken, SnapshotData, TypeId, Updatedness, Updates, Upload,
     UploadId,
 };
-use anyhow::anyhow;
 use futures::{channel::mpsc, future::Either, pin_mut, stream, FutureExt, StreamExt};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -51,7 +51,7 @@ impl ApiDb {
         require_relogin: RRL,
     ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
     where
-        C: crate::Config,
+        C: crdb_core::Config,
         GSO: 'static + CrdbSend + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
@@ -85,7 +85,7 @@ impl ApiDb {
         };
         let (connection, commands) = mpsc::unbounded();
         let (requests, requests_receiver) = mpsc::unbounded();
-        crate::spawn(
+        crdb_core::spawn(
             Connection::new(
                 commands,
                 requests_receiver,
@@ -104,7 +104,7 @@ impl ApiDb {
             watch::channel(all_uploads.clone());
         let upload_queue_watcher_sender = Arc::new(Mutex::new(upload_queue_watcher_sender));
         let (upload_resender_sender, upload_resender_receiver) = mpsc::unbounded();
-        crate::spawn(upload_resender::<C, _, _, _>(
+        crdb_core::spawn(upload_resender::<C, _, _, _>(
             upload_queue.clone(),
             upload_resender_receiver,
             requests,
@@ -502,7 +502,7 @@ async fn upload_resender<C, BG, EH, EHF>(
     binary_getter: Arc<BG>,
     error_handler: EH,
 ) where
-    C: crate::Config,
+    C: crdb_core::Config,
     BG: Db,
     EH: 'static + CrdbSend + Fn(Upload, crate::Error) -> EHF,
     EHF: 'static + CrdbFuture<Output = OnError>,
@@ -611,12 +611,14 @@ async fn upload_resender<C, BG, EH, EHF>(
                                 );
                             }
                         }
-                        ResponsePart::Error(crate::SerializableError::MissingBinaries(bins)) => {
+                        ResponsePart::Error(crdb_core::SerializableError::MissingBinaries(
+                            bins,
+                        )) => {
                             missing_binaries.extend(bins);
                         }
-                        ResponsePart::Error(crate::SerializableError::ObjectDoesNotExist(_))
-                            if !missing_binaries.is_empty() =>
-                        {
+                        ResponsePart::Error(crdb_core::SerializableError::ObjectDoesNotExist(
+                            _,
+                        )) if !missing_binaries.is_empty() => {
                             // Do nothing, and retry on the next round: this can happen if eg. object creation failed due to a missing binary
                             // If there was no missing binary yet, it means that there was no previous upload that we could retry.
                             // As such, in that situation, fall through to the next Error handling, and send the error back to the user.
@@ -746,7 +748,10 @@ async fn upload_resender<C, BG, EH, EHF>(
     }
 }
 
-async fn undo_upload<C: crate::Config>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+async fn undo_upload<C: crdb_core::Config>(
+    local_db: &LocalDb,
+    upload: &Upload,
+) -> crate::Result<()> {
     match upload {
         Upload::Object { object_id, .. } => local_db.remove(*object_id).await,
         Upload::Event {
@@ -766,7 +771,7 @@ async fn undo_upload<C: crate::Config>(local_db: &LocalDb, upload: &Upload) -> c
     }
 }
 
-async fn do_upload<C: crate::Config>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+async fn do_upload<C: crdb_core::Config>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
     match upload {
         Upload::Object {
             object_id,
@@ -809,9 +814,9 @@ async fn do_upload<C: crate::Config>(local_db: &LocalDb, upload: &Upload) -> cra
 fn expect_simple_response(
     mut response_receiver: mpsc::UnboundedReceiver<ResponsePartWithSidecar>,
 ) -> oneshot::Receiver<crate::Result<()>> {
-    // TODO(perf-med): handle this like handle_upload_response: probably with a not-must-use wrapper and removing the crate::spawn?
+    // TODO(perf-med): handle this like handle_upload_response: probably with a not-must-use wrapper and removing the crdb_core::spawn?
     let (sender, receiver) = oneshot::channel();
-    crate::spawn(async move {
+    crdb_core::spawn(async move {
         let Some(response) = response_receiver.next().await else {
             let _ = sender.send(Err(crate::Error::Other(anyhow!(
                 "Connection thread went down too ealy"
