@@ -70,7 +70,7 @@ fuzz-pg-simple ARGS='':
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
-        server::postgres_db::tests::fuzz_simple::fuzz \
+        tests::fuzz_simple::fuzz \
         {{ARGS}}
 
 fuzz-idb-simple ARGS='':
@@ -87,7 +87,7 @@ fuzz-pg-perms ARGS='':
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
-        server::postgres_db::tests::fuzz_remote_perms::fuzz \
+        tests::fuzz_remote_perms::fuzz \
         {{ARGS}}
 
 fuzz-idb-perms ARGS='':
@@ -104,21 +104,21 @@ fuzz-pg-threads ARGS='':
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
-        server::postgres_db::tests::fuzz_two_threads::fuzz_no_lock_check \
+        tests::fuzz_two_threads::fuzz_no_lock_check \
         {{ARGS}}
 
 fuzz-pg-locks ARGS='':
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
-        server::postgres_db::tests::fuzz_two_threads::fuzz_checking_locks \
+        tests::fuzz_two_threads::fuzz_checking_locks \
         {{ARGS}}
 
 fuzz-pg-full ARGS='':
     cargo bolero test \
         --all-features \
         -p crdb-postgres \
-        server::postgres_db::tests::fuzz_object_full::fuzz \
+        tests::fuzz_object_full::fuzz \
         {{ARGS}}
 
 fuzz-idb-full ARGS='':
