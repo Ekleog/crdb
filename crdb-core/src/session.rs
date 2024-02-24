@@ -3,12 +3,11 @@ use web_time::SystemTime;
 
 #[cfg(feature = "arbitrary")]
 fn any_system_time_opt(u: &mut arbitrary::Unstructured) -> arbitrary::Result<Option<SystemTime>> {
-    let d = u.arbitrary::<Option<u64>>()?;
+    let d = u.arbitrary::<Option<web_time::Duration>>()?;
     let Some(d) = d else {
         return Ok(None);
     };
-    // Generate from milliseconds only, because postgres loses details under the millisecond granularity
-    Ok(SystemTime::UNIX_EPOCH.checked_add(web_time::Duration::from_millis(d)))
+    Ok(SystemTime::UNIX_EPOCH.checked_add(d))
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
