@@ -3,7 +3,7 @@ mod client_db;
 mod connection;
 mod obj;
 
-pub use api_db::{ApiDb, OnError};
+pub use api_db::ApiDb;
 pub use client_db::{ClientDb, ClientVacuumSchedule};
 pub use connection::ConnectionEvent;
 pub use obj::Obj;

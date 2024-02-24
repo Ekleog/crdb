@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crdb", "crdb-cache", "crdb-core", "crdb-helpers", "crdb-indexed-db", "crdb-macros", "crdb-postgres", "crdb-sqlite", "crdb-test-utils",
+    "crdb", "crdb-cache", "crdb-core", "crdb-helpers", "crdb-indexed-db", "crdb-macros", "crdb-postgres", "crdb-server", "crdb-sqlite", "crdb-test-utils",
 ]
 
 [workspace.dependencies]
@@ -12,6 +12,7 @@ crdb-helpers = { path = "./crdb-helpers" }
 crdb-indexed-db = { path = "./crdb-indexed-db" }
 crdb-macros = { path = "./crdb-macros" }
 crdb-postgres = { path = "./crdb-postgres" }
+crdb-server = { path = "./crdb-server" }
 crdb-sqlite = { path = "./crdb-sqlite" }
 crdb-test-utils = { path = "./crdb-test-utils" }
 

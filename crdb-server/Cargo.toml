@@ -1,0 +1,22 @@
+[package]
+name = "crdb-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crdb-cache.workspace = true
+crdb-core.workspace = true
+crdb-postgres.workspace = true
+
+anyhow.workspace = true
+axum.workspace = true
+chrono.workspace = true
+cron.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+ulid.workspace = true

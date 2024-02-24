@@ -17,15 +17,7 @@ client = [
     "tokio-tungstenite",
     "tokio-util",
 ]
-server = [
-    "axum",
-    "crdb-cache",
-    "crdb-core/server",
-    "crdb-postgres",
-    "cron",
-    "sqlx",
-    "tokio-util",
-]
+server = [ "crdb-server" ]
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
@@ -57,11 +49,9 @@ web-time.workspace = true
 
 # Optional dependencies
 crdb-cache = { workspace = true, optional = true }
-crdb-postgres = { workspace = true, optional = true }
+crdb-server = { workspace = true, optional = true }
 
 async-stream = { workspace = true, optional = true }
-axum = { workspace = true, optional = true }
-cron = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 
