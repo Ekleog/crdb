@@ -13,6 +13,8 @@ jobs:
   just-test:
     strategy:
       matrix:
+        hardcoded:
+          - false
         type:
           - { name: Build, command: --no-dev-deps build }
           - { name: Clippy, command: --no-dev-deps clippy -- -D warnings }
@@ -22,9 +24,10 @@ jobs:
           - { name: Stable, sigil: "+stable", setup: rustup toolchain install stable }
           - { name: MSRV, sigil: "+1.75.0", setup: rustup toolchain install 1.75.0 }
         include:
-          - name_override: Tests
-            command_override: just test
-    name: ${{ matrix.name_override || format('{0} All Features ({1})', matrix.type.name, matrix.rust.name) }}
+          - hardcoded: true
+            name: Just Test
+            command: just test
+    name: ${{ matrix.hardcoded && matrix.name || format('{0} All Features ({1})', matrix.type.name, matrix.rust.name) }}
     runs-on: ubuntu-latest
     steps:
       # Checkout the repository
@@ -57,7 +60,7 @@ jobs:
       - run: ${{ matrix.rust.setup }}
 
       # Run the tests
-      - run: ${{ matrix.command_override || format('cargo {0} hack --workspace --feature-powerset {1}', matrix.rust.sigil, matrix.test.command) }}
+      - run: ${{ matrix.hardcoded && matrix.command || format('cargo {0} hack --workspace --feature-powerset {1}', matrix.rust.sigil, matrix.test.command) }}
 
   just-clippy:
     name: Clippy
