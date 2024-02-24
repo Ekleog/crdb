@@ -24,7 +24,7 @@ jobs:
         include:
           - name_override: Tests
             command_override: just test
-    name: ${{ matrix.name_override || (matrix.type.name + " All Features ( " + matrix.rust.name + ")") }}
+    name: ${{ matrix.name_override || format('{0} All Features ({1})', matrix.type.name, matrix.rust.name) }}
     runs-on: ubuntu-latest
     steps:
       # Checkout the repository
@@ -54,7 +54,7 @@ jobs:
       - run: sqlx migrate run --source crdb-postgres/migrations
 
       # Run the tests
-      - run: ${{ matrix.command_override || ("cargo " + matrix.rust.sigil + " hack --workspace --feature-powerset " + matrix.test.command) }}
+      - run: ${{ matrix.command_override || format('cargo {0} hack --workspace --feature-powerset {1}", matrix.rust.sigil, matrix.test.command) }}
 
   just-clippy:
     name: Clippy
