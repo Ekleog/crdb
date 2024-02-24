@@ -54,16 +54,16 @@ test-crate *ARGS: (test-crate-api ARGS) (test-crate-client-native ARGS) (test-cr
 test-crate-standalone *ARGS: (test-crate-api ARGS) (test-crate-client-native ARGS)
 
 test-crate-api *ARGS:
-    SQLX_OFFLINE="true" cargo nextest run --features _tests {{ARGS}}
+    SQLX_OFFLINE="true" cargo nextest run {{ARGS}}
 
 test-crate-client-native *ARGS:
-    SQLX_OFFLINE="true" cargo nextest run --features client,_tests {{ARGS}}
+    SQLX_OFFLINE="true" cargo nextest run --features client {{ARGS}}
 
 test-crate-client-js *ARGS:
-    cargo test -p crdb-indexed-db --target wasm32-unknown-unknown {{ARGS}}
+    cargo test -p crdb-indexed-db --features _tests --target wasm32-unknown-unknown {{ARGS}}
 
 test-crate-server *ARGS:
-    SQLX_OFFLINE="true" cargo nextest run --features server,_tests {{ARGS}}
+    SQLX_OFFLINE="true" cargo nextest run --features server {{ARGS}}
 
 test-example-basic *ARGS: build-example-basic-client (test-example-basic-host ARGS)
 

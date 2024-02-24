@@ -26,15 +26,6 @@ server = [
     "sqlx",
     "tokio-util",
 ]
-_tests = [ # internal feature, for use by wasm tests in particular and thus all tests from there on
-    "arbitrary",
-    "arbitrary-json",
-    "bolero",
-    "console_error_panic_hook",
-    "crdb-core/arbitrary",
-    "reord/test",
-    "tracing-wasm",
-]
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
@@ -74,30 +65,11 @@ cron = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 
-# Optional dependencies, for tests
-arbitrary = { workspace = true, optional = true }
-arbitrary-json = { workspace = true, optional = true } # very small crate, can we actually trust updates?
-
-# Dependencies specifically for wasm32
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 crdb-indexed-db = { workspace = true, optional = true }
 getrandom = { workspace = true, features = ["js"] } # TODO(api-high): introduce a `js` feature here too and enable conditionally
 gloo-net = { workspace = true, optional = true }
 
-# Optional dependencies for wasm32
-bolero = { workspace = true, optional = true }
-console_error_panic_hook = { workspace = true, optional = true }
-tracing-wasm = { workspace = true, optional = true }
-
-# Dependencies specifically for native
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 crdb-sqlite = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-tokio = { workspace = true, features = ["full"] }
-
-
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-rand.workspace = true
-wasm-bindgen-test.workspace = true

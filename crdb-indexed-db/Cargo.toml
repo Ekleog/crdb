@@ -3,6 +3,9 @@ name = "crdb-indexed-db"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+_tests = []
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 crdb-core = { workspace = true, features = ["indexed-db"] }
 crdb-helpers = { workspace = true, features = ["js"] }
