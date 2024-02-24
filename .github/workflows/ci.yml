@@ -19,8 +19,8 @@ jobs:
           - { name: Test, command: nextest run }
         rust:
           - { name: Nightly }
-          - { name: Stable, sigil: "+stable" }
-          - { name: MSRV, sigil: "+1.75.0" }
+          - { name: Stable, sigil: "+stable", setup: rustup toolchain install stable }
+          - { name: MSRV, sigil: "+1.75.0", setup: rustup toolchain install 1.75.0 }
         include:
           - name_override: Tests
             command_override: just test
@@ -52,6 +52,9 @@ jobs:
           password: postgres
           database: crdb-test
       - run: sqlx migrate run --source crdb-postgres/migrations
+
+      # Prepare rustup
+      - run: ${{ matrix.rust.setup }}
 
       # Run the tests
       - run: ${{ matrix.command_override || format('cargo {0} hack --workspace --feature-powerset {1}', matrix.rust.sigil, matrix.test.command) }}
