@@ -243,7 +243,7 @@ impl<T> ResultExt for anyhow::Result<T> {
     }
 }
 
-#[cfg(any(feature = "client-native", feature = "server"))]
+#[cfg(any(feature = "sqlx-sqlite", feature = "server"))]
 impl<T> ResultExt for sqlx::Result<T> {
     type Ok = T;
 

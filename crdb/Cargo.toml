@@ -11,8 +11,7 @@ all-features = true
 client = [
     "async-stream",
     "crdb-cache",
-    "sqlx/sqlite",
-    "sqlx/uuid",
+    "crdb-sqlite",
     "tokio-tungstenite",
     "tokio-util",
 ]
@@ -22,12 +21,7 @@ server = [
     "crdb-core/server",
     "crdb-postgres",
     "cron",
-    "lockable",
-    "rand",
-    "sqlx/rust_decimal",
-    "sqlx/json",
-    "sqlx/postgres",
-    "sqlx/uuid",
+    "sqlx",
     "tokio-util",
 ]
 _tests = [ # internal feature, for use by wasm tests in particular and thus all tests from there on
@@ -36,7 +30,6 @@ _tests = [ # internal feature, for use by wasm tests in particular and thus all 
     "bolero",
     "console_error_panic_hook",
     "crdb-core/arbitrary",
-    "rand",
     "reord/test",
     "tracing-wasm",
 ]
@@ -76,8 +69,7 @@ crdb-postgres = { workspace = true, optional = true }
 async-stream = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 cron = { workspace = true, optional = true }
-lockable = { workspace = true, optional = true }
-rand = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 
 # Optional dependencies, for tests
@@ -106,11 +98,7 @@ tracing-wasm = { workspace = true, optional = true }
 
 # Dependencies specifically for native
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-crdb-core = { workspace = true, features = ["client-native"] }
-sqlx.workspace = true
-uuid.workspace = true
-
-# Optional dependencies specifically for native
+crdb-sqlite = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -122,3 +110,7 @@ wasm-bindgen-test.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
+
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+rand.workspace = true

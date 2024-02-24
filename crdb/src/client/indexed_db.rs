@@ -1,9 +1,9 @@
 use crate::{
-    client::{ClientStorageInfo, LoginInfo},
     normalizer_version, BinPtr, Db, DbPtr, Event, EventId, Lock, Object, ObjectId, Query, QueryId,
     ResultExt, TypeId, Updatedness, Upload, UploadId,
 };
 use anyhow::anyhow;
+use crdb_core::{ClientStorageInfo, LoginInfo};
 use crdb_helpers::parse_snapshot_js;
 use futures::{future, TryFutureExt};
 use indexed_db::CursorDirection;

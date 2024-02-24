@@ -1,4 +1,4 @@
-use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb, LoginInfo};
+use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb};
 use crate::{
     BinPtr, CrdbFuture, CrdbSend, CrdbStream, CrdbSync, Db, DbPtr, EventId, Importance, Lock,
     MaybeObject, MaybeSnapshot, Obj, Object, ObjectData, ObjectId, Query, QueryId, ResultExt,
@@ -7,6 +7,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
+use crdb_core::{ClientStorageInfo, LoginInfo};
 use crdb_helpers::parse_snapshot_ref;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
 use std::{
@@ -1218,12 +1219,6 @@ impl ClientDb {
 pub struct ClientVacuumSchedule<F> {
     frequency: Duration,
     filter: F,
-}
-
-pub struct ClientStorageInfo {
-    pub usage: usize,
-    pub quota: usize,
-    pub objects_unlocked_this_run: usize,
 }
 
 impl ClientVacuumSchedule<fn(ClientStorageInfo) -> bool> {

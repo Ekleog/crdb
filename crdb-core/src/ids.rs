@@ -83,7 +83,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(feature = "client-native")]
+        #[cfg(feature = "sqlx-sqlite")]
         impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
             fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode_by_ref(&self.to_uuid(), buf)
@@ -99,7 +99,7 @@ macro_rules! impl_id {
             }
         }
 
-        #[cfg(feature = "client-native")]
+        #[cfg(feature = "sqlx-sqlite")]
         impl sqlx::Type<sqlx::Sqlite> for $type {
             fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
                 <uuid::Uuid as sqlx::Type<sqlx::Sqlite>>::type_info()

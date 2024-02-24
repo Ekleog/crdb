@@ -1,17 +1,17 @@
-use crate::{
-    normalizer_version, BinPtr, Db, EventId, Lock, Object, ObjectId, Query, QueryId, ResultExt,
-    TypeId, Updatedness, Upload, UploadId,
-};
 use anyhow::Context;
+use crdb_core::{
+    normalizer_version, BinPtr, ClientStorageInfo, Db, EventId, Lock, LoginInfo, Object, ObjectId,
+    Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 
-use super::{ClientStorageInfo, LoginInfo};
-
 #[cfg(test)]
 mod tests;
+
+pub use crdb_core::{Error, Result};
 
 pub struct SqliteDb {
     db: sqlx::SqlitePool,
@@ -19,7 +19,7 @@ pub struct SqliteDb {
 
 impl SqliteDb {
     pub async fn connect_impl(db: sqlx::SqlitePool) -> anyhow::Result<SqliteDb> {
-        sqlx::migrate!("src/client/migrations")
+        sqlx::migrate!("./migrations")
             .run(&db)
             .await
             .context("running migrations on sqlite database")?;

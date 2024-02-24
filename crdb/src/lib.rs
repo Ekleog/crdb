@@ -35,7 +35,7 @@ mod server {
 pub mod crdb_internal {
     #[cfg(feature = "client")]
     pub use crate::client::{
-        ClientDb, ClientStorageInfo, ClientVacuumSchedule, ConnectionEvent, LocalDb, Obj, OnError,
+        ClientDb, ClientVacuumSchedule, ConnectionEvent, LocalDb, Obj, OnError,
     };
     #[cfg(feature = "server")]
     pub use crate::server::{PostgresDb, UpdatesMap};
@@ -56,11 +56,11 @@ pub mod crdb_internal {
     pub use ulid::{self, Ulid};
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub use sqlx;
-
 #[cfg(feature = "server")]
 pub use cron;
+
+#[cfg(feature = "server")]
+pub use sqlx;
 
 pub use chrono;
 pub use serde;

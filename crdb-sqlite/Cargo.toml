@@ -1,0 +1,15 @@
+[package]
+name = "crdb-sqlite"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crdb-core = { workspace = true, features = ["sqlx-sqlite"] }
+
+anyhow.workspace = true
+serde_json.workspace = true
+sqlx = { workspace = true, features = ["sqlite", "uuid"] }
+ulid.workspace = true
+
+[dev-dependencies]
+crdb-test-utils.workspace = true
