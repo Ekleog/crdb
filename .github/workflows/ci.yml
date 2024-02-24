@@ -16,12 +16,18 @@ jobs:
         include:
           - name: Tests
             command: just test
-          - name: Build All Features (crates)
+          - name: Build All Features (nightly)
             command: cargo hack build --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset
-          - name: Clippy All Features (crates)
+          - name: Clippy All Features (nightly)
             command: cargo hack clippy --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset -- -D warnings
-          - name: Test All Features (crates)
+          - name: Test All Features (nightly)
             command: cargo hack nextest run --workspace --exclude crdb --ignore-private --feature-powerset
+          - name: Build All Features (stable)
+            command: cargo +1.75.0 hack build --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset
+          - name: Clippy All Features (stable)
+            command: cargo +1.75.0 hack clippy --workspace --exclude crdb --ignore-private --no-dev-deps --feature-powerset -- -D warnings
+          - name: Test All Features (stable)
+            command: cargo +1.75.0 hack nextest run --workspace --exclude crdb --ignore-private --feature-powerset
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     steps:
