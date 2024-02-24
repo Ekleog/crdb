@@ -11,6 +11,7 @@ use ulid::Ulid;
 use web_time::SystemTime;
 
 const NANOS_PER_SEC: u128 = 1_000_000_000;
+const NANOS_PER_MS: u128 = 1_000_000;
 
 // Ignore issues that could arise after year ~4970. MarkActive will only happen with
 // server-controlled systemtimes anyway.
@@ -18,8 +19,10 @@ const MAX_TIME_AHEAD: u128 = NANOS_PER_SEC * 3600 * 24 * 366 * 3000;
 
 fn reasonable_system_time(u: &mut arbitrary::Unstructured) -> arbitrary::Result<SystemTime> {
     let d = u.arbitrary::<u128>()? % MAX_TIME_AHEAD;
+    // Round to the nearest millisecond, because postgresql will not keep precision beyond that
+    let nanos = (d % NANOS_PER_SEC) / NANOS_PER_MS * NANOS_PER_MS;
     Ok(SystemTime::UNIX_EPOCH
-        + Duration::new((d / NANOS_PER_SEC) as u64, (d % NANOS_PER_SEC) as u32))
+        + Duration::new((d / NANOS_PER_SEC) as u64, nanos as u32))
 }
 
 #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
