@@ -29,7 +29,7 @@ jobs:
           - name: Clippy All Features (crdb)
             command: cargo hack clippy -p crdb --ignore-private --no-dev-deps --feature-powerset --optional-deps --depth 2 -- -D warnings
           - name: Test All Features (crdb)
-            command: cargo hack nextest run -p crdb --ignore-private --features _tests --feature-powerset --depth 2
+            command: cargo hack nextest run -p crdb --ignore-private --feature-powerset --depth 2
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     steps:
