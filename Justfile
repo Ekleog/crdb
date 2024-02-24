@@ -60,7 +60,7 @@ test-crate-client-native *ARGS:
     SQLX_OFFLINE="true" cargo nextest run --features client,_tests {{ARGS}}
 
 test-crate-client-js *ARGS:
-    cargo test --features client,_tests -p crdb --target wasm32-unknown-unknown {{ARGS}}
+    cargo test -p crdb-indexed-db --target wasm32-unknown-unknown {{ARGS}}
 
 test-crate-server *ARGS:
     SQLX_OFFLINE="true" cargo nextest run --features server,_tests {{ARGS}}

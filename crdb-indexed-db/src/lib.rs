@@ -1,9 +1,11 @@
-use crate::{
+#![cfg(target_arch = "wasm32")]
+
+use anyhow::anyhow;
+use crdb_core::{check_strings, ClientStorageInfo, LoginInfo};
+use crdb_core::{
     normalizer_version, BinPtr, Db, DbPtr, Event, EventId, Lock, Object, ObjectId, Query, QueryId,
     ResultExt, TypeId, Updatedness, Upload, UploadId,
 };
-use anyhow::anyhow;
-use crdb_core::{ClientStorageInfo, LoginInfo};
 use crdb_helpers::parse_snapshot_js;
 use futures::{future, TryFutureExt};
 use indexed_db::CursorDirection;
@@ -16,6 +18,8 @@ use std::{
 };
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
+
+pub use crdb_core::{Error, Result};
 
 // TODO(misc-high): Split the code into multiple crates. Probably at least:
 // * crdb-traits, with Db, Object, but also newly-introduced ClientDb and ServerDb traits
@@ -953,7 +957,7 @@ impl IndexedDb {
         object: Arc<T>,
         updatedness: Option<Updatedness>,
         lock: Lock,
-    ) -> Result<Option<Arc<T>>, indexed_db::Error<crate::Error>> {
+    ) -> std::result::Result<Option<Arc<T>>, indexed_db::Error<crate::Error>> {
         let new_snapshot_meta = SnapshotMeta {
             snapshot_id: created_at,
             type_id: *T::type_ulid(),
@@ -974,7 +978,7 @@ impl IndexedDb {
             .wrap_with_context(|| format!("serializing {object_id:?}"))?;
         let required_binaries = object.required_binaries();
         // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
-        crate::check_strings(&serde_json::to_value(&*object).wrap_context("serializing to json")?)?;
+        check_strings(&serde_json::to_value(&*object).wrap_context("serializing to json")?)?;
 
         let snapshots = transaction
             .object_store("snapshots")
@@ -1440,7 +1444,7 @@ impl Db for IndexedDb {
                 }
 
                 // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
-                crate::check_strings(&serde_json::to_value(&*event).wrap_context("serializing to json")?)?;
+                check_strings(&serde_json::to_value(&*event).wrap_context("serializing to json")?)?;
 
                 // Insert the event metadata, checking for collisions
                 match events_meta.add(&new_event_meta_js).await {
@@ -1845,7 +1849,7 @@ impl Db for IndexedDb {
                 }
 
                 // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
-                crate::check_strings(
+                check_strings(
                     &serde_json::to_value(&*object).wrap_context("serializing to json")?,
                 )?;
 
@@ -2301,7 +2305,7 @@ impl Db for IndexedDb {
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        if crate::hash_binary(&data) != binary_id {
+        if crdb_core::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));
         }
         let ary = Uint8Array::new_with_length(u32::try_from(data.len()).unwrap());

@@ -262,7 +262,7 @@ impl<T> ResultExt for sqlx::Result<T> {
     }
 }
 
-#[cfg(feature = "client-js")]
+#[cfg(feature = "indexed-db")]
 impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     type Ok = T;
 
@@ -276,7 +276,7 @@ impl<T> ResultExt for std::result::Result<T, web_sys::DomException> {
     }
 }
 
-#[cfg(feature = "client-js")]
+#[cfg(feature = "indexed-db")]
 impl<T> ResultExt for std::result::Result<T, web_sys::wasm_bindgen::JsValue> {
     type Ok = T;
 
@@ -297,7 +297,7 @@ impl<T> ResultExt for std::result::Result<T, web_sys::wasm_bindgen::JsValue> {
     }
 }
 
-#[cfg(feature = "client-js")]
+#[cfg(feature = "indexed-db")]
 impl<T> ResultExt for std::result::Result<T, serde_wasm_bindgen::Error> {
     type Ok = T;
 
@@ -309,7 +309,7 @@ impl<T> ResultExt for std::result::Result<T, serde_wasm_bindgen::Error> {
     }
 }
 
-#[cfg(feature = "client-js")]
+#[cfg(feature = "indexed-db")]
 impl<T> ResultExt for std::result::Result<T, indexed_db::Error<crate::Error>> {
     type Ok = T;
 

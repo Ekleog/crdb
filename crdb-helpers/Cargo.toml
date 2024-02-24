@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 js = [
-    "crdb-core/client-js",
+    "crdb-core/indexed-db",
     "serde-wasm-bindgen",
     "wasm-bindgen",
 ]

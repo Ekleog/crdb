@@ -11,6 +11,7 @@ all-features = true
 client = [
     "async-stream",
     "crdb-cache",
+    "crdb-indexed-db",
     "crdb-sqlite",
     "gloo-net",
     "tokio-tungstenite",
@@ -79,18 +80,9 @@ arbitrary-json = { workspace = true, optional = true } # very small crate, can w
 
 # Dependencies specifically for wasm32
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-crdb-core = { workspace = true, features = ["indexed-db", "web-sys"] }
-crdb-helpers = { workspace = true, features = ["js"] }
-
+crdb-indexed-db = { workspace = true, optional = true }
 getrandom = { workspace = true, features = ["js"] } # TODO(api-high): introduce a `js` feature here too and enable conditionally
 gloo-net = { workspace = true, optional = true }
-gloo-timers.workspace = true
-indexed-db.workspace = true
-js-sys.workspace = true
-serde-wasm-bindgen.workspace = true
-wasm-bindgen.workspace = true
-wasm-bindgen-futures.workspace = true
-web-sys.workspace = true
 
 # Optional dependencies for wasm32
 bolero = { workspace = true, optional = true }
@@ -101,9 +93,6 @@ tracing-wasm = { workspace = true, optional = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 crdb-sqlite = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
-
-[dev-dependencies]
-crdb-test-utils.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
