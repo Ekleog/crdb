@@ -77,7 +77,10 @@ fuzz-idb-simple ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
-    cargo test --features client,_tests --target wasm32-unknown-unknown \
+    cargo test \
+        -p crdb-indexed-db \
+        --target wasm32-unknown-unknown \
+        --features _tests \
         client_js::fuzz_simple::fuzz \
         --profile fuzz \
         {{ARGS}} \
@@ -94,7 +97,10 @@ fuzz-idb-perms ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
-    cargo test --features client,_tests --target wasm32-unknown-unknown \
+    cargo test \
+        -p crdb-indexed-db \
+        --target wasm32-unknown-unknown \
+        --features _tests \
         client_js::fuzz_remote_perms::fuzz \
         --profile fuzz \
         {{ARGS}} \
@@ -125,7 +131,10 @@ fuzz-idb-full ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
-    cargo test --features client,_tests --target wasm32-unknown-unknown \
+    cargo test \
+        -p crdb-indexed-db \
+        --target wasm32-unknown-unknown \
+        --features _tests \
         client_js::fuzz_object_full::fuzz \
         --profile fuzz \
         {{ARGS}} \
