@@ -16,6 +16,8 @@ fmt:
 
 test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 
+test-standalone *ARGS: (test-crate-native "--exclude" "crdb-postgres" ARGS) (test-example-basic ARGS)
+
 clippy:
     CARGO_TARGET_DIR="target/clippy" SQLX_OFFLINE="true" cargo clippy --all-features -- -D warnings
 
@@ -30,8 +32,6 @@ udeps-full:
 
 doc:
     CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
-
-test-standalone *ARGS: (test-crate-standalone ARGS) (test-example-basic ARGS)
 
 make-test-db:
     dropdb crdb-test || true
@@ -50,20 +50,13 @@ clean:
     rm -rf /tmp/crdb-test-pg-* || true
     rm -rf /tmp/.org.chromium.Chromium.* || true
 
-test-crate *ARGS: (test-crate-api ARGS) (test-crate-client-native ARGS) (test-crate-client-js ARGS) (test-crate-server ARGS)
-test-crate-standalone *ARGS: (test-crate-api ARGS) (test-crate-client-native ARGS)
+test-crate *ARGS: (test-crate-native ARGS) (test-crate-wasm32 ARGS)
 
-test-crate-api *ARGS:
-    SQLX_OFFLINE="true" cargo nextest run {{ARGS}}
+test-crate-native *ARGS:
+    SQLX_OFFLINE="true" cargo nextest run --workspace --all-features {{ARGS}}
 
-test-crate-client-native *ARGS:
-    SQLX_OFFLINE="true" cargo nextest run -p crdb --features client {{ARGS}}
-
-test-crate-client-js *ARGS:
+test-crate-wasm32 *ARGS:
     cargo test -p crdb-indexed-db --features _tests --target wasm32-unknown-unknown {{ARGS}}
-
-test-crate-server *ARGS:
-    SQLX_OFFLINE="true" cargo nextest run -p crdb --features server {{ARGS}}
 
 test-example-basic *ARGS: build-example-basic-client (test-example-basic-host ARGS)
 
