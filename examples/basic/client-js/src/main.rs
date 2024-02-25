@@ -1,6 +1,7 @@
-use basic_api::{AuthInfo, Item, Tag, TagEvent};
+use basic_api::{AuthInfo, Item, ItemEvent, Tag, TagEvent};
 use crdb::{
-    ConnectionEvent, Importance, JsonPathItem, Query, QueryId, SearchableString, SessionToken, User,
+    ConnectionEvent, DbPtr, Importance, JsonPathItem, ObjectId, Query, QueryId, SearchableString,
+    SessionToken, User,
 };
 use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
@@ -796,6 +797,11 @@ impl PartialEq for RenderItemProps {
 fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
     let db = use_context::<DbContext>().unwrap();
     let ptr = data.ptr();
+    let show_edit = use_state(|| false);
+    let click_edit = {
+        let show_edit = show_edit.clone();
+        move |_| show_edit.set(!*show_edit)
+    };
     // TODO(api-high): whether the object is locked or not should be exposed to the user
     let unlock = {
         let db = db.clone();
@@ -835,6 +841,95 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
             type="button"
             value="Unsubscribe"
             onclick={unsubscribe} />
+        <input
+            type="button"
+            value="Edit"
+            onclick={click_edit} />
+        { (*show_edit).then(|| html! { <div><EditItem {data} /></div> }) }
+    </>}
+}
+
+#[function_component(EditItem)]
+fn edit_item(RenderItemProps { data }: &RenderItemProps) -> Html {
+    let new_text = use_state(|| String::new());
+    let tag = use_state(|| String::new());
+    let on_new_text_change = {
+        let new_text = new_text.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            new_text.set(input.value());
+        }
+    };
+    let on_tag_change = {
+        let tag = tag.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            tag.set(input.value());
+        }
+    };
+    let on_set_text_click = {
+        let new_text = new_text.clone();
+        let data = data.clone();
+        move |_| {
+            let new_text = new_text.clone();
+            let data = data.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let event = ItemEvent::SetText((*new_text).clone());
+                if let Err(err) = data
+                    .submit(event.clone())
+                    .await
+                    .expect("failed submitting event")
+                    .await
+                {
+                    tracing::error!(?err, ?event, "remote server rejected event");
+                }
+            })
+        }
+    };
+    let on_tag_click = {
+        let tag = tag.clone();
+        let data = data.clone();
+        Callback::from(move |function: fn(DbPtr<Tag>) -> ItemEvent| {
+            let tag = tag.clone();
+            let data = data.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let tag = DbPtr::from(ObjectId(Ulid::from_str(&tag).expect("invalid tag ulid")));
+                let event = function(tag);
+                if let Err(err) = data
+                    .submit(event.clone())
+                    .await
+                    .expect("failed submitting event")
+                    .await
+                {
+                    tracing::error!(?err, ?event, "remote server rejected event");
+                }
+            })
+        })
+    };
+    html! {<>
+        <input
+            type="text"
+            placeholder="new name"
+            value={(*new_text).clone()}
+            onchange={on_new_text_change} />
+        <input
+            type="button"
+            value="Set Text"
+            onclick={on_set_text_click} />
+        <br />
+        <input
+            type="text"
+            placeholder="tag"
+            value={(*tag).clone()}
+            onchange={on_tag_change} />
+        <input
+            type="button"
+            value="Add Tag"
+            onclick={on_tag_click.reform(|_| ItemEvent::AddTag)} />
+        <input
+            type="button"
+            value="Rm Tag"
+            onclick={on_tag_click.reform(|_| ItemEvent::RmTag)} />
     </>}
 }
 

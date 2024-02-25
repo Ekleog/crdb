@@ -111,7 +111,9 @@ impl crdb::Object for Item {
     }
 }
 
-#[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize,
+)]
 pub enum ItemEvent {
     SetOwner(User),
     SetText(String),
