@@ -207,6 +207,11 @@ fn user_to_ulid(mut user: String) -> String {
         .collect()
 }
 
+fn user_str_to_ulid(user: &str) -> User {
+    let user = format!("{:0>26}", user);
+    User(Ulid::from_str(&user).expect("username is invalid"))
+}
+
 #[function_component(Login)]
 fn login(LoginProps { on_login }: &LoginProps) -> Html {
     let username = use_state(|| String::from(""));
@@ -234,8 +239,7 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
             let username = username.clone();
             let password = password.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let user = format!("{:0>26}", *username);
-                let user = User(Ulid::from_str(&user).expect("username is invalid"));
+                let user = user_str_to_ulid(&username);
                 let auth_info = AuthInfo {
                     user,
                     pass: (*password).clone(),
@@ -905,11 +909,19 @@ fn render_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
 #[function_component(EditTag)]
 fn edit_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
     let new_name = use_state(|| String::new());
+    let user = use_state(|| String::new());
     let on_new_name_change = {
         let new_name = new_name.clone();
         move |e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             new_name.set(input.value());
+        }
+    };
+    let on_user_change = {
+        let user = user.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            user.set(user_to_ulid(input.value()));
         }
     };
     let on_rename_click = {
@@ -919,13 +931,36 @@ fn edit_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
             let new_name = new_name.clone();
             let data = data.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                data.submit(TagEvent::Rename((*new_name).clone()))
+                let event = TagEvent::Rename((*new_name).clone());
+                if let Err(err) = data
+                    .submit(event.clone())
                     .await
                     .expect("failed submitting event")
                     .await
-                    .expect("remote server rejected event");
+                {
+                    tracing::error!(?err, ?event, "remote server rejected event");
+                }
             })
         }
+    };
+    let on_user_click = {
+        let user = user.clone();
+        let data = data.clone();
+        Callback::from(move |function: fn(User) -> TagEvent| {
+            let user = user.clone();
+            let data = data.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let event = function(user_str_to_ulid(&user));
+                if let Err(err) = data
+                    .submit(event.clone())
+                    .await
+                    .expect("failed submitting event")
+                    .await
+                {
+                    tracing::error!(?err, ?event, "remote server rejected event");
+                }
+            })
+        })
     };
     html! {<>
         <input
@@ -937,5 +972,15 @@ fn edit_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
             type="button"
             value="Rename"
             onclick={on_rename_click} />
+        <br />
+        <input
+            type="text"
+            placeholder="user"
+            value={(*user).clone()}
+            onchange={on_user_change} />
+        <input
+            type="button"
+            value="Add Reader"
+            onclick={on_user_click.reform(|_| TagEvent::AddReader)} />
     </>}
 }

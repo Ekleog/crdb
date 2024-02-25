@@ -198,7 +198,9 @@ impl crdb::Object for Tag {
     }
 }
 
-#[derive(Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, deepsize::DeepSizeOf, serde::Deserialize, serde::Serialize,
+)]
 pub enum TagEvent {
     Rename(String),
     AddReader(User),
