@@ -11,7 +11,7 @@ const MAYBE_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[sqlx::test]
 async fn smoke_test(db: sqlx::PgPool) {
-    let (db, _keepalive) = PostgresDb::<crdb_test_utils::Config>::connect(db, 0)
+    let db = PostgresDb::<crdb_test_utils::Config>::connect(db, 0)
         .await
         .expect("connecting to db");
     crdb_test_utils::smoke_test!(
@@ -83,7 +83,7 @@ impl Drop for TmpDb {
 }
 
 mod fuzz_helpers {
-    use std::{collections::HashSet, sync::Arc};
+    use std::{collections::HashSet, ops::Deref, sync::Arc};
 
     use crate::{tests::TmpDb, PostgresDb};
     use crdb_cache::CacheDb;
@@ -92,22 +92,31 @@ mod fuzz_helpers {
 
     pub use tokio::test;
 
-    pub type Database = Arc<PostgresDb<Config>>;
-    pub type KeepAlive = Arc<CacheDb<PostgresDb<Config>>>;
+    pub struct Database(Arc<CacheDb<PostgresDb<Config>>>);
     pub type SetupState = TmpDb;
+
+    // TODO(api-high): remove this type and especially this Deref once CacheDb is properly always updated whatever the operation
+    // that happens (here in particular, Vacuum)
+    impl Deref for Database {
+        type Target = PostgresDb<Config>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
 
     pub fn setup() -> (TmpDb, bool) {
         (TmpDb::new(), true)
     }
 
-    pub async fn make_db(cluster: &TmpDb) -> (Database, KeepAlive) {
+    pub async fn make_db(cluster: &TmpDb) -> (Database, ()) {
         let pool = cluster.pool().await;
         let db = PostgresDb::connect(pool.clone(), 0).await.unwrap();
         sqlx::query(include_str!("./cleanup-db.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        db
+        (Database(db), ())
     }
 
     macro_rules! make_fuzzer {

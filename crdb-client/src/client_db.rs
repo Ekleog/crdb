@@ -82,7 +82,7 @@ impl ClientDb {
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
         let db = Arc::new(CacheDb::new(
-            Arc::new(LocalDb::connect(local_db).await?),
+            LocalDb::connect(local_db).await?,
             cache_watermark,
         ));
         let maybe_login = db

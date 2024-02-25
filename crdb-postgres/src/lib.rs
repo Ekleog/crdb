@@ -39,24 +39,22 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
     pub async fn connect(
         db: sqlx::PgPool,
         cache_watermark: usize,
-    ) -> anyhow::Result<(Arc<PostgresDb<Config>>, Arc<CacheDb<PostgresDb<Config>>>)> {
+    ) -> anyhow::Result<Arc<CacheDb<PostgresDb<Config>>>> {
         sqlx::migrate!("./migrations")
             .run(&db)
             .await
             .context("running migrations on postgresql database")?;
-        let mut postgres_db = None;
         let cache_db = Arc::new_cyclic(|cache_db| {
-            let db = Arc::new(PostgresDb {
+            let db = PostgresDb {
                 db,
                 cache_db: cache_db.clone(),
                 event_locks: LockPool::new(),
                 object_locks: LockPool::new(),
                 _phantom: PhantomData,
-            });
-            postgres_db = Some(db.clone());
+            };
             CacheDb::new(db, cache_watermark)
         });
-        Ok((postgres_db.unwrap(), cache_db))
+        Ok(cache_db)
     }
 
     pub async fn login_session(

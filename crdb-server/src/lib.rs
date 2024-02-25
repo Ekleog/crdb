@@ -42,8 +42,7 @@ type SessionsSenderMap = HashMap<
 >;
 
 pub struct Server<C: crdb_core::Config> {
-    cache_db: Arc<CacheDb<PostgresDb<C>>>,
-    postgres_db: Arc<PostgresDb<C>>,
+    db: Arc<CacheDb<PostgresDb<C>>>,
     last_completed_updatedness: Arc<Mutex<Updatedness>>,
     updatedness_requester:
         mpsc::UnboundedSender<oneshot::Sender<(Updatedness, oneshot::Sender<UpdatesMap>)>>,
@@ -72,19 +71,18 @@ impl<C: crdb_core::Config> Server<C> {
         C::check_ulids();
 
         // Connect to the database and setup the cache
-        let (postgres_db, cache_db) = PostgresDb::connect(db, cache_watermark).await?;
+        let db = PostgresDb::connect(db, cache_watermark).await?;
 
         // Immediately update the permissions of objects pending permissions upgrades
         // This must happen before starting the server, so long as we do not actually push the returned ReadPermsChange's to subscribers
-        postgres_db
-            .update_pending_rdeps()
+        db.update_pending_rdeps()
             .await
             .wrap_context("updating all pending reverse-dependencies")?;
 
         // Start the upgrading task
         let upgrade_handle = tokio::task::spawn({
-            let postgres_db = postgres_db.clone();
-            async move { C::reencode_old_versions(&*postgres_db).await }
+            let db = db.clone();
+            async move { C::reencode_old_versions(&*db).await }
         });
 
         // Setup the update reorderer task
@@ -142,7 +140,7 @@ impl<C: crdb_core::Config> Server<C> {
         // Setup the auto-vacuum task
         let cancellation_token = CancellationToken::new();
         tokio::task::spawn({
-            let postgres_db = postgres_db.clone();
+            let db = db.clone();
             let cancellation_token = cancellation_token.clone();
             let updatedness_requester = updatedness_requester.clone();
             async move {
@@ -184,7 +182,7 @@ impl<C: crdb_core::Config> Server<C> {
 
                     // Finally, run the vacuum
                     if let Err(err) = Self::run_vacuum(
-                        &postgres_db,
+                        &db,
                         no_new_changes_before,
                         updatedness,
                         kill_sessions_older_than,
@@ -200,8 +198,7 @@ impl<C: crdb_core::Config> Server<C> {
 
         // Finally, return the information
         let this = Server {
-            cache_db,
-            postgres_db,
+            db,
             last_completed_updatedness,
             updatedness_requester,
             _cleanup_token: cancellation_token.drop_guard(),
@@ -217,7 +214,7 @@ impl<C: crdb_core::Config> Server<C> {
         expiration_time: Option<SystemTime>,
     ) -> crate::Result<(SessionToken, SessionRef)> {
         let now = SystemTime::now();
-        self.postgres_db
+        self.db
             .login_session(Session {
                 user_id,
                 session_ref: SessionRef::now(),
@@ -303,7 +300,7 @@ impl<C: crdb_core::Config> Server<C> {
 
         // Actually send the binary
         let binary_id = crdb_core::hash_binary(&bin);
-        self.postgres_db.create_binary(binary_id, bin).await
+        self.db.create_binary(binary_id, bin).await
     }
 
     async fn handle_client_message(
@@ -324,7 +321,7 @@ impl<C: crdb_core::Config> Server<C> {
             // TODO(perf-low): do not mark the session as active upon each incoming message? we don't really need to
             // mark the session as active every 10 seconds / 1 minute, yet that's the frequency at which the clients
             // send GetTime in order to detect disconnection
-            self.postgres_db
+            self.db
                 .mark_session_active(sess.token, SystemTime::now())
                 .await
                 .wrap_context("marking session as active")?;
@@ -336,37 +333,33 @@ impl<C: crdb_core::Config> Server<C> {
         // nontrivial. Do this only after thinking well about what could happen.
         match &*msg.request {
             Request::SetToken(token) => {
-                let res = self
-                    .postgres_db
-                    .resume_session(*token)
-                    .await
-                    .map(|session| {
-                        let (updates_sender, updates_receiver) = mpsc::unbounded_channel();
-                        self.sessions
-                            .lock()
-                            .unwrap()
-                            .entry(session.user_id)
-                            .or_default()
-                            .entry(session.session_ref)
-                            .or_default()
-                            .push(updates_sender);
-                        conn.session = Some(SessionInfo {
-                            token: *token,
-                            session,
-                            expected_binaries: 0,
-                            subscribed_objects: Arc::new(RwLock::new(HashSet::new())),
-                            subscribed_queries: Arc::new(RwLock::new(HashMap::new())),
-                            updates_receiver,
-                        });
-                        ResponsePart::Success
+                let res = self.db.resume_session(*token).await.map(|session| {
+                    let (updates_sender, updates_receiver) = mpsc::unbounded_channel();
+                    self.sessions
+                        .lock()
+                        .unwrap()
+                        .entry(session.user_id)
+                        .or_default()
+                        .entry(session.session_ref)
+                        .or_default()
+                        .push(updates_sender);
+                    conn.session = Some(SessionInfo {
+                        token: *token,
+                        session,
+                        expected_binaries: 0,
+                        subscribed_objects: Arc::new(RwLock::new(HashSet::new())),
+                        subscribed_queries: Arc::new(RwLock::new(HashMap::new())),
+                        updates_receiver,
                     });
+                    ResponsePart::Success
+                });
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
             Request::RenameSession(name) => {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
                     Some(sess) => self
-                        .postgres_db
+                        .db
                         .rename_session(sess.token, name)
                         .await
                         .map(|()| ResponsePart::Success),
@@ -384,7 +377,7 @@ impl<C: crdb_core::Config> Server<C> {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
                     Some(sess) => self
-                        .postgres_db
+                        .db
                         .list_sessions(sess.session.user_id)
                         .await
                         .map(ResponsePart::Sessions),
@@ -395,7 +388,7 @@ impl<C: crdb_core::Config> Server<C> {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
                     Some(sess) => self
-                        .postgres_db
+                        .db
                         .disconnect_session(sess.session.user_id, sess.session.session_ref)
                         .await
                         .map(|()| ResponsePart::Success),
@@ -407,7 +400,7 @@ impl<C: crdb_core::Config> Server<C> {
                 let res = match &conn.session {
                     None => Err(crate::Error::ProtocolViolation),
                     Some(sess) => self
-                        .postgres_db
+                        .db
                         .disconnect_session(sess.session.user_id, *session_ref)
                         .await
                         .map(|()| ResponsePart::Success),
@@ -445,7 +438,7 @@ impl<C: crdb_core::Config> Server<C> {
                     .insert(*query_id, query.clone());
                 let updatedness = *self.last_completed_updatedness.lock().unwrap();
                 let object_ids = self
-                    .postgres_db
+                    .db
                     .query(
                         sess.session.user_id,
                         *type_id,
@@ -479,7 +472,7 @@ impl<C: crdb_core::Config> Server<C> {
                     .ok_or(crate::Error::ProtocolViolation)?;
                 let updatedness = *self.last_completed_updatedness.lock().unwrap();
                 let object_ids = self
-                    .postgres_db
+                    .db
                     .query(
                         sess.session.user_id,
                         *type_id,
@@ -546,7 +539,7 @@ impl<C: crdb_core::Config> Server<C> {
                     } => {
                         let (updatedness, update_sender) = self.updatedness_slot().await?;
                         let res = C::upload_object(
-                            &*self.postgres_db,
+                            &**self.db,
                             sess.session.user_id,
                             updatedness,
                             *type_id,
@@ -554,7 +547,7 @@ impl<C: crdb_core::Config> Server<C> {
                             *created_at,
                             *snapshot_version,
                             object.clone(),
-                            &*self.cache_db,
+                            &*self.db,
                         )
                         .await;
                         let res = match res {
@@ -609,14 +602,14 @@ impl<C: crdb_core::Config> Server<C> {
                     } => {
                         let (updatedness, update_sender) = self.updatedness_slot().await?;
                         let res = C::upload_event(
-                            &*self.postgres_db,
+                            &**self.db,
                             sess.session.user_id,
                             updatedness,
                             *type_id,
                             *object_id,
                             *event_id,
                             event.clone(),
-                            &*self.cache_db,
+                            &*self.db,
                         )
                         .await;
                         let res = match res {
@@ -693,13 +686,13 @@ impl<C: crdb_core::Config> Server<C> {
                 );
             }
             if let Some(one_user) = c.gained_read.iter().next() {
-                let mut t = self.postgres_db.get_transaction().await?;
+                let mut t = self.db.get_transaction().await?;
                 let object = self
-                    .postgres_db
+                    .db
                     .get_all(&mut t, *one_user, c.object_id, None)
                     .await?;
                 let last_snapshot = self
-                    .postgres_db
+                    .db
                     .get_latest_snapshot(&mut t, *one_user, c.object_id)
                     .await?;
                 let new_updates = object.into_updates();
@@ -739,9 +732,9 @@ impl<C: crdb_core::Config> Server<C> {
                     // Subscribe BEFORE getting the object. This makes sure no updates are lost.
                     // We must then not return to the update-sending loop until all the responses are sent.
                     subscribed_objects.write().unwrap().insert(object_id);
-                    let mut t = self.postgres_db.get_transaction().await?;
+                    let mut t = self.db.get_transaction().await?;
                     let object = self
-                        .postgres_db
+                        .db
                         .get_all(&mut t, user, object_id, updatedness)
                         .await?;
                     Ok(MaybeObject::NotYetSubscribed(object))
@@ -828,11 +821,8 @@ impl<C: crdb_core::Config> Server<C> {
                 ))))
             } else {
                 Either::Right(async move {
-                    let mut t = self.postgres_db.get_transaction().await?;
-                    let snapshot = self
-                        .postgres_db
-                        .get_latest_snapshot(&mut t, user, object_id)
-                        .await?;
+                    let mut t = self.db.get_transaction().await?;
+                    let snapshot = self.db.get_latest_snapshot(&mut t, user, object_id).await?;
                     Ok(MaybeSnapshot::NotSubscribed(snapshot))
                 })
             }
@@ -904,11 +894,8 @@ impl<C: crdb_core::Config> Server<C> {
         request_id: RequestId,
         binaries: impl Iterator<Item = BinPtr>,
     ) -> crate::Result<()> {
-        let binaries = binaries.map(|binary_id| {
-            self.cache_db
-                .get_binary(binary_id)
-                .map(move |r| (binary_id, r))
-        });
+        let binaries =
+            binaries.map(|binary_id| self.db.get_binary(binary_id).map(move |r| (binary_id, r)));
         let binaries = stream::iter(binaries).buffer_unordered(16); // TODO(perf-low): is 16 a good number?
         pin_mut!(binaries);
         let mut size_of_message = 0;
@@ -1016,7 +1003,7 @@ impl<C: crdb_core::Config> Server<C> {
     ) -> crate::Result<()> {
         let (updatedness, slot) = self.updatedness_slot().await?;
         Self::run_vacuum(
-            &self.postgres_db,
+            &self.db,
             no_new_changes_before,
             updatedness,
             kill_sessions_older_than,
@@ -1026,7 +1013,7 @@ impl<C: crdb_core::Config> Server<C> {
     }
 
     async fn run_vacuum(
-        postgres_db: &PostgresDb<C>,
+        db: &CacheDb<PostgresDb<C>>,
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
         kill_sessions_older_than: Option<SystemTime>,
@@ -1034,7 +1021,7 @@ impl<C: crdb_core::Config> Server<C> {
     ) -> crate::Result<()> {
         // Perform the vacuum, collecting all updates
         let mut updates = HashMap::new();
-        let res = postgres_db
+        let res = db
             .vacuum(
                 no_new_changes_before,
                 updatedness,

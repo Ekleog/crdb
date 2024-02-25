@@ -1,5 +1,6 @@
 use super::{TmpDb, CHECK_NAMED_LOCKS_FOR, MAYBE_LOCK_TIMEOUT};
 use crate::PostgresDb;
+use crdb_cache::CacheDb;
 use crdb_core::{Db, EventId, Lock, ObjectId, ResultExt, ServerSideDb, Updatedness};
 use crdb_test_utils::{Config, *};
 use std::sync::Arc;
@@ -150,7 +151,7 @@ async fn apply_op(db: &PostgresDb<Config>, s: &FuzzState, op: &Op) -> anyhow::Re
 
 async fn apply_ops(
     thread: usize,
-    db: Arc<PostgresDb<Config>>,
+    db: Arc<CacheDb<PostgresDb<Config>>>,
     s: Arc<FuzzState>,
     ops: Arc<Vec<Op>>,
 ) {
@@ -167,7 +168,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &(Arc<Vec<Op>>, Arc<Vec<Op>>), config: reord:
         .unwrap()
         .block_on(async move {
             let pool = cluster.pool().await;
-            let (db, _cache_db) = PostgresDb::connect(pool.clone(), 1024 * 1024)
+            let db = PostgresDb::connect(pool.clone(), 1024 * 1024)
                 .await
                 .unwrap();
             sqlx::query(include_str!("../cleanup-db.sql"))

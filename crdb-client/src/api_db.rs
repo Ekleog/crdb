@@ -6,6 +6,7 @@ use super::{
     LocalDb,
 };
 use anyhow::anyhow;
+use crdb_cache::CacheDb;
 use crdb_core::{
     BinPtr, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject, MaybeSnapshot, Object, ObjectData,
     ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, Session, SessionRef, SessionToken,
@@ -31,7 +32,7 @@ pub struct ApiDb {
     connection: mpsc::UnboundedSender<Command>,
     upload_queue_watcher_sender: Arc<Mutex<watch::Sender<Vec<UploadId>>>>,
     upload_queue_watcher_receiver: watch::Receiver<Vec<UploadId>>,
-    upload_queue: Arc<LocalDb>,
+    upload_queue: Arc<CacheDb<LocalDb>>,
     upload_resender: mpsc::UnboundedSender<(
         Option<UploadId>,
         Arc<Request>,
@@ -42,7 +43,7 @@ pub struct ApiDb {
 
 impl ApiDb {
     pub async fn new<C, GSO, GSQ, BG, EH, EHF, RRL>(
-        upload_queue: &Arc<LocalDb>,
+        upload_queue: &Arc<CacheDb<LocalDb>>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
         binary_getter: Arc<BG>,
@@ -490,7 +491,7 @@ impl ApiDb {
 }
 
 async fn upload_resender<C, BG, EH, EHF>(
-    upload_queue: Arc<LocalDb>,
+    upload_queue: Arc<CacheDb<LocalDb>>,
     requests: mpsc::UnboundedReceiver<(
         Option<UploadId>,
         Arc<Request>,
@@ -748,7 +749,7 @@ async fn upload_resender<C, BG, EH, EHF>(
 }
 
 async fn undo_upload<C: crdb_core::Config>(
-    local_db: &LocalDb,
+    local_db: &CacheDb<LocalDb>,
     upload: &Upload,
 ) -> crate::Result<()> {
     match upload {
@@ -770,7 +771,10 @@ async fn undo_upload<C: crdb_core::Config>(
     }
 }
 
-async fn do_upload<C: crdb_core::Config>(local_db: &LocalDb, upload: &Upload) -> crate::Result<()> {
+async fn do_upload<C: crdb_core::Config>(
+    local_db: &CacheDb<LocalDb>,
+    upload: &Upload,
+) -> crate::Result<()> {
     match upload {
         Upload::Object {
             object_id,

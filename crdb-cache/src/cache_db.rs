@@ -5,9 +5,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-// TODO(perf-high): de-Arc the D here
 pub struct CacheDb<D: Db> {
-    db: Arc<D>,
+    db: D,
     cache: Arc<RwLock<ObjectCache>>,
     binaries: Arc<RwLock<BinariesCache>>,
 }
@@ -18,10 +17,10 @@ impl<D: Db> CacheDb<D> {
     /// program) would make cache operation slow.
     /// For this reason, if the cache used size reaches the watermark, then the watermark will be
     /// automatically increased.
-    pub fn new(db: Arc<D>, watermark: usize) -> CacheDb<D> {
+    pub fn new(db: D, watermark: usize) -> CacheDb<D> {
         let cache = Arc::new(RwLock::new(ObjectCache::new(watermark)));
         CacheDb {
-            db: db.clone(),
+            db,
             cache,
             binaries: Arc::new(RwLock::new(BinariesCache::new())),
         }
@@ -152,8 +151,10 @@ impl<D: Db> Db for CacheDb<D> {
     }
 }
 
+// TODO(api-high): If ill-kept, CacheDb could become outdated, and thus lead to wrong permissions definitions.
+// Remove this Deref and replace everything with more traits that will be implemented by the *Db types
 impl<D: Db> Deref for CacheDb<D> {
-    type Target = Arc<D>;
+    type Target = D;
 
     fn deref(&self) -> &Self::Target {
         &self.db

@@ -186,7 +186,7 @@ fn fuzz_impl(cluster: &TmpDb, ops: &Vec<Op>) {
         .unwrap()
         .block_on(async move {
             let pool = cluster.pool().await;
-            let db = PostgresDb::connect(pool.clone(), 0).await.unwrap().0;
+            let db = PostgresDb::connect(pool.clone(), 0).await.unwrap();
             sqlx::query(include_str!("../cleanup-db.sql"))
                 .execute(&pool)
                 .await
