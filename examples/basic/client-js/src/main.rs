@@ -1,7 +1,7 @@
 use basic_api::{AuthInfo, Item, ItemEvent, Tag, TagEvent};
 use crdb::{
-    ConnectionEvent, DbPtr, Importance, JsonPathItem, ObjectId, Query, QueryId, SearchableString,
-    SessionToken, User,
+    ConnectionEvent, DbPtr, Importance, JsonPathItem, Object, ObjectId, Query, QueryId,
+    SearchableString, SessionToken, User,
 };
 use futures::stream::StreamExt;
 use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
@@ -136,6 +136,15 @@ struct ArcEq<T>(Arc<T>);
 impl<T> PartialEq for ArcEq<T> {
     fn eq(&self, other: &ArcEq<T>) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+#[derive(Clone)]
+struct RcEq<T>(Rc<T>);
+
+impl<T> PartialEq for RcEq<T> {
+    fn eq(&self, other: &RcEq<T>) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
     }
 }
 
@@ -798,10 +807,12 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
     let db = use_context::<DbContext>().unwrap();
     let ptr = data.ptr();
     let show_edit = use_state(|| false);
-    let click_edit = {
-        let show_edit = show_edit.clone();
-        move |_| show_edit.set(!*show_edit)
-    };
+    let users_who_can_read = use_future_with((db.clone(), RcEq(data.clone())), |deps| async move {
+        let (db, RcEq(data)) = &*deps;
+        data.users_who_can_read(&**db.0).await
+    })
+    .map(|u| format!("{:?}", *u))
+    .unwrap_or_else(|_| String::from("[loading]"));
     // TODO(api-high): whether the object is locked or not should be exposed to the user
     let unlock = {
         let db = db.clone();
@@ -827,12 +838,16 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
             })
         }
     };
+    let click_edit = {
+        let show_edit = show_edit.clone();
+        move |_| show_edit.set(!*show_edit)
+    };
     html! {<>
         <small>{ format!("{}: ", data.ptr().to_object_id().0) }</small>
         <i>{ show_user(data.owner) }</i>
         { ": " }
         <b>{ &*data.text }</b>
-        { format!(" {:?} {:?} ", data.tags, data.file) }
+        { format!(" {:?} {:?} read={} ", data.tags, data.file, users_who_can_read) }
         <input
             type="button"
             value="Unlock"
