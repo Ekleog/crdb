@@ -10,6 +10,7 @@ use crdb_core::{
 use crdb_core::{ClientStorageInfo, LoginInfo};
 use crdb_helpers::parse_snapshot_ref;
 use futures::{channel::mpsc, future::Either, stream, FutureExt, StreamExt};
+use std::ops::Deref;
 use std::{
     collections::{hash_map, HashMap, HashSet},
     future::Future,
@@ -1398,4 +1399,12 @@ async fn save_object_data_locally<T: Object>(
         .unwrap()
         .insert(object_id, (Some(now_have_all_until), queries, lock_after));
     Ok(res)
+}
+
+impl Deref for ClientDb {
+    type Target = CacheDb<LocalDb>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.db
+    }
 }
