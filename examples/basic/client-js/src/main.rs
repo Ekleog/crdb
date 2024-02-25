@@ -1,4 +1,4 @@
-use basic_api::{AuthInfo, Item, Tag};
+use basic_api::{AuthInfo, Item, Tag, TagEvent};
 use crdb::{
     ConnectionEvent, Importance, JsonPathItem, Query, QueryId, SearchableString, SessionToken, User,
 };
@@ -904,7 +904,38 @@ fn render_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
 
 #[function_component(EditTag)]
 fn edit_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
-    html! {
-        { "edit" }
-    }
+    let new_name = use_state(|| String::new());
+    let on_new_name_change = {
+        let new_name = new_name.clone();
+        move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            new_name.set(input.value());
+        }
+    };
+    let on_rename_click = {
+        let new_name = new_name.clone();
+        let data = data.clone();
+        move |_| {
+            let new_name = new_name.clone();
+            let data = data.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                data.submit(TagEvent::Rename((*new_name).clone()))
+                    .await
+                    .expect("failed submitting event")
+                    .await
+                    .expect("remote server rejected event");
+            })
+        }
+    };
+    html! {<>
+        <input
+            type="text"
+            placeholder="new name"
+            value={(*new_name).clone()}
+            onchange={on_new_name_change} />
+        <input
+            type="button"
+            value="Rename"
+            onclick={on_rename_click} />
+    </>}
 }
