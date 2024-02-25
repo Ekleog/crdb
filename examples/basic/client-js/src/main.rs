@@ -4,7 +4,13 @@ use crdb::{
     SearchableString, SessionToken, User,
 };
 use futures::stream::StreamExt;
-use std::{collections::BTreeSet, rc::Rc, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeSet, HashSet},
+    rc::Rc,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 use ulid::Ulid;
 use web_time::web::SystemTimeExt;
 use yew::{prelude::*, suspense::use_future_with};
@@ -811,7 +817,13 @@ fn render_item(RenderItemProps { data }: &RenderItemProps) -> Html {
         let (db, RcEq(data)) = &*deps;
         data.users_who_can_read(&**db.0).await
     })
-    .map(|u| format!("{:?}", *u))
+    .map(|u| {
+        format!(
+            "{:?}",
+            u.as_ref()
+                .map(|u| u.iter().copied().map(show_user).collect::<HashSet<_>>())
+        )
+    })
     .unwrap_or_else(|_| String::from("[loading]"));
     // TODO(api-high): whether the object is locked or not should be exposed to the user
     let unlock = {
