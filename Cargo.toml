@@ -84,5 +84,3 @@ codegen-units = 1
 [patch.crates-io]
 # TODO(blocked): remove override once https://github.com/daxpedda/web-time/pull/24 lands
 web-time = { version = "1.0", git = "https://github.com/daxpedda/web-time", rev = "0986c4ac8243156993033ba3f1edd9f5151f3dae" }
-# TODO(blocked): remove override once https://github.com/RReverser/serde-wasm-bindgen/pull/64 lands
-serde-wasm-bindgen = { version = "0.6.3", git = "https://github.com/RReverser/serde-wasm-bindgen", rev = "df6f35fe8373a41290338d56c0726220772c53bd" }

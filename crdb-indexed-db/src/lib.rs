@@ -273,7 +273,7 @@ impl IndexedDb {
     }
 
     pub async fn save_login(&self, info: LoginInfo) -> crate::Result<()> {
-        let info_js = serde_wasm_bindgen::to_value(&info).wrap_context("serializing login info")?;
+        let info_js = to_js(info).wrap_context("serializing login info")?;
         self.db
             .transaction(&["config"])
             .rw()
@@ -430,8 +430,8 @@ impl IndexedDb {
                 );
 
                 if old_is_locked != snapshot_meta.is_locked {
-                    let snapshot_js = serde_wasm_bindgen::to_value(&snapshot_meta)
-                        .wrap_context("reserializing snapshot metadata")?;
+                    let snapshot_js =
+                        to_js(snapshot_meta).wrap_context("reserializing snapshot metadata")?;
                     snapshots_meta
                         .put(&snapshot_js)
                         .await
@@ -689,9 +689,8 @@ impl IndexedDb {
         required_binaries: Vec<BinPtr>,
     ) -> crate::Result<UploadId> {
         let metadata = UploadMeta { required_binaries };
-        let metadata =
-            serde_wasm_bindgen::to_value(&metadata).wrap_context("serializing upload metadata")?;
-        let data = serde_wasm_bindgen::to_value(&upload).wrap_context("serializing upload data")?;
+        let metadata = to_js(metadata).wrap_context("serializing upload metadata")?;
+        let data = to_js(upload).wrap_context("serializing upload data")?;
         self.db
             .transaction(&["upload_queue", "upload_queue_meta"])
             .rw()
@@ -722,8 +721,7 @@ impl IndexedDb {
             .transaction(&["upload_queue", "upload_queue_meta"])
             .rw()
             .run(move |transaction| async move {
-                let upload_id = serde_wasm_bindgen::to_value(&upload_id)
-                    .wrap_context("serializing upload id")?;
+                let upload_id = to_js(upload_id).wrap_context("serializing upload id")?;
                 transaction
                     .object_store("upload_queue")
                     .wrap_context("retrieving 'upload_queue' object store")?
@@ -768,11 +766,7 @@ impl IndexedDb {
                 // All binaries are present
                 let required_binaries = Self::list_required_binaries(&transaction).await.unwrap();
                 for b in required_binaries {
-                    if !binaries
-                        .contains(&serde_wasm_bindgen::to_value(&b).unwrap())
-                        .await
-                        .unwrap()
-                    {
+                    if !binaries.contains(&to_js(b).unwrap()).await.unwrap() {
                         panic!("missing required binary {b:?}");
                     }
                 }
@@ -972,12 +966,12 @@ impl IndexedDb {
         };
         let object_id_js = object_id.to_js_string();
         let new_snapshot_id_js = created_at.to_js_string();
-        let new_snapshot_meta_js = serde_wasm_bindgen::to_value(&new_snapshot_meta)
+        let new_snapshot_meta_js = to_js(&new_snapshot_meta)
             .wrap_with_context(|| format!("serializing metadata for {object_id:?}"))?;
-        let new_snapshot_js = serde_wasm_bindgen::to_value(&*object)
-            .wrap_with_context(|| format!("serializing {object_id:?}"))?;
+        let new_snapshot_js =
+            to_js(&*object).wrap_with_context(|| format!("serializing {object_id:?}"))?;
         let required_binaries = object.required_binaries();
-        // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+        // TODO(perf-low): should make this happen as part of the walk happening anyway in to_js
         check_strings(&serde_json::to_value(&*object).wrap_context("serializing to json")?)?;
 
         let snapshots = transaction
@@ -1206,8 +1200,7 @@ impl IndexedDb {
             lock,
             have_all_until: None,
         };
-        let new_query_js =
-            serde_wasm_bindgen::to_value(&new_query).wrap_context("serializing query metadata")?;
+        let new_query_js = to_js(new_query).wrap_context("serializing query metadata")?;
         self.db
             .transaction(&["queries_meta"])
             .rw()
@@ -1276,8 +1269,8 @@ impl IndexedDb {
                             .bits(),
                     );
                     if old_is_locked != snapshot_meta.is_locked {
-                        let snapshot_meta_js = serde_wasm_bindgen::to_value(&snapshot_meta)
-                            .wrap_context("serializing snapshot metadata")?;
+                        let snapshot_meta_js =
+                            to_js(snapshot_meta).wrap_context("serializing snapshot metadata")?;
                         snapshots_meta
                             .put(&snapshot_meta_js)
                             .await
@@ -1318,8 +1311,8 @@ impl IndexedDb {
                     let mut query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
                         .wrap_context("deserializing query metadata")?;
                     query_meta.have_all_until = Some(now_have_all_until);
-                    let query_meta_js = serde_wasm_bindgen::to_value(&query_meta)
-                        .wrap_context("reserializing query metadata")?;
+                    let query_meta_js =
+                        to_js(query_meta).wrap_context("reserializing query metadata")?;
                     queries_meta
                         .put(&query_meta_js)
                         .await
@@ -1381,10 +1374,10 @@ impl Db for IndexedDb {
         let new_event_id_js = event_id.to_js_string();
         let zero_event_id_js = EventId::from_u128(0).to_js_string();
         let max_event_id_js = EventId::from_u128(u128::MAX).to_js_string();
-        let new_event_meta_js = serde_wasm_bindgen::to_value(&new_event_meta)
-            .wrap_with_context(|| format!("serializing {event_id:?}"))?;
-        let new_event_js = serde_wasm_bindgen::to_value(&*event)
-            .wrap_with_context(|| format!("serializing {event_id:?}"))?;
+        let new_event_meta_js =
+            to_js(&new_event_meta).wrap_with_context(|| format!("serializing {event_id:?}"))?;
+        let new_event_js =
+            to_js(&*event).wrap_with_context(|| format!("serializing {event_id:?}"))?;
 
         self.db
             .transaction(&["snapshots", "snapshots_meta", "events", "events_meta", "binaries"])
@@ -1443,7 +1436,7 @@ impl Db for IndexedDb {
                     .into());
                 }
 
-                // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+                // TODO(perf-low): should make this happen as part of the walk happening anyway in to_js
                 check_strings(&serde_json::to_value(&*event).wrap_context("serializing to json")?)?;
 
                 // Insert the event metadata, checking for collisions
@@ -1488,7 +1481,7 @@ impl Db for IndexedDb {
                         let old_is_locked = creation_snapshot.is_locked;
                         creation_snapshot.is_locked = Some((old_is_locked.map(Lock::from_bits_truncate).unwrap_or(Lock::NONE) | force_lock).bits());
                         if old_is_locked != creation_snapshot.is_locked {
-                            let creation_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot)
+                            let creation_snapshot_js = to_js(creation_snapshot)
                                 .wrap_context("serializing snapshot metadata")?;
                             snapshots_meta.put(&creation_snapshot_js)
                                 .await
@@ -1506,7 +1499,7 @@ impl Db for IndexedDb {
                 let old_is_locked = creation_snapshot.is_locked;
                 creation_snapshot.is_locked = Some((old_is_locked.map(Lock::from_bits_truncate).unwrap_or(Lock::NONE) | force_lock).bits());
                 if old_is_locked != creation_snapshot.is_locked {
-                    let creation_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot)
+                    let creation_snapshot_js = to_js(creation_snapshot)
                         .wrap_context("serializing snapshot metadata")?;
                     snapshots_meta.put(&creation_snapshot_js)
                         .await
@@ -1585,7 +1578,7 @@ impl Db for IndexedDb {
                 // Mark it as non-latest if needed
                 if last_snapshot_meta.is_latest.is_some() {
                     last_snapshot_meta.is_latest = None;
-                    let last_snapshot_meta_js = serde_wasm_bindgen::to_value(&last_snapshot_meta)
+                    let last_snapshot_meta_js = to_js(last_snapshot_meta)
                         .wrap_with_context(|| format!("reserializing {last_snapshot_id:?}"))?;
                     snapshots_meta.put(&last_snapshot_meta_js)
                         .await
@@ -1608,11 +1601,11 @@ impl Db for IndexedDb {
                     is_locked: None,
                     required_binaries: last_snapshot.required_binaries(),
                 };
-                let last_applied_event_id_js = serde_wasm_bindgen::to_value(&last_applied_event_id)
+                let last_applied_event_id_js = to_js(last_applied_event_id)
                     .wrap_with_context(|| format!("serializing {last_applied_event_id:?}"))?;
-                let new_last_snapshot_meta_js = serde_wasm_bindgen::to_value(&new_last_snapshot_meta)
+                let new_last_snapshot_meta_js = to_js(new_last_snapshot_meta)
                     .wrap_with_context(|| format!("serializing the snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))?;
-                let new_last_snapshot_js = serde_wasm_bindgen::to_value(&last_snapshot)
+                let new_last_snapshot_js = to_js(&last_snapshot)
                     .wrap_with_context(|| format!("serializing the snapshot for {object_id:?} at {last_applied_event_id:?}"))?;
                 snapshots_meta.add(&new_last_snapshot_meta_js).await.map_err(|err| match err {
                     indexed_db::Error::AlreadyExists => crate::Error::EventAlreadyExists(event_id),
@@ -1696,7 +1689,7 @@ impl Db for IndexedDb {
                         .bits(),
                 );
                 if old_is_locked != creation_snapshot_meta.is_locked {
-                    let new_snapshot_js = serde_wasm_bindgen::to_value(&creation_snapshot_meta)
+                    let new_snapshot_js = to_js(creation_snapshot_meta)
                         .wrap_context("serializing snapshot metadata")?;
                     snapshots_meta
                         .put(&new_snapshot_js)
@@ -1848,7 +1841,7 @@ impl Db for IndexedDb {
                     .into());
                 }
 
-                // TODO(perf-low): should make this happen as part of the walk happening anyway in serde_wasm_bindgen::to_value
+                // TODO(perf-low): should make this happen as part of the walk happening anyway in to_js
                 check_strings(
                     &serde_json::to_value(&*object).wrap_context("serializing to json")?,
                 )?;
@@ -1926,8 +1919,7 @@ impl Db for IndexedDb {
                 }
 
                 // Write the new creation snapshot data
-                let object_js = serde_wasm_bindgen::to_value(&object)
-                    .wrap_context("serializing new creation snapshot")?;
+                let object_js = to_js(&object).wrap_context("serializing new creation snapshot")?;
                 snapshots
                     .add_kv(&new_created_at_js, &object_js)
                     .await
@@ -1953,9 +1945,8 @@ impl Db for IndexedDb {
                     ),
                     required_binaries: required_binaries.clone(),
                 };
-                let new_creation_snapshot_meta_js =
-                    serde_wasm_bindgen::to_value(&new_creation_snapshot_meta)
-                        .wrap_context("serializing snapshot metadata")?;
+                let new_creation_snapshot_meta_js = to_js(new_creation_snapshot_meta)
+                    .wrap_context("serializing snapshot metadata")?;
                 snapshots_meta
                     .put(&new_creation_snapshot_meta_js)
                     .await
@@ -2013,9 +2004,8 @@ impl Db for IndexedDb {
                         is_locked: None,
                         required_binaries: object.required_binaries(),
                     };
-                    let new_latest_snapshot_meta_js =
-                        serde_wasm_bindgen::to_value(&new_latest_snapshot_meta)
-                            .wrap_context("serializing snapshot metadata")?;
+                    let new_latest_snapshot_meta_js = to_js(new_latest_snapshot_meta)
+                        .wrap_context("serializing snapshot metadata")?;
                     snapshots_meta
                         .put(&new_latest_snapshot_meta_js)
                         .await
@@ -2023,8 +2013,8 @@ impl Db for IndexedDb {
 
                     // And the data
                     let last_applied_event_id_js = last_applied_event_id.to_js_string();
-                    let object_js = serde_wasm_bindgen::to_value(&object)
-                        .wrap_context("serializing new latest snapshot")?;
+                    let object_js =
+                        to_js(&object).wrap_context("serializing new latest snapshot")?;
                     snapshots
                         .add_kv(&last_applied_event_id_js, &object_js)
                         .await
@@ -2285,11 +2275,11 @@ impl Db for IndexedDb {
                     is_locked: None,
                     required_binaries: last_snapshot.required_binaries(),
                 };
-                let last_applied_event_id_js = serde_wasm_bindgen::to_value(&last_applied_event_id)
+                let last_applied_event_id_js = to_js(last_applied_event_id)
                     .wrap_with_context(|| format!("serializing {last_applied_event_id:?}"))?;
-                let new_last_snapshot_meta_js = serde_wasm_bindgen::to_value(&new_last_snapshot_meta)
+                let new_last_snapshot_meta_js = to_js(new_last_snapshot_meta)
                     .wrap_with_context(|| format!("serializing the snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))?;
-                let new_last_snapshot_js = serde_wasm_bindgen::to_value(&last_snapshot)
+                let new_last_snapshot_js = to_js(last_snapshot)
                     .wrap_with_context(|| format!("serializing the snapshot for {object_id:?} at {last_applied_event_id:?}"))?;
                 snapshots_meta.put(&new_last_snapshot_meta_js).await.wrap_with_context(|| format!("saving new last snapshot metadata for {object_id:?} at {last_applied_event_id:?}"))?;
                 snapshots.put_kv(&last_applied_event_id_js, &new_last_snapshot_js)
@@ -2440,8 +2430,7 @@ async fn reencode_snapshot<T: Object>(
         .wrap_context("deserializing indexeddb data as json-value")?;
     let value = T::from_old_snapshot(snapshot_version, snapshot_json)
         .wrap_context("parsing old snapshot")?;
-    let new_snapshot_js =
-        serde_wasm_bindgen::to_value(&value).wrap_context("serializing snapshot data")?;
+    let new_snapshot_js = to_js(value).wrap_context("serializing snapshot data")?;
     snapshots
         .put_kv(&snapshot_id_js, &new_snapshot_js)
         .await
@@ -2524,4 +2513,10 @@ async fn apply_events_after<T: Object>(
     }
 
     Ok(last_applied_event_id)
+}
+
+fn to_js<T: serde::Serialize>(v: T) -> std::result::Result<JsValue, serde_wasm_bindgen::Error> {
+    static JSON_SERIALIZER: serde_wasm_bindgen::Serializer =
+        serde_wasm_bindgen::Serializer::json_compatible();
+    v.serialize(&JSON_SERIALIZER)
 }
