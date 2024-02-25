@@ -495,10 +495,15 @@ fn query_remote_tags() -> Html {
         let query = query.clone();
         let query_res = query_res.clone();
         move |importance| {
-            let query = Query::Eq(
-                vec![JsonPathItem::Key(String::from("name"))],
-                serde_json::Value::String((*query).clone()),
-            );
+            let query = (*query).clone();
+            let query = if query.is_empty() {
+                Query::All(Vec::new())
+            } else {
+                Query::Eq(
+                    vec![JsonPathItem::Key(String::from("name"))],
+                    serde_json::Value::String(query),
+                )
+            };
             let db = db.clone();
             let query_res = query_res.clone();
             wasm_bindgen_futures::spawn_local(async move {
@@ -517,7 +522,7 @@ fn query_remote_tags() -> Html {
         .map(|i| html! {<li><RenderTag data={Rc::new(i.as_ref().unwrap().clone())} /></li>})
         .collect::<Html>();
     html! {<>
-        { "Query Remote Tags: "}
+        { "Query Remote Tags (empty for all): "}
         <input
             type="text"
             placeholder="text"
