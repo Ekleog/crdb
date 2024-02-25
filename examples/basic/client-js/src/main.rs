@@ -982,5 +982,17 @@ fn edit_tag(RenderTagProps { data }: &RenderTagProps) -> Html {
             type="button"
             value="Add Reader"
             onclick={on_user_click.reform(|_| TagEvent::AddReader)} />
+        <input
+            type="button"
+            value="Rm Reader"
+            onclick={on_user_click.reform(|_| TagEvent::RmReader)} />
+        <input
+            type="button"
+            value="Add Editor"
+            onclick={on_user_click.reform(|_| TagEvent::AddEditor)} />
+        <input
+            type="button"
+            value="Rm Editor"
+            onclick={on_user_click.reform(|_| TagEvent::RmEditor)} />
     </>}
 }
