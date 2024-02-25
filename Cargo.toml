@@ -83,4 +83,4 @@ codegen-units = 1
 
 [patch.crates-io]
 # TODO(blocked): remove override once https://github.com/daxpedda/web-time/pull/24 lands
-web-time = { version = "1.0", git = "https://github.com/daxpedda/web-time", rev = "0986c4ac8243156993033ba3f1edd9f5151f3dae" }
+web-time = { version = "1.0", git = "https://github.com/daxpedda/web-time", rev = "d19e513655a00261aa21b33c0e0b6645bcf45c05" }
