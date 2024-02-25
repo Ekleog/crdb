@@ -674,6 +674,9 @@ impl<C: crdb_core::Config> Server<C> {
     ) -> crate::Result<()> {
         for c in rdeps {
             for u in c.lost_read {
+                // TODO(api-highest): currently, losing and then re-gaining read rights on a query-subscribed object does
+                // not result in a full retransmit, but just in an update, which thus gets ignored because the client doesn't
+                // have the local object any longer
                 updates.entry(u).or_default().insert(
                     c.object_id,
                     Arc::new(UpdatesWithSnap {

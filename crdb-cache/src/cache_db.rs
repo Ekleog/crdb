@@ -151,7 +151,7 @@ impl<D: Db> Db for CacheDb<D> {
     }
 }
 
-// TODO(api-high): If ill-kept, CacheDb could become outdated, and thus lead to wrong permissions definitions.
+// TODO(api-highest): If ill-kept, CacheDb could become outdated, and thus lead to wrong permissions definitions.
 // Remove this Deref and replace everything with more traits that will be implemented by the *Db types
 impl<D: Db> Deref for CacheDb<D> {
     type Target = D;
