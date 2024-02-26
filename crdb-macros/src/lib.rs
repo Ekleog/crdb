@@ -126,29 +126,27 @@ macro_rules! db {
                 Err($crate::Error::TypeDoesNotExist(type_id))
             }
 
-            fn get_users_who_can_read<'a, D: $crate::ServerSideDb, C: $crate::CanDoCallbacks>(
+            async fn get_users_who_can_read<'a, D: $crate::ServerSideDb, C: $crate::CanDoCallbacks>(
                 call_on: &'a D,
                 object_id: $crate::ObjectId,
                 type_id: $crate::TypeId,
                 snapshot_version: i32,
                 snapshot: $crate::serde_json::Value,
                 cb: &'a C,
-            ) -> impl 'a + $crate::waaaa::Future<Output = $crate::Result<(std::collections::HashSet<$crate::User>, Vec<$crate::ObjectId>, Vec<$crate::ComboLock<'a>>)>> {
+            ) -> $crate::Result<(std::collections::HashSet<$crate::User>, Vec<$crate::ObjectId>, Vec<$crate::ComboLock<'a>>)> {
                 use $crate::{Object, ResultExt, ServerSideDb, crdb_helpers::parse_snapshot};
 
-                Box::pin(async move { // TODO(api-high): remove this pin-box if it doesn't break the build
-                    $(
-                        if type_id == *<$object as Object>::type_ulid() {
-                            let snapshot = parse_snapshot::<$object>(snapshot_version, snapshot)
-                                .wrap_with_context(|| format!("parsing snapshot for {object_id:?}"))?;
-                            let res = call_on.get_users_who_can_read(object_id, &snapshot, cb).await
-                                .wrap_with_context(|| format!("listing users who can read {object_id:?}"))?;
-                            return Ok(res);
-                        }
-                    )*
+                $(
+                    if type_id == *<$object as Object>::type_ulid() {
+                        let snapshot = parse_snapshot::<$object>(snapshot_version, snapshot)
+                            .wrap_with_context(|| format!("parsing snapshot for {object_id:?}"))?;
+                        let res = call_on.get_users_who_can_read(object_id, &snapshot, cb).await
+                            .wrap_with_context(|| format!("listing users who can read {object_id:?}"))?;
+                        return Ok(res);
+                    }
+                )*
 
-                    Err($crate::Error::TypeDoesNotExist(type_id))
-                })
+                Err($crate::Error::TypeDoesNotExist(type_id))
             }
 
             async fn recreate_no_lock<'a, D: $crate::ServerSideDb, C: $crate::CanDoCallbacks>(
