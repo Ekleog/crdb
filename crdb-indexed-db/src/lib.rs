@@ -21,19 +21,6 @@ use wasm_bindgen_futures::JsFuture;
 
 pub use crdb_core::{Error, Result};
 
-// TODO(misc-high): Split the code into multiple crates. Probably at least:
-// * crdb-traits, with Db, Object, but also newly-introduced ClientDb and ServerDb traits
-// * crdb-{postgres,indexeddb,sqlite}, each implementing the Db family of traits
-// * crdb-test-utils, that exposes macros to auto-generate tests for any ClientDb/ServerDb-implementing type
-// * crdb-protocol, with the messages definition
-// * crdb-client, with the client-side protocol implementation
-// * crdb-server, with the server-side protocol implementation
-// * crdb, pulling everything together and providing the crdb! macro
-// And then we can consider other things. For example crdb-yew, that exposes yew hooks for easily watching a specific
-// query, etc. Will need to think about how to make the crdb::db! macro pluggable, because crdb-yew would need to
-// define functions like use_query_NAME_remote; which it cannot do unless it gets macro'd too. Or maybe it should just
-// take in a generic and panic if the type was not actually listed in the crdb::db! call?
-
 const OBJECT_STORE_LIST: &[&str] = &[
     "binaries",
     "config",
