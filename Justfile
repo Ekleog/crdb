@@ -42,7 +42,7 @@ rebuild-offline-queries: make-test-db
     cargo sqlx prepare --database-url "postgres:///crdb-test" -- --all-features --tests
 
 list-todo-types:
-    rg 'TODO\(' | grep -v Justfile | sed 's/^.*TODO(//;s/).*$//' | sort | uniq -c | sort -t - -k 2 || true
+    rg 'TODO\(' | grep -v Justfile | sed 's/^.*TODO(//;s/).*$//' | sort | uniq -c || true
     rg 'TODO[^(]' | grep -v Justfile || true
 
 clean:
