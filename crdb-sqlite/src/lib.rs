@@ -42,14 +42,6 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    pub async fn query(
-        &self,
-        _type_id: TypeId,
-        _query: Arc<Query>,
-    ) -> crate::Result<Vec<ObjectId>> {
-        unimplemented!() // TODO(sqlite-high): implement
-    }
-
     pub async fn vacuum(
         &self,
         mut _notify_removals: impl 'static + FnMut(ObjectId),
@@ -234,6 +226,14 @@ impl ClientSideDb for SqliteDb {
         updatedness: Option<Updatedness>,
         force_lock: Lock,
     ) -> crate::Result<Option<Arc<T>>> {
+        unimplemented!() // TODO(sqlite-high): implement
+    }
+
+    async fn client_query(
+        &self,
+        _type_id: TypeId,
+        _query: Arc<Query>,
+    ) -> crate::Result<Vec<ObjectId>> {
         unimplemented!() // TODO(sqlite-high): implement
     }
 

@@ -13,7 +13,7 @@ async fn smoke_test() {
     crdb_test_utils::smoke_test!(
         db: db,
         query_all: db
-            .query(*TestObjectSimple::type_ulid(), Arc::new(Query::All(vec![])))
+            .client_query(*TestObjectSimple::type_ulid(), Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
         db_type: client,
@@ -22,7 +22,7 @@ async fn smoke_test() {
 
 mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
-    use crdb_core::{Object, Query, ResultExt, Updatedness, User};
+    use crdb_core::{ClientSideDb, Object, Query, ResultExt, Updatedness, User};
     use crdb_indexed_db::IndexedDb;
     use crdb_test_utils::*;
     use rand::{rngs::StdRng, SeedableRng};
@@ -135,12 +135,12 @@ mod fuzz_helpers {
         query: &Arc<Query>,
     ) -> anyhow::Result<()> {
         let db = db
-            .query(*T::type_ulid(), query.clone())
+            .client_query(*T::type_ulid(), query.clone())
             .await
             .wrap_context("querying postgres")
             .map(|r| r.into_iter().collect::<HashSet<_>>());
         let mem = mem_db
-            .query::<T>(USER_ID_NULL, None, &query)
+            .memdb_query::<T>(USER_ID_NULL, None, &query)
             .await
             .wrap_context("querying mem")
             .map(|r| r.into_iter().collect::<HashSet<_>>());

@@ -64,7 +64,7 @@ impl MemDb {
         }
     }
 
-    pub async fn query<T: Object>(
+    pub async fn memdb_query<T: Object>(
         &self,
         user: User,
         only_updated_since: Option<Updatedness>,
@@ -344,6 +344,14 @@ impl ClientSideDb for MemDb {
         this_object.2 = required_binaries;
 
         Ok(Some(last_snapshot))
+    }
+
+    async fn client_query(
+        &self,
+        _type_id: TypeId,
+        _query: Arc<Query>,
+    ) -> crate::Result<Vec<ObjectId>> {
+        unimplemented!("See memdb_query")
     }
 
     async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {

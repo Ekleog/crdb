@@ -1,5 +1,6 @@
 use crate::{
-    BinPtr, CrdbSyncFn, Db, EventId, Lock, Object, ObjectId, QueryId, Updatedness, Upload, UploadId,
+    BinPtr, CrdbSyncFn, Db, EventId, Lock, Object, ObjectId, Query, QueryId, TypeId, Updatedness,
+    Upload, UploadId,
 };
 use std::sync::Arc;
 
@@ -18,6 +19,12 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         updatedness: Option<Updatedness>,
         force_lock: Lock,
     ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
+
+    fn client_query(
+        &self,
+        type_id: TypeId,
+        query: Arc<Query>,
+    ) -> impl waaaa::Future<Output = crate::Result<Vec<ObjectId>>>;
 
     fn remove(&self, object_id: ObjectId) -> impl waaaa::Future<Output = crate::Result<()>>;
 

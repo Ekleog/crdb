@@ -150,7 +150,7 @@ mod fuzz_helpers {
             .wrap_context("querying postgres")
             .map(|r| r.into_iter().collect::<HashSet<_>>());
         let mem = mem_db
-            .query::<T>(user, only_updated_since, &query)
+            .memdb_query::<T>(user, only_updated_since, &query)
             .await
             .map(|r| r.into_iter().collect::<HashSet<_>>());
         cmp(pg, mem)
