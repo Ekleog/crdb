@@ -19,9 +19,3 @@ tracing.workspace = true
 ulid.workspace = true
 waaaa.workspace = true
 web-time.workspace = true
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-crdb-sqlite.workspace = true
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-crdb-indexed-db.workspace = true

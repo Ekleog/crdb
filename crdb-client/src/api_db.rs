@@ -1,9 +1,6 @@
-use super::{
-    connection::{
-        Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
-        ResponseSender,
-    },
-    LocalDb,
+use crate::connection::{
+    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+    ResponseSender,
 };
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
@@ -28,11 +25,11 @@ pub enum OnError {
     ReplaceWith(Upload),
 }
 
-pub struct ApiDb {
+pub struct ApiDb<LocalDb: ClientSideDb> {
     connection: mpsc::UnboundedSender<Command>,
     upload_queue_watcher_sender: Arc<Mutex<watch::Sender<Vec<UploadId>>>>,
     upload_queue_watcher_receiver: watch::Receiver<Vec<UploadId>>,
-    upload_queue: Arc<CacheDb<LocalDb>>,
+    db: Arc<CacheDb<LocalDb>>,
     upload_resender: mpsc::UnboundedSender<(
         Option<UploadId>,
         Arc<Request>,
@@ -41,22 +38,20 @@ pub struct ApiDb {
     connection_event_cb: Arc<RwLock<Box<dyn CrdbSyncFn<ConnectionEvent>>>>,
 }
 
-impl ApiDb {
-    pub async fn new<C, GSO, GSQ, BG, EH, EHF, RRL>(
-        upload_queue: &Arc<CacheDb<LocalDb>>,
+impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
+    pub async fn new<C, GSO, GSQ, EH, EHF, RRL>(
+        db: Arc<CacheDb<LocalDb>>,
         get_subscribed_objects: GSO,
         get_subscribed_queries: GSQ,
-        binary_getter: Arc<BG>,
         error_handler: EH,
         require_relogin: RRL,
-    ) -> crate::Result<(ApiDb, mpsc::UnboundedReceiver<Updates>)>
+    ) -> crate::Result<(ApiDb<LocalDb>, mpsc::UnboundedReceiver<Updates>)>
     where
         C: crdb_core::Config,
         GSO: 'static + waaaa::Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
         GSQ: 'static
             + Send
             + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
-        BG: 'static + Db,
         EH: 'static + waaaa::Send + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + waaaa::Future<Output = OnError>,
         RRL: 'static + waaaa::Send + Fn(),
@@ -96,7 +91,7 @@ impl ApiDb {
             )
             .run(),
         );
-        let all_uploads = upload_queue
+        let all_uploads = db
             .list_uploads()
             .await
             .wrap_context("listing upload queue")?;
@@ -105,15 +100,14 @@ impl ApiDb {
         let upload_queue_watcher_sender = Arc::new(Mutex::new(upload_queue_watcher_sender));
         let (upload_resender_sender, upload_resender_receiver) = mpsc::unbounded();
         waaaa::spawn(upload_resender::<C, _, _, _>(
-            upload_queue.clone(),
+            db.clone(),
             upload_resender_receiver,
             requests,
             upload_queue_watcher_sender.clone(),
-            binary_getter,
             error_handler,
         ));
         for upload_id in all_uploads {
-            let upload = upload_queue
+            let upload = db
                 .get_upload(upload_id)
                 .await
                 .wrap_context("retrieving upload")?
@@ -130,7 +124,7 @@ impl ApiDb {
         }
         Ok((
             ApiDb {
-                upload_queue: upload_queue.clone(),
+                db,
                 upload_queue_watcher_sender,
                 upload_queue_watcher_receiver,
                 connection,
@@ -274,12 +268,12 @@ impl ApiDb {
         let request = Arc::new(Request::Upload(upload.clone()));
         let (result_sender, result_receiver) = mpsc::unbounded();
         let upload_id = self
-            .upload_queue
+            .db
             .enqueue_upload(upload, required_binaries)
             .await
             .wrap_context("enqueuing upload")?;
         let upload_list = self
-            .upload_queue
+            .db
             .list_uploads()
             .await
             .wrap_context("listing uploads")?;
@@ -313,12 +307,12 @@ impl ApiDb {
         let request = Arc::new(Request::Upload(upload.clone()));
         let (result_sender, result_receiver) = mpsc::unbounded();
         let upload_id = self
-            .upload_queue
+            .db
             .enqueue_upload(upload, required_binaries)
             .await
             .wrap_context("enqueuing upload")?;
         let upload_list = self
-            .upload_queue
+            .db
             .list_uploads()
             .await
             .wrap_context("listing uploads")?;
@@ -490,8 +484,8 @@ impl ApiDb {
     }
 }
 
-async fn upload_resender<C, BG, EH, EHF>(
-    upload_queue: Arc<CacheDb<LocalDb>>,
+async fn upload_resender<C, LocalDb, EH, EHF>(
+    db: Arc<CacheDb<LocalDb>>,
     requests: mpsc::UnboundedReceiver<(
         Option<UploadId>,
         Arc<Request>,
@@ -499,11 +493,10 @@ async fn upload_resender<C, BG, EH, EHF>(
     )>,
     connection: mpsc::UnboundedSender<(ResponseSender, Arc<RequestWithSidecar>)>,
     upload_queue_watcher_sender: Arc<Mutex<watch::Sender<Vec<UploadId>>>>,
-    binary_getter: Arc<BG>,
     error_handler: EH,
 ) where
     C: crdb_core::Config,
-    BG: Db,
+    LocalDb: ClientSideDb,
     EH: 'static + waaaa::Send + Fn(Upload, crate::Error) -> EHF,
     EHF: 'static + waaaa::Future<Output = OnError>,
 {
@@ -585,14 +578,10 @@ async fn upload_resender<C, BG, EH, EHF>(
                     }
                     Some(ResponsePartWithSidecar { response, .. }) => match response {
                         ResponsePart::Success => {
-                            if let Err(err) = upload_queue.upload_finished(*upload_id).await {
+                            if let Err(err) = db.upload_finished(*upload_id).await {
                                 tracing::error!(?err, "failed dequeuing upload");
                             } else {
-                                match upload_queue
-                                    .list_uploads()
-                                    .await
-                                    .wrap_context("listing uploads")
-                                {
+                                match db.list_uploads().await.wrap_context("listing uploads") {
                                     Err(err) => {
                                         tracing::error!(?err, "failed listing upload queue");
                                     }
@@ -629,15 +618,12 @@ async fn upload_resender<C, BG, EH, EHF>(
                             };
                             match error_handler((*upload).clone(), (*err).clone().into()).await {
                                 OnError::Rollback => {
-                                    if let Err(err) = undo_upload::<C>(&upload_queue, upload).await
-                                    {
+                                    if let Err(err) = undo_upload::<C, _>(&db, upload).await {
                                         tracing::error!(?err, ?upload, "failed undoing upload");
-                                    } else if let Err(err) =
-                                        upload_queue.upload_finished(*upload_id).await
-                                    {
+                                    } else if let Err(err) = db.upload_finished(*upload_id).await {
                                         tracing::error!(?err, "failed dequeuing upload");
                                     } else {
-                                        match upload_queue
+                                        match db
                                             .list_uploads()
                                             .await
                                             .wrap_context("listing uploads")
@@ -674,23 +660,20 @@ async fn upload_resender<C, BG, EH, EHF>(
                                     );
                                 }
                                 OnError::ReplaceWith(new_upload) => {
-                                    if let Err(err) = undo_upload::<C>(&upload_queue, upload).await
-                                    {
+                                    if let Err(err) = undo_upload::<C, _>(&db, upload).await {
                                         tracing::error!(?err, ?upload, "failed undoing upload");
                                     } else if let Err(err) =
-                                        do_upload::<C>(&upload_queue, &new_upload).await
+                                        do_upload::<C, _>(&db, &new_upload).await
                                     {
                                         tracing::error!(
                                             ?err,
                                             ?new_upload,
                                             "failed doing replacement upload"
                                         );
-                                    } else if let Err(err) =
-                                        upload_queue.upload_finished(*upload_id).await
-                                    {
+                                    } else if let Err(err) = db.upload_finished(*upload_id).await {
                                         tracing::error!(?err, "failed dequeuing upload");
                                     } else {
-                                        match upload_queue
+                                        match db
                                             .list_uploads()
                                             .await
                                             .wrap_context("listing uploads")
@@ -729,11 +712,11 @@ async fn upload_resender<C, BG, EH, EHF>(
 
             // Were there missing binaries? If yes, prepend them to the list of requests to retry, and upload them this way.
             if !missing_binaries.is_empty() {
-                let binary_getter = binary_getter.clone();
+                let db = db.clone();
                 let binaries = stream::iter(missing_binaries.into_iter())
                     .map(move |b| {
-                        let binary_getter = binary_getter.clone();
-                        async move { binary_getter.get_binary(b).await }
+                        let db = db.clone();
+                        async move { db.get_binary(b).await }
                     })
                     .buffer_unordered(16) // TODO(perf-low): is 16 a good number?
                     .filter_map(|res| async move { res.ok().and_then(|o| o) })
@@ -748,7 +731,7 @@ async fn upload_resender<C, BG, EH, EHF>(
     }
 }
 
-async fn undo_upload<C: crdb_core::Config>(
+async fn undo_upload<C: crdb_core::Config, LocalDb: ClientSideDb>(
     local_db: &CacheDb<LocalDb>,
     upload: &Upload,
 ) -> crate::Result<()> {
@@ -771,7 +754,7 @@ async fn undo_upload<C: crdb_core::Config>(
     }
 }
 
-async fn do_upload<C: crdb_core::Config>(
+async fn do_upload<C: crdb_core::Config, LocalDb: ClientSideDb>(
     local_db: &CacheDb<LocalDb>,
     upload: &Upload,
 ) -> crate::Result<()> {

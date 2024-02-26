@@ -1,4 +1,4 @@
-use super::{api_db::OnError, connection::ConnectionEvent, ApiDb, LocalDb};
+use super::{api_db::OnError, connection::ConnectionEvent, ApiDb};
 use crate::Obj;
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
@@ -32,10 +32,10 @@ pub type SubscribedQueriesMap = HashMap<QueryId, (Arc<Query>, TypeId, Option<Upd
 type QueryUpdatesBroadcastMap =
     HashMap<QueryId, (broadcast::Sender<ObjectId>, broadcast::Receiver<ObjectId>)>;
 
-pub struct ClientDb {
+pub struct ClientDb<LocalDb: ClientSideDb> {
     user: RwLock<Option<User>>,
     ulid: Mutex<ulid::Generator>,
-    api: Arc<ApiDb>,
+    api: Arc<ApiDb<LocalDb>>,
     db: Arc<CacheDb<LocalDb>>,
     // The `Lock` here is ONLY the accumulated queries lock for this object! The object lock is
     // handled directly in the database only.
@@ -62,15 +62,15 @@ enum DataSaverMessage {
     ResumeFrame,
 }
 
-impl ClientDb {
+impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
     pub async fn connect<C, RRL, EH, EHF, VS>(
         config: C,
-        local_db: &str,
+        db: LocalDb,
         cache_watermark: usize,
         require_relogin: RRL,
         error_handler: EH,
         vacuum_schedule: ClientVacuumSchedule<VS>,
-    ) -> anyhow::Result<(Arc<ClientDb>, impl waaaa::Future<Output = usize>)>
+    ) -> anyhow::Result<(Arc<ClientDb<LocalDb>>, impl waaaa::Future<Output = usize>)>
     where
         C: crdb_core::Config,
         RRL: 'static + waaaa::Send + Fn(),
@@ -81,10 +81,7 @@ impl ClientDb {
         let _ = config; // mark used
         C::check_ulids();
         let (updates_broadcaster, updates_broadcastee) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
-        let db = Arc::new(CacheDb::new(
-            LocalDb::connect(local_db).await?,
-            cache_watermark,
-        ));
+        let db = Arc::new(CacheDb::new(db, cache_watermark));
         let maybe_login = db
             .get_saved_login()
             .await
@@ -114,8 +111,8 @@ impl ClientDb {
         ));
         let subscribed_queries = Arc::new(Mutex::new(subscribed_queries));
         let subscribed_objects = Arc::new(Mutex::new(subscribed_objects));
-        let (api, updates_receiver) = ApiDb::new::<C, _, _, _, _, _, _>(
-            &db,
+        let (api, updates_receiver) = ApiDb::new::<C, _, _, _, _, _>(
+            db.clone(),
             {
                 let subscribed_objects = subscribed_objects.clone();
                 move || {
@@ -131,7 +128,6 @@ impl ClientDb {
                 let subscribed_queries = subscribed_queries.clone();
                 move || subscribed_queries.lock().unwrap().clone()
             },
-            db.clone(),
             error_handler,
             require_relogin,
         )
@@ -326,7 +322,7 @@ impl ClientDb {
         subscribed_queries: Arc<Mutex<SubscribedQueriesMap>>,
         vacuum_guard: Arc<tokio::sync::RwLock<()>>,
         db: Arc<CacheDb<LocalDb>>,
-        api: Arc<ApiDb>,
+        api: Arc<ApiDb<LocalDb>>,
         updates_broadcaster: broadcast::Sender<ObjectId>,
         query_updates_broadcasters: Arc<Mutex<QueryUpdatesBroadcastMap>>,
     ) {
@@ -434,7 +430,7 @@ impl ClientDb {
     async fn fetch_binaries(
         binary_ids: Vec<BinPtr>,
         db: &CacheDb<LocalDb>,
-        api: &ApiDb,
+        api: &ApiDb<LocalDb>,
     ) -> crate::Result<()> {
         let mut bins = stream::iter(binary_ids.into_iter())
             .map(|binary_id| api.get_binary(binary_id).map(move |bin| (binary_id, bin)))
@@ -820,7 +816,7 @@ impl ClientDb {
         self: &Arc<Self>,
         importance: Importance,
         object: Arc<T>,
-    ) -> crate::Result<(Obj<T>, impl Future<Output = crate::Result<()>>)> {
+    ) -> crate::Result<(Obj<T, LocalDb>, impl Future<Output = crate::Result<()>>)> {
         let id = self.make_ulid();
         let object_id = ObjectId(id);
         let completion = self
@@ -981,7 +977,7 @@ impl ClientDb {
         self: &Arc<Self>,
         importance: Importance,
         ptr: DbPtr<T>,
-    ) -> crate::Result<Obj<T>> {
+    ) -> crate::Result<Obj<T, LocalDb>> {
         let object_id = ptr.to_object_id();
         let lock = importance.to_object_lock();
         let subscribe = importance.to_subscribe();
@@ -992,7 +988,7 @@ impl ClientDb {
         }
         let res = if subscribe {
             let data = self.api.get_subscribe(object_id).await?;
-            save_object_data_locally::<T>(
+            save_object_data_locally::<T, _>(
                 data,
                 &self.data_saver,
                 &self.db,
@@ -1014,7 +1010,7 @@ impl ClientDb {
         self: &Arc<Self>,
         importance: Importance,
         ptr: DbPtr<T>,
-    ) -> crate::Result<Option<Obj<T>>> {
+    ) -> crate::Result<Option<Obj<T, LocalDb>>> {
         let object_id = ptr.to_object_id();
         match self
             .db
@@ -1030,7 +1026,7 @@ impl ClientDb {
     pub async fn query_local<'a, T: Object>(
         self: &'a Arc<Self>,
         query: Arc<Query>,
-    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T>>>> {
+    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T, LocalDb>>>> {
         let object_ids = self
             .db
             .client_query(*T::type_ulid(), query)
@@ -1060,7 +1056,7 @@ impl ClientDb {
         importance: Importance,
         query_id: QueryId,
         query: Arc<Query>,
-    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T>>>> {
+    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T, LocalDb>>>> {
         if importance >= Importance::Subscribe {
             self.query_updates_broadcastees
                 .lock()
@@ -1124,7 +1120,7 @@ impl ClientDb {
                                 match data {
                                     MaybeObject::NotYetSubscribed(data) => {
                                         let object_id = data.object_id;
-                                        let res = save_object_data_locally::<T>(
+                                        let res = save_object_data_locally::<T, _>(
                                             data,
                                             &data_saver,
                                             &db,
@@ -1272,7 +1268,7 @@ fn queries_for(
 }
 
 /// Returns the latest snapshot for the object described by `data`
-async fn locally_create_all<T: Object>(
+async fn locally_create_all<T: Object, LocalDb: ClientSideDb>(
     data_saver: &mpsc::UnboundedSender<DataSaverMessage>,
     db: &CacheDb<LocalDb>,
     lock: Lock,
@@ -1357,7 +1353,7 @@ async fn locally_create_all<T: Object>(
     Ok(res)
 }
 
-async fn save_object_data_locally<T: Object>(
+async fn save_object_data_locally<T: Object, LocalDb: ClientSideDb>(
     data: ObjectData,
     data_saver: &mpsc::UnboundedSender<DataSaverMessage>,
     db: &CacheDb<LocalDb>,
@@ -1375,7 +1371,7 @@ async fn save_object_data_locally<T: Object>(
             real_type_id: type_id,
         });
     }
-    let res_json = locally_create_all::<T>(data_saver, db, lock, data).await?;
+    let res_json = locally_create_all::<T, _>(data_saver, db, lock, data).await?;
     let (res, res_json) = match res_json {
         Some(res_json) => (
             Arc::new(T::deserialize(&res_json).wrap_context("deserializing snapshot")?),
@@ -1401,7 +1397,7 @@ async fn save_object_data_locally<T: Object>(
     Ok(res)
 }
 
-impl Deref for ClientDb {
+impl<LocalDb: ClientSideDb> Deref for ClientDb<LocalDb> {
     type Target = CacheDb<LocalDb>;
 
     fn deref(&self) -> &Self::Target {

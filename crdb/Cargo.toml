@@ -8,12 +8,15 @@ license = "AGPL3"
 all-features = true
 
 [features]
-client = [ "crdb-client" ]
-server = [ "crdb-server" ]
+client = ["crdb-client"]
+indexed-db = ["crdb-indexed-db"]
+server = ["crdb-server"]
+# TODO(sqlite-med): add this feature and relevant in lib.rs: sqlite = ["crdb-sqlite"]
 
 [dependencies]
 crdb-core.workspace = true
 crdb-macros.workspace = true
 
 crdb-client = { workspace = true, optional = true }
+crdb-indexed-db = { workspace = true, optional = true }
 crdb-server = { workspace = true, optional = true }

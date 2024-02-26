@@ -59,7 +59,9 @@ fn app() -> Html {
         move |_| async move {
             let (db, upgrade_handle) = crdb::ClientDb::connect(
                 basic_api::Config,
-                "basic-crdb",
+                crdb::IndexedDb::connect("basic-crdb")
+                    .await
+                    .map_err(|err| format!("{err:?}"))?,
                 CACHE_WATERMARK,
                 move || {
                     tracing::info!("db requested a relogin");
@@ -126,7 +128,7 @@ fn app() -> Html {
 
 #[derive(Properties)]
 struct RefresherProps {
-    db: Arc<crdb::ClientDb>,
+    db: Arc<crdb::ClientDb<crdb::IndexedDb>>,
     connection_status: Rc<String>,
 }
 
@@ -304,7 +306,11 @@ fn login(LoginProps { on_login }: &LoginProps) -> Html {
 }
 
 #[derive(Clone)]
-struct DbContext(Arc<crdb::ClientDb>, UseForceUpdateHandle, usize);
+struct DbContext(
+    Arc<crdb::ClientDb<crdb::IndexedDb>>,
+    UseForceUpdateHandle,
+    usize,
+);
 
 impl PartialEq for DbContext {
     fn eq(&self, other: &Self) -> bool {
@@ -363,7 +369,7 @@ fn main_view(MainViewProps { connection_status }: &MainViewProps) -> Html {
 }
 
 fn create<T: crdb::Object>(
-    db: Arc<crdb::ClientDb>,
+    db: Arc<crdb::ClientDb<crdb::IndexedDb>>,
     text: UseStateHandle<String>,
     name: &'static str,
     creator: impl 'static + Fn(User, &str) -> T,
@@ -799,7 +805,7 @@ fn show_local_db() -> Html {
 
 #[derive(Properties)]
 struct RenderItemProps {
-    data: Rc<crdb::Obj<Item>>,
+    data: Rc<crdb::Obj<Item, crdb::IndexedDb>>,
 }
 
 impl PartialEq for RenderItemProps {
@@ -962,7 +968,7 @@ fn edit_item(RenderItemProps { data }: &RenderItemProps) -> Html {
 
 #[derive(Properties)]
 struct RenderTagProps {
-    data: Rc<crdb::Obj<Tag>>,
+    data: Rc<crdb::Obj<Tag, crdb::IndexedDb>>,
 }
 
 impl PartialEq for RenderTagProps {
