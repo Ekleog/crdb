@@ -165,6 +165,15 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
         self.db.remove_event::<T>(object_id, event_id).await
     }
 
+    async fn change_locks(
+        &self,
+        unlock: Lock,
+        then_lock: Lock,
+        object_id: ObjectId,
+    ) -> crate::Result<()> {
+        self.db.change_locks(unlock, then_lock, object_id).await
+    }
+
     async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
         self.db.list_uploads().await
     }

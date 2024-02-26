@@ -108,20 +108,6 @@ impl MemDb {
             .collect::<crate::Result<Vec<ObjectId>>>()
     }
 
-    pub async fn change_locks(
-        &self,
-        unlock: Lock,
-        then_lock: Lock,
-        object_id: ObjectId,
-    ) -> crate::Result<()> {
-        if let Some((_, locked, _, _)) = self.0.lock().await.objects.get_mut(&object_id) {
-            *locked -= unlock;
-            *locked |= then_lock;
-        }
-        // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
-        Ok(())
-    }
-
     pub async fn vacuum(&self) -> crate::Result<()> {
         let mut this = self.0.lock().await;
         let this = &mut *this; // get a real, splittable borrow
@@ -381,6 +367,20 @@ impl ClientSideDb for MemDb {
         _event_id: EventId,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(test-high)
+    }
+
+    async fn change_locks(
+        &self,
+        unlock: Lock,
+        then_lock: Lock,
+        object_id: ObjectId,
+    ) -> crate::Result<()> {
+        if let Some((_, locked, _, _)) = self.0.lock().await.objects.get_mut(&object_id) {
+            *locked -= unlock;
+            *locked |= then_lock;
+        }
+        // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
+        Ok(())
     }
 
     async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {

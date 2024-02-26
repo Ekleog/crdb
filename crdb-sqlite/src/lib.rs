@@ -46,15 +46,6 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite-high): implement
     }
 
-    pub async fn change_locks(
-        &self,
-        _unlock: Lock,
-        _then_lock: Lock,
-        _object_id: ObjectId,
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
     pub async fn vacuum(
         &self,
         mut _notify_removals: impl 'static + FnMut(ObjectId),
@@ -250,6 +241,15 @@ impl ClientSideDb for SqliteDb {
         &self,
         _object_id: ObjectId,
         _event_id: EventId,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn change_locks(
+        &self,
+        _unlock: Lock,
+        _then_lock: Lock,
+        _object_id: ObjectId,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }

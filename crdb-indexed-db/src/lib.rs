@@ -387,68 +387,6 @@ impl IndexedDb {
         Ok(objects)
     }
 
-    pub async fn change_locks(
-        &self,
-        unlock: Lock,
-        then_lock: Lock,
-        object_id: ObjectId,
-    ) -> crate::Result<()> {
-        let object_id_js = object_id.to_js_string();
-
-        let res = self
-            .db
-            .transaction(&["snapshots_meta"])
-            .rw()
-            .run(move |transaction| async move {
-                let snapshots_meta = transaction
-                    .object_store("snapshots_meta")
-                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
-
-                let creation_object = snapshots_meta
-                    .index("creation_object")
-                    .wrap_context("retrieving the 'creation_object' index")?;
-
-                let Some(snapshot_js) = creation_object
-                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
-                    .await
-                    .wrap_context("retrieving creation snapshot")?
-                else {
-                    // Object was already removed from database, so it was already unlocked
-                    return Ok(());
-                };
-
-                let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
-                    .wrap_context("deserializing snapshot metadata")?;
-                let old_is_locked = snapshot_meta.is_locked;
-                snapshot_meta.is_locked = Some(
-                    ((old_is_locked
-                        .map(Lock::from_bits_truncate)
-                        .unwrap_or(Lock::NONE)
-                        - unlock)
-                        | then_lock)
-                        .bits(),
-                );
-
-                if old_is_locked != snapshot_meta.is_locked {
-                    let snapshot_js =
-                        to_js(snapshot_meta).wrap_context("reserializing snapshot metadata")?;
-                    snapshots_meta
-                        .put(&snapshot_js)
-                        .await
-                        .wrap_context("saving the unlocked creation snapshot metadata")?;
-                }
-
-                Ok(())
-            })
-            .await
-            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"));
-        if res.is_ok() {
-            self.objects_unlocked_this_run
-                .set(self.objects_unlocked_this_run.get() + 1);
-        }
-        res
-    }
-
     pub async fn vacuum(
         &self,
         mut notify_removals: impl 'static + FnMut(ObjectId),
@@ -2300,6 +2238,68 @@ impl ClientSideDb for IndexedDb {
             .wrap_with_context(|| {
                 format!("removing {event_id:?} on {object_id:?}")
             })
+    }
+
+    async fn change_locks(
+        &self,
+        unlock: Lock,
+        then_lock: Lock,
+        object_id: ObjectId,
+    ) -> crate::Result<()> {
+        let object_id_js = object_id.to_js_string();
+
+        let res = self
+            .db
+            .transaction(&["snapshots_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
+
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving the 'creation_object' index")?;
+
+                let Some(snapshot_js) = creation_object
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    .await
+                    .wrap_context("retrieving creation snapshot")?
+                else {
+                    // Object was already removed from database, so it was already unlocked
+                    return Ok(());
+                };
+
+                let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
+                    .wrap_context("deserializing snapshot metadata")?;
+                let old_is_locked = snapshot_meta.is_locked;
+                snapshot_meta.is_locked = Some(
+                    ((old_is_locked
+                        .map(Lock::from_bits_truncate)
+                        .unwrap_or(Lock::NONE)
+                        - unlock)
+                        | then_lock)
+                        .bits(),
+                );
+
+                if old_is_locked != snapshot_meta.is_locked {
+                    let snapshot_js =
+                        to_js(snapshot_meta).wrap_context("reserializing snapshot metadata")?;
+                    snapshots_meta
+                        .put(&snapshot_js)
+                        .await
+                        .wrap_context("saving the unlocked creation snapshot metadata")?;
+                }
+
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
     }
 
     async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {

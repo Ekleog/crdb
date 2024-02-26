@@ -26,6 +26,13 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         event_id: EventId,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
+    fn change_locks(
+        &self,
+        unlock: Lock,
+        then_lock: Lock,
+        object_id: ObjectId,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
     fn list_uploads(&self) -> impl waaaa::Future<Output = crate::Result<Vec<UploadId>>>;
 
     fn get_upload(
