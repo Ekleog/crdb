@@ -313,9 +313,9 @@ impl IndexedDb {
         Ok(Some(saved_info))
     }
 
-    pub async fn query<T: Object>(&self, query: Arc<Query>) -> crate::Result<Vec<ObjectId>> {
+    pub async fn query(&self, type_id: TypeId, query: Arc<Query>) -> crate::Result<Vec<ObjectId>> {
         query.check()?;
-        let type_id_js = T::type_ulid().to_js_string();
+        let type_id_js = type_id.to_js_string();
         let zero_id = EventId::from_u128(0).to_js_string();
         let max_id = EventId::from_u128(u128::MAX).to_js_string();
         // TODO(perf-low): look into setting up indexes and allowing the user to use them?

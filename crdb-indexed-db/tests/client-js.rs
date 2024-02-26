@@ -14,7 +14,7 @@ async fn smoke_test() {
         db: db,
         vacuum: db.client_vacuum(|_| (), |_| ()), // TODO(test-high): this should go away once we finish splitting everything up
         query_all: db
-            .query::<TestObjectSimple>(Arc::new(Query::All(vec![])))
+            .query(*TestObjectSimple::type_ulid(), Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
         db_type: client,
@@ -136,7 +136,7 @@ mod fuzz_helpers {
         query: &Arc<Query>,
     ) -> anyhow::Result<()> {
         let db = db
-            .query::<T>(query.clone())
+            .query(*T::type_ulid(), query.clone())
             .await
             .wrap_context("querying postgres")
             .map(|r| r.into_iter().collect::<HashSet<_>>());

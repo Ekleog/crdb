@@ -1033,7 +1033,7 @@ impl ClientDb {
     ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T>>>> {
         let object_ids = self
             .db
-            .query::<T>(query)
+            .query(*T::type_ulid(), query)
             .await
             .wrap_context("listing objects matching query")?;
 
