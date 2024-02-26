@@ -1247,16 +1247,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         }
     }
 
-    #[cfg(test)] // TODO(test-high): remove, but it's currently in use by fuzzers
-    async fn change_locks(
-        &self,
-        _unlock: Lock,
-        _then_lock: Lock,
-        _object_id: ObjectId,
-    ) -> crate::Result<()> {
-        panic!()
-    }
-
     pub async fn get_transaction(&self) -> crate::Result<sqlx::Transaction<'_, sqlx::Postgres>> {
         let mut transaction = self
             .db

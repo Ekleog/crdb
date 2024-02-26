@@ -297,14 +297,14 @@ macro_rules! make_fuzzer_stuffs {
                         });
                     }
                     Op::ChangeLocks { unlock, then_lock, object_id } => {
-                        if !s.is_server {
+                        $crate::make_fuzzer_stuffs!(@if-client $db_type {
                             let unlock = Lock::from_bits_truncate(*unlock);
                             let then_lock = Lock::from_bits_truncate(*then_lock);
                             let object_id = s.object(*object_id);
                             let db = db.change_locks(unlock, then_lock, object_id).await;
                             let mem = s.mem_db.change_locks(unlock, then_lock, object_id).await;
                             cmp(db, mem)?;
-                        }
+                        });
                     }
                     Op::ClientVacuum => {
                         $crate::make_fuzzer_stuffs!(@if-client $db_type {
