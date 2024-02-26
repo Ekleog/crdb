@@ -1,7 +1,8 @@
 use super::{BinariesCache, ObjectCache};
 use crdb_core::{
-    hash_binary, BinPtr, ClientSideDb, CrdbSyncFn, Db, DynSized, EventId, Lock, Object, ObjectId,
-    Query, QueryId, ServerSideDb, TypeId, Updatedness, Upload, UploadId, User,
+    hash_binary, BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, EventId, Lock,
+    LoginInfo, Object, ObjectId, Query, QueryId, ServerSideDb, TypeId, Updatedness, Upload,
+    UploadId, User,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -134,6 +135,22 @@ impl<D: Db> Deref for CacheDb<D> {
 }
 
 impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
+    async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
+        self.db.storage_info().await
+    }
+
+    async fn save_login(&self, info: LoginInfo) -> crate::Result<()> {
+        self.db.save_login(info).await
+    }
+
+    async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
+        self.db.get_saved_login().await
+    }
+
+    async fn remove_everything(&self) -> crate::Result<()> {
+        self.db.remove_everything().await
+    }
+
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,

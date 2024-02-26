@@ -1,7 +1,8 @@
 use super::{eq, FullObject};
 use crdb_core::{
-    BinPtr, ClientSideDb, CrdbSyncFn, Db, DynSized, Event, EventId, Lock, Object, ObjectId, Query,
-    QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId, User,
+    BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, Event, EventId, Lock,
+    LoginInfo, Object, ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
+    User,
 };
 use futures::{stream, StreamExt};
 use std::{
@@ -282,6 +283,22 @@ impl Db for MemDb {
 }
 
 impl ClientSideDb for MemDb {
+    async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn save_login(&self, _info: LoginInfo) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn remove_everything(&self) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
+
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,

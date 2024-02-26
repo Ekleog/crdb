@@ -1,6 +1,6 @@
 use crate::{
-    BinPtr, CrdbSyncFn, Db, EventId, Lock, Object, ObjectId, Query, QueryId, TypeId, Updatedness,
-    Upload, UploadId,
+    BinPtr, ClientStorageInfo, CrdbSyncFn, Db, EventId, Lock, LoginInfo, Object, ObjectId, Query,
+    QueryId, TypeId, Updatedness, Upload, UploadId,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -8,6 +8,14 @@ use std::{
 };
 
 pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
+    fn storage_info(&self) -> impl waaaa::Future<Output = crate::Result<ClientStorageInfo>>;
+
+    fn save_login(&self, _info: LoginInfo) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn get_saved_login(&self) -> impl waaaa::Future<Output = crate::Result<Option<LoginInfo>>>;
+
+    fn remove_everything(&self) -> impl waaaa::Future<Output = crate::Result<()>>;
+
     /// Either create an object if it did not exist yet, or recreate it
     ///
     /// Returns the new latest snapshot if it actually changed.

@@ -226,80 +226,6 @@ impl IndexedDb {
         Ok(res)
     }
 
-    pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
-        let window = web_sys::window()
-            .ok_or_else(|| crate::Error::Other(anyhow!("not running in a browser")))?;
-        let storage = window.navigator().storage();
-        let estimate = storage.estimate().map_err(|_| {
-            crate::Error::Other(anyhow!(
-                "failed getting a storage estimate from the browser"
-            ))
-        })?;
-        let estimate = wasm_bindgen_futures::JsFuture::from(estimate)
-            .await
-            .map_err(|_| {
-                crate::Error::Other(anyhow!("storage estimate promise returned an error"))
-            })?;
-        let quota = js_sys::Reflect::get(&estimate, &JsString::from("quota"))
-            .map_err(|_| crate::Error::Other(anyhow!("storage estimate had no quota field")))?
-            .as_f64()
-            .ok_or_else(|| {
-                crate::Error::Other(anyhow!("storage estimate for quota was not a number"))
-            })? as usize;
-        let usage = js_sys::Reflect::get(&estimate, &JsString::from("usage"))
-            .map_err(|_| crate::Error::Other(anyhow!("storage estimate had no quota field")))?
-            .as_f64()
-            .ok_or_else(|| {
-                crate::Error::Other(anyhow!("storage estimate for quota was not a number"))
-            })? as usize;
-        Ok(ClientStorageInfo {
-            quota,
-            usage,
-            objects_unlocked_this_run: self.objects_unlocked_this_run.get(),
-        })
-    }
-
-    pub async fn save_login(&self, info: LoginInfo) -> crate::Result<()> {
-        let info_js = to_js(info).wrap_context("serializing login info")?;
-        self.db
-            .transaction(&["config"])
-            .rw()
-            .run(move |transaction| async move {
-                transaction
-                    .object_store("config")
-                    .wrap_context("retrieving 'config' object store")?
-                    .put_kv(&JsString::from(CONFIG_SAVED_LOGIN), &info_js)
-                    .await
-                    .wrap_context("saving login info to database")?;
-                Ok(())
-            })
-            .await
-            .wrap_context("saving login info to database")
-    }
-
-    pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
-        let saved_info = self
-            .db
-            .transaction(&["config"])
-            .run(move |transaction| async move {
-                let saved_info = transaction
-                    .object_store("config")
-                    .wrap_context("retrieving 'config' object store")?
-                    .get(&JsString::from(CONFIG_SAVED_LOGIN))
-                    .await
-                    .wrap_context("retrieving login from database")?;
-                Ok(saved_info)
-            })
-            .await
-            .wrap_context("retrieving login from database")?;
-        let Some(saved_info) = saved_info else {
-            return Ok(None);
-        };
-        let saved_info = serde_wasm_bindgen::from_value(saved_info)
-            .wrap_context("deserializing saved login info")?;
-        Ok(Some(saved_info))
-    }
-
     #[cfg(feature = "_tests")]
     pub async fn assert_invariants_generic(&self) {
         use std::collections::hash_map;
@@ -620,25 +546,6 @@ impl IndexedDb {
                 Ok(Some(object))
             }
         }
-    }
-
-    pub async fn remove_everything(&self) -> crate::Result<()> {
-        self.db
-            .transaction(OBJECT_STORE_LIST)
-            .rw()
-            .run(move |transaction| async move {
-                for store in OBJECT_STORE_LIST {
-                    transaction
-                        .object_store(store)
-                        .wrap_with_context(|| format!("retrieving {store:?} object store"))?
-                        .clear()
-                        .await
-                        .wrap_with_context(|| format!("clearing {store:?} object store"))?;
-                }
-                Ok(())
-            })
-            .await
-            .wrap_context("clearing the IndexedDB database")
     }
 }
 
@@ -1182,6 +1089,99 @@ impl Db for IndexedDb {
 }
 
 impl ClientSideDb for IndexedDb {
+    async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
+        let window = web_sys::window()
+            .ok_or_else(|| crate::Error::Other(anyhow!("not running in a browser")))?;
+        let storage = window.navigator().storage();
+        let estimate = storage.estimate().map_err(|_| {
+            crate::Error::Other(anyhow!(
+                "failed getting a storage estimate from the browser"
+            ))
+        })?;
+        let estimate = wasm_bindgen_futures::JsFuture::from(estimate)
+            .await
+            .map_err(|_| {
+                crate::Error::Other(anyhow!("storage estimate promise returned an error"))
+            })?;
+        let quota = js_sys::Reflect::get(&estimate, &JsString::from("quota"))
+            .map_err(|_| crate::Error::Other(anyhow!("storage estimate had no quota field")))?
+            .as_f64()
+            .ok_or_else(|| {
+                crate::Error::Other(anyhow!("storage estimate for quota was not a number"))
+            })? as usize;
+        let usage = js_sys::Reflect::get(&estimate, &JsString::from("usage"))
+            .map_err(|_| crate::Error::Other(anyhow!("storage estimate had no quota field")))?
+            .as_f64()
+            .ok_or_else(|| {
+                crate::Error::Other(anyhow!("storage estimate for quota was not a number"))
+            })? as usize;
+        Ok(ClientStorageInfo {
+            quota,
+            usage,
+            objects_unlocked_this_run: self.objects_unlocked_this_run.get(),
+        })
+    }
+
+    async fn save_login(&self, info: LoginInfo) -> crate::Result<()> {
+        let info_js = to_js(info).wrap_context("serializing login info")?;
+        self.db
+            .transaction(&["config"])
+            .rw()
+            .run(move |transaction| async move {
+                transaction
+                    .object_store("config")
+                    .wrap_context("retrieving 'config' object store")?
+                    .put_kv(&JsString::from(CONFIG_SAVED_LOGIN), &info_js)
+                    .await
+                    .wrap_context("saving login info to database")?;
+                Ok(())
+            })
+            .await
+            .wrap_context("saving login info to database")
+    }
+
+    async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
+        let saved_info = self
+            .db
+            .transaction(&["config"])
+            .run(move |transaction| async move {
+                let saved_info = transaction
+                    .object_store("config")
+                    .wrap_context("retrieving 'config' object store")?
+                    .get(&JsString::from(CONFIG_SAVED_LOGIN))
+                    .await
+                    .wrap_context("retrieving login from database")?;
+                Ok(saved_info)
+            })
+            .await
+            .wrap_context("retrieving login from database")?;
+        let Some(saved_info) = saved_info else {
+            return Ok(None);
+        };
+        let saved_info = serde_wasm_bindgen::from_value(saved_info)
+            .wrap_context("deserializing saved login info")?;
+        Ok(Some(saved_info))
+    }
+
+    async fn remove_everything(&self) -> crate::Result<()> {
+        self.db
+            .transaction(OBJECT_STORE_LIST)
+            .rw()
+            .run(move |transaction| async move {
+                for store in OBJECT_STORE_LIST {
+                    transaction
+                        .object_store(store)
+                        .wrap_with_context(|| format!("retrieving {store:?} object store"))?
+                        .clear()
+                        .await
+                        .wrap_with_context(|| format!("clearing {store:?} object store"))?;
+                }
+                Ok(())
+            })
+            .await
+            .wrap_context("clearing the IndexedDB database")
+    }
+
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,

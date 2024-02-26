@@ -29,30 +29,6 @@ impl SqliteDb {
     pub async fn connect(url: &str) -> anyhow::Result<SqliteDb> {
         Self::connect_impl(sqlx::SqlitePool::connect(url).await?).await
     }
-
-    pub async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn save_login(&self, _info: LoginInfo) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn vacuum(
-        &self,
-        mut _notify_removals: impl 'static + FnMut(ObjectId),
-        mut _notify_query_removals: impl 'static + FnMut(QueryId),
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn remove_everything(&self) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
 }
 
 #[allow(unused_variables)] // TODO(sqlite-high): remove
@@ -180,6 +156,22 @@ impl Db for SqliteDb {
 
 #[allow(unused_variables)] // TODO(sqlite-high)
 impl ClientSideDb for SqliteDb {
+    async fn storage_info(&self) -> crate::Result<ClientStorageInfo> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn save_login(&self, _info: LoginInfo) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn get_saved_login(&self) -> crate::Result<Option<LoginInfo>> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn remove_everything(&self) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
