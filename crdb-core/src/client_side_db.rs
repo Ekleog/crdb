@@ -2,7 +2,10 @@ use crate::{
     BinPtr, CrdbSyncFn, Db, EventId, Lock, Object, ObjectId, Query, QueryId, TypeId, Updatedness,
     Upload, UploadId,
 };
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     /// Either create an object if it did not exist yet, or recreate it
@@ -64,5 +67,37 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     fn upload_finished(
         &self,
         upload_id: UploadId,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn get_subscribed_objects(
+        &self,
+    ) -> impl waaaa::Future<
+        Output = crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>>,
+    >;
+
+    fn get_subscribed_queries(
+        &self,
+    ) -> impl waaaa::Future<
+        Output = crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
+    >;
+
+    fn subscribe_query(
+        &self,
+        _query_id: QueryId,
+        _query: Arc<Query>,
+        _type_id: TypeId,
+        _lock: bool,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn unsubscribe_query(
+        &self,
+        _query_id: QueryId,
+        _objects_to_unlock: Vec<ObjectId>,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn update_queries(
+        &self,
+        _queries: &HashSet<QueryId>,
+        _now_have_all_until: Updatedness,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 }

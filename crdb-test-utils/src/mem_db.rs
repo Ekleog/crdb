@@ -415,4 +415,42 @@ impl ClientSideDb for MemDb {
     async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
         unimplemented!() // TODO(test-high)
     }
+
+    async fn get_subscribed_objects(
+        &self,
+    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn get_subscribed_queries(
+        &self,
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn subscribe_query(
+        &self,
+        _query_id: QueryId,
+        _query: Arc<Query>,
+        _type_id: TypeId,
+        _lock: bool,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn unsubscribe_query(
+        &self,
+        _query_id: QueryId,
+        _objects_to_unlock: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn update_queries(
+        &self,
+        _queries: &HashSet<QueryId>,
+        _now_have_all_until: Updatedness,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
 }

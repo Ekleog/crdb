@@ -53,44 +53,6 @@ impl SqliteDb {
     pub async fn remove_everything(&self) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }
-
-    pub async fn get_subscribed_objects(
-        &self,
-    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn get_subscribed_queries(
-        &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn subscribe_query(
-        &self,
-        _query_id: QueryId,
-        _query: Arc<Query>,
-        _type_id: TypeId,
-        _lock: bool,
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn unsubscribe_query(
-        &self,
-        _query_id: QueryId,
-        _objects_to_unlock: Vec<ObjectId>,
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn update_queries(
-        &self,
-        _queries: &HashSet<QueryId>,
-        _now_have_all_until: Updatedness,
-    ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
 }
 
 #[allow(unused_variables)] // TODO(sqlite-high): remove
@@ -283,6 +245,44 @@ impl ClientSideDb for SqliteDb {
     }
 
     async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn get_subscribed_objects(
+        &self,
+    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn get_subscribed_queries(
+        &self,
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn subscribe_query(
+        &self,
+        _query_id: QueryId,
+        _query: Arc<Query>,
+        _type_id: TypeId,
+        _lock: bool,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn unsubscribe_query(
+        &self,
+        _query_id: QueryId,
+        _objects_to_unlock: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn update_queries(
+        &self,
+        _queries: &HashSet<QueryId>,
+        _now_have_all_until: Updatedness,
+    ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }
 }

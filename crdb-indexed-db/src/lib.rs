@@ -640,244 +640,6 @@ impl IndexedDb {
             .await
             .wrap_context("clearing the IndexedDB database")
     }
-
-    pub async fn get_subscribed_objects(
-        &self,
-    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
-        // TODO(test-high): fuzz this, and all other LocalDb functions
-        // TODO(test-high): fuzz connection handling
-        let zero_id = TypeId::from_u128(0).to_js_string();
-        let max_id = TypeId::from_u128(u128::MAX).to_js_string();
-        self.db
-            .transaction(&["snapshots", "snapshots_meta"])
-            .run(|transaction| async move {
-                let snapshots_meta = transaction
-                    .object_store("snapshots_meta")
-                    .wrap_context("retrieving snapshots_meta object store")?;
-                let snapshots = transaction
-                    .object_store("snapshots")
-                    .wrap_context("retrieving snapshots object store")?;
-                let latest_type_object = snapshots_meta
-                    .index("latest_type_object")
-                    .wrap_context("opening 'latest_type_object' snapshot index")?;
-                let mut cursor = latest_type_object
-                    .cursor()
-                    .range(
-                        &**Array::from_iter([&JsValue::from(1), &zero_id, &zero_id])
-                            ..=&**Array::from_iter([&JsValue::from(1), &max_id, &max_id]),
-                    )
-                    .wrap_context("limiting cursor to only latest snapshots")?
-                    .open()
-                    .await
-                    .wrap_context("opening cursor over all latest objects")?;
-                let mut res = HashMap::new();
-                while let Some(snapshot_meta_js) = cursor.value() {
-                    let snapshot_meta =
-                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
-                            .wrap_context("deserializing snapshot metadata")?;
-                    let snapshot_js = snapshots
-                        .get(&snapshot_meta.snapshot_id.to_js_string())
-                        .await
-                        .wrap_context("retrieving snapshot data")?
-                        .ok_or_else(|| {
-                            crate::Error::Other(anyhow!(
-                                "no snapshot data for known snapshot metadata"
-                            ))
-                        })?;
-                    let snapshot_json =
-                        serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_js)
-                            .wrap_context("deserializing snapshot")?;
-                    res.insert(
-                        snapshot_meta.object_id,
-                        (
-                            snapshot_meta.type_id,
-                            snapshot_json,
-                            snapshot_meta.have_all_until,
-                        ),
-                    );
-                    cursor
-                        .advance(1)
-                        .await
-                        .wrap_context("going to next object in the database")?;
-                }
-                Ok(res)
-            })
-            .await
-            .wrap_context("listing subscribed objects")
-    }
-
-    pub async fn get_subscribed_queries(
-        &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
-        self.db
-            .transaction(&["queries_meta"])
-            .run(|transaction| async move {
-                let queries_meta = transaction
-                    .object_store("queries_meta")
-                    .wrap_context("retrieving queries_meta object store")?;
-                let queries = queries_meta
-                    .get_all(None)
-                    .await
-                    .wrap_context("listing subscribed queries")?;
-                let res = queries
-                    .into_iter()
-                    .map(|q| {
-                        let q = serde_wasm_bindgen::from_value::<QueryMeta>(q)
-                            .wrap_context("deserializing query metadata")?;
-                        Ok((
-                            q.query_id,
-                            (
-                                q.query,
-                                q.type_id,
-                                q.have_all_until,
-                                Lock::from_query_lock(q.lock),
-                            ),
-                        ))
-                    })
-                    .collect();
-                res
-            })
-            .await
-            .wrap_context("listing subscribed objects")
-    }
-
-    pub async fn subscribe_query(
-        &self,
-        query_id: QueryId,
-        query: Arc<Query>,
-        type_id: TypeId,
-        lock: bool,
-    ) -> crate::Result<()> {
-        let new_query = QueryMeta {
-            query_id,
-            query,
-            type_id,
-            lock,
-            have_all_until: None,
-        };
-        let new_query_js = to_js(new_query).wrap_context("serializing query metadata")?;
-        self.db
-            .transaction(&["queries_meta"])
-            .rw()
-            .run(|transaction| async move {
-                let queries_meta = transaction
-                    .object_store("queries_meta")
-                    .wrap_context("retrieving queries_meta object store")?;
-                queries_meta
-                    .put(&new_query_js)
-                    .await
-                    .wrap_context("inserting the new query")?;
-                Ok(())
-            })
-            .await
-            .wrap_context("subscribing to query")
-    }
-
-    pub async fn unsubscribe_query(
-        &self,
-        query_id: QueryId,
-        objects_to_unlock: Vec<ObjectId>,
-    ) -> crate::Result<()> {
-        let query_id_js = query_id.to_js_string();
-        self.db
-            .transaction(&["queries_meta", "snapshots_meta"])
-            .rw()
-            .run(move |transaction| async move {
-                let queries_meta = transaction
-                    .object_store("queries_meta")
-                    .wrap_context("retrieving queries_meta object store")?;
-                let snapshots_meta = transaction
-                    .object_store("snapshots_meta")
-                    .wrap_context("retrieving snapshots_meta object store")?;
-                let creation_object = snapshots_meta
-                    .index("creation_object")
-                    .wrap_context("retrieving creation_object index")?;
-
-                queries_meta
-                    .delete(&query_id_js)
-                    .await
-                    .wrap_context("removing the unsubscribed query")?;
-                for object_id in objects_to_unlock {
-                    let Some(snapshot_meta_js) = creation_object
-                        .get(&**Array::from_iter([
-                            &JsValue::from(1),
-                            &object_id.to_js_string(),
-                        ]))
-                        .await
-                        .wrap_context("fetching existing snapshot metadata")?
-                    else {
-                        tracing::error!(
-                            ?object_id,
-                            "object supposed to get unlocked does not actually exist"
-                        );
-                        continue;
-                    };
-                    let mut snapshot_meta =
-                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
-                            .wrap_context("deserializing snapshot metadata")?;
-                    let old_is_locked = snapshot_meta.is_locked;
-                    snapshot_meta.is_locked = Some(
-                        (old_is_locked
-                            .map(Lock::from_bits_truncate)
-                            .unwrap_or(Lock::NONE)
-                            - Lock::FOR_QUERIES)
-                            .bits(),
-                    );
-                    if old_is_locked != snapshot_meta.is_locked {
-                        let snapshot_meta_js =
-                            to_js(snapshot_meta).wrap_context("serializing snapshot metadata")?;
-                        snapshots_meta
-                            .put(&snapshot_meta_js)
-                            .await
-                            .wrap_context("saving unlocked-for-queries snapshot")?;
-                    }
-                }
-                Ok(())
-            })
-            .await
-            .wrap_context("subscribing to query")
-    }
-
-    pub async fn update_queries(
-        &self,
-        queries: &HashSet<QueryId>,
-        now_have_all_until: Updatedness,
-    ) -> crate::Result<()> {
-        let queries = queries.clone();
-        self.db
-            .transaction(&["queries_meta"])
-            .rw()
-            .run(move |transaction| async move {
-                let queries_meta = transaction
-                    .object_store("queries_meta")
-                    .wrap_context("retrieving queries_meta object store")?;
-                for query_id in queries {
-                    let Some(query_meta_js) = queries_meta
-                        .get(&query_id.to_js_string())
-                        .await
-                        .wrap_context("fetching existing query metadata")?
-                    else {
-                        tracing::error!(
-                            ?query_id,
-                            "query supposed to get updated does not actually exist"
-                        );
-                        continue;
-                    };
-                    let mut query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
-                        .wrap_context("deserializing query metadata")?;
-                    query_meta.have_all_until = Some(now_have_all_until);
-                    let query_meta_js =
-                        to_js(query_meta).wrap_context("reserializing query metadata")?;
-                    queries_meta
-                        .put(&query_meta_js)
-                        .await
-                        .wrap_context("saving updated query metadata")?;
-                }
-                Ok(())
-            })
-            .await
-            .wrap_context("subscribing to query")
-    }
 }
 
 impl Db for IndexedDb {
@@ -2398,6 +2160,244 @@ impl ClientSideDb for IndexedDb {
                 .set(self.objects_unlocked_this_run.get() + 1);
         }
         res
+    }
+
+    async fn get_subscribed_objects(
+        &self,
+    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
+        // TODO(test-high): fuzz this, and all other LocalDb functions
+        // TODO(test-high): fuzz connection handling
+        let zero_id = TypeId::from_u128(0).to_js_string();
+        let max_id = TypeId::from_u128(u128::MAX).to_js_string();
+        self.db
+            .transaction(&["snapshots", "snapshots_meta"])
+            .run(|transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving snapshots_meta object store")?;
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving snapshots object store")?;
+                let latest_type_object = snapshots_meta
+                    .index("latest_type_object")
+                    .wrap_context("opening 'latest_type_object' snapshot index")?;
+                let mut cursor = latest_type_object
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&JsValue::from(1), &zero_id, &zero_id])
+                            ..=&**Array::from_iter([&JsValue::from(1), &max_id, &max_id]),
+                    )
+                    .wrap_context("limiting cursor to only latest snapshots")?
+                    .open()
+                    .await
+                    .wrap_context("opening cursor over all latest objects")?;
+                let mut res = HashMap::new();
+                while let Some(snapshot_meta_js) = cursor.value() {
+                    let snapshot_meta =
+                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
+                            .wrap_context("deserializing snapshot metadata")?;
+                    let snapshot_js = snapshots
+                        .get(&snapshot_meta.snapshot_id.to_js_string())
+                        .await
+                        .wrap_context("retrieving snapshot data")?
+                        .ok_or_else(|| {
+                            crate::Error::Other(anyhow!(
+                                "no snapshot data for known snapshot metadata"
+                            ))
+                        })?;
+                    let snapshot_json =
+                        serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_js)
+                            .wrap_context("deserializing snapshot")?;
+                    res.insert(
+                        snapshot_meta.object_id,
+                        (
+                            snapshot_meta.type_id,
+                            snapshot_json,
+                            snapshot_meta.have_all_until,
+                        ),
+                    );
+                    cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next object in the database")?;
+                }
+                Ok(res)
+            })
+            .await
+            .wrap_context("listing subscribed objects")
+    }
+
+    async fn get_subscribed_queries(
+        &self,
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
+        self.db
+            .transaction(&["queries_meta"])
+            .run(|transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                let queries = queries_meta
+                    .get_all(None)
+                    .await
+                    .wrap_context("listing subscribed queries")?;
+                let res = queries
+                    .into_iter()
+                    .map(|q| {
+                        let q = serde_wasm_bindgen::from_value::<QueryMeta>(q)
+                            .wrap_context("deserializing query metadata")?;
+                        Ok((
+                            q.query_id,
+                            (
+                                q.query,
+                                q.type_id,
+                                q.have_all_until,
+                                Lock::from_query_lock(q.lock),
+                            ),
+                        ))
+                    })
+                    .collect();
+                res
+            })
+            .await
+            .wrap_context("listing subscribed objects")
+    }
+
+    async fn subscribe_query(
+        &self,
+        query_id: QueryId,
+        query: Arc<Query>,
+        type_id: TypeId,
+        lock: bool,
+    ) -> crate::Result<()> {
+        let new_query = QueryMeta {
+            query_id,
+            query,
+            type_id,
+            lock,
+            have_all_until: None,
+        };
+        let new_query_js = to_js(new_query).wrap_context("serializing query metadata")?;
+        self.db
+            .transaction(&["queries_meta"])
+            .rw()
+            .run(|transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                queries_meta
+                    .put(&new_query_js)
+                    .await
+                    .wrap_context("inserting the new query")?;
+                Ok(())
+            })
+            .await
+            .wrap_context("subscribing to query")
+    }
+
+    async fn unsubscribe_query(
+        &self,
+        query_id: QueryId,
+        objects_to_unlock: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        let query_id_js = query_id.to_js_string();
+        self.db
+            .transaction(&["queries_meta", "snapshots_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving snapshots_meta object store")?;
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving creation_object index")?;
+
+                queries_meta
+                    .delete(&query_id_js)
+                    .await
+                    .wrap_context("removing the unsubscribed query")?;
+                for object_id in objects_to_unlock {
+                    let Some(snapshot_meta_js) = creation_object
+                        .get(&**Array::from_iter([
+                            &JsValue::from(1),
+                            &object_id.to_js_string(),
+                        ]))
+                        .await
+                        .wrap_context("fetching existing snapshot metadata")?
+                    else {
+                        tracing::error!(
+                            ?object_id,
+                            "object supposed to get unlocked does not actually exist"
+                        );
+                        continue;
+                    };
+                    let mut snapshot_meta =
+                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
+                            .wrap_context("deserializing snapshot metadata")?;
+                    let old_is_locked = snapshot_meta.is_locked;
+                    snapshot_meta.is_locked = Some(
+                        (old_is_locked
+                            .map(Lock::from_bits_truncate)
+                            .unwrap_or(Lock::NONE)
+                            - Lock::FOR_QUERIES)
+                            .bits(),
+                    );
+                    if old_is_locked != snapshot_meta.is_locked {
+                        let snapshot_meta_js =
+                            to_js(snapshot_meta).wrap_context("serializing snapshot metadata")?;
+                        snapshots_meta
+                            .put(&snapshot_meta_js)
+                            .await
+                            .wrap_context("saving unlocked-for-queries snapshot")?;
+                    }
+                }
+                Ok(())
+            })
+            .await
+            .wrap_context("subscribing to query")
+    }
+
+    async fn update_queries(
+        &self,
+        queries: &HashSet<QueryId>,
+        now_have_all_until: Updatedness,
+    ) -> crate::Result<()> {
+        let queries = queries.clone();
+        self.db
+            .transaction(&["queries_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving queries_meta object store")?;
+                for query_id in queries {
+                    let Some(query_meta_js) = queries_meta
+                        .get(&query_id.to_js_string())
+                        .await
+                        .wrap_context("fetching existing query metadata")?
+                    else {
+                        tracing::error!(
+                            ?query_id,
+                            "query supposed to get updated does not actually exist"
+                        );
+                        continue;
+                    };
+                    let mut query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
+                        .wrap_context("deserializing query metadata")?;
+                    query_meta.have_all_until = Some(now_have_all_until);
+                    let query_meta_js =
+                        to_js(query_meta).wrap_context("reserializing query metadata")?;
+                    queries_meta
+                        .put(&query_meta_js)
+                        .await
+                        .wrap_context("saving updated query metadata")?;
+                }
+                Ok(())
+            })
+            .await
+            .wrap_context("subscribing to query")
     }
 }
 

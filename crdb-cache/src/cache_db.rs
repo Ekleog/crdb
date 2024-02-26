@@ -4,7 +4,7 @@ use crdb_core::{
     Query, QueryId, ServerSideDb, TypeId, Updatedness, Upload, UploadId, User,
 };
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ops::Deref,
     sync::{Arc, Mutex, RwLock},
 };
@@ -227,6 +227,46 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
 
     async fn upload_finished(&self, upload_id: UploadId) -> crate::Result<()> {
         self.db.upload_finished(upload_id).await
+    }
+
+    async fn get_subscribed_objects(
+        &self,
+    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
+        self.db.get_subscribed_objects().await
+    }
+
+    async fn get_subscribed_queries(
+        &self,
+    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
+        self.db.get_subscribed_queries().await
+    }
+
+    async fn subscribe_query(
+        &self,
+        query_id: QueryId,
+        query: Arc<Query>,
+        type_id: TypeId,
+        lock: bool,
+    ) -> crate::Result<()> {
+        self.db
+            .subscribe_query(query_id, query, type_id, lock)
+            .await
+    }
+
+    async fn unsubscribe_query(
+        &self,
+        query_id: QueryId,
+        objects_to_unlock: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        self.db.unsubscribe_query(query_id, objects_to_unlock).await
+    }
+
+    async fn update_queries(
+        &self,
+        queries: &HashSet<QueryId>,
+        now_have_all_until: Updatedness,
+    ) -> crate::Result<()> {
+        self.db.update_queries(queries, now_have_all_until).await
     }
 }
 
