@@ -1,7 +1,8 @@
 use web_time::SystemTime;
 
 use crate::{
-    CanDoCallbacks, Db, EventId, Object, ObjectData, ObjectId, TypeId, Update, Updatedness, User,
+    CanDoCallbacks, Db, EventId, Object, ObjectData, ObjectId, Query, TypeId, Update, Updatedness,
+    User,
 };
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
@@ -47,6 +48,14 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         object_id: ObjectId,
         only_updated_since: Option<Updatedness>,
     ) -> impl waaaa::Future<Output = crate::Result<ObjectData>>;
+
+    fn server_query(
+        &self,
+        user: User,
+        type_id: TypeId,
+        only_updated_since: Option<Updatedness>,
+        query: Arc<Query>,
+    ) -> impl waaaa::Future<Output = crate::Result<Vec<ObjectId>>>;
 
     /// Cleans up and optimizes up the database
     ///

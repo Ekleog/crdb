@@ -941,67 +941,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         Ok(Either::Left(Arc::new(object)))
     }
 
-    pub async fn query(
-        &self,
-        user: User,
-        type_id: TypeId,
-        only_updated_since: Option<Updatedness>,
-        query: Arc<Query>,
-    ) -> crate::Result<Vec<ObjectId>> {
-        reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
-        // Atomically perform all the reads here
-        reord::point().await;
-        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-            .execute(&mut *transaction)
-            .await
-            .wrap_context("setting transaction as repeatable read")?;
-
-        let query_sql = format!(
-            "
-                SELECT object_id
-                FROM snapshots
-                WHERE is_latest
-                AND type_id = $1
-                AND $2 = ANY (users_who_can_read)
-                AND last_modified >= $3
-                AND ({})
-            ",
-            where_clause(&query, 4)
-        );
-        let min_last_modified = only_updated_since
-            .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
-            .unwrap_or(EventId::from_u128(0));
-        reord::point().await;
-        let mut query_sql = sqlx::query(&query_sql)
-            .persistent(false) // TODO(blocked): remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
-            .bind(type_id)
-            .bind(user)
-            .bind(min_last_modified);
-        for b in binds(&query)? {
-            match b {
-                Bind::Json(v) => query_sql = query_sql.bind(v),
-                Bind::Str(v) => query_sql = query_sql.bind(v),
-                Bind::String(v) => query_sql = query_sql.bind(v),
-                Bind::Decimal(v) => query_sql = query_sql.bind(v),
-                Bind::I32(v) => query_sql = query_sql.bind(v),
-            }
-        }
-        reord::point().await;
-        let res = query_sql
-            .map(|row| ObjectId::from_uuid(row.get(0)))
-            .fetch_all(&mut *transaction)
-            .await
-            .wrap_with_context(|| format!("listing objects matching query {query:?}"))?;
-
-        Ok(res)
-    }
-
     #[cfg(test)]
     async fn assert_invariants_generic(&self) {
         // All binaries are present
@@ -1606,6 +1545,67 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
             events,
             now_have_all_until: last_modified,
         })
+    }
+
+    async fn server_query(
+        &self,
+        user: User,
+        type_id: TypeId,
+        only_updated_since: Option<Updatedness>,
+        query: Arc<Query>,
+    ) -> crate::Result<Vec<ObjectId>> {
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // Atomically perform all the reads here
+        reord::point().await;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .wrap_context("setting transaction as repeatable read")?;
+
+        let query_sql = format!(
+            "
+                SELECT object_id
+                FROM snapshots
+                WHERE is_latest
+                AND type_id = $1
+                AND $2 = ANY (users_who_can_read)
+                AND last_modified >= $3
+                AND ({})
+            ",
+            where_clause(&query, 4)
+        );
+        let min_last_modified = only_updated_since
+            .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
+            .unwrap_or(EventId::from_u128(0));
+        reord::point().await;
+        let mut query_sql = sqlx::query(&query_sql)
+            .persistent(false) // TODO(blocked): remove when https://github.com/launchbadge/sqlx/issues/2981 is fixed
+            .bind(type_id)
+            .bind(user)
+            .bind(min_last_modified);
+        for b in binds(&query)? {
+            match b {
+                Bind::Json(v) => query_sql = query_sql.bind(v),
+                Bind::Str(v) => query_sql = query_sql.bind(v),
+                Bind::String(v) => query_sql = query_sql.bind(v),
+                Bind::Decimal(v) => query_sql = query_sql.bind(v),
+                Bind::I32(v) => query_sql = query_sql.bind(v),
+            }
+        }
+        reord::point().await;
+        let res = query_sql
+            .map(|row| ObjectId::from_uuid(row.get(0)))
+            .fetch_all(&mut *transaction)
+            .await
+            .wrap_with_context(|| format!("listing objects matching query {query:?}"))?;
+
+        Ok(res)
     }
 
     /// Cleans up and optimizes up the database

@@ -439,7 +439,7 @@ impl<C: crdb_core::Config> Server<C> {
                 let updatedness = *self.last_completed_updatedness.lock().unwrap();
                 let object_ids = self
                     .db
-                    .query(
+                    .server_query(
                         sess.session.user_id,
                         *type_id,
                         *only_updated_since,
@@ -473,7 +473,7 @@ impl<C: crdb_core::Config> Server<C> {
                 let updatedness = *self.last_completed_updatedness.lock().unwrap();
                 let object_ids = self
                     .db
-                    .query(
+                    .server_query(
                         sess.session.user_id,
                         *type_id,
                         *only_updated_since,

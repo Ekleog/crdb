@@ -1,7 +1,7 @@
 use super::{BinariesCache, ObjectCache};
 use crdb_core::{
     hash_binary, BinPtr, ClientSideDb, CrdbSyncFn, Db, DynSized, EventId, Lock, Object, ObjectId,
-    Query, QueryId, ServerSideDb, TypeId, Updatedness, Upload, UploadId,
+    Query, QueryId, ServerSideDb, TypeId, Updatedness, Upload, UploadId, User,
 };
 use std::{
     collections::HashSet,
@@ -262,6 +262,18 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
     ) -> crdb_core::Result<crdb_core::ObjectData> {
         self.db
             .get_all(transaction, user, object_id, only_updated_since)
+            .await
+    }
+
+    async fn server_query(
+        &self,
+        user: User,
+        type_id: TypeId,
+        only_updated_since: Option<Updatedness>,
+        query: Arc<Query>,
+    ) -> crate::Result<Vec<ObjectId>> {
+        self.db
+            .server_query(user, type_id, only_updated_since, query)
             .await
     }
 

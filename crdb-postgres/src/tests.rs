@@ -17,7 +17,7 @@ async fn smoke_test(db: sqlx::PgPool) {
     crdb_test_utils::smoke_test!(
         db: db,
         query_all: db
-            .query(USER_ID_NULL, *TestObjectSimple::type_ulid(), None, Arc::new(Query::All(vec![])))
+            .server_query(USER_ID_NULL, *TestObjectSimple::type_ulid(), None, Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
         db_type: server,
@@ -86,7 +86,7 @@ mod fuzz_helpers {
 
     use crate::{tests::TmpDb, PostgresDb};
     use crdb_cache::CacheDb;
-    use crdb_core::{Object, Query, ResultExt, Updatedness, User};
+    use crdb_core::{Object, Query, ResultExt, ServerSideDb, Updatedness, User};
     use crdb_test_utils::{Config, *};
 
     pub use tokio::test;
@@ -145,7 +145,7 @@ mod fuzz_helpers {
         query: &Arc<Query>,
     ) -> anyhow::Result<()> {
         let pg = db
-            .query(user, *T::type_ulid(), only_updated_since, query.clone())
+            .server_query(user, *T::type_ulid(), only_updated_since, query.clone())
             .await
             .wrap_context("querying postgres")
             .map(|r| r.into_iter().collect::<HashSet<_>>());
