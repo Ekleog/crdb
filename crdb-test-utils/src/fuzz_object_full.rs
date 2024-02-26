@@ -2,7 +2,7 @@
 macro_rules! fuzz_object_full {
     ($db_type:tt) => {
         use super::fuzz_helpers::{
-            self, make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
+            self, make_db, make_fuzzer, run_query, setup, Database, SetupState,
         };
         use anyhow::Context;
         use std::{collections::BTreeSet, sync::Arc};
@@ -100,7 +100,7 @@ macro_rules! fuzz_object_full {
                         data: Arc::new([1u8, 2, 3]) as _,
                         fake_id: None,
                     },
-                    Op::Vacuum { recreate_at: None },
+                    Op::ClientVacuum,
                 ]),
             )
             .await;
@@ -116,7 +116,7 @@ macro_rules! fuzz_object_full {
                         data: vec![1].into(),
                         fake_id: None,
                     },
-                    Op::Vacuum { recreate_at: None },
+                    Op::ClientVacuum,
                     Op::GetBinary { binary_id: 0 },
                 ]),
             )

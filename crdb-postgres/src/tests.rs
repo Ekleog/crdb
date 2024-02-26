@@ -87,9 +87,7 @@ mod fuzz_helpers {
 
     use crate::{tests::TmpDb, PostgresDb};
     use crdb_cache::CacheDb;
-    use crdb_core::{
-        ClientSideDb, EventId, Object, Query, ResultExt, ServerSideDb, Updatedness, User,
-    };
+    use crdb_core::{Object, Query, ResultExt, Updatedness, User};
     use crdb_test_utils::{Config, *};
 
     pub use tokio::test;
@@ -157,51 +155,6 @@ mod fuzz_helpers {
             .await
             .map(|r| r.into_iter().collect::<HashSet<_>>());
         cmp(pg, mem)
-    }
-
-    pub async fn run_vacuum(
-        db: &Database,
-        mem_db: &MemDb,
-        recreate_at: Option<(EventId, Updatedness)>,
-    ) -> anyhow::Result<()> {
-        // TODO(test-high): this implementation is very wrong, but should work until we finish properly splitting everything up and
-        // properly testing client_vacuum
-        match recreate_at {
-            None => {
-                let db = db
-                    .server_vacuum(None, Updatedness::now(), None, |r, _| {
-                        panic!("got unexpected recreation {r:?}");
-                    })
-                    .await;
-                let mem = mem_db.client_vacuum(|_| (), |_| ()).await;
-                cmp(db, mem)
-            }
-            Some((recreate_at, updatedness)) => {
-                let db = db
-                    .server_vacuum(Some(recreate_at), updatedness, None, |_, _| {
-                        // TODO(test-high): validate that the notified recreations are the same as in memdb
-                    })
-                    .await;
-                let mem = async move {
-                    mem_db
-                        .recreate_all::<TestObjectSimple>(recreate_at, Some(updatedness))
-                        .await?;
-                    mem_db
-                        .recreate_all::<TestObjectPerms>(recreate_at, Some(updatedness))
-                        .await?;
-                    mem_db
-                        .recreate_all::<TestObjectDelegatePerms>(recreate_at, Some(updatedness))
-                        .await?;
-                    mem_db
-                        .recreate_all::<TestObjectFull>(recreate_at, Some(updatedness))
-                        .await?;
-                    mem_db.client_vacuum(|_| (), |_| ()).await?;
-                    Ok(())
-                }
-                .await;
-                cmp(db, mem)
-            }
-        }
     }
 }
 

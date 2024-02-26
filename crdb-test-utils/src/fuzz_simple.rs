@@ -2,7 +2,7 @@
 macro_rules! fuzz_simple {
     ($db_type:tt) => {
         use super::fuzz_helpers::{
-            self, make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
+            self, make_db, make_fuzzer, run_query, setup, Database, SetupState,
         };
 
         use anyhow::Context;
@@ -197,13 +197,12 @@ macro_rules! fuzz_simple {
 
         #[fuzz_helpers::test]
         async fn regression_vacuum_did_not_actually_recreate_objects() {
-            use Op::*;
             let cluster = setup();
             let mut make_updatedness = make_make_updatedness();
             fuzz_impl(
                 &cluster,
                 Arc::new(vec![
-                    CreateSimple {
+                    Op::CreateSimple {
                         object_id: ObjectId(
                             Ulid::from_string("00000A58N21A8JM00000000000").unwrap(),
                         ),
@@ -214,20 +213,20 @@ macro_rules! fuzz_simple {
                         updatedness: make_updatedness(),
                         lock: Lock::OBJECT.bits(),
                     },
-                    SubmitSimple {
+                    Op::SubmitSimple {
                         object_id: 0,
                         event_id: EventId(Ulid::from_string("00001000040000000000000000").unwrap()),
                         event: Arc::new(TestEventSimple::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
                         updatedness: make_updatedness(),
                         force_lock: Lock::OBJECT.bits(),
                     },
-                    Vacuum {
-                        recreate_at: Some((
-                            EventId(Ulid::from_string("00001000040000000000001000").unwrap()),
-                            make_updatedness().unwrap(),
+                    Op::ServerVacuum {
+                        recreate_at: Some(EventId(
+                            Ulid::from_string("00001000040000000000001000").unwrap(),
                         )),
+                        updatedness: make_updatedness().unwrap(),
                     },
-                    SubmitSimple {
+                    Op::SubmitSimple {
                         object_id: 0,
                         event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
                         event: Arc::new(TestEventSimple::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
@@ -681,7 +680,7 @@ macro_rules! fuzz_simple {
                         updatedness: make_updatedness(),
                         lock: 0,
                     },
-                    Op::Vacuum { recreate_at: None },
+                    Op::ClientVacuum,
                     Op::RecreateSimple {
                         object_id: 0,
                         new_created_at: EVENT_ID_1,
@@ -732,8 +731,9 @@ macro_rules! fuzz_simple {
             let cluster = setup();
             fuzz_impl(
                 &cluster,
-                Arc::new(vec![Op::Vacuum {
-                    recreate_at: Some((EventId::from_u128(u128::MAX), Updatedness::from_u128(0))),
+                Arc::new(vec![Op::ServerVacuum {
+                    recreate_at: Some(EventId::from_u128(u128::MAX)),
+                    updatedness: UPDATEDNESS_1,
                 }]),
             )
             .await;

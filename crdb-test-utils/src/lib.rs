@@ -161,7 +161,8 @@ macro_rules! make_fuzzer_stuffs {
             },
             Remove { object_id: usize },
             ChangeLocks { unlock: u8, then_lock: u8, object_id: usize },
-            Vacuum { recreate_at: Option<(EventId, Updatedness)> },
+            ClientVacuum,
+            ServerVacuum { recreate_at: Option<EventId>, updatedness: Updatedness },
         }
 
         impl Op {
@@ -305,8 +306,46 @@ macro_rules! make_fuzzer_stuffs {
                             cmp(db, mem)?;
                         }
                     }
-                    Op::Vacuum { recreate_at } => {
-                        run_vacuum(&db, &s.mem_db, *recreate_at).await?;
+                    Op::ClientVacuum => {
+                        $crate::make_fuzzer_stuffs!(@if-client $db_type {
+                            let db = db.client_vacuum(|_| (), |_| ()).await;
+                            let mem = s.mem_db.client_vacuum(|_| (), |_| ()).await;
+                            cmp(db, mem)?;
+                        });
+                    }
+                    Op::ServerVacuum { recreate_at, updatedness} => {
+                        $crate::make_fuzzer_stuffs!(@if-server $db_type {
+                            // TODO(test-high): use MemDb's implementation of server_vacuum once it's done
+                            match recreate_at {
+                                None => {
+                                    let db = db
+                                        .server_vacuum(None, Updatedness::now(), None, |r, _| {
+                                            panic!("got unexpected recreation {r:?}");
+                                        })
+                                        .await;
+                                    let mem = s.mem_db.client_vacuum(|_| (), |_| ()).await;
+                                    cmp(db, mem)?;
+                                }
+                                Some(_) => {
+                                    let db = db
+                                        .server_vacuum(*recreate_at, *updatedness, None, |_, _| {
+                                            // TODO(test-high): validate that the notified recreations are the same as in memdb
+                                        })
+                                        .await;
+                                    let mem = async move {
+                                        if let Some(recreate_at) = recreate_at {
+                                            $(
+                                                s.mem_db.recreate_all::<$object>(*recreate_at, Some(*updatedness)).await?;
+                                            )*
+                                        }
+                                        s.mem_db.client_vacuum(|_| (), |_| ()).await?;
+                                        Ok(())
+                                    }
+                                    .await;
+                                    cmp(db, mem)?;
+                                }
+                            }
+                        });
                     }
                 }
                 Ok(())

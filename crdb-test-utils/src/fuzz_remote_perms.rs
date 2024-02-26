@@ -2,7 +2,7 @@
 macro_rules! fuzz_remote_perms {
     ($db_type:tt) => {
         use super::fuzz_helpers::{
-            self, make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
+            self, make_db, make_fuzzer, run_query, setup, Database, SetupState,
         };
         use anyhow::Context;
         use std::sync::Arc;
@@ -239,8 +239,9 @@ macro_rules! fuzz_remote_perms {
                         updatedness: Some(UPDATEDNESS_1),
                         lock: Lock::OBJECT.bits(),
                     },
-                    Op::Vacuum {
-                        recreate_at: Some((EVENT_ID_2, UPDATEDNESS_3)),
+                    Op::ServerVacuum {
+                        recreate_at: Some(EVENT_ID_2),
+                        updatedness: UPDATEDNESS_3,
                     },
                     Op::QueryPerm {
                         user: USER_ID_1,
@@ -284,11 +285,13 @@ macro_rules! fuzz_remote_perms {
                         )),
                         force_lock: Lock::OBJECT.bits(),
                     },
-                    Op::Vacuum {
-                        recreate_at: Some((
-                            EventId(Ulid::from_string("7ZZZZZZZZZZZZZZZR10M3G0000").unwrap()),
-                            Updatedness(Ulid::from_string("2VDNPPTVBDDME6ESV7CXKPESV7").unwrap()),
+                    Op::ServerVacuum {
+                        recreate_at: Some(EventId(
+                            Ulid::from_string("7ZZZZZZZZZZZZZZZR10M3G0000").unwrap(),
                         )),
+                        updatedness: Updatedness(
+                            Ulid::from_string("2VDNPPTVBDDME6ESV7CXKPESV7").unwrap(),
+                        ),
                     },
                     Op::CreateDelegator {
                         object_id: ObjectId(

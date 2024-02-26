@@ -23,7 +23,7 @@ async fn smoke_test() {
 
 mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
-    use crdb_core::{ClientSideDb, EventId, Object, Query, ResultExt, Updatedness, User};
+    use crdb_core::{Object, Query, ResultExt, Updatedness, User};
     use crdb_indexed_db::IndexedDb;
     use crdb_test_utils::*;
     use rand::{rngs::StdRng, SeedableRng};
@@ -145,17 +145,6 @@ mod fuzz_helpers {
             .await
             .wrap_context("querying mem")
             .map(|r| r.into_iter().collect::<HashSet<_>>());
-        cmp(db, mem)
-    }
-
-    pub async fn run_vacuum(
-        db: &Database,
-        mem_db: &MemDb,
-        _recreate_at: Option<(EventId, Updatedness)>,
-    ) -> anyhow::Result<()> {
-        // TODO(test-high): this should go away once we finish splitting everything up
-        let db = db.client_vacuum(|_| (), |_| ()).await; // TODO(test-high): verify that the removals are the same as in MemDb
-        let mem = mem_db.client_vacuum(|_| (), |_| ()).await;
         cmp(db, mem)
     }
 }
