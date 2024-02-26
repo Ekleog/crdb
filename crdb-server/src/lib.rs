@@ -1,11 +1,11 @@
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
 use crdb_cache::CacheDb;
-use crdb_core::ReadPermsChanges;
 use crdb_core::{
     BinPtr, ClientMessage, Db, EventId, MaybeObject, MaybeSnapshot, ObjectId, Query, QueryId,
-    Request, RequestId, ResponsePart, ResultExt, ServerMessage, Session, SessionRef, SessionToken,
-    SystemTimeExt, Update, UpdateData, Updatedness, Updates, UpdatesWithSnap, Upload, User,
+    ReadPermsChanges, Request, RequestId, ResponsePart, ResultExt, ServerMessage, ServerSideDb,
+    Session, SessionRef, SessionToken, SystemTimeExt, Update, UpdateData, Updatedness, Updates,
+    UpdatesWithSnap, Upload, User,
 };
 use futures::{
     future::{self, Either, OptionFuture},

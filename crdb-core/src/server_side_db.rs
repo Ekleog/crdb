@@ -1,4 +1,4 @@
-use crate::{CanDoCallbacks, EventId, Object, ObjectId, TypeId, Updatedness, User};
+use crate::{CanDoCallbacks, EventId, Object, ObjectData, ObjectId, TypeId, Updatedness, User};
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 // TODO(blocked): replace with an associated type of ServerSideDb once https://github.com/rust-lang/rust/pull/120700 stabilizes
@@ -16,6 +16,8 @@ pub struct ReadPermsChanges {
 }
 
 pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync {
+    type Transaction;
+
     // TODO(blocked): replace with -> impl once https://github.com/rust-lang/rust/issues/100013 is fixed
     // This will also remove the clippy lint
     #[allow(clippy::type_complexity)]
@@ -32,6 +34,15 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync {
                 >,
         >,
     >;
+
+    // TODO(test-high): introduce in server-side fuzzer
+    fn get_all(
+        &self,
+        transaction: &mut Self::Transaction,
+        user: User,
+        object_id: ObjectId,
+        only_updated_since: Option<Updatedness>,
+    ) -> impl waaaa::Future<Output = crate::Result<ObjectData>>;
 
     /// This function assumes that the lock on `object_id` is already taken
     ///

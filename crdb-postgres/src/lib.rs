@@ -1416,97 +1416,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         Ok(transaction)
     }
 
-    // TODO(test-high): introduce in server-side fuzzer
-    pub async fn get_all(
-        &self,
-        transaction: &mut sqlx::PgConnection,
-        user: User,
-        object_id: ObjectId,
-        only_updated_since: Option<Updatedness>,
-    ) -> crate::Result<ObjectData> {
-        let min_last_modified = only_updated_since
-            .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
-            .unwrap_or(EventId::from_u128(0));
-
-        // Check that our user has permissions to read the object and retrieve the type_id
-        reord::point().await;
-        let latest = sqlx::query!(
-            "
-                SELECT type_id
-                FROM snapshots
-                WHERE object_id = $1
-                AND is_latest
-                AND $2 = ANY (users_who_can_read)
-            ",
-            object_id as ObjectId,
-            user as User,
-        )
-        .fetch_optional(&mut *transaction)
-        .await
-        .wrap_with_context(|| format!("checking whether {user:?} can read {object_id:?}"))?;
-        let Some(latest) = latest else {
-            return Err(crate::Error::ObjectDoesNotExist(object_id));
-        };
-        let type_id = TypeId::from_uuid(latest.type_id);
-
-        reord::point().await;
-        let creation_snapshot = sqlx::query!(
-            "
-                SELECT snapshot_id, type_id, snapshot_version, snapshot
-                FROM snapshots
-                WHERE object_id = $1
-                AND is_creation
-                AND last_modified >= $2
-            ",
-            object_id as ObjectId,
-            min_last_modified as EventId,
-        )
-        .fetch_optional(&mut *transaction)
-        .await
-        .wrap_with_context(|| format!("fetching creation snapshot for object {object_id:?}"))?;
-
-        reord::point().await;
-        let events = sqlx::query!(
-            "
-                SELECT event_id, data
-                FROM events
-                WHERE object_id = $1
-                AND last_modified >= $2
-            ",
-            object_id as ObjectId,
-            min_last_modified as EventId,
-        )
-        .map(|r| (EventId::from_uuid(r.event_id), Arc::new(r.data)))
-        .fetch(&mut *transaction)
-        .try_collect::<BTreeMap<EventId, Arc<serde_json::Value>>>()
-        .await
-        .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
-
-        reord::point().await;
-        let last_modified = sqlx::query!(
-            "SELECT last_modified FROM snapshots WHERE object_id = $1 AND is_latest",
-            object_id as ObjectId
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .wrap_context("retrieving the last_modified time")?;
-        let last_modified = Updatedness::from_uuid(last_modified.last_modified);
-
-        Ok(ObjectData {
-            object_id,
-            type_id,
-            creation_snapshot: creation_snapshot.map(|c| {
-                (
-                    EventId::from_uuid(c.snapshot_id),
-                    c.snapshot_version,
-                    Arc::new(c.snapshot),
-                )
-            }),
-            events,
-            now_have_all_until: last_modified,
-        })
-    }
-
     pub async fn get_latest_snapshot(
         &self,
         transaction: &mut sqlx::PgConnection,
@@ -1721,6 +1630,8 @@ impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
 }
 
 impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
+    type Transaction = sqlx::PgConnection;
+
     /// This function assumes that the lock on `object_id` is already taken.
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
         &'ret self,
@@ -1735,6 +1646,7 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
                 >,
         >,
     > {
+        // TODO(blocked): remove the box::pin once rustc no longer fails on it
         Box::pin(async move {
             let cb = TrackingCanDoCallbacks::<'a, 'ret> {
                 cb,
@@ -1754,6 +1666,97 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
                 locks.push(l);
             }
             Ok((users_who_can_read, users_who_can_read_depends_on, locks))
+        })
+    }
+
+    // TODO(test-high): introduce in server-side fuzzer
+    async fn get_all(
+        &self,
+        transaction: &mut sqlx::PgConnection,
+        user: User,
+        object_id: ObjectId,
+        only_updated_since: Option<Updatedness>,
+    ) -> crate::Result<ObjectData> {
+        let min_last_modified = only_updated_since
+            .map(|t| EventId::from_u128(t.as_u128().saturating_add(1))) // Handle None, Some(0) and Some(N)
+            .unwrap_or(EventId::from_u128(0));
+
+        // Check that our user has permissions to read the object and retrieve the type_id
+        reord::point().await;
+        let latest = sqlx::query!(
+            "
+                SELECT type_id
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_latest
+                AND $2 = ANY (users_who_can_read)
+            ",
+            object_id as ObjectId,
+            user as User,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("checking whether {user:?} can read {object_id:?}"))?;
+        let Some(latest) = latest else {
+            return Err(crate::Error::ObjectDoesNotExist(object_id));
+        };
+        let type_id = TypeId::from_uuid(latest.type_id);
+
+        reord::point().await;
+        let creation_snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, type_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_creation
+                AND last_modified >= $2
+            ",
+            object_id as ObjectId,
+            min_last_modified as EventId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching creation snapshot for object {object_id:?}"))?;
+
+        reord::point().await;
+        let events = sqlx::query!(
+            "
+                SELECT event_id, data
+                FROM events
+                WHERE object_id = $1
+                AND last_modified >= $2
+            ",
+            object_id as ObjectId,
+            min_last_modified as EventId,
+        )
+        .map(|r| (EventId::from_uuid(r.event_id), Arc::new(r.data)))
+        .fetch(&mut *transaction)
+        .try_collect::<BTreeMap<EventId, Arc<serde_json::Value>>>()
+        .await
+        .wrap_with_context(|| format!("fetching all events for object {object_id:?}"))?;
+
+        reord::point().await;
+        let last_modified = sqlx::query!(
+            "SELECT last_modified FROM snapshots WHERE object_id = $1 AND is_latest",
+            object_id as ObjectId
+        )
+        .fetch_one(&mut *transaction)
+        .await
+        .wrap_context("retrieving the last_modified time")?;
+        let last_modified = Updatedness::from_uuid(last_modified.last_modified);
+
+        Ok(ObjectData {
+            object_id,
+            type_id,
+            creation_snapshot: creation_snapshot.map(|c| {
+                (
+                    EventId::from_uuid(c.snapshot_id),
+                    c.snapshot_version,
+                    Arc::new(c.snapshot),
+                )
+            }),
+            events,
+            now_have_all_until: last_modified,
         })
     }
 
