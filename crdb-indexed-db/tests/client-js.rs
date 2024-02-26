@@ -22,17 +22,11 @@ async fn smoke_test() {
 
 mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
-    use crdb_core::{ClientSideDb, Object, Query, ResultExt, Updatedness, User};
     use crdb_indexed_db::IndexedDb;
-    use crdb_test_utils::*;
     use rand::{rngs::StdRng, SeedableRng};
     use std::{
-        collections::HashSet,
         future::Future,
-        sync::{
-            atomic::{AtomicUsize, Ordering},
-            Arc,
-        },
+        sync::atomic::{AtomicUsize, Ordering},
     };
 
     pub use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -126,26 +120,6 @@ mod fuzz_helpers {
     }
 
     pub(crate) use make_fuzzer;
-
-    pub async fn run_query<T: Object>(
-        db: &Database,
-        mem_db: &MemDb,
-        _user: User,
-        _only_updated_since: Option<Updatedness>,
-        query: &Arc<Query>,
-    ) -> anyhow::Result<()> {
-        let db = db
-            .client_query(*T::type_ulid(), query.clone())
-            .await
-            .wrap_context("querying postgres")
-            .map(|r| r.into_iter().collect::<HashSet<_>>());
-        let mem = mem_db
-            .memdb_query::<T>(USER_ID_NULL, None, &query)
-            .await
-            .wrap_context("querying mem")
-            .map(|r| r.into_iter().collect::<HashSet<_>>());
-        cmp(db, mem)
-    }
 }
 
 mod fuzz_simple {

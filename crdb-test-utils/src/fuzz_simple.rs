@@ -1,9 +1,7 @@
 #[macro_export]
 macro_rules! fuzz_simple {
     ($db_type:tt) => {
-        use super::fuzz_helpers::{
-            self, make_db, make_fuzzer, run_query, setup, Database, SetupState,
-        };
+        use super::fuzz_helpers::{self, make_db, make_fuzzer, setup, Database, SetupState};
 
         use anyhow::Context;
         use rust_decimal::Decimal;

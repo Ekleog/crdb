@@ -115,6 +115,7 @@ macro_rules! make_fuzzer_stuffs {
         $( ($name:ident, $object:ident, $event:ident), )*
     ) => { $crate::paste::paste! {
         use $crate::{*, crdb_core::*};
+        use std::collections::HashSet;
 
         #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
         enum Op {
@@ -230,7 +231,33 @@ macro_rules! make_fuzzer_stuffs {
                             cmp(db, mem)?;
                         }
                         Op::[< Query $name >] { user, only_updated_since, query } => {
-                            run_query::<$object>(&db, &s.mem_db, *user, *only_updated_since, query).await?;
+                            $crate::make_fuzzer_stuffs!(@if-client $db_type {
+                                let _ = user;
+                                let _ = only_updated_since;
+                                let db = db
+                                    .client_query(*$object::type_ulid(), query.clone())
+                                    .await
+                                    .wrap_context("querying postgres")
+                                    .map(|r| r.into_iter().collect::<HashSet<_>>());
+                                let mem = s.mem_db
+                                    .memdb_query::<$object>(USER_ID_NULL, None, &query)
+                                    .await
+                                    .wrap_context("querying mem")
+                                    .map(|r| r.into_iter().collect::<HashSet<_>>());
+                                cmp(db, mem)?;
+                            });
+                            $crate::make_fuzzer_stuffs!(@if-server $db_type {
+                                let pg = db
+                                    .server_query(*user, *$object::type_ulid(), *only_updated_since, query.clone())
+                                    .await
+                                    .wrap_context("querying postgres")
+                                    .map(|r| r.into_iter().collect::<HashSet<_>>());
+                                let mem = s.mem_db
+                                    .memdb_query::<$object>(*user, *only_updated_since, &query)
+                                    .await
+                                    .map(|r| r.into_iter().collect::<HashSet<_>>());
+                                cmp(pg, mem)?;
+                            });
                         }
                         Op::[< Recreate $name >] {
                             object_id,

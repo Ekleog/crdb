@@ -82,12 +82,11 @@ impl Drop for TmpDb {
 }
 
 mod fuzz_helpers {
-    use std::{collections::HashSet, ops::Deref, sync::Arc};
+    use std::{ops::Deref, sync::Arc};
 
     use crate::{tests::TmpDb, PostgresDb};
     use crdb_cache::CacheDb;
-    use crdb_core::{Object, Query, ResultExt, ServerSideDb, Updatedness, User};
-    use crdb_test_utils::{Config, *};
+    use crdb_test_utils::Config;
 
     pub use tokio::test;
 
@@ -136,25 +135,6 @@ mod fuzz_helpers {
     }
 
     pub(crate) use make_fuzzer;
-
-    pub async fn run_query<T: Object>(
-        db: &Database,
-        mem_db: &MemDb,
-        user: User,
-        only_updated_since: Option<Updatedness>,
-        query: &Arc<Query>,
-    ) -> anyhow::Result<()> {
-        let pg = db
-            .server_query(user, *T::type_ulid(), only_updated_since, query.clone())
-            .await
-            .wrap_context("querying postgres")
-            .map(|r| r.into_iter().collect::<HashSet<_>>());
-        let mem = mem_db
-            .memdb_query::<T>(user, only_updated_since, &query)
-            .await
-            .map(|r| r.into_iter().collect::<HashSet<_>>());
-        cmp(pg, mem)
-    }
 }
 
 // TODO(test-high): add tests that validate that upgrading the version of objects or normalizer works fine
