@@ -1,4 +1,3 @@
-use anyhow::Context;
 use crdb::{BinPtr, CanDoCallbacks, DbPtr, ObjectId, SearchableString, TypeId, User};
 use std::collections::{BTreeSet, HashSet};
 use ulid::Ulid;
@@ -35,12 +34,12 @@ impl crdb::Object for Item {
         user: User,
         _self_id: ObjectId,
         db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crdb::Result<bool> {
         if user != self.owner {
             return Ok(false);
         }
         for tag in self.tags.iter() {
-            let tag = db.get(*tag).await.context("fetching tag")?;
+            let tag = db.get(*tag).await?;
             if !tag.users_who_can_edit.contains(&user) {
                 return Ok(false);
             }
@@ -53,7 +52,7 @@ impl crdb::Object for Item {
         _self_id: ObjectId,
         event: &'a Self::Event,
         db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crdb::Result<bool> {
         if user == self.owner {
             return Ok(true);
         }
@@ -61,7 +60,7 @@ impl crdb::Object for Item {
             return Ok(false);
         }
         for tag in self.tags.iter() {
-            let tag = db.get(*tag).await.context("fetching tag")?;
+            let tag = db.get(*tag).await?;
             if tag.users_who_can_edit.contains(&user) {
                 return Ok(true);
             }
@@ -71,11 +70,11 @@ impl crdb::Object for Item {
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> anyhow::Result<HashSet<User>> {
+    ) -> crdb::Result<HashSet<User>> {
         let mut res = HashSet::new();
         res.insert(self.owner);
         for tag in self.tags.iter() {
-            let tag = db.get(*tag).await.context("fetching tag")?;
+            let tag = db.get(*tag).await?;
             res.extend(tag.users_who_can_read.iter().copied());
             res.extend(tag.users_who_can_edit.iter().copied());
         }
@@ -151,7 +150,7 @@ impl crdb::Object for Tag {
         user: User,
         _self_id: ObjectId,
         _db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crdb::Result<bool> {
         Ok(self.users_who_can_edit.contains(&user))
     }
     async fn can_apply<'a, C: CanDoCallbacks>(
@@ -160,13 +159,13 @@ impl crdb::Object for Tag {
         _self_id: ObjectId,
         _event: &'a Self::Event,
         _db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crdb::Result<bool> {
         Ok(self.users_who_can_edit.contains(&user))
     }
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         _db: &'a C,
-    ) -> anyhow::Result<HashSet<User>> {
+    ) -> crdb::Result<HashSet<User>> {
         Ok(self
             .users_who_can_read
             .iter()

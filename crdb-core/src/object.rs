@@ -64,15 +64,13 @@ pub trait Object:
         unimplemented!()
     }
 
-    // TODO(misc-high): this and below should return crate::Result, and wrap_context should be exposed
-    // This would make it easier for the user to understand where the error is coming from, eg. if can_create
-    // dereferences a non-existing DbPtr or one with the wrong type
     fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
         user: User,
         self_id: ObjectId,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<bool>>;
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<bool>>;
+
     /// Note that permissions are always checked with the latest version of the object on the server.
     /// So, due to this, CRDB objects are not strictly speaking a CRDT. However, it is required to do
     /// so for security, because otherwise a user who lost permissions would still be allowed to
@@ -84,7 +82,8 @@ pub trait Object:
         self_id: ObjectId,
         event: &'a Self::Event,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<bool>>;
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<bool>>;
+
     /// Note that `db.get` calls will be cached. So:
     /// - Use `db.get` as little as possible, to avoid useless cache thrashing
     /// - Make sure to always read objects in a given order. You should consider all your objects as
@@ -107,7 +106,7 @@ pub trait Object:
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<HashSet<User>>>;
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<HashSet<User>>>;
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 

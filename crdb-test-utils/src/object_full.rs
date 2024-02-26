@@ -1,5 +1,4 @@
 use crate::{stubs::USER_ID_NULL, ulid};
-use anyhow::Context;
 use crdb_core::{BinPtr, CanDoCallbacks, DbPtr, Object, ObjectId, SearchableString, TypeId, User};
 use std::collections::{BTreeSet, HashSet, VecDeque};
 
@@ -61,7 +60,7 @@ impl Object for TestObjectFull {
         _user: User,
         self_id: ObjectId,
         _db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crate::Result<bool> {
         Ok(self
             .deps
             .last()
@@ -75,7 +74,7 @@ impl Object for TestObjectFull {
         _self_id: ObjectId,
         _event: &'a Self::Event,
         _db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crate::Result<bool> {
         unimplemented!()
     }
 
@@ -83,7 +82,7 @@ impl Object for TestObjectFull {
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = anyhow::Result<HashSet<User>>> {
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<HashSet<User>>> {
         async move {
             let mut res = self.users.iter().copied().collect::<HashSet<_>>();
             res.insert(USER_ID_NULL);
@@ -91,7 +90,7 @@ impl Object for TestObjectFull {
             while let Some(remote) = deps_to_observe.pop_front() {
                 match db.get(remote).await {
                     Err(crate::Error::ObjectDoesNotExist(o)) if o == remote.to_object_id() => (),
-                    Err(e) => return Err(e).context(format!("fetching {remote:?}")),
+                    Err(e) => return Err(e),
                     Ok(r) => {
                         res.extend(r.users.iter().copied());
                         deps_to_observe.extend(r.deps.iter().copied());

@@ -67,7 +67,7 @@ impl Object for TestObjectSimple {
         _user: User,
         _self_id: ObjectId,
         _db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crate::Result<bool> {
         unimplemented!()
     }
 
@@ -77,14 +77,14 @@ impl Object for TestObjectSimple {
         _self_id: ObjectId,
         _event: &'a Self::Event,
         _db: &'a C,
-    ) -> anyhow::Result<bool> {
+    ) -> crate::Result<bool> {
         unimplemented!()
     }
 
     async fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         _db: &'a C,
-    ) -> anyhow::Result<HashSet<User>> {
+    ) -> crate::Result<HashSet<User>> {
         Ok([USER_ID_NULL].into_iter().collect())
     }
 
