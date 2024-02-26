@@ -244,7 +244,7 @@ impl ClientDb {
                             let _lock = vacuum_guard.write().await;
                             let to_unsubscribe = Arc::new(Mutex::new(HashSet::new()));
                             if let Err(err) = db
-                                .vacuum(
+                                .client_vacuum(
                                     {
                                         let to_unsubscribe = to_unsubscribe.clone();
                                         move |object_id| {

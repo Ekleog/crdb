@@ -87,7 +87,7 @@ mod fuzz_helpers {
 
     use crate::{tests::TmpDb, PostgresDb};
     use crdb_cache::CacheDb;
-    use crdb_core::{EventId, Object, Query, ResultExt, Updatedness, User};
+    use crdb_core::{ClientSideDb, EventId, Object, Query, ResultExt, Updatedness, User};
     use crdb_test_utils::{Config, *};
 
     pub use tokio::test;
@@ -162,6 +162,8 @@ mod fuzz_helpers {
         mem_db: &MemDb,
         recreate_at: Option<(EventId, Updatedness)>,
     ) -> anyhow::Result<()> {
+        // TODO(test-high): this implementation is very wrong, but should work until we finish properly splitting everything up and
+        // properly testing client_vacuum
         match recreate_at {
             None => {
                 let db = db
@@ -169,7 +171,7 @@ mod fuzz_helpers {
                         panic!("got unexpected recreation {r:?}");
                     })
                     .await;
-                let mem = mem_db.vacuum().await;
+                let mem = mem_db.client_vacuum(|_| (), |_| ()).await;
                 cmp(db, mem)
             }
             Some((recreate_at, updatedness)) => {
@@ -191,7 +193,7 @@ mod fuzz_helpers {
                     mem_db
                         .recreate_all::<TestObjectFull>(recreate_at, Some(updatedness))
                         .await?;
-                    mem_db.vacuum().await?;
+                    mem_db.client_vacuum(|_| (), |_| ()).await?;
                     Ok(())
                 }
                 .await;

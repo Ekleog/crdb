@@ -1,7 +1,7 @@
 use super::{eq, FullObject};
 use crdb_core::{
-    BinPtr, ClientSideDb, Db, DynSized, Event, EventId, Lock, Object, ObjectId, Query, ResultExt,
-    TypeId, Updatedness, Upload, UploadId, User,
+    BinPtr, ClientSideDb, CrdbSyncFn, Db, DynSized, Event, EventId, Lock, Object, ObjectId, Query,
+    QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId, User,
 };
 use futures::{stream, StreamExt};
 use std::{
@@ -106,16 +106,6 @@ impl MemDb {
             .await
             .into_iter()
             .collect::<crate::Result<Vec<ObjectId>>>()
-    }
-
-    pub async fn vacuum(&self) -> crate::Result<()> {
-        let mut this = self.0.lock().await;
-        let this = &mut *this; // get a real, splittable borrow
-        this.objects
-            .retain(|_, (_, locked, _, _)| *locked != Lock::NONE);
-        this.binaries
-            .retain(|b, _| this.objects.values().any(|(_, _, req, _)| req.contains(b)));
-        Ok(())
     }
 }
 
@@ -380,6 +370,21 @@ impl ClientSideDb for MemDb {
             *locked |= then_lock;
         }
         // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
+        Ok(())
+    }
+
+    // TODO(test-high): call notify_*_removals and check that memdb and dbs return the same
+    async fn client_vacuum(
+        &self,
+        _notify_removals: impl 'static + CrdbSyncFn<ObjectId>,
+        _notify_query_removals: impl 'static + CrdbSyncFn<QueryId>,
+    ) -> crate::Result<()> {
+        let mut this = self.0.lock().await;
+        let this = &mut *this; // get a real, splittable borrow
+        this.objects
+            .retain(|_, (_, locked, _, _)| *locked != Lock::NONE);
+        this.binaries
+            .retain(|b, _| this.objects.values().any(|(_, _, req, _)| req.contains(b)));
         Ok(())
     }
 

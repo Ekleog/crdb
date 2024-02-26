@@ -1,11 +1,12 @@
 use super::{BinariesCache, ObjectCache};
 use crdb_core::{
-    hash_binary, BinPtr, ClientSideDb, Db, DynSized, EventId, Lock, Object, ObjectId, Updatedness,
-    Upload, UploadId,
+    hash_binary, BinPtr, ClientSideDb, CrdbSyncFn, Db, DynSized, EventId, Lock, Object, ObjectId,
+    QueryId, Updatedness, Upload, UploadId,
 };
 use std::{
+    collections::HashSet,
     ops::Deref,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
 };
 
 pub struct CacheDb<D: Db> {
@@ -172,6 +173,32 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
         object_id: ObjectId,
     ) -> crate::Result<()> {
         self.db.change_locks(unlock, then_lock, object_id).await
+    }
+
+    async fn client_vacuum(
+        &self,
+        notify_removals: impl 'static + CrdbSyncFn<ObjectId>,
+        notify_query_removals: impl 'static + CrdbSyncFn<QueryId>,
+    ) -> crate::Result<()> {
+        let objects_to_remove = Arc::new(Mutex::new(HashSet::new()));
+        let res = self
+            .db
+            .client_vacuum(
+                {
+                    let objects_to_remove = objects_to_remove.clone();
+                    move |object_id| {
+                        objects_to_remove.lock().unwrap().insert(object_id);
+                        notify_removals(object_id);
+                    }
+                },
+                notify_query_removals,
+            )
+            .await;
+        let mut cache = self.cache.write().unwrap();
+        for o in objects_to_remove.lock().unwrap().iter() {
+            cache.remove(o);
+        }
+        res
     }
 
     async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {

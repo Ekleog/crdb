@@ -387,195 +387,6 @@ impl IndexedDb {
         Ok(objects)
     }
 
-    pub async fn vacuum(
-        &self,
-        mut notify_removals: impl 'static + FnMut(ObjectId),
-        mut notify_query_removals: impl 'static + FnMut(QueryId),
-    ) -> crate::Result<()> {
-        let zero_id = ObjectId::from_u128(0).to_js_string();
-        let max_id = ObjectId::from_u128(u128::MAX).to_js_string();
-
-        let res = self
-            .db
-            .transaction(&[
-                "snapshots",
-                "snapshots_meta",
-                "events",
-                "events_meta",
-                "queries_meta",
-                "upload_queue_meta",
-                "binaries",
-            ])
-            .rw()
-            .run(move |transaction| async move {
-                let snapshots_meta = transaction
-                    .object_store("snapshots_meta")
-                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
-                let events_meta = transaction
-                    .object_store("events_meta")
-                    .wrap_context("retrieving the 'events_meta' object store")?;
-                let snapshots = transaction
-                    .object_store("snapshots")
-                    .wrap_context("retrieving the 'snapshots' object store")?;
-                let events = transaction
-                    .object_store("events")
-                    .wrap_context("retrieving the 'events' object store")?;
-                let queries_meta = transaction
-                    .object_store("queries_meta")
-                    .wrap_context("retrieving the 'queries_meta' object store")?;
-                let binaries = transaction
-                    .object_store("binaries")
-                    .wrap_context("retrieving the 'binaries' object store")?;
-
-                let locked_object = snapshots_meta
-                    .index("locked_object")
-                    .wrap_context("retrieving the 'locked_object' index")?;
-                let object_snapshot = snapshots_meta
-                    .index("object_snapshot")
-                    .wrap_context("retrieving the 'object_snapshot' index")?;
-
-                let object_event = events_meta
-                    .index("object_event")
-                    .wrap_context("retrieving the 'object_event' index")?;
-
-                // Remove all unlocked queries
-                let mut cursor = queries_meta
-                    .cursor()
-                    .open()
-                    .await
-                    .wrap_context("listing all queries")?;
-                while let Some(query_meta_js) = cursor.value() {
-                    let query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
-                        .wrap_context("deserializing query metadata")?;
-                    if !query_meta.lock {
-                        notify_query_removals(query_meta.query_id);
-                        cursor
-                            .delete()
-                            .await
-                            .wrap_context("removing unlocked query")?;
-                    }
-                    cursor
-                        .advance(1)
-                        .await
-                        .wrap_context("moving cursor forward")?;
-                }
-
-                // Remove all unlocked objects
-                let mut to_remove = locked_object
-                    .cursor()
-                    .range(
-                        &**Array::from_iter([&JsValue::from(0), &zero_id])
-                            ..=&**Array::from_iter([&JsValue::from(0), &max_id]),
-                    )
-                    .wrap_context("limiting cursor to only unlocked objects")?
-                    .open()
-                    .await
-                    .wrap_context("listing unlocked objects")?;
-                // TODO(perf-med): could trigger all deletion requests in parallel and only wait for them
-                // all before listing still-required binaries, for performance
-                while let Some(s) = to_remove.value() {
-                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
-                        .wrap_context("deserializing unlocked object")?;
-                    let object_id = s.object_id;
-                    let object_id_js = object_id.to_js_string();
-
-                    // Remove all the snapshots
-                    let mut snapshots_to_remove = object_snapshot
-                        .cursor()
-                        .range(
-                            &**Array::from_iter([&object_id_js, &zero_id])
-                                ..=&**Array::from_iter([&object_id_js, &max_id]),
-                        )
-                        .wrap_context("limiting the range to to-delete snapshots")?
-                        .open()
-                        .await
-                        .wrap_context("opening cursor of to-delete snapshots")?;
-                    while let Some(s) = snapshots_to_remove.value() {
-                        let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
-                            .wrap_context("deserializing to-remove snapshot metadata")?;
-                        snapshots
-                            .delete(&s.snapshot_id.to_js_string())
-                            .await
-                            .wrap_context("failed deleting snapshot")?;
-                        snapshots_to_remove.delete().await.wrap_with_context(|| {
-                            format!("failed deleting snapshot metadata of {object_id:?}")
-                        })?;
-                        snapshots_to_remove
-                            .advance(1)
-                            .await
-                            .wrap_context("going to next to-remove snapshot")?;
-                    }
-
-                    // Remove all the events
-                    let mut events_to_remove = object_event
-                        .cursor()
-                        .range(
-                            &**Array::from_iter([&object_id_js, &zero_id])
-                                ..=&**Array::from_iter([&object_id_js, &max_id]),
-                        )
-                        .wrap_context("limiting the range to to-delete events")?
-                        .open()
-                        .await
-                        .wrap_context("opening cursor of to-delete events")?;
-                    while let Some(e) = events_to_remove.value() {
-                        let e = serde_wasm_bindgen::from_value::<EventMeta>(e)
-                            .wrap_context("deserializing to-remove event metadata")?;
-                        events
-                            .delete(&e.event_id.to_js_string())
-                            .await
-                            .wrap_context("failed deleting event")?;
-                        events_to_remove.delete().await.wrap_with_context(|| {
-                            format!("failed deleting event of {object_id:?}")
-                        })?;
-                        events_to_remove
-                            .advance(1)
-                            .await
-                            .wrap_context("going to next to-remove event")?;
-                    }
-
-                    // Notify the removal
-                    notify_removals(object_id);
-
-                    // Continue
-                    to_remove
-                        .advance(1)
-                        .await
-                        .wrap_context("going to next to-remove object")?;
-                }
-
-                let required_binaries = Self::list_required_binaries(&transaction)
-                    .await
-                    .wrap_context("listing still-required binaries")?;
-                let mut binaries_cursor = binaries
-                    .cursor()
-                    .open()
-                    .await
-                    .wrap_context("opening cursor over all binaries")?;
-                while let Some(b) = binaries_cursor.key() {
-                    let b = serde_wasm_bindgen::from_value::<BinPtr>(b)
-                        .wrap_context("deserializing binary id")?;
-                    if !required_binaries.contains(&b) {
-                        binaries_cursor
-                            .delete()
-                            .await
-                            .wrap_with_context(|| format!("deleting {b:?}"))?;
-                    }
-                    binaries_cursor
-                        .advance(1)
-                        .await
-                        .wrap_context("going to next binary")?;
-                }
-
-                Ok(())
-            })
-            .await
-            .wrap_context("vacuuming the database");
-        if res.is_ok() {
-            self.objects_unlocked_this_run.set(0);
-        }
-        res
-    }
-
     #[cfg(feature = "_tests")]
     pub async fn assert_invariants_generic(&self) {
         use std::collections::hash_map;
@@ -2298,6 +2109,195 @@ impl ClientSideDb for IndexedDb {
         if res.is_ok() {
             self.objects_unlocked_this_run
                 .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
+    }
+
+    async fn client_vacuum(
+        &self,
+        mut notify_removals: impl 'static + FnMut(ObjectId),
+        mut notify_query_removals: impl 'static + FnMut(QueryId),
+    ) -> crate::Result<()> {
+        let zero_id = ObjectId::from_u128(0).to_js_string();
+        let max_id = ObjectId::from_u128(u128::MAX).to_js_string();
+
+        let res = self
+            .db
+            .transaction(&[
+                "snapshots",
+                "snapshots_meta",
+                "events",
+                "events_meta",
+                "queries_meta",
+                "upload_queue_meta",
+                "binaries",
+            ])
+            .rw()
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
+                let events_meta = transaction
+                    .object_store("events_meta")
+                    .wrap_context("retrieving the 'events_meta' object store")?;
+                let snapshots = transaction
+                    .object_store("snapshots")
+                    .wrap_context("retrieving the 'snapshots' object store")?;
+                let events = transaction
+                    .object_store("events")
+                    .wrap_context("retrieving the 'events' object store")?;
+                let queries_meta = transaction
+                    .object_store("queries_meta")
+                    .wrap_context("retrieving the 'queries_meta' object store")?;
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving the 'binaries' object store")?;
+
+                let locked_object = snapshots_meta
+                    .index("locked_object")
+                    .wrap_context("retrieving the 'locked_object' index")?;
+                let object_snapshot = snapshots_meta
+                    .index("object_snapshot")
+                    .wrap_context("retrieving the 'object_snapshot' index")?;
+
+                let object_event = events_meta
+                    .index("object_event")
+                    .wrap_context("retrieving the 'object_event' index")?;
+
+                // Remove all unlocked queries
+                let mut cursor = queries_meta
+                    .cursor()
+                    .open()
+                    .await
+                    .wrap_context("listing all queries")?;
+                while let Some(query_meta_js) = cursor.value() {
+                    let query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
+                        .wrap_context("deserializing query metadata")?;
+                    if !query_meta.lock {
+                        notify_query_removals(query_meta.query_id);
+                        cursor
+                            .delete()
+                            .await
+                            .wrap_context("removing unlocked query")?;
+                    }
+                    cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("moving cursor forward")?;
+                }
+
+                // Remove all unlocked objects
+                let mut to_remove = locked_object
+                    .cursor()
+                    .range(
+                        &**Array::from_iter([&JsValue::from(0), &zero_id])
+                            ..=&**Array::from_iter([&JsValue::from(0), &max_id]),
+                    )
+                    .wrap_context("limiting cursor to only unlocked objects")?
+                    .open()
+                    .await
+                    .wrap_context("listing unlocked objects")?;
+                // TODO(perf-med): could trigger all deletion requests in parallel and only wait for them
+                // all before listing still-required binaries, for performance
+                while let Some(s) = to_remove.value() {
+                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
+                        .wrap_context("deserializing unlocked object")?;
+                    let object_id = s.object_id;
+                    let object_id_js = object_id.to_js_string();
+
+                    // Remove all the snapshots
+                    let mut snapshots_to_remove = object_snapshot
+                        .cursor()
+                        .range(
+                            &**Array::from_iter([&object_id_js, &zero_id])
+                                ..=&**Array::from_iter([&object_id_js, &max_id]),
+                        )
+                        .wrap_context("limiting the range to to-delete snapshots")?
+                        .open()
+                        .await
+                        .wrap_context("opening cursor of to-delete snapshots")?;
+                    while let Some(s) = snapshots_to_remove.value() {
+                        let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
+                            .wrap_context("deserializing to-remove snapshot metadata")?;
+                        snapshots
+                            .delete(&s.snapshot_id.to_js_string())
+                            .await
+                            .wrap_context("failed deleting snapshot")?;
+                        snapshots_to_remove.delete().await.wrap_with_context(|| {
+                            format!("failed deleting snapshot metadata of {object_id:?}")
+                        })?;
+                        snapshots_to_remove
+                            .advance(1)
+                            .await
+                            .wrap_context("going to next to-remove snapshot")?;
+                    }
+
+                    // Remove all the events
+                    let mut events_to_remove = object_event
+                        .cursor()
+                        .range(
+                            &**Array::from_iter([&object_id_js, &zero_id])
+                                ..=&**Array::from_iter([&object_id_js, &max_id]),
+                        )
+                        .wrap_context("limiting the range to to-delete events")?
+                        .open()
+                        .await
+                        .wrap_context("opening cursor of to-delete events")?;
+                    while let Some(e) = events_to_remove.value() {
+                        let e = serde_wasm_bindgen::from_value::<EventMeta>(e)
+                            .wrap_context("deserializing to-remove event metadata")?;
+                        events
+                            .delete(&e.event_id.to_js_string())
+                            .await
+                            .wrap_context("failed deleting event")?;
+                        events_to_remove.delete().await.wrap_with_context(|| {
+                            format!("failed deleting event of {object_id:?}")
+                        })?;
+                        events_to_remove
+                            .advance(1)
+                            .await
+                            .wrap_context("going to next to-remove event")?;
+                    }
+
+                    // Notify the removal
+                    notify_removals(object_id);
+
+                    // Continue
+                    to_remove
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next to-remove object")?;
+                }
+
+                let required_binaries = Self::list_required_binaries(&transaction)
+                    .await
+                    .wrap_context("listing still-required binaries")?;
+                let mut binaries_cursor = binaries
+                    .cursor()
+                    .open()
+                    .await
+                    .wrap_context("opening cursor over all binaries")?;
+                while let Some(b) = binaries_cursor.key() {
+                    let b = serde_wasm_bindgen::from_value::<BinPtr>(b)
+                        .wrap_context("deserializing binary id")?;
+                    if !required_binaries.contains(&b) {
+                        binaries_cursor
+                            .delete()
+                            .await
+                            .wrap_with_context(|| format!("deleting {b:?}"))?;
+                    }
+                    binaries_cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("going to next binary")?;
+                }
+
+                Ok(())
+            })
+            .await
+            .wrap_context("vacuuming the database");
+        if res.is_ok() {
+            self.objects_unlocked_this_run.set(0);
         }
         res
     }

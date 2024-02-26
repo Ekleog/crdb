@@ -1,7 +1,7 @@
 use anyhow::Context;
 use crdb_core::{
-    normalizer_version, BinPtr, ClientSideDb, ClientStorageInfo, Db, EventId, Lock, LoginInfo,
-    Object, ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
+    normalizer_version, BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, EventId, Lock,
+    LoginInfo, Object, ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -250,6 +250,14 @@ impl ClientSideDb for SqliteDb {
         _unlock: Lock,
         _then_lock: Lock,
         _object_id: ObjectId,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn client_vacuum(
+        &self,
+        _notify_removals: impl 'static + CrdbSyncFn<ObjectId>,
+        _notify_query_removals: impl 'static + CrdbSyncFn<QueryId>,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }

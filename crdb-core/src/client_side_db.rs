@@ -1,4 +1,6 @@
-use crate::{BinPtr, Db, EventId, Lock, Object, ObjectId, Updatedness, Upload, UploadId};
+use crate::{
+    BinPtr, CrdbSyncFn, Db, EventId, Lock, Object, ObjectId, QueryId, Updatedness, Upload, UploadId,
+};
 use std::sync::Arc;
 
 pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
@@ -31,6 +33,12 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         unlock: Lock,
         then_lock: Lock,
         object_id: ObjectId,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn client_vacuum(
+        &self,
+        notify_removals: impl 'static + CrdbSyncFn<ObjectId>,
+        notify_query_removals: impl 'static + CrdbSyncFn<QueryId>,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     fn list_uploads(&self) -> impl waaaa::Future<Output = crate::Result<Vec<UploadId>>>;
