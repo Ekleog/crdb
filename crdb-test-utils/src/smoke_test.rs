@@ -4,7 +4,7 @@ macro_rules! smoke_test {
         db: $db:ident,
         vacuum: $vacuum:expr,
         query_all: $query_all:expr,
-        test_remove: $test_remove:expr,
+        db_type: $db_type:tt,
     ) => {
         use std::sync::Arc;
         use $crate::{crdb_core::*, *};
@@ -129,13 +129,13 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         let all_objects = $query_all;
         assert_eq!(all_objects.len(), 1);
-        if $test_remove {
+        $crate::smoke_test!(@if-client $db_type {
             $db.remove(OBJECT_ID_1).await.unwrap();
             $db.assert_invariants_generic().await;
             $db.assert_invariants_for::<TestObjectSimple>().await;
             let all_objects = $query_all;
             assert_eq!(all_objects.len(), 0);
-        }
+        });
         let data = Arc::new([1u8, 2, 3]) as Arc<[u8]>;
         let ptr = hash_binary(&data);
         assert!($db.get_binary(ptr).await.unwrap().is_none());
@@ -144,4 +144,10 @@ macro_rules! smoke_test {
         $db.assert_invariants_for::<TestObjectSimple>().await;
         assert!($db.get_binary(ptr).await.unwrap().unwrap() == data);
     };
+
+    (@if-client client $($t:tt)*) => { $($t)* };
+    (@if-client server $($t:tt)*) => {};
+
+    (@if-server server $($t:tt)*) => { $($t)* };
+    (@if-server client $($t:tt)*) => {};
 }

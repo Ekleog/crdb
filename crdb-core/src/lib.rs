@@ -1,4 +1,5 @@
 mod check_string;
+mod client_side_db;
 mod client_storage_info;
 mod config;
 mod crdb_fn;
@@ -20,6 +21,7 @@ mod session;
 mod timestamp;
 
 pub use check_string::*;
+pub use client_side_db::*;
 pub use client_storage_info::*;
 pub use config::*;
 pub use crdb_fn::*;

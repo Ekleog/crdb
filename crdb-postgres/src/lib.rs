@@ -1621,29 +1621,6 @@ impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
         Ok(Arc::new(res))
     }
 
-    async fn recreate<T: Object>(
-        &self,
-        object_id: ObjectId,
-        _new_created_at: EventId,
-        _data: Arc<T>,
-        _updatedness: Option<Updatedness>,
-        _force_lock: Lock,
-    ) -> crate::Result<Option<Arc<T>>> {
-        panic!("Tried recreating {object_id:?} on the server, but server is supposed to only ever be the one to make recreations!")
-    }
-
-    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
-        panic!("Tried removing {object_id:?} from server, but server is supposed to always keep all the history!")
-    }
-
-    async fn remove_event<T: Object>(
-        &self,
-        object_id: ObjectId,
-        event_id: EventId,
-    ) -> crate::Result<()> {
-        panic!("Tried removing {event_id:?} on {object_id:?} from server, but server is supposed to always keep all the history!")
-    }
-
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         if crdb_core::hash_binary(&data) != binary_id {
             return Err(crate::Error::BinaryHashMismatch(binary_id));

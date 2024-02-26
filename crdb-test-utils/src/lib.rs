@@ -110,7 +110,10 @@ pub fn cmp<T: Debug + Eq>(
 
 #[macro_export] // used by the client-js.rs integration test
 macro_rules! make_fuzzer_stuffs {
-    ( $( ($name:ident, $object:ident, $event:ident), )* ) => { $crate::paste::paste! {
+    (
+        $db_type:tt,
+        $( ($name:ident, $object:ident, $event:ident), )*
+    ) => { $crate::paste::paste! {
         use $crate::{*, crdb_core::*};
 
         #[derive(Debug, arbitrary::Arbitrary, serde::Deserialize, serde::Serialize)]
@@ -235,7 +238,7 @@ macro_rules! make_fuzzer_stuffs {
                             updatedness,
                             force_lock,
                         } => {
-                            if !s.is_server {
+                            $crate::make_fuzzer_stuffs!(@if-client $db_type {
                                 let force_lock = Lock::from_bits_truncate(*force_lock);
                                 let updatedness = s.updatedness(updatedness);
                                 let object_id = s.object(*object_id);
@@ -261,7 +264,7 @@ macro_rules! make_fuzzer_stuffs {
                                     )
                                     .await;
                                 cmp(db, mem)?;
-                            }
+                            });
                         }
                     )*
                     Op::CreateBinary { data, fake_id } => {
@@ -285,12 +288,12 @@ macro_rules! make_fuzzer_stuffs {
                         cmp(pg, mem)?;
                     }
                     Op::Remove { object_id } => {
-                        if !s.is_server {
+                        $crate::make_fuzzer_stuffs!(@if-client $db_type {
                             let object_id = s.object(*object_id);
                             let db = db.remove(object_id).await;
                             let mem = s.mem_db.remove(object_id).await;
                             cmp(db, mem)?;
-                        }
+                        });
                     }
                     Op::ChangeLocks { unlock, then_lock, object_id } => {
                         if !s.is_server {
@@ -372,4 +375,10 @@ macro_rules! make_fuzzer_stuffs {
             db
         }
     } };
+
+    (@if-client client $($t:tt)*) => { $($t)* };
+    (@if-client server $($t:tt)*) => {};
+
+    (@if-server server $($t:tt)*) => { $($t)* };
+    (@if-server client $($t:tt)*) => {};
 }

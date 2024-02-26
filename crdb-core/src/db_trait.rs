@@ -34,23 +34,6 @@ pub trait Db: 'static + waaaa::Send + waaaa::Sync {
         object_id: ObjectId,
     ) -> impl waaaa::Future<Output = crate::Result<Arc<T>>>;
 
-    /// Either create an object if it did not exist yet, or recreate it
-    ///
-    /// Returns the new latest snapshot if it actually changed.
-    ///
-    /// `updatedness` is the up-to-date-ness of this recreation, or `None` if it is not known yet
-    /// (eg. it was initiated client-side and has not round-tripped to server yet)
-    fn recreate<T: Object>(
-        &self,
-        object_id: ObjectId,
-        new_created_at: EventId,
-        creation_value: Arc<T>,
-        updatedness: Option<Updatedness>,
-        force_lock: Lock,
-    ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
-
-    fn remove(&self, object_id: ObjectId) -> impl waaaa::Future<Output = crate::Result<()>>;
-
     fn create_binary(
         &self,
         binary_id: BinPtr,
@@ -61,13 +44,6 @@ pub trait Db: 'static + waaaa::Send + waaaa::Sync {
         &self,
         binary_id: BinPtr,
     ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<[u8]>>>>;
-
-    // TODO(test-high): introduce in db fuzzers
-    fn remove_event<T: Object>(
-        &self,
-        object_id: ObjectId,
-        event_id: EventId,
-    ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     /// Returns the number of errors that happened while re-encoding
     fn reencode_old_versions<T: Object>(&self) -> impl waaaa::Future<Output = usize>;

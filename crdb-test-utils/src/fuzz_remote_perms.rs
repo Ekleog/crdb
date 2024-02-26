@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! fuzz_remote_perms {
-    () => {
+    ($db_type:tt) => {
         use super::fuzz_helpers::{
             self, make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
         };
@@ -10,6 +10,7 @@ macro_rules! fuzz_remote_perms {
         use $crate::*;
 
         make_fuzzer_stuffs! {
+            $db_type,
             (Perm, TestObjectPerms, TestEventPerms),
             (Delegator, TestObjectDelegatePerms, TestEventDelegatePerms),
         }

@@ -1,7 +1,7 @@
 use anyhow::Context;
 use crdb_core::{
-    normalizer_version, BinPtr, ClientStorageInfo, Db, EventId, Lock, LoginInfo, Object, ObjectId,
-    Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
+    normalizer_version, BinPtr, ClientSideDb, ClientStorageInfo, Db, EventId, Lock, LoginInfo,
+    Object, ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -235,6 +235,22 @@ impl Db for SqliteDb {
         unimplemented!() // TODO(sqlite-high): implement
     }
 
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high): implement
+    }
+
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
+        unimplemented!() // TODO(sqlite-high): implement
+    }
+
+    /// Returns the number of errors that happened while re-encoding
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        unimplemented!() // TODO(sqlite-high)
+    }
+}
+
+#[allow(unused_variables)] // TODO(sqlite-high)
+impl ClientSideDb for SqliteDb {
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
@@ -255,19 +271,6 @@ impl Db for SqliteDb {
         _object_id: ObjectId,
         _event_id: EventId,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high): implement
-    }
-
-    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
-        unimplemented!() // TODO(sqlite-high): implement
-    }
-
-    /// Returns the number of errors that happened while re-encoding
-    async fn reencode_old_versions<T: Object>(&self) -> usize {
         unimplemented!() // TODO(sqlite-high)
     }
 }

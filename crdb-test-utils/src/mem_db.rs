@@ -1,7 +1,7 @@
 use super::{eq, FullObject};
 use crdb_core::{
-    BinPtr, Db, DynSized, Event, EventId, Lock, Object, ObjectId, Query, ResultExt, TypeId,
-    Updatedness, User,
+    BinPtr, ClientSideDb, Db, DynSized, Event, EventId, Lock, Object, ObjectId, Query, ResultExt,
+    TypeId, Updatedness, User,
 };
 use futures::{stream, StreamExt};
 use std::{
@@ -288,6 +288,24 @@ impl Db for MemDb {
             .wrap_context("retrieving last snapshot")
     }
 
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
+        if binary_id != crdb_core::hash_binary(&data) {
+            return Err(crate::Error::BinaryHashMismatch(binary_id));
+        }
+        self.0.lock().await.binaries.insert(binary_id, data);
+        Ok(())
+    }
+
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
+        Ok(self.0.lock().await.binaries.get(&binary_id).cloned())
+    }
+
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        unimplemented!() // TODO(test-med): should test it with the to-do multiple-versions object type
+    }
+}
+
+impl ClientSideDb for MemDb {
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
@@ -363,21 +381,5 @@ impl Db for MemDb {
         _event_id: EventId,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(test-high)
-    }
-
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        if binary_id != crdb_core::hash_binary(&data) {
-            return Err(crate::Error::BinaryHashMismatch(binary_id));
-        }
-        self.0.lock().await.binaries.insert(binary_id, data);
-        Ok(())
-    }
-
-    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
-        Ok(self.0.lock().await.binaries.get(&binary_id).cloned())
-    }
-
-    async fn reencode_old_versions<T: Object>(&self) -> usize {
-        unimplemented!() // TODO(test-med): should test it with the to-do multiple-versions object type
     }
 }

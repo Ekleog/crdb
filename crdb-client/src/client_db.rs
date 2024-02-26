@@ -3,9 +3,9 @@ use crate::Obj;
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
 use crdb_core::{
-    BinPtr, Db, DbPtr, EventId, Importance, Lock, MaybeObject, MaybeSnapshot, Object, ObjectData,
-    ObjectId, Query, QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId, Update,
-    UpdateData, Updatedness, Updates, Upload, UploadId, User,
+    BinPtr, ClientSideDb, Db, DbPtr, EventId, Importance, Lock, MaybeObject, MaybeSnapshot, Object,
+    ObjectData, ObjectId, Query, QueryId, ResultExt, Session, SessionRef, SessionToken, TypeId,
+    Update, UpdateData, Updatedness, Updates, Upload, UploadId, User,
 };
 use crdb_core::{ClientStorageInfo, LoginInfo};
 use crdb_helpers::parse_snapshot_ref;

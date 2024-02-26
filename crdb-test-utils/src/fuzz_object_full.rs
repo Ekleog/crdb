@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! fuzz_object_full {
-    () => {
+    ($db_type:tt) => {
         use super::fuzz_helpers::{
             self, make_db, make_fuzzer, run_query, run_vacuum, setup, Database, SetupState,
         };
@@ -10,6 +10,7 @@ macro_rules! fuzz_object_full {
         use $crate::*;
 
         make_fuzzer_stuffs! {
+            $db_type,
             (Full, TestObjectFull, TestEventFull),
         }
 

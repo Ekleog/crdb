@@ -3,8 +3,8 @@
 use anyhow::anyhow;
 use crdb_core::{check_strings, ClientStorageInfo, LoginInfo};
 use crdb_core::{
-    normalizer_version, BinPtr, Db, DbPtr, Event, EventId, Lock, Object, ObjectId, Query, QueryId,
-    ResultExt, TypeId, Updatedness, Upload, UploadId,
+    normalizer_version, BinPtr, ClientSideDb, Db, DbPtr, Event, EventId, Lock, Object, ObjectId,
+    Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
 };
 use crdb_helpers::parse_snapshot_js;
 use futures::{future, TryFutureExt};
@@ -1750,6 +1750,121 @@ impl Db for IndexedDb {
             .wrap_with_context(|| format!("retrieving {object_id:?} from IndexedDB"))
     }
 
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
+        if crdb_core::hash_binary(&data) != binary_id {
+            return Err(crate::Error::BinaryHashMismatch(binary_id));
+        }
+        let ary = Uint8Array::new_with_length(u32::try_from(data.len()).unwrap());
+        ary.copy_from(&data);
+        let res = self
+            .db
+            .transaction(&["binaries"])
+            .rw()
+            .run(move |transaction| async move {
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving the 'binaries' object store")?;
+
+                binaries
+                    .put_kv(&binary_id.to_js_string(), &ary)
+                    .await
+                    .wrap_context("writing binary")?;
+
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| format!("writing {binary_id:?}"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
+    }
+
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
+        let ary = self
+            .db
+            .transaction(&["binaries"])
+            .run(move |transaction| async move {
+                let binaries = transaction
+                    .object_store("binaries")
+                    .wrap_context("retrieving the 'binaries' object store")?;
+
+                binaries.get(&binary_id.to_js_string()).await
+            })
+            .await
+            .wrap_with_context(|| format!("fetching {binary_id:?}"))?;
+        let Some(ary) = ary else {
+            return Ok(None);
+        };
+        let ary = ary
+            .dyn_into::<Uint8Array>()
+            .wrap_context("recovering Uint8Array from stored data")?;
+        Ok(Some(ary.to_vec().into_boxed_slice().into()))
+    }
+
+    /// Returns the number of errors that happened while re-encoding
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        let res = self
+            .db
+            .transaction(&["snapshots_meta", "snapshots"])
+            .rw()
+            .run(|transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving snapshots_meta object store")?;
+                let mut cursor = snapshots_meta
+                    .cursor()
+                    .open()
+                    .await
+                    .wrap_context("opening cursor over all snapshots")?;
+                let mut num_errors = 0;
+                while let Some(snapshot_meta_js) = cursor.value() {
+                    let snapshot_meta =
+                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
+                            .wrap_context("deserializing snapshot metadata")?;
+                    if snapshot_meta.type_id == *T::type_ulid()
+                        && (snapshot_meta.snapshot_version < T::snapshot_version()
+                            || snapshot_meta.normalizer_version < normalizer_version())
+                    {
+                        let snapshot_id = snapshot_meta.snapshot_id;
+                        if let Err(err) = reencode_snapshot::<T>(
+                            &transaction,
+                            snapshot_meta.snapshot_id,
+                            snapshot_meta.snapshot_version,
+                        )
+                        .await
+                        {
+                            let type_id = *T::type_ulid();
+                            tracing::error!(
+                                ?err,
+                                ?snapshot_id,
+                                ?type_id,
+                                "failed reencoding snapshot to latest version"
+                            );
+                            num_errors += 1;
+                        }
+                    }
+                    cursor
+                        .advance(1)
+                        .await
+                        .wrap_context("advancing cursor to next item")?;
+                }
+                Ok(num_errors)
+            })
+            .await
+            .wrap_with_context(|| format!("reencoding old versions of type {:?}", T::type_ulid()));
+        match res {
+            Ok(num_errs) => num_errs,
+            Err(err) => {
+                tracing::error!(?err, type_id=?T::type_ulid(), "failed running transaction to reencode all objects");
+                1
+            }
+        }
+    }
+}
+
+impl ClientSideDb for IndexedDb {
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
@@ -2292,119 +2407,6 @@ impl Db for IndexedDb {
             .wrap_with_context(|| {
                 format!("removing {event_id:?} on {object_id:?}")
             })
-    }
-
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        if crdb_core::hash_binary(&data) != binary_id {
-            return Err(crate::Error::BinaryHashMismatch(binary_id));
-        }
-        let ary = Uint8Array::new_with_length(u32::try_from(data.len()).unwrap());
-        ary.copy_from(&data);
-        let res = self
-            .db
-            .transaction(&["binaries"])
-            .rw()
-            .run(move |transaction| async move {
-                let binaries = transaction
-                    .object_store("binaries")
-                    .wrap_context("retrieving the 'binaries' object store")?;
-
-                binaries
-                    .put_kv(&binary_id.to_js_string(), &ary)
-                    .await
-                    .wrap_context("writing binary")?;
-
-                Ok(())
-            })
-            .await
-            .wrap_with_context(|| format!("writing {binary_id:?}"));
-        if res.is_ok() {
-            self.objects_unlocked_this_run
-                .set(self.objects_unlocked_this_run.get() + 1);
-        }
-        res
-    }
-
-    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
-        let ary = self
-            .db
-            .transaction(&["binaries"])
-            .run(move |transaction| async move {
-                let binaries = transaction
-                    .object_store("binaries")
-                    .wrap_context("retrieving the 'binaries' object store")?;
-
-                binaries.get(&binary_id.to_js_string()).await
-            })
-            .await
-            .wrap_with_context(|| format!("fetching {binary_id:?}"))?;
-        let Some(ary) = ary else {
-            return Ok(None);
-        };
-        let ary = ary
-            .dyn_into::<Uint8Array>()
-            .wrap_context("recovering Uint8Array from stored data")?;
-        Ok(Some(ary.to_vec().into_boxed_slice().into()))
-    }
-
-    /// Returns the number of errors that happened while re-encoding
-    async fn reencode_old_versions<T: Object>(&self) -> usize {
-        let res = self
-            .db
-            .transaction(&["snapshots_meta", "snapshots"])
-            .rw()
-            .run(|transaction| async move {
-                let snapshots_meta = transaction
-                    .object_store("snapshots_meta")
-                    .wrap_context("retrieving snapshots_meta object store")?;
-                let mut cursor = snapshots_meta
-                    .cursor()
-                    .open()
-                    .await
-                    .wrap_context("opening cursor over all snapshots")?;
-                let mut num_errors = 0;
-                while let Some(snapshot_meta_js) = cursor.value() {
-                    let snapshot_meta =
-                        serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
-                            .wrap_context("deserializing snapshot metadata")?;
-                    if snapshot_meta.type_id == *T::type_ulid()
-                        && (snapshot_meta.snapshot_version < T::snapshot_version()
-                            || snapshot_meta.normalizer_version < normalizer_version())
-                    {
-                        let snapshot_id = snapshot_meta.snapshot_id;
-                        if let Err(err) = reencode_snapshot::<T>(
-                            &transaction,
-                            snapshot_meta.snapshot_id,
-                            snapshot_meta.snapshot_version,
-                        )
-                        .await
-                        {
-                            let type_id = *T::type_ulid();
-                            tracing::error!(
-                                ?err,
-                                ?snapshot_id,
-                                ?type_id,
-                                "failed reencoding snapshot to latest version"
-                            );
-                            num_errors += 1;
-                        }
-                    }
-                    cursor
-                        .advance(1)
-                        .await
-                        .wrap_context("advancing cursor to next item")?;
-                }
-                Ok(num_errors)
-            })
-            .await
-            .wrap_with_context(|| format!("reencoding old versions of type {:?}", T::type_ulid()));
-        match res {
-            Ok(num_errs) => num_errs,
-            Err(err) => {
-                tracing::error!(?err, type_id=?T::type_ulid(), "failed running transaction to reencode all objects");
-                1
-            }
-        }
     }
 }
 

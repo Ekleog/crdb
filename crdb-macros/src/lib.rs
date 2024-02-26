@@ -55,7 +55,7 @@ macro_rules! db {
                 Err($crate::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn recreate<D: $crate::Db>(
+            async fn recreate<D: $crate::ClientSideDb>(
                 db: &D,
                 type_id: $crate::TypeId,
                 object_id: $crate::ObjectId,
@@ -112,7 +112,7 @@ macro_rules! db {
                 Err($crate::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn remove_event<D: $crate::Db>(
+            async fn remove_event<D: $crate::ClientSideDb>(
                 db: &D,
                 type_id: $crate::TypeId,
                 object_id: $crate::ObjectId,

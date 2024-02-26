@@ -21,7 +21,7 @@ async fn smoke_test(db: sqlx::PgPool) {
             .query(USER_ID_NULL, *TestObjectSimple::type_ulid(), None, Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
-        test_remove: false,
+        db_type: server,
     );
 }
 
@@ -204,13 +204,13 @@ mod fuzz_helpers {
 // TODO(test-high): add tests that validate that upgrading the version of objects or normalizer works fine
 
 mod fuzz_simple {
-    crdb_test_utils::fuzz_simple!();
+    crdb_test_utils::fuzz_simple!(server);
 }
 
 mod fuzz_remote_perms {
-    crdb_test_utils::fuzz_remote_perms!();
+    crdb_test_utils::fuzz_remote_perms!(server);
 }
 
 mod fuzz_object_full {
-    crdb_test_utils::fuzz_object_full!();
+    crdb_test_utils::fuzz_object_full!(server);
 }

@@ -1,6 +1,6 @@
 use crate::{
-    CanDoCallbacks, ComboLock, Db, EventId, Lock, ObjectId, ReadPermsChanges, ServerSideDb, TypeId,
-    Update, Updatedness, User,
+    CanDoCallbacks, ClientSideDb, ComboLock, Db, EventId, Lock, ObjectId, ReadPermsChanges,
+    ServerSideDb, TypeId, Update, Updatedness, User,
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -48,7 +48,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
 
     /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
     #[allow(clippy::too_many_arguments)] // Used only for relaying to a more specific function
-    fn recreate<D: Db>(
+    fn recreate<D: ClientSideDb>(
         db: &D,
         type_id: TypeId,
         object_id: ObjectId,
@@ -70,7 +70,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         force_lock: Lock,
     ) -> impl waaaa::Future<Output = crate::Result<Option<serde_json::Value>>>;
 
-    fn remove_event<D: Db>(
+    fn remove_event<D: ClientSideDb>(
         db: &D,
         type_id: TypeId,
         object_id: ObjectId,

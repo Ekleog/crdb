@@ -17,7 +17,7 @@ async fn smoke_test() {
             .query::<TestObjectSimple>(Arc::new(Query::All(vec![])))
             .await
             .unwrap(),
-        test_remove: true,
+        db_type: client,
     );
 }
 
@@ -160,7 +160,7 @@ mod fuzz_helpers {
 }
 
 mod fuzz_simple {
-    crdb_test_utils::fuzz_simple!();
+    crdb_test_utils::fuzz_simple!(client);
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]
@@ -170,7 +170,7 @@ mod fuzz_simple {
 }
 
 mod fuzz_remote_perms {
-    crdb_test_utils::fuzz_remote_perms!();
+    crdb_test_utils::fuzz_remote_perms!(client);
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]
@@ -180,7 +180,7 @@ mod fuzz_remote_perms {
 }
 
 mod fuzz_object_full {
-    crdb_test_utils::fuzz_object_full!();
+    crdb_test_utils::fuzz_object_full!(client);
 
     #[fuzz_helpers::test]
     #[cfg(disabled)]

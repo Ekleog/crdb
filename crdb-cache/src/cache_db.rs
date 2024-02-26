@@ -1,5 +1,7 @@
 use super::{BinariesCache, ObjectCache};
-use crdb_core::{hash_binary, BinPtr, Db, DynSized, EventId, Lock, Object, ObjectId, Updatedness};
+use crdb_core::{
+    hash_binary, BinPtr, ClientSideDb, Db, DynSized, EventId, Lock, Object, ObjectId, Updatedness,
+};
 use std::{
     ops::Deref,
     sync::{Arc, RwLock},
@@ -86,38 +88,6 @@ impl<D: Db> Db for CacheDb<D> {
         Ok(res)
     }
 
-    async fn recreate<T: Object>(
-        &self,
-        object_id: ObjectId,
-        new_created_at: EventId,
-        object: Arc<T>,
-        updatedness: Option<Updatedness>,
-        force_lock: Lock,
-    ) -> crate::Result<Option<Arc<T>>> {
-        let res = self
-            .db
-            .recreate(object_id, new_created_at, object, updatedness, force_lock)
-            .await?;
-        if let Some(res) = res.clone() {
-            self.cache.write().unwrap().set(object_id, res as _);
-        }
-        Ok(res)
-    }
-
-    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
-        self.cache.write().unwrap().remove(&object_id);
-        self.db.remove(object_id).await
-    }
-
-    async fn remove_event<T: Object>(
-        &self,
-        object_id: ObjectId,
-        event_id: EventId,
-    ) -> crate::Result<()> {
-        self.cache.write().unwrap().remove(&object_id);
-        self.db.remove_event::<T>(object_id, event_id).await
-    }
-
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
         debug_assert!(
             binary_id == hash_binary(&data),
@@ -158,5 +128,39 @@ impl<D: Db> Deref for CacheDb<D> {
 
     fn deref(&self) -> &Self::Target {
         &self.db
+    }
+}
+
+impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
+    async fn recreate<T: Object>(
+        &self,
+        object_id: ObjectId,
+        new_created_at: EventId,
+        object: Arc<T>,
+        updatedness: Option<Updatedness>,
+        force_lock: Lock,
+    ) -> crate::Result<Option<Arc<T>>> {
+        let res = self
+            .db
+            .recreate(object_id, new_created_at, object, updatedness, force_lock)
+            .await?;
+        if let Some(res) = res.clone() {
+            self.cache.write().unwrap().set(object_id, res as _);
+        }
+        Ok(res)
+    }
+
+    async fn remove(&self, object_id: ObjectId) -> crate::Result<()> {
+        self.cache.write().unwrap().remove(&object_id);
+        self.db.remove(object_id).await
+    }
+
+    async fn remove_event<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+    ) -> crate::Result<()> {
+        self.cache.write().unwrap().remove(&object_id);
+        self.db.remove_event::<T>(object_id, event_id).await
     }
 }

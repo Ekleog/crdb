@@ -8,9 +8,9 @@ use super::{
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
 use crdb_core::{
-    BinPtr, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject, MaybeSnapshot, Object, ObjectData,
-    ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, Session, SessionRef, SessionToken,
-    SnapshotData, TypeId, Updatedness, Updates, Upload, UploadId,
+    BinPtr, ClientSideDb, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject, MaybeSnapshot, Object,
+    ObjectData, ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, Session, SessionRef,
+    SessionToken, SnapshotData, TypeId, Updatedness, Updates, Upload, UploadId,
 };
 use futures::{channel::mpsc, future::Either, pin_mut, stream, FutureExt, StreamExt};
 use std::{
