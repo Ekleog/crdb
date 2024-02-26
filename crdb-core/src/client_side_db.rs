@@ -1,4 +1,4 @@
-use crate::{Db, EventId, Lock, Object, ObjectId, Updatedness};
+use crate::{BinPtr, Db, EventId, Lock, Object, ObjectId, Updatedness, Upload, UploadId};
 use std::sync::Arc;
 
 pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
@@ -24,5 +24,23 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         &self,
         object_id: ObjectId,
         event_id: EventId,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn list_uploads(&self) -> impl waaaa::Future<Output = crate::Result<Vec<UploadId>>>;
+
+    fn get_upload(
+        &self,
+        upload_id: UploadId,
+    ) -> impl waaaa::Future<Output = crate::Result<Option<Upload>>>;
+
+    fn enqueue_upload(
+        &self,
+        upload: Upload,
+        required_binaries: Vec<BinPtr>,
+    ) -> impl waaaa::Future<Output = crate::Result<UploadId>>;
+
+    fn upload_finished(
+        &self,
+        upload_id: UploadId,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 }

@@ -1,6 +1,7 @@
 use super::{BinariesCache, ObjectCache};
 use crdb_core::{
     hash_binary, BinPtr, ClientSideDb, Db, DynSized, EventId, Lock, Object, ObjectId, Updatedness,
+    Upload, UploadId,
 };
 use std::{
     ops::Deref,
@@ -162,5 +163,25 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
     ) -> crate::Result<()> {
         self.cache.write().unwrap().remove(&object_id);
         self.db.remove_event::<T>(object_id, event_id).await
+    }
+
+    async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        self.db.list_uploads().await
+    }
+
+    async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Option<Upload>> {
+        self.db.get_upload(upload_id).await
+    }
+
+    async fn enqueue_upload(
+        &self,
+        upload: Upload,
+        required_binaries: Vec<BinPtr>,
+    ) -> crate::Result<UploadId> {
+        self.db.enqueue_upload(upload, required_binaries).await
+    }
+
+    async fn upload_finished(&self, upload_id: UploadId) -> crate::Result<()> {
+        self.db.upload_finished(upload_id).await
     }
 }

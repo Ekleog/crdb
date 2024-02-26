@@ -1,7 +1,7 @@
 use super::{eq, FullObject};
 use crdb_core::{
     BinPtr, ClientSideDb, Db, DynSized, Event, EventId, Lock, Object, ObjectId, Query, ResultExt,
-    TypeId, Updatedness, User,
+    TypeId, Updatedness, Upload, UploadId, User,
 };
 use futures::{stream, StreamExt};
 use std::{
@@ -380,6 +380,26 @@ impl ClientSideDb for MemDb {
         _object_id: ObjectId,
         _event_id: EventId,
     ) -> crate::Result<()> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn get_upload(&self, _upload_id: UploadId) -> crate::Result<Option<Upload>> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn enqueue_upload(
+        &self,
+        _upload: Upload,
+        _required_binaries: Vec<BinPtr>,
+    ) -> crate::Result<UploadId> {
+        unimplemented!() // TODO(test-high)
+    }
+
+    async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
         unimplemented!() // TODO(test-high)
     }
 }

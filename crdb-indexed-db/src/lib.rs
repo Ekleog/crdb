@@ -638,113 +638,6 @@ impl IndexedDb {
         res
     }
 
-    pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
-        // TODO(test-high): fuzz upload-queue behavior
-        self.db
-            .transaction(&["upload_queue_meta"])
-            .run(move |transaction| async move {
-                let keys = transaction
-                    .object_store("upload_queue_meta")
-                    .wrap_context("retrieving 'upload_queue_meta' object store")?
-                    .get_all_keys(None)
-                    .await
-                    .wrap_context("getting all keys from upload_queue_meta")?;
-                let mut res = Vec::with_capacity(keys.len());
-                for k in keys.into_iter() {
-                    let k = serde_wasm_bindgen::from_value::<UploadId>(k)
-                        .wrap_context("deserializing upload id")?;
-                    res.push(k);
-                }
-                Ok(res)
-            })
-            .await
-            .wrap_context("listing upload queue")
-    }
-
-    pub async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Option<Upload>> {
-        self.db
-            .transaction(&["upload_queue"])
-            .run(move |transaction| async move {
-                let Some(res) = transaction
-                    .object_store("upload_queue")
-                    .wrap_context("retrieving 'upload_queue' object store")?
-                    // TODO(misc-high): replace with https://github.com/rustwasm/wasm-bindgen/pull/3847 ?
-                    .get(&JsValue::from(u32::try_from(upload_id.0).unwrap()))
-                    .await
-                    .wrap_context("fetching data from upload_queue store")?
-                else {
-                    return Ok(None);
-                };
-                let res = serde_wasm_bindgen::from_value::<Upload>(res)
-                    .wrap_context("deserializing data")?;
-                Ok(Some(res))
-            })
-            .await
-            .wrap_with_context(|| format!("retrieving data for {upload_id:?}"))
-    }
-
-    pub async fn enqueue_upload(
-        &self,
-        upload: Upload,
-        required_binaries: Vec<BinPtr>,
-    ) -> crate::Result<UploadId> {
-        let metadata = UploadMeta { required_binaries };
-        let metadata = to_js(metadata).wrap_context("serializing upload metadata")?;
-        let data = to_js(upload).wrap_context("serializing upload data")?;
-        self.db
-            .transaction(&["upload_queue", "upload_queue_meta"])
-            .rw()
-            .run(move |transaction| async move {
-                let upload_id = transaction
-                    .object_store("upload_queue_meta")
-                    .wrap_context("retrieving 'upload_queue_meta' object store")?
-                    .add(&metadata)
-                    .await
-                    .wrap_context("saving upload metadata")?;
-                transaction
-                    .object_store("upload_queue")
-                    .wrap_context("retrieving 'upload_queue' object store")?
-                    .add_kv(&upload_id, &data)
-                    .await
-                    .wrap_context("saving upload data")?;
-                let upload_id = serde_wasm_bindgen::from_value::<UploadId>(upload_id)
-                    .wrap_context("deserializing upload id")?;
-                Ok(upload_id)
-            })
-            .await
-            .wrap_context("registering not-yet-completed upload")
-    }
-
-    pub async fn upload_finished(&self, upload_id: UploadId) -> crate::Result<()> {
-        let res = self
-            .db
-            .transaction(&["upload_queue", "upload_queue_meta"])
-            .rw()
-            .run(move |transaction| async move {
-                let upload_id = to_js(upload_id).wrap_context("serializing upload id")?;
-                transaction
-                    .object_store("upload_queue")
-                    .wrap_context("retrieving 'upload_queue' object store")?
-                    .delete(&upload_id)
-                    .await
-                    .wrap_context("deleting upload data")?;
-                transaction
-                    .object_store("upload_queue_meta")
-                    .wrap_context("retrieving 'upload_queue_meta' object store")?
-                    .delete(&upload_id)
-                    .await
-                    .wrap_context("deleting upload metadata")?;
-                Ok(())
-            })
-            .await
-            .wrap_with_context(|| format!("registering {upload_id:?} as having completed"));
-        if res.is_ok() {
-            self.objects_unlocked_this_run
-                .set(self.objects_unlocked_this_run.get() + 1);
-        }
-        res
-    }
-
     #[cfg(feature = "_tests")]
     pub async fn assert_invariants_generic(&self) {
         use std::collections::hash_map;
@@ -2407,6 +2300,113 @@ impl ClientSideDb for IndexedDb {
             .wrap_with_context(|| {
                 format!("removing {event_id:?} on {object_id:?}")
             })
+    }
+
+    async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        // TODO(test-high): fuzz upload-queue behavior
+        self.db
+            .transaction(&["upload_queue_meta"])
+            .run(move |transaction| async move {
+                let keys = transaction
+                    .object_store("upload_queue_meta")
+                    .wrap_context("retrieving 'upload_queue_meta' object store")?
+                    .get_all_keys(None)
+                    .await
+                    .wrap_context("getting all keys from upload_queue_meta")?;
+                let mut res = Vec::with_capacity(keys.len());
+                for k in keys.into_iter() {
+                    let k = serde_wasm_bindgen::from_value::<UploadId>(k)
+                        .wrap_context("deserializing upload id")?;
+                    res.push(k);
+                }
+                Ok(res)
+            })
+            .await
+            .wrap_context("listing upload queue")
+    }
+
+    async fn get_upload(&self, upload_id: UploadId) -> crate::Result<Option<Upload>> {
+        self.db
+            .transaction(&["upload_queue"])
+            .run(move |transaction| async move {
+                let Some(res) = transaction
+                    .object_store("upload_queue")
+                    .wrap_context("retrieving 'upload_queue' object store")?
+                    // TODO(misc-high): replace with https://github.com/rustwasm/wasm-bindgen/pull/3847 ?
+                    .get(&JsValue::from(u32::try_from(upload_id.0).unwrap()))
+                    .await
+                    .wrap_context("fetching data from upload_queue store")?
+                else {
+                    return Ok(None);
+                };
+                let res = serde_wasm_bindgen::from_value::<Upload>(res)
+                    .wrap_context("deserializing data")?;
+                Ok(Some(res))
+            })
+            .await
+            .wrap_with_context(|| format!("retrieving data for {upload_id:?}"))
+    }
+
+    async fn enqueue_upload(
+        &self,
+        upload: Upload,
+        required_binaries: Vec<BinPtr>,
+    ) -> crate::Result<UploadId> {
+        let metadata = UploadMeta { required_binaries };
+        let metadata = to_js(metadata).wrap_context("serializing upload metadata")?;
+        let data = to_js(upload).wrap_context("serializing upload data")?;
+        self.db
+            .transaction(&["upload_queue", "upload_queue_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let upload_id = transaction
+                    .object_store("upload_queue_meta")
+                    .wrap_context("retrieving 'upload_queue_meta' object store")?
+                    .add(&metadata)
+                    .await
+                    .wrap_context("saving upload metadata")?;
+                transaction
+                    .object_store("upload_queue")
+                    .wrap_context("retrieving 'upload_queue' object store")?
+                    .add_kv(&upload_id, &data)
+                    .await
+                    .wrap_context("saving upload data")?;
+                let upload_id = serde_wasm_bindgen::from_value::<UploadId>(upload_id)
+                    .wrap_context("deserializing upload id")?;
+                Ok(upload_id)
+            })
+            .await
+            .wrap_context("registering not-yet-completed upload")
+    }
+
+    async fn upload_finished(&self, upload_id: UploadId) -> crate::Result<()> {
+        let res = self
+            .db
+            .transaction(&["upload_queue", "upload_queue_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let upload_id = to_js(upload_id).wrap_context("serializing upload id")?;
+                transaction
+                    .object_store("upload_queue")
+                    .wrap_context("retrieving 'upload_queue' object store")?
+                    .delete(&upload_id)
+                    .await
+                    .wrap_context("deleting upload data")?;
+                transaction
+                    .object_store("upload_queue_meta")
+                    .wrap_context("retrieving 'upload_queue_meta' object store")?
+                    .delete(&upload_id)
+                    .await
+                    .wrap_context("deleting upload metadata")?;
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| format!("registering {upload_id:?} as having completed"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
     }
 }
 

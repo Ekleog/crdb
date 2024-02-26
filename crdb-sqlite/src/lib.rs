@@ -63,26 +63,6 @@ impl SqliteDb {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    pub async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn get_upload(&self, _upload_id: UploadId) -> crate::Result<Option<Upload>> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn enqueue_upload(
-        &self,
-        _upload: Upload,
-        _required_binaries: Vec<BinPtr>,
-    ) -> crate::Result<UploadId> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
-    pub async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
-        unimplemented!() // TODO(sqlite-high)
-    }
-
     pub async fn remove_everything(&self) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }
@@ -271,6 +251,26 @@ impl ClientSideDb for SqliteDb {
         _object_id: ObjectId,
         _event_id: EventId,
     ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn list_uploads(&self) -> crate::Result<Vec<UploadId>> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn get_upload(&self, _upload_id: UploadId) -> crate::Result<Option<Upload>> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn enqueue_upload(
+        &self,
+        _upload: Upload,
+        _required_binaries: Vec<BinPtr>,
+    ) -> crate::Result<UploadId> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn upload_finished(&self, _upload_id: UploadId) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }
 }
