@@ -179,7 +179,7 @@ macro_rules! db {
                 Err($crate::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn upload_object<'a, D: $crate::ServerSideDb, C: $crate::CanDoCallbacks>(
+            async fn upload_object<'a, D: $crate::ServerSideDb>(
                 call_on: &'a D,
                 user: $crate::User,
                 updatedness: $crate::Updatedness,
@@ -188,7 +188,6 @@ macro_rules! db {
                 created_at: $crate::EventId,
                 snapshot_version: i32,
                 snapshot: std::sync::Arc<$crate::serde_json::Value>,
-                cb: &'a C,
             ) -> $crate::Result<Option<(std::sync::Arc<$crate::UpdatesWithSnap>, std::collections::HashSet<$crate::User>, Vec<$crate::ReadPermsChanges>)>> {
                 use $crate::{Object, ResultExt, ServerSideDb, crdb_helpers::parse_snapshot_ref, serde_json, UpdatesWithSnap, Update, UpdateData};
                 use std::sync::Arc;
@@ -197,14 +196,14 @@ macro_rules! db {
                     if type_id == *<$object as Object>::type_ulid() {
                         let object = Arc::new(parse_snapshot_ref::<$object>(snapshot_version, &*snapshot)
                             .wrap_context("parsing uploaded snapshot data")?);
-                        let can_create = object.can_create(user, object_id, cb).await.wrap_context("checking whether user can create submitted object")?;
+                        let can_create = object.can_create(user, object_id, call_on).await.wrap_context("checking whether user can create submitted object")?;
                         if !can_create {
                             return Err($crate::Error::Forbidden);
                         }
                         if let Some((_, rdeps)) = call_on.create_and_return_rdep_changes::<$object>(object_id, created_at, object.clone(), updatedness).await? {
                             let snapshot_data = Arc::new(serde_json::to_value(&*object)
                                 .wrap_context("serializing uploaded snapshot data")?);
-                            let users_who_can_read = object.users_who_can_read(cb).await
+                            let users_who_can_read = object.users_who_can_read(call_on).await
                                 .wrap_context("listing users who can read for submitted object")?;
                             let new_update = Arc::new(UpdatesWithSnap {
                                 updates: vec![Arc::new(Update {
@@ -228,7 +227,7 @@ macro_rules! db {
                 Err($crate::Error::TypeDoesNotExist(type_id))
             }
 
-            async fn upload_event<'a, D: $crate::ServerSideDb, C: $crate::CanDoCallbacks>(
+            async fn upload_event<'a, D: $crate::ServerSideDb>(
                 call_on: &'a D,
                 user: $crate::User,
                 updatedness: $crate::Updatedness,
@@ -236,27 +235,26 @@ macro_rules! db {
                 object_id: $crate::ObjectId,
                 event_id: $crate::EventId,
                 event_data: std::sync::Arc<$crate::serde_json::Value>,
-                cb: &'a C,
             ) -> $crate::Result<Option<(std::sync::Arc<$crate::UpdatesWithSnap>, Vec<$crate::User>, Vec<$crate::ReadPermsChanges>)>> {
-                use $crate::{Object, ResultExt, DbPtr, ServerSideDb, ReadPermsChanges, UpdatesWithSnap, Update, UpdateData, serde, serde_json};
+                use $crate::{Object, ResultExt, Lock, ServerSideDb, ReadPermsChanges, UpdatesWithSnap, Update, UpdateData, serde, serde_json};
                 use std::sync::Arc;
 
                 $(
                     if type_id == *<$object as Object>::type_ulid() {
                         let event = Arc::new(<<$object as Object>::Event as serde::Deserialize>::deserialize(&*event_data)
                             .wrap_context("parsing uploaded snapshot data")?);
-                        let object = cb.get::<$object>(DbPtr::from(object_id)).await
+                        let object = call_on.get_latest::<$object>(Lock::NONE, object_id).await
                             .wrap_context("retrieving requested object id")?;
-                        let can_apply = object.can_apply(user, object_id, &event, cb).await.wrap_context("checking whether user can apply submitted event")?;
+                        let can_apply = object.can_apply(user, object_id, &event, call_on).await.wrap_context("checking whether user can apply submitted event")?;
                         if !can_apply {
                             return Err($crate::Error::Forbidden);
                         }
-                        let users_who_can_read_before = object.users_who_can_read(cb).await
+                        let users_who_can_read_before = object.users_who_can_read(call_on).await
                             .wrap_context("listing users who can read for the object before submitting the event")?;
                         if let Some((new_last_snapshot, mut rdeps)) = call_on.submit_and_return_rdep_changes::<$object>(object_id, event_id, event.clone(), updatedness).await? {
                             let snapshot_data = Arc::new(serde_json::to_value(&*new_last_snapshot)
                                 .wrap_context("serializing updated latest snapshot data")?);
-                            let users_who_can_read_after = new_last_snapshot.users_who_can_read(cb).await
+                            let users_who_can_read_after = new_last_snapshot.users_who_can_read(call_on).await
                                 .wrap_context("listing users who can read for submitted object")?;
                             rdeps.push(ReadPermsChanges {
                                 object_id,

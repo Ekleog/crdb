@@ -539,7 +539,7 @@ impl<C: crdb_core::Config> Server<C> {
                     } => {
                         let (updatedness, update_sender) = self.updatedness_slot().await?;
                         let res = C::upload_object(
-                            &**self.db,
+                            &*self.db,
                             sess.session.user_id,
                             updatedness,
                             *type_id,
@@ -547,7 +547,6 @@ impl<C: crdb_core::Config> Server<C> {
                             *created_at,
                             *snapshot_version,
                             object.clone(),
-                            &*self.db,
                         )
                         .await;
                         let res = match res {
@@ -602,14 +601,13 @@ impl<C: crdb_core::Config> Server<C> {
                     } => {
                         let (updatedness, update_sender) = self.updatedness_slot().await?;
                         let res = C::upload_event(
-                            &**self.db,
+                            &*self.db,
                             sess.session.user_id,
                             updatedness,
                             *type_id,
                             *object_id,
                             *event_id,
                             event.clone(),
-                            &*self.db,
                         )
                         .await;
                         let res = match res {

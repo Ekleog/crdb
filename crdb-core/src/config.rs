@@ -100,8 +100,8 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
     >;
 
     #[allow(clippy::too_many_arguments)] // This is only used to proxy to a real function
-    fn upload_object<'a, D: ServerSideDb, C: CanDoCallbacks>(
-        call_on: &'a D,
+    fn upload_object<D: ServerSideDb>(
+        call_on: &D,
         user: User,
         updatedness: Updatedness,
         type_id: TypeId,
@@ -109,8 +109,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         created_at: EventId,
         snapshot_version: i32,
         snapshot: Arc<serde_json::Value>,
-        cb: &'a C,
-    ) -> impl 'a
+    ) -> impl '_
            + waaaa::Future<
         Output = crate::Result<
             Option<(Arc<UpdatesWithSnap>, HashSet<User>, Vec<ReadPermsChanges>)>,
@@ -119,17 +118,15 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
 
     /// The [`Vec<User>`] in return type is the list of users who can read the object both before and after the change. Users who gained or
     /// lost access to `object_id` are returned as part of the `Vec<ReadPermsChanges>`.
-    #[allow(clippy::too_many_arguments)] // This is only used to proxy the call to a real function
-    fn upload_event<'a, D: ServerSideDb, C: CanDoCallbacks>(
-        call_on: &'a D,
+    fn upload_event<D: ServerSideDb>(
+        call_on: &D,
         user: User,
         updatedness: Updatedness,
         type_id: TypeId,
         object_id: ObjectId,
         event_id: EventId,
         event: Arc<serde_json::Value>,
-        cb: &'a C,
-    ) -> impl 'a
+    ) -> impl '_
            + waaaa::Future<
         Output = crate::Result<Option<(Arc<UpdatesWithSnap>, Vec<User>, Vec<ReadPermsChanges>)>>,
     >;
