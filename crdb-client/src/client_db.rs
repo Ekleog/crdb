@@ -433,7 +433,7 @@ impl ClientDb {
 
     async fn fetch_binaries(
         binary_ids: Vec<BinPtr>,
-        db: &LocalDb,
+        db: &CacheDb<LocalDb>,
         api: &ApiDb,
     ) -> crate::Result<()> {
         let mut bins = stream::iter(binary_ids.into_iter())
@@ -452,7 +452,7 @@ impl ClientDb {
 
     #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a good struct
     async fn save_data<C: crdb_core::Config>(
-        db: &LocalDb,
+        db: &CacheDb<LocalDb>,
         subscribed_objects: &Mutex<SubscribedObjectMap>,
         subscribed_queries: &Mutex<SubscribedQueriesMap>,
         u: &Update,
