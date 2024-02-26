@@ -1,23 +1,5 @@
-use crate::{BinPtr, EventId, Object, ObjectId, Updatedness};
+use crate::{BinPtr, EventId, Lock, Object, ObjectId, Updatedness};
 use std::sync::Arc;
-
-bitflags::bitflags! {
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub struct Lock: u8 {
-        const NONE = 0;
-        const OBJECT = 0b01;
-        const FOR_QUERIES = 0b10;
-    }
-}
-
-impl Lock {
-    pub fn from_query_lock(b: bool) -> Lock {
-        match b {
-            true => Lock::FOR_QUERIES,
-            false => Lock::NONE,
-        }
-    }
-}
 
 pub trait Db: 'static + waaaa::Send + waaaa::Sync {
     /// Returns the new latest snapshot if it actually changed
