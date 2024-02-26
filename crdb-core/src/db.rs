@@ -1,6 +1,8 @@
 use crate::{BinPtr, EventId, Lock, Object, ObjectId, Updatedness};
 use std::sync::Arc;
 
+// TODO(api-high): Review what's in this trait (and in Client/ServerSideDb), and verify that everything is necessary
+// and, for Db, couldn't be moved to one of the side-specific traits.
 pub trait Db: 'static + waaaa::Send + waaaa::Sync {
     /// Returns the new latest snapshot if it actually changed
     ///
