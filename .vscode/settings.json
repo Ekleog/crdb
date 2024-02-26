@@ -1,6 +1,8 @@
 {
   "rust-analyzer.cargo.features": "all",
   "rust-analyzer.linkedProjects": [
-    "./examples/basic/api/Cargo.toml"
+    "./examples/basic/api/Cargo.toml",
+    "./crdb-indexed-db/Cargo.toml",
+    "./crdb-test-utils/Cargo.toml"
   ]
 }
