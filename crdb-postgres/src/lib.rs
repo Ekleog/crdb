@@ -233,148 +233,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         Ok(())
     }
 
-    /// Cleans up and optimizes up the database
-    ///
-    /// After running this, the database will reject any new change that would happen before
-    /// `no_new_changes_before` if it is set.
-    pub async fn vacuum(
-        &self,
-        no_new_changes_before: Option<EventId>,
-        updatedness: Updatedness,
-        kill_sessions_older_than: Option<SystemTime>,
-        mut notify_recreation: impl FnMut(Update, HashSet<User>),
-    ) -> crate::Result<()> {
-        // TODO(perf-high): do not vacuum away binaries that have been uploaded less than an hour ago
-        if let Some(t) = kill_sessions_older_than {
-            // Discard all sessions that were last active too long ago
-            reord::point().await;
-            sqlx::query!(
-                "DELETE FROM sessions WHERE last_active < $1",
-                t.ms_since_posix()?,
-            )
-            .execute(&self.db)
-            .await
-            .wrap_context("cleaning up old sessions")?;
-        }
-
-        let cache_db = self
-            .cache_db
-            .upgrade()
-            .expect("Called PostgresDb::vacuum after CacheDb went away");
-
-        {
-            // Discard all unrequired snapshots, as well as unused fields of creation snapshots
-            // In addition, auto-recreate the objects that need re-creation
-            reord::point().await;
-            let mut objects = sqlx::query!(
-                "
-                    SELECT DISTINCT object_id, type_id
-                    FROM snapshots
-                    WHERE (NOT (is_creation OR is_latest))
-                    OR ((NOT is_latest)
-                        AND (users_who_can_read IS NOT NULL
-                            OR users_who_can_read_depends_on IS NOT NULL
-                            OR reverse_dependents_to_update IS NOT NULL))
-                    OR ((NOT is_creation) AND snapshot_id < $1)
-                ",
-                no_new_changes_before.unwrap_or_else(|| EventId::from_u128(0)) as EventId
-            )
-            .fetch(&self.db);
-            while let Some(row) = objects.next().await {
-                let row = row.wrap_context("listing objects with snapshots to cleanup")?;
-                let object_id = ObjectId::from_uuid(row.object_id);
-                let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
-                let _lock = self.object_locks.async_lock(object_id).await;
-                reord::maybe_lock().await;
-                sqlx::query(
-                    "DELETE FROM snapshots WHERE object_id = $1 AND NOT (is_creation OR is_latest)",
-                )
-                .bind(object_id)
-                .execute(&self.db)
-                .await
-                .wrap_with_context(|| format!("deleting useless snapshots from {object_id:?}"))?;
-                reord::maybe_lock().await;
-                sqlx::query(
-                    "
-                        UPDATE snapshots
-                        SET users_who_can_read = NULL,
-                            users_who_can_read_depends_on = NULL,
-                            reverse_dependents_to_update = NULL
-                        WHERE object_id = $1
-                        AND NOT is_latest
-                    ",
-                )
-                .bind(object_id)
-                .execute(&self.db)
-                .await
-                .wrap_with_context(|| format!("resetting creation snapshot of {object_id:?}"))?;
-                reord::point().await;
-                if let Some(event_id) = no_new_changes_before {
-                    let type_id = TypeId::from_uuid(row.type_id);
-                    reord::point().await;
-                    let recreation_result = Config::recreate_no_lock(
-                        self,
-                        type_id,
-                        object_id,
-                        event_id,
-                        updatedness,
-                        &*cache_db,
-                    )
-                    .await
-                    .wrap_with_context(|| {
-                        format!("recreating {object_id:?} at time {event_id:?}")
-                    })?;
-                    if let Some((new_created_at, snapshot_version, data, users_who_can_read)) =
-                        recreation_result
-                    {
-                        reord::point().await;
-                        notify_recreation(
-                            Update {
-                                object_id,
-                                data: UpdateData::Creation {
-                                    type_id,
-                                    created_at: new_created_at,
-                                    snapshot_version,
-                                    data: Arc::new(data),
-                                },
-                            },
-                            users_who_can_read,
-                        );
-                    }
-                }
-            }
-        }
-
-        // Get rid of no-longer-referenced binaries
-        reord::maybe_lock().await;
-        sqlx::query(
-            "
-                DELETE FROM binaries
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM snapshots WHERE binary_id = ANY(required_binaries)
-                    UNION
-                    SELECT 1 FROM events WHERE binary_id = ANY(required_binaries)
-                )
-            ",
-        )
-        .execute(&self.db)
-        .await
-        .wrap_context("deleting no-longer-referenced binaries")?;
-        reord::point().await;
-
-        // Finally, take care of the database itself
-        // This is very slow for tests and produces deadlock false-positives, plus it's useless there.
-        // So let's just skip it in tests.
-        #[cfg(not(test))]
-        sqlx::query("VACUUM ANALYZE")
-            .execute(&self.db)
-            .await
-            .wrap_context("vacuuming database")?;
-        reord::point().await;
-
-        Ok(())
-    }
-
     /// Returns the list of all reverse-dependencies of `object_id`
     async fn get_rdeps<'a, E: sqlx::Executor<'a, Database = sqlx::Postgres>>(
         &self,
@@ -1758,6 +1616,148 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
             events,
             now_have_all_until: last_modified,
         })
+    }
+
+    /// Cleans up and optimizes up the database
+    ///
+    /// After running this, the database will reject any new change that would happen before
+    /// `no_new_changes_before` if it is set.
+    async fn server_vacuum(
+        &self,
+        no_new_changes_before: Option<EventId>,
+        updatedness: Updatedness,
+        kill_sessions_older_than: Option<SystemTime>,
+        mut notify_recreation: impl FnMut(Update, HashSet<User>),
+    ) -> crate::Result<()> {
+        // TODO(perf-high): do not vacuum away binaries that have been uploaded less than an hour ago
+        if let Some(t) = kill_sessions_older_than {
+            // Discard all sessions that were last active too long ago
+            reord::point().await;
+            sqlx::query!(
+                "DELETE FROM sessions WHERE last_active < $1",
+                t.ms_since_posix()?,
+            )
+            .execute(&self.db)
+            .await
+            .wrap_context("cleaning up old sessions")?;
+        }
+
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::vacuum after CacheDb went away");
+
+        {
+            // Discard all unrequired snapshots, as well as unused fields of creation snapshots
+            // In addition, auto-recreate the objects that need re-creation
+            reord::point().await;
+            let mut objects = sqlx::query!(
+                "
+                    SELECT DISTINCT object_id, type_id
+                    FROM snapshots
+                    WHERE (NOT (is_creation OR is_latest))
+                    OR ((NOT is_latest)
+                        AND (users_who_can_read IS NOT NULL
+                            OR users_who_can_read_depends_on IS NOT NULL
+                            OR reverse_dependents_to_update IS NOT NULL))
+                    OR ((NOT is_creation) AND snapshot_id < $1)
+                ",
+                no_new_changes_before.unwrap_or_else(|| EventId::from_u128(0)) as EventId
+            )
+            .fetch(&self.db);
+            while let Some(row) = objects.next().await {
+                let row = row.wrap_context("listing objects with snapshots to cleanup")?;
+                let object_id = ObjectId::from_uuid(row.object_id);
+                let _lock = reord::Lock::take_named(format!("{object_id:?}")).await;
+                let _lock = self.object_locks.async_lock(object_id).await;
+                reord::maybe_lock().await;
+                sqlx::query(
+                    "DELETE FROM snapshots WHERE object_id = $1 AND NOT (is_creation OR is_latest)",
+                )
+                .bind(object_id)
+                .execute(&self.db)
+                .await
+                .wrap_with_context(|| format!("deleting useless snapshots from {object_id:?}"))?;
+                reord::maybe_lock().await;
+                sqlx::query(
+                    "
+                        UPDATE snapshots
+                        SET users_who_can_read = NULL,
+                            users_who_can_read_depends_on = NULL,
+                            reverse_dependents_to_update = NULL
+                        WHERE object_id = $1
+                        AND NOT is_latest
+                    ",
+                )
+                .bind(object_id)
+                .execute(&self.db)
+                .await
+                .wrap_with_context(|| format!("resetting creation snapshot of {object_id:?}"))?;
+                reord::point().await;
+                if let Some(event_id) = no_new_changes_before {
+                    let type_id = TypeId::from_uuid(row.type_id);
+                    reord::point().await;
+                    let recreation_result = Config::recreate_no_lock(
+                        self,
+                        type_id,
+                        object_id,
+                        event_id,
+                        updatedness,
+                        &*cache_db,
+                    )
+                    .await
+                    .wrap_with_context(|| {
+                        format!("recreating {object_id:?} at time {event_id:?}")
+                    })?;
+                    if let Some((new_created_at, snapshot_version, data, users_who_can_read)) =
+                        recreation_result
+                    {
+                        reord::point().await;
+                        notify_recreation(
+                            Update {
+                                object_id,
+                                data: UpdateData::Creation {
+                                    type_id,
+                                    created_at: new_created_at,
+                                    snapshot_version,
+                                    data: Arc::new(data),
+                                },
+                            },
+                            users_who_can_read,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Get rid of no-longer-referenced binaries
+        reord::maybe_lock().await;
+        sqlx::query(
+            "
+                DELETE FROM binaries
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM snapshots WHERE binary_id = ANY(required_binaries)
+                    UNION
+                    SELECT 1 FROM events WHERE binary_id = ANY(required_binaries)
+                )
+            ",
+        )
+        .execute(&self.db)
+        .await
+        .wrap_context("deleting no-longer-referenced binaries")?;
+        reord::point().await;
+
+        // Finally, take care of the database itself
+        // This is very slow for tests and produces deadlock false-positives, plus it's useless there.
+        // So let's just skip it in tests.
+        #[cfg(not(test))]
+        sqlx::query("VACUUM ANALYZE")
+            .execute(&self.db)
+            .await
+            .wrap_context("vacuuming database")?;
+        reord::point().await;
+
+        Ok(())
     }
 
     async fn recreate_at<'a, T: Object, C: CanDoCallbacks>(

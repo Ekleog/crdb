@@ -1,4 +1,8 @@
-use crate::{CanDoCallbacks, EventId, Object, ObjectData, ObjectId, TypeId, Updatedness, User};
+use web_time::SystemTime;
+
+use crate::{
+    CanDoCallbacks, EventId, Object, ObjectData, ObjectId, TypeId, Update, Updatedness, User,
+};
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 // TODO(blocked): replace with an associated type of ServerSideDb once https://github.com/rust-lang/rust/pull/120700 stabilizes
@@ -43,6 +47,18 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync {
         object_id: ObjectId,
         only_updated_since: Option<Updatedness>,
     ) -> impl waaaa::Future<Output = crate::Result<ObjectData>>;
+
+    /// Cleans up and optimizes up the database
+    ///
+    /// After running this, the database will reject any new change that would happen before
+    /// `no_new_changes_before` if it is set.
+    fn server_vacuum(
+        &self,
+        no_new_changes_before: Option<EventId>,
+        updatedness: Updatedness,
+        kill_sessions_older_than: Option<SystemTime>,
+        notify_recreation: impl FnMut(Update, HashSet<User>),
+    ) -> impl std::future::Future<Output = crate::Result<()>>;
 
     /// This function assumes that the lock on `object_id` is already taken
     ///

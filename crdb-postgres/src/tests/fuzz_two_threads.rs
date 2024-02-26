@@ -131,7 +131,7 @@ async fn apply_op(db: &PostgresDb<Config>, s: &FuzzState, op: &Op) -> anyhow::Re
             recreate_at: None,
             updatedness,
         } => {
-            db.vacuum(None, *updatedness, None, |_, _| {
+            db.server_vacuum(None, *updatedness, None, |_, _| {
                 panic!("got unexpected recreation")
             })
             .await
@@ -142,7 +142,7 @@ async fn apply_op(db: &PostgresDb<Config>, s: &FuzzState, op: &Op) -> anyhow::Re
             updatedness,
         } => {
             let _pg = db
-                .vacuum(Some(*recreate_at), *updatedness, None, |_, _| ())
+                .server_vacuum(Some(*recreate_at), *updatedness, None, |_, _| ())
                 .await;
         }
     }

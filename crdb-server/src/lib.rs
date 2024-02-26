@@ -1025,7 +1025,7 @@ impl<C: crdb_core::Config> Server<C> {
         // Perform the vacuum, collecting all updates
         let mut updates = HashMap::new();
         let res = db
-            .vacuum(
+            .server_vacuum(
                 no_new_changes_before,
                 updatedness,
                 kill_sessions_older_than,
