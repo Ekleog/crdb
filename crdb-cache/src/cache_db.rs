@@ -1,7 +1,7 @@
 use super::{BinariesCache, ObjectCache};
 use crdb_core::{
     hash_binary, BinPtr, ClientSideDb, CrdbSyncFn, Db, DynSized, EventId, Lock, Object, ObjectId,
-    QueryId, Updatedness, Upload, UploadId,
+    QueryId, ServerSideDb, Updatedness, Upload, UploadId,
 };
 use std::{
     collections::HashSet,
@@ -219,5 +219,98 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
 
     async fn upload_finished(&self, upload_id: UploadId) -> crate::Result<()> {
         self.db.upload_finished(upload_id).await
+    }
+}
+
+impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
+    type Transaction = D::Transaction;
+
+    fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: crdb_core::CanDoCallbacks>(
+        &'ret self,
+        object_id: ObjectId,
+        object: &'a T,
+        cb: &'a C,
+    ) -> std::pin::Pin<
+        Box<
+            dyn 'a
+                + waaaa::Future<
+                    Output = anyhow::Result<(
+                        HashSet<crdb_core::User>,
+                        Vec<ObjectId>,
+                        Vec<crdb_core::ComboLock<'ret>>,
+                    )>,
+                >,
+        >,
+    > {
+        self.db.get_users_who_can_read(object_id, object, cb)
+    }
+
+    async fn get_all(
+        &self,
+        transaction: &mut Self::Transaction,
+        user: crdb_core::User,
+        object_id: ObjectId,
+        only_updated_since: Option<Updatedness>,
+    ) -> crdb_core::Result<crdb_core::ObjectData> {
+        self.db
+            .get_all(transaction, user, object_id, only_updated_since)
+            .await
+    }
+
+    async fn server_vacuum(
+        &self,
+        no_new_changes_before: Option<EventId>,
+        updatedness: Updatedness,
+        kill_sessions_older_than: Option<web_time::SystemTime>,
+        notify_recreation: impl FnMut(crdb_core::Update, HashSet<crdb_core::User>),
+    ) -> crdb_core::Result<()> {
+        // A server vacuum cannot change the latest snapshot, so there is nothing to update in the cache
+        self.db
+            .server_vacuum(
+                no_new_changes_before,
+                updatedness,
+                kill_sessions_older_than,
+                notify_recreation,
+            )
+            .await
+    }
+
+    async fn recreate_at<'a, T: Object, C: crdb_core::CanDoCallbacks>(
+        &'a self,
+        object_id: ObjectId,
+        event_id: EventId,
+        updatedness: Updatedness,
+        cb: &'a C,
+    ) -> crdb_core::Result<Option<(EventId, Arc<T>)>> {
+        // A recreation at a specified timestamp cannot change the latest snapshot, so there is nothing to update in the cache
+        self.db
+            .recreate_at(object_id, event_id, updatedness, cb)
+            .await
+    }
+
+    async fn create_and_return_rdep_changes<T: Object>(
+        &self,
+        object_id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+        updatedness: Updatedness,
+    ) -> crdb_core::Result<Option<(Arc<T>, Vec<crdb_core::ReadPermsChanges>)>> {
+        self.cache.write().unwrap().remove(&object_id);
+        self.db
+            .create_and_return_rdep_changes(object_id, created_at, object, updatedness)
+            .await
+    }
+
+    async fn submit_and_return_rdep_changes<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+        updatedness: Updatedness,
+    ) -> crdb_core::Result<Option<(Arc<T>, Vec<crdb_core::ReadPermsChanges>)>> {
+        self.cache.write().unwrap().remove(&object_id);
+        self.db
+            .submit_and_return_rdep_changes(object_id, event_id, event, updatedness)
+            .await
     }
 }

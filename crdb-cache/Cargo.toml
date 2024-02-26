@@ -6,4 +6,6 @@ edition = "2021"
 [dependencies]
 crdb-core.workspace = true
 
+anyhow.workspace = true
+waaaa.workspace = true
 web-time.workspace = true

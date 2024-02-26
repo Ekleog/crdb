@@ -1,7 +1,7 @@
 use web_time::SystemTime;
 
 use crate::{
-    CanDoCallbacks, EventId, Object, ObjectData, ObjectId, TypeId, Update, Updatedness, User,
+    CanDoCallbacks, Db, EventId, Object, ObjectData, ObjectId, TypeId, Update, Updatedness, User,
 };
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
@@ -19,8 +19,8 @@ pub struct ReadPermsChanges {
     pub gained_read: HashSet<User>,
 }
 
-pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync {
-    type Transaction;
+pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
+    type Transaction: waaaa::Send;
 
     // TODO(blocked): replace with -> impl once https://github.com/rust-lang/rust/issues/100013 is fixed
     // This will also remove the clippy lint
