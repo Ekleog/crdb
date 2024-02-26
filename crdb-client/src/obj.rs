@@ -14,8 +14,7 @@ pub struct Obj<T: Object> {
 }
 
 impl<T: Object> Obj<T> {
-    #[doc(hidden)] // TODO(client-high): make priv once client/config.rs is no longer a big macro
-    pub fn new(ptr: DbPtr<T>, data: Arc<T>, db: Arc<ClientDb>) -> Obj<T> {
+    pub(crate) fn new(ptr: DbPtr<T>, data: Arc<T>, db: Arc<ClientDb>) -> Obj<T> {
         Obj { ptr, data, db }
     }
 
