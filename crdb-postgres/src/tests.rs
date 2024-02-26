@@ -16,7 +16,6 @@ async fn smoke_test(db: sqlx::PgPool) {
         .expect("connecting to db");
     crdb_test_utils::smoke_test!(
         db: db,
-        vacuum: db.server_vacuum(Some(EVENT_ID_3), Updatedness::from_u128(128), Some(SystemTime::from_ms_since_posix(1024).unwrap()), |_, _| ()),
         query_all: db
             .query(USER_ID_NULL, *TestObjectSimple::type_ulid(), None, Arc::new(Query::All(vec![])))
             .await

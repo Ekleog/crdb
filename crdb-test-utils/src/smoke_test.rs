@@ -2,7 +2,6 @@
 macro_rules! smoke_test {
     (
         db: $db:ident,
-        vacuum: $vacuum:expr,
         query_all: $query_all:expr,
         db_type: $db_type:tt,
     ) => {
@@ -124,7 +123,17 @@ macro_rules! smoke_test {
                 .expect("getting object 1")
                 .0
         );
-        $vacuum.await.unwrap();
+        $crate::smoke_test!(@if-client $db_type {
+            $db.client_vacuum(|_| (), |_| ()).await.unwrap();
+        });
+        $crate::smoke_test!(@if-server $db_type {
+            $db.server_vacuum(
+                Some(EVENT_ID_3),
+                Updatedness::from_u128(128),
+                Some(SystemTime::from_ms_since_posix(1024).unwrap()),
+                |_, _| (),
+            ).await.unwrap();
+        });
         $db.assert_invariants_generic().await;
         $db.assert_invariants_for::<TestObjectSimple>().await;
         let all_objects = $query_all;

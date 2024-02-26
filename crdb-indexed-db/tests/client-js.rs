@@ -12,7 +12,6 @@ async fn smoke_test() {
     let db = IndexedDb::connect("smoke-test").await.unwrap();
     crdb_test_utils::smoke_test!(
         db: db,
-        vacuum: db.client_vacuum(|_| (), |_| ()), // TODO(test-high): this should go away once we finish splitting everything up
         query_all: db
             .query(*TestObjectSimple::type_ulid(), Arc::new(Query::All(vec![])))
             .await
