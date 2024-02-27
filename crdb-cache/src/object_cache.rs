@@ -90,5 +90,8 @@ impl ObjectCache {
                 }
             }
         }
+        if self.approx_exclusive_size > self.watermark {
+            self.watermark = self.approx_exclusive_size;
+        }
     }
 }
