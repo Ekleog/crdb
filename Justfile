@@ -22,13 +22,13 @@ clippy:
     CARGO_TARGET_DIR="target/clippy" SQLX_OFFLINE="true" cargo clippy --all-features -- -D warnings
 
 udeps:
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --all-features
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
+    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --all-features
+    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
 
 udeps-full:
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --each-feature
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --tests --each-feature
-    CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
+    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --each-feature
+    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --tests --each-feature
+    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
 
 doc:
     CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
