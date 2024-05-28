@@ -20,10 +20,10 @@ pkgs.stdenv.mkDerivation {
       wasm-pack
 
       (fenix.combine (with fenix; [
-        minimal.cargo
-        minimal.rustc
-        complete.clippy
-        complete.rust-src
+        stable.cargo
+        stable.rustc
+        stable.clippy
+        stable.rust-src
         rust-analyzer
         targets.wasm32-unknown-unknown.latest.rust-std
       ]))
