@@ -90,7 +90,7 @@ impl Object for TestObjectSimple {
 
     fn apply(&mut self, _self_id: DbPtr<Self>, event: &Self::Event) {
         match event {
-            TestEventSimple::Set(v) => self.0 = v.clone(),
+            TestEventSimple::Set(v) => self.0.clone_from(v),
             TestEventSimple::Append(v) => self.0.extend(v.iter().cloned()),
             TestEventSimple::Clear => self.0.clear(),
         }

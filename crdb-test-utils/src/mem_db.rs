@@ -155,7 +155,7 @@ impl Db for MemDb {
             *locked |= lock;
             return Ok(None);
         }
-        if this.events.get(&created_at).is_some() {
+        if this.events.contains_key(&created_at) {
             crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
             return Err(crate::Error::EventAlreadyExists(created_at));
         }
@@ -167,7 +167,7 @@ impl Db for MemDb {
         let required_binaries = object.required_binaries();
         let mut missing_binaries = Vec::new();
         for b in required_binaries.iter() {
-            if this.binaries.get(b).is_none() {
+            if !this.binaries.contains_key(b) {
                 missing_binaries.push(*b);
             }
         }
@@ -236,7 +236,7 @@ impl Db for MemDb {
                 let required_binaries = event.required_binaries();
                 let mut missing_binaries = Vec::new();
                 for b in required_binaries {
-                    if this.binaries.get(&b).is_none() {
+                    if !this.binaries.contains_key(&b) {
                         missing_binaries.push(b);
                     }
                 }
@@ -344,7 +344,7 @@ impl ClientSideDb for MemDb {
         let required_binaries = object.required_binaries();
         let mut missing_binaries = Vec::new();
         for b in required_binaries {
-            if this.binaries.get(&b).is_none() {
+            if !this.binaries.contains_key(&b) {
                 missing_binaries.push(b);
             }
         }
