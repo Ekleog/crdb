@@ -1,14 +1,16 @@
 # export RUST_BACKTRACE := "short"
 
+macro_backtrace := RUSTC_BOOTSTRAP=1 RUSTFLAGS="-Zmacro-backtrace"
+
 all *ARGS: fmt (test ARGS) clippy udeps doc
 
 run-example-basic-server *ARGS:
     createdb basic-crdb || true
     sqlx migrate run --source crdb-postgres/migrations --database-url "postgres:///basic-crdb"
-    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" RUST_LOG="trace,tokio_tungstenite=debug,tungstenite=debug" cargo run -p basic-server -- {{ARGS}}
+    cd examples/basic && CARGO_TARGET_DIR="target/host" $macro_backtrace RUST_LOG="trace,tokio_tungstenite=debug,tungstenite=debug" cargo run -p basic-server -- {{ARGS}}
 
 serve-example-basic-client-js *ARGS:
-    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" RUSTFLAGS="-Zmacro-backtrace" trunk serve
+    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" $macro_backtrace trunk serve
 
 fmt:
     cargo fmt
@@ -61,10 +63,10 @@ test-crate-wasm32 *ARGS:
 test-example-basic *ARGS: build-example-basic-client (test-example-basic-host ARGS)
 
 build-example-basic-client:
-    cd examples/basic && CARGO_TARGET_DIR="target/wasm" RUSTFLAGS="-Zmacro-backtrace" cargo build --target wasm32-unknown-unknown -p basic-client-js
+    cd examples/basic && CARGO_TARGET_DIR="target/wasm" $macro_backtrace cargo build --target wasm32-unknown-unknown -p basic-client-js
 
 test-example-basic-host *ARGS:
-    cd examples/basic && CARGO_TARGET_DIR="target/host" RUSTFLAGS="-Zmacro-backtrace" cargo nextest run -p basic-api -p basic-server -p basic-client-native {{ARGS}}
+    cd examples/basic && CARGO_TARGET_DIR="target/host" $macro_backtrace cargo nextest run -p basic-api -p basic-server -p basic-client-native {{ARGS}}
 
 fuzz-pg-simple ARGS='':
     cargo bolero test \
