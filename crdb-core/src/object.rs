@@ -90,6 +90,7 @@ pub trait Object:
     ///   forming a DAG, and each object's `users_who_can_read` function should:
     ///   - Only ever operate on a topological sort of the DAG
     ///   - Only call `db.get` on objects after this object on the topological sort
+    ///
     ///   Failing to do this might lead to deadlocks within the database, which will result in internal
     ///   server errors from postgresql.
     ///   For example, if you have A -> B -> C and A -> C, A's `users_who_can_read` should first call
