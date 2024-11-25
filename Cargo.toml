@@ -73,7 +73,7 @@ web-sys = { version = "0.3.66", features = [
     "StorageManager",
     "Window",
 ] }
-writeable = "0.5.4"
+writeable = "0.6.0"
 
 [profile.fuzz]
 inherits = "dev"
