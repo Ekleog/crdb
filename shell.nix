@@ -25,7 +25,7 @@ pkgs.stdenv.mkDerivation {
         stable.clippy
         stable.rust-src
         rust-analyzer
-        targets.wasm32-unknown-unknown.latest.rust-std
+        targets.wasm32-unknown-unknown.stable.rust-std
       ]))
     ])
   );
