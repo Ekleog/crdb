@@ -49,10 +49,10 @@ macro_rules! impl_id {
 
         #[cfg(feature = "sqlx-postgres")]
         impl<'q> sqlx::encode::Encode<'q, sqlx::Postgres> for $type {
-            fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
+            fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Sync + Send>> {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode_by_ref(&self.to_uuid(), buf)
             }
-            fn encode(self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
+            fn encode(self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Sync + Send>> {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Postgres>>::encode(self.to_uuid(), buf)
             }
             fn produces(&self) -> Option<sqlx::postgres::PgTypeInfo> {
@@ -85,10 +85,10 @@ macro_rules! impl_id {
 
         #[cfg(feature = "sqlx-sqlite")]
         impl<'q> sqlx::encode::Encode<'q, sqlx::Sqlite> for $type {
-            fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
+            fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Sync + Send>> {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode_by_ref(&self.to_uuid(), buf)
             }
-            fn encode(self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> sqlx::encode::IsNull {
+            fn encode(self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Sync + Send>> {
                 <uuid::Uuid as sqlx::encode::Encode<'q, sqlx::Sqlite>>::encode(self.to_uuid(), buf)
             }
             fn produces(&self) -> Option<sqlx::sqlite::SqliteTypeInfo> {
