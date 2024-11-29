@@ -18,7 +18,7 @@ jobs:
         test:
           - { name: Build, command: build --no-dev-deps }
           - { name: Clippy, command: clippy --no-dev-deps, extra: -- -D warnings }
-          - { name: Test, command: nextest run }
+          - { name: Test, command: nextest run --no-tests=pass }
         rust:
           - { name: Nightly }
           - { name: Stable, sigil: '+stable', toolchain: 'stable' }
