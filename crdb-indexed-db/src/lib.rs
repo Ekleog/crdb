@@ -83,13 +83,14 @@ impl IndexedDb {
         let is_persistent = {
             // If not running tests, try to persist the storage — in tests this times out, so ignore it
             let window = web_sys::window().ok_or_else(|| anyhow!("not running in a browser"))?;
-            wasm_bindgen_futures::JsFuture::from(window.navigator().storage().persist().wrap_context(
+            let persist_fut = window.navigator().storage().persist().wrap_context(
                 "failed to request persistence, did the user disable storage altogether?",
-            )?)
-            .await
-            .wrap_context("failed to resolve request for persistence")?
-            .as_bool()
-            .ok_or_else(|| anyhow!("requesting for persistence did not return a boolean"))?
+            )?;
+            wasm_bindgen_futures::JsFuture::from(persist_fut)
+                .await
+                .wrap_context("failed to resolve request for persistence")?
+                .as_bool()
+                .ok_or_else(|| anyhow!("requesting for persistence did not return a boolean"))?
         };
         #[cfg(feature = "_tests")]
         let is_persistent = false;
