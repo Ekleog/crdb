@@ -248,7 +248,7 @@ fn fuzz_checking_locks() {
 // Also, same for the battle-royale fuzzer.
 
 #[test]
-#[cfg(disabled)]
+#[cfg(any())] // Disabled
 fn impl_reproducer() {
     tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(tracing::Level::TRACE)

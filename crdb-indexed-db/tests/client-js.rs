@@ -126,7 +126,7 @@ mod fuzz_simple {
     crdb_test_utils::fuzz_simple!(client);
 
     #[fuzz_helpers::test]
-    #[cfg(disabled)]
+    #[cfg(any())] // Disabled
     async fn seed_reproducer() {
         fuzz_helpers::run_with_seed(5710355506847336567, true, fuzz_impl).await;
     }
@@ -136,7 +136,7 @@ mod fuzz_remote_perms {
     crdb_test_utils::fuzz_remote_perms!(client);
 
     #[fuzz_helpers::test]
-    #[cfg(disabled)]
+    #[cfg(any())] // Disabled
     async fn seed_reproducer() {
         fuzz_helpers::run_with_seed(8002174428813084636, true, fuzz_impl).await;
     }
@@ -146,7 +146,7 @@ mod fuzz_object_full {
     crdb_test_utils::fuzz_object_full!(client);
 
     #[fuzz_helpers::test]
-    #[cfg(disabled)]
+    #[cfg(any())] // Disabled
     async fn seed_reproducer() {
         fuzz_helpers::run_with_seed(8002174428813084636, true, fuzz_impl).await;
     }
