@@ -87,6 +87,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
     ) -> impl 'a
            + waaaa::Future<Output = crate::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
 
+    #[allow(clippy::type_complexity)] // This is only used to proxy to a real function
     fn recreate_no_lock<'a, D: ServerSideDb, C: CanDoCallbacks>(
         call_on: &'a D,
         type_id: TypeId,
@@ -99,7 +100,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         Output = crate::Result<Option<(EventId, i32, serde_json::Value, HashSet<User>)>>,
     >;
 
-    #[allow(clippy::too_many_arguments)] // This is only used to proxy to a real function
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)] // This is only used to proxy to a real function
     fn upload_object<D: ServerSideDb>(
         call_on: &D,
         user: User,
@@ -118,6 +119,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
 
     /// The [`Vec<User>`] in return type is the list of users who can read the object both before and after the change. Users who gained or
     /// lost access to `object_id` are returned as part of the `Vec<ReadPermsChanges>`.
+    #[allow(clippy::type_complexity)] // This is only used to proxy to a real function
     fn upload_event<D: ServerSideDb>(
         call_on: &D,
         user: User,

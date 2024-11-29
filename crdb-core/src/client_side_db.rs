@@ -7,6 +7,10 @@ use std::{
     sync::Arc,
 };
 
+// TODO(misc-med): refactor these into proper structs
+pub type SubscribedObject = (TypeId, serde_json::Value, Option<Updatedness>);
+pub type SubscribedQuery = (Arc<Query>, TypeId, Option<Updatedness>, Lock);
+
 pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     fn storage_info(&self) -> impl waaaa::Future<Output = crate::Result<ClientStorageInfo>>;
 
@@ -79,15 +83,11 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
 
     fn get_subscribed_objects(
         &self,
-    ) -> impl waaaa::Future<
-        Output = crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>>,
-    >;
+    ) -> impl waaaa::Future<Output = crate::Result<HashMap<ObjectId, SubscribedObject>>>;
 
     fn get_subscribed_queries(
         &self,
-    ) -> impl waaaa::Future<
-        Output = crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>>,
-    >;
+    ) -> impl waaaa::Future<Output = crate::Result<HashMap<QueryId, SubscribedQuery>>>;
 
     fn subscribe_query(
         &self,
