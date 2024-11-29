@@ -22,7 +22,7 @@ jobs:
         rust:
           - { name: Nightly }
           - { name: Stable, sigil: '+stable', toolchain: 'stable' }
-          - { name: MSRV, sigil: '+1.75.0', toolchain: '1.75.0' }
+          - { name: MSRV, sigil: '+1.81.0', toolchain: '1.81.0' }
         include:
           - hardcoded: true
             name: Just Test
