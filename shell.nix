@@ -9,7 +9,9 @@ pkgs.stdenv.mkDerivation {
       cargo-hack
       cargo-nextest
       cargo-udeps
-      # chromedriver # Use geckodriver for local tests, as chromedriver is used in CI
+      # chromedriver # TODO(misc-low): test for both gecko and chrome in ci and locally
+      # chromium
+      firefox
       geckodriver
       just
       niv
