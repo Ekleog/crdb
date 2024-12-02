@@ -23,7 +23,7 @@ arbitrary-json = "=0.1.1" # very small crate, can we actually trust updates?
 async-stream = "0.3.5"
 axum = { version = "0.7.2", features = ["ws"] }
 bitflags = "2.4"
-bolero = { version = "0.11.1", features = ["arbitrary"] }
+bolero = { version = "0.12.0", features = ["arbitrary"] }
 chrono = "0.4.31"
 console_error_panic_hook = "0.1.7"
 cron = "0.13.0"
