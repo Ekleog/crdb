@@ -39,7 +39,7 @@ jobs:
           tool: just, cargo-nextest, cargo-hack, sqlx-cli, wasm-bindgen-cli
 
       # Setup sccache, that'll share build artifacts with all the target directories
-      - uses: mozilla-actions/sccache-action@9e326ebed976843c9932b3aa0e021c6f50310eb4
+      - uses: mozilla-actions/sccache-action@054db53350805f83040bf3e6e9b8cf5a139aa7c9
       - run: |
           echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
           echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
