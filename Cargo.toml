@@ -21,7 +21,7 @@ anyhow = "1.0"
 arbitrary = { version = "1.3", features = ["derive"] }
 arbitrary-json = "=0.1.1" # very small crate, can we actually trust updates?
 async-stream = "0.3.5"
-axum = { version = "0.7.2", features = ["ws"] }
+axum = { version = "0.8.1", features = ["ws"] }
 bitflags = "2.4"
 bolero = { version = "0.12.0", features = ["arbitrary"] }
 chrono = "0.4.31"
