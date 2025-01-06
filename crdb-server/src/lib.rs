@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use axum::extract::ws::{self, WebSocket};
+use bytes::Bytes;
 use crdb_cache::CacheDb;
 use crdb_core::{
     BinPtr, ClientMessage, Db, EventId, MaybeObject, MaybeSnapshot, ObjectId, Query, QueryId,
@@ -248,7 +249,8 @@ impl<C: crdb_core::Config> Server<C> {
                         }
                     }
                     Some(Ok(ws::Message::Binary(bin))) => {
-                        if let Err(err) = self.handle_client_binary(&mut conn, bin.into_boxed_slice().into()).await {
+                        let bin = Vec::<u8>::from(bin).into_boxed_slice().into();
+                        if let Err(err) = self.handle_client_binary(&mut conn, bin).await {
                             tracing::warn!(?err, "client binary violated protocol");
                             break;
                         }
@@ -958,7 +960,7 @@ impl<C: crdb_core::Config> Server<C> {
         .await?;
         for bin in bins {
             socket
-                .send(ws::Message::Binary(bin.to_vec()))
+                .send(ws::Message::Binary(Bytes::from_owner(bin)))
                 .await
                 .wrap_context("sending binary to client")?
         }
@@ -988,7 +990,7 @@ impl<C: crdb_core::Config> Server<C> {
     async fn send(socket: &mut WebSocket, msg: &ServerMessage) -> crate::Result<()> {
         let msg = serde_json::to_string(msg).wrap_context("serializing server message")?;
         socket
-            .send(ws::Message::Text(msg))
+            .send(ws::Message::Text(msg.into()))
             .await
             .wrap_context("sending response to client")
     }
