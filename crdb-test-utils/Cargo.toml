@@ -19,3 +19,6 @@ serde_json.workspace = true
 tokio.workspace = true
 ulid.workspace = true
 waaaa.workspace = true
+
+[dev-dependencies]
+getrandom = { workspace = true, features = ["js"] }
