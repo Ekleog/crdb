@@ -1,7 +1,17 @@
 [workspace]
 resolver = "2"
 members = [
-    "crdb", "crdb-cache", "crdb-client", "crdb-core", "crdb-helpers", "crdb-indexed-db", "crdb-macros", "crdb-postgres", "crdb-server", "crdb-sqlite", "crdb-test-utils",
+    "crdb",
+    "crdb-cache",
+    "crdb-client",
+    "crdb-core",
+    "crdb-helpers",
+    "crdb-indexed-db",
+    "crdb-macros",
+    "crdb-postgres",
+    "crdb-server",
+    "crdb-sqlite",
+    "crdb-test-utils",
 ]
 
 [workspace.dependencies]
@@ -59,13 +69,15 @@ tokio-util = "0.7.10"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tracing-wasm = "0.2.1"
-ulid = { version = "1.1.1", features = ["serde"] } # 1.1.1 required for wasm support
+ulid = { version = "1.1.1", features = [ # 1.1.1 required for wasm support
+    "serde",
+] }
 uuid = "1.6"
 waaaa = "0.1.0"
 wasm-bindgen = "0.2.95"
 wasm-bindgen-futures = "0.4.39"
 wasm-bindgen-test = "0.3.39"
-web-time = { version = "1.0", features = ["serde"] }
+web-time = { version = "1.1.0", features = ["serde"] }
 web-sys = { version = "0.3.66", features = [
     "console",
     "DomException",
@@ -81,7 +93,3 @@ inherits = "dev"
 opt-level = 3
 incremental = false
 codegen-units = 1
-
-[patch.crates-io]
-# TODO(blocked): remove override once https://github.com/daxpedda/web-time/pull/24 lands
-web-time = { version = "1.0", git = "https://github.com/daxpedda/web-time", rev = "d19e513655a00261aa21b33c0e0b6645bcf45c05" }
