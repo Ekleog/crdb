@@ -754,7 +754,7 @@ macro_rules! fuzz_simple {
         }
 
         #[fuzz_helpers::test]
-        #[cfg(disable)]
+        #[cfg(any())] // disabled
         async fn impl_reproducer() {
             let cluster = setup();
             fuzz_impl(
