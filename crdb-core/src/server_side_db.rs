@@ -1,8 +1,8 @@
 use web_time::SystemTime;
 
 use crate::{
-    CanDoCallbacks, Db, EventId, Object, ObjectData, ObjectId, Query, TypeId, Update, Updatedness,
-    User,
+    CanDoCallbacks, Db, EventId, Object, ObjectData, ObjectId, Query, Session, SessionRef,
+    SessionToken, SnapshotData, TypeId, Update, Updatedness, User,
 };
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
@@ -21,7 +21,8 @@ pub struct ReadPermsChanges {
 }
 
 pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
-    type Transaction: waaaa::Send;
+    type Connection: waaaa::Send;
+    type Transaction<'a>: waaaa::Send;
 
     // TODO(blocked): replace with -> impl once https://github.com/rust-lang/rust/issues/100013 is fixed
     // This will also remove the clippy lint
@@ -40,10 +41,19 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         >,
     >;
 
+    fn get_transaction(&self) -> impl waaaa::Future<Output = crate::Result<Self::Transaction<'_>>>;
+
+    fn get_latest_snapshot(
+        &self,
+        transaction: &mut Self::Connection,
+        user: User,
+        object_id: ObjectId,
+    ) -> impl waaaa::Future<Output = crate::Result<SnapshotData>>;
+
     // TODO(test-high): introduce in server-side fuzzer
     fn get_all(
         &self,
-        transaction: &mut Self::Transaction,
+        transaction: &mut Self::Connection,
         user: User,
         object_id: ObjectId,
         only_updated_since: Option<Updatedness>,
@@ -95,4 +105,39 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         event: Arc<T::Event>,
         updatedness: Updatedness,
     ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
+
+    fn update_pending_rdeps(&self) -> impl '_ + waaaa::Future<Output = crate::Result<()>>;
+
+    fn login_session(
+        &self,
+        session: Session,
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<(SessionToken, SessionRef)>>;
+
+    fn resume_session(
+        &self,
+        token: SessionToken,
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<Session>>;
+
+    fn mark_session_active(
+        &self,
+        token: SessionToken,
+        at: SystemTime,
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<()>>;
+
+    fn rename_session<'a>(
+        &'a self,
+        token: SessionToken,
+        new_name: &'a str,
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<()>>;
+
+    fn list_sessions(
+        &self,
+        user: User,
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<Vec<Session>>>;
+
+    fn disconnect_session(
+        &self,
+        user: User,
+        session: SessionRef,
+    ) -> impl '_ + waaaa::Future<Output = crate::Result<()>>;
 }

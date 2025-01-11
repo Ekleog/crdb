@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-arbitrary = [ "dep:arbitrary", "arbitrary-json", "rust_decimal/rust-fuzz" ]
-indexed-db = [ "dep:indexed-db", "serde-wasm-bindgen", "web-sys" ]
-server = [ "axum", "rand", "sqlx-postgres" ]
-sqlx-postgres = [ "sqlx", "sqlx/postgres", "sqlx/uuid", "uuid" ]
-sqlx-sqlite = [ "sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid" ]
-uuid = [ "dep:uuid" ]
+arbitrary = ["dep:arbitrary", "arbitrary-json", "rust_decimal/rust-fuzz"]
+indexed-db = ["dep:indexed-db", "serde-wasm-bindgen", "web-sys"]
+server = ["axum", "rand", "sqlx-postgres"]
+sqlx-postgres = ["sqlx", "sqlx/postgres", "sqlx/uuid", "uuid"]
+sqlx-sqlite = ["sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid"]
+uuid = ["dep:uuid"]
 
 [dependencies]
 anyhow.workspace = true
@@ -39,7 +39,7 @@ arbitrary = { workspace = true, optional = true }
 arbitrary-json = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 indexed-db = { workspace = true, optional = true }
-rand = { workspace = true, optional = true}
+rand = { workspace = true, optional = true }
 serde-wasm-bindgen = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }

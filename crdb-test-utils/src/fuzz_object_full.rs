@@ -29,6 +29,20 @@ macro_rules! fuzz_object_full {
         }
 
         #[fuzz_helpers::test]
+        async fn regression_create_binary_with_fake_id_always_failed() {
+            use Op::*;
+            let cluster = setup();
+            fuzz_impl(
+                &cluster,
+                Arc::new(vec![CreateBinary {
+                    data: Arc::new([60u8, 164, 171, 171, 123, 98, 174, 193, 202, 183, 86]) as _,
+                    fake_id: Some(BinPtr::from_u128(0)),
+                }]),
+            )
+            .await;
+        }
+
+        #[fuzz_helpers::test]
         async fn regression_postgres_and_indexeddb_considered_missing_binaries_the_other_way_around(
         ) {
             use Op::*;

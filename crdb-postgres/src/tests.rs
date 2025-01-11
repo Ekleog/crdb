@@ -82,7 +82,7 @@ impl Drop for TmpDb {
 }
 
 mod fuzz_helpers {
-    use std::{ops::Deref, sync::Arc};
+    use std::sync::Arc;
 
     use crate::{tests::TmpDb, PostgresDb};
     use crdb_cache::CacheDb;
@@ -90,18 +90,8 @@ mod fuzz_helpers {
 
     pub use tokio::test;
 
-    pub struct Database(Arc<CacheDb<PostgresDb<Config>>>);
+    pub type Database = Arc<CacheDb<PostgresDb<Config>>>;
     pub type SetupState = TmpDb;
-
-    // TODO(api-high): remove this type and especially this Deref once CacheDb is properly always updated whatever the operation
-    // that happens (here in particular, Vacuum)
-    impl Deref for Database {
-        type Target = PostgresDb<Config>;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
 
     pub fn setup() -> (TmpDb, bool) {
         (TmpDb::new(), true)
@@ -114,7 +104,7 @@ mod fuzz_helpers {
             .execute(&pool)
             .await
             .unwrap();
-        (Database(db), ())
+        (db, ())
     }
 
     macro_rules! make_fuzzer {

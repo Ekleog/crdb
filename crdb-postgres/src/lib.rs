@@ -57,128 +57,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         Ok(cache_db)
     }
 
-    pub async fn login_session(
-        &self,
-        session: Session,
-    ) -> crate::Result<(SessionToken, SessionRef)> {
-        let token = SessionToken::new();
-        sqlx::query("INSERT INTO sessions VALUES ($1, $2, $3, $4, $5, $6, $7)")
-            .bind(token)
-            .bind(session.session_ref)
-            .bind(session.user_id)
-            .bind(&session.session_name)
-            .bind(session.login_time.ms_since_posix()?)
-            .bind(session.last_active.ms_since_posix()?)
-            .bind(
-                session
-                    .expiration_time
-                    .map(|t| t.ms_since_posix())
-                    .transpose()?,
-            )
-            .execute(&self.db)
-            .await
-            .wrap_with_context(|| {
-                format!("logging in new session {token:?} with data {session:?}")
-            })?;
-        Ok((token, session.session_ref))
-    }
-
-    pub async fn resume_session(&self, token: SessionToken) -> crate::Result<Session> {
-        // TODO(server-high): actually implement expiration_time validation
-        let res = sqlx::query!(
-            "SELECT * FROM sessions WHERE session_token = $1",
-            token as SessionToken
-        )
-        .fetch_optional(&self.db)
-        .await
-        .wrap_with_context(|| format!("resuming session for {token:?}"))?;
-        let Some(res) = res else {
-            return Err(crate::Error::InvalidToken(token));
-        };
-        Ok(Session {
-            user_id: User::from_uuid(res.user_id),
-            session_ref: SessionRef::from_uuid(res.session_ref),
-            session_name: res.name,
-            login_time: SystemTime::from_ms_since_posix(res.login_time)
-                .expect("negative timestamp made its way into database"),
-            last_active: SystemTime::from_ms_since_posix(res.last_active)
-                .expect("negative timestamp made its way into database"),
-            expiration_time: res
-                .expiration_time
-                .map(SystemTime::from_ms_since_posix)
-                .transpose()
-                .expect("negative timestamp made its way into database"),
-        })
-    }
-
-    pub async fn mark_session_active(
-        &self,
-        token: SessionToken,
-        at: SystemTime,
-    ) -> crate::Result<()> {
-        let affected = sqlx::query("UPDATE sessions SET last_active = $1 WHERE session_token = $2")
-            .bind(at.ms_since_posix()?)
-            .bind(token)
-            .execute(&self.db)
-            .await
-            .wrap_with_context(|| format!("marking session {token:?} as active as of {at:?}"))?
-            .rows_affected();
-        if affected != 1 {
-            return Err(crate::Error::InvalidToken(token));
-        }
-        Ok(())
-    }
-
-    pub async fn rename_session(&self, token: SessionToken, new_name: &str) -> crate::Result<()> {
-        let affected = sqlx::query("UPDATE sessions SET name = $1 WHERE session_token = $2")
-            .bind(new_name)
-            .bind(token)
-            .execute(&self.db)
-            .await
-            .wrap_with_context(|| format!("renaming session {token:?} into {new_name:?}"))?
-            .rows_affected();
-        if affected != 1 {
-            return Err(crate::Error::InvalidToken(token));
-        }
-        Ok(())
-    }
-
-    pub async fn list_sessions(&self, user: User) -> crate::Result<Vec<Session>> {
-        let rows = sqlx::query!("SELECT * FROM sessions WHERE user_id = $1", user as User)
-            .fetch_all(&self.db)
-            .await
-            .wrap_with_context(|| format!("listing sessions for {user:?}"))?;
-        let sessions = rows
-            .into_iter()
-            .map(|r| Session {
-                user_id: User::from_uuid(r.user_id),
-                session_ref: SessionRef::from_uuid(r.session_ref),
-                session_name: r.name,
-                login_time: SystemTime::from_ms_since_posix(r.login_time)
-                    .expect("negative timestamp made its way into database"),
-                last_active: SystemTime::from_ms_since_posix(r.last_active)
-                    .expect("negative timestamp made its way into database"),
-                expiration_time: r
-                    .expiration_time
-                    .map(SystemTime::from_ms_since_posix)
-                    .transpose()
-                    .expect("negative timestamp made its way into database"),
-            })
-            .collect();
-        Ok(sessions)
-    }
-
-    pub async fn disconnect_session(&self, user: User, session: SessionRef) -> crate::Result<()> {
-        sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND session_ref = $2")
-            .bind(user)
-            .bind(session)
-            .execute(&self.db)
-            .await
-            .wrap_with_context(|| format!("disconnecting session {session:?}"))?;
-        // If nothing to delete it's fine, the session was probably already disconnected
-        Ok(())
-    }
-
     async fn reencode<T: Object>(
         &self,
         object_id: ObjectId,
@@ -447,35 +325,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
             }
         }
         Ok(res)
-    }
-
-    pub async fn update_pending_rdeps(&self) -> crate::Result<()> {
-        let cache_db = self
-            .cache_db
-            .upgrade()
-            .expect("Called PostgresDb::create after CacheDb went away");
-        let cache_db = &*cache_db;
-
-        let mut rdep_update_res = sqlx::query!(
-            "
-                SELECT object_id
-                FROM snapshots
-                WHERE array_length(reverse_dependents_to_update, 1) IS NOT NULL
-            "
-        )
-        .map(|r| ObjectId::from_uuid(r.object_id))
-        .fetch(&self.db)
-        .map(|object_id| async move {
-            let object_id = object_id.wrap_context("listing updates with rdeps to update")?;
-            self.update_rdeps(object_id, cache_db)
-                .await
-                .wrap_with_context(|| format!("updating rdeps of {object_id:?}"))
-        })
-        .buffered(32);
-        while let Some(res) = rdep_update_res.next().await {
-            res?;
-        }
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)] // TODO(misc-low): refactor to have a proper struct
@@ -940,8 +789,154 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
 
         Ok(Either::Left(Arc::new(object)))
     }
+}
 
-    #[cfg(test)]
+impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
+    async fn create<T: Object>(
+        &self,
+        object_id: ObjectId,
+        created_at: EventId,
+        object: Arc<T>,
+        updatedness: Option<Updatedness>,
+        _lock: Lock,
+    ) -> crate::Result<Option<Arc<T>>> {
+        let updatedness =
+            updatedness.expect("Called PostgresDb::create without specifying updatedness");
+        Ok(self
+            .create_and_return_rdep_changes::<T>(object_id, created_at, object, updatedness)
+            .await?
+            .map(|(snap, _)| snap))
+    }
+
+    async fn submit<T: Object>(
+        &self,
+        object_id: ObjectId,
+        event_id: EventId,
+        event: Arc<T::Event>,
+        updatedness: Option<Updatedness>,
+        _force_lock: Lock,
+    ) -> crate::Result<Option<Arc<T>>> {
+        let updatedness =
+            updatedness.expect("Called PostgresDb::create without specifying updatedness");
+        Ok(self
+            .submit_and_return_rdep_changes::<T>(object_id, event_id, event, updatedness)
+            .await?
+            .map(|(snap, _)| snap))
+    }
+
+    async fn get_latest<T: Object>(
+        &self,
+        _lock: Lock,
+        object_id: ObjectId,
+    ) -> crate::Result<Arc<T>> {
+        reord::point().await;
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // First, check the existence and requested type
+        reord::point().await;
+        let latest_snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, type_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_latest
+            ",
+            object_id as ObjectId,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
+        let latest_snapshot = match latest_snapshot {
+            Some(s) => s,
+            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
+        };
+        let real_type_id = TypeId::from_uuid(latest_snapshot.type_id);
+        let expected_type_id = *T::type_ulid();
+        if real_type_id != expected_type_id {
+            return Err(crate::Error::WrongType {
+                object_id,
+                expected_type_id,
+                real_type_id,
+            });
+        }
+
+        // All good, let's parse the snapshot and return
+        reord::point().await;
+        let res = parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
+            .wrap_with_context(|| format!("parsing latest snapshot for {object_id:?}"))?;
+        Ok(Arc::new(res))
+    }
+
+    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
+        if crdb_core::hash_binary(&data) != binary_id {
+            return Err(crate::Error::BinaryHashMismatch(binary_id));
+        }
+        reord::maybe_lock().await;
+        sqlx::query("INSERT INTO binaries VALUES ($1, $2) ON CONFLICT DO NOTHING")
+            .bind(binary_id)
+            .bind(&*data)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("inserting binary {binary_id:?} into database"))?;
+        reord::point().await;
+        Ok(())
+    }
+
+    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
+        reord::point().await;
+        Ok(sqlx::query!(
+            "SELECT data FROM binaries WHERE binary_id = $1",
+            binary_id as BinPtr
+        )
+        .fetch_optional(&self.db)
+        .await
+        .wrap_with_context(|| format!("getting {binary_id:?} from database"))?
+        .map(|res| res.data.into_boxed_slice().into()))
+    }
+
+    /// Returns the number of errors that happened while re-encoding
+    async fn reencode_old_versions<T: Object>(&self) -> usize {
+        let mut num_errors = 0;
+        let mut old_snapshots = sqlx::query(
+            "
+                SELECT object_id, snapshot_id
+                FROM snapshots
+                WHERE type_id = $1
+                AND (snapshot_version < $2 OR normalizer_version < $3)
+            ",
+        )
+        .bind(T::type_ulid())
+        .bind(T::snapshot_version())
+        .bind(normalizer_version())
+        .fetch(&self.db);
+        while let Some(s) = old_snapshots.next().await {
+            let s = match s {
+                Ok(s) => s,
+                Err(err) => {
+                    num_errors += 1;
+                    tracing::error!(?err, "failed retrieving one snapshot for upgrade");
+                    continue;
+                }
+            };
+            let object_id = ObjectId::from_uuid(s.get(0));
+            let snapshot_id = EventId::from_uuid(s.get(1));
+            if let Err(err) = self.reencode::<T>(object_id, snapshot_id).await {
+                num_errors += 1;
+                tracing::error!(
+                    ?err,
+                    ?object_id,
+                    ?snapshot_id,
+                    "failed reencoding snapshot with newer version",
+                );
+            }
+        }
+        num_errors
+    }
+
     async fn assert_invariants_generic(&self) {
         // All binaries are present
         assert_eq!(
@@ -1032,7 +1027,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         )
     }
 
-    #[cfg(test)]
     async fn assert_invariants_for<T: Object>(&self) {
         // For each object
         let objects = sqlx::query!(
@@ -1185,203 +1179,6 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
             );
         }
     }
-
-    pub async fn get_transaction(&self) -> crate::Result<sqlx::Transaction<'_, sqlx::Postgres>> {
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
-        // Atomically perform all the reads in this transaction
-        reord::point().await;
-        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-            .execute(&mut *transaction)
-            .await
-            .wrap_context("setting transaction as repeatable read")?;
-
-        Ok(transaction)
-    }
-
-    pub async fn get_latest_snapshot(
-        &self,
-        transaction: &mut sqlx::PgConnection,
-        user: User,
-        object_id: ObjectId,
-    ) -> crate::Result<SnapshotData> {
-        reord::point().await;
-        let latest_snapshot = sqlx::query!(
-            "
-                SELECT snapshot_id, type_id, snapshot_version, snapshot
-                FROM snapshots
-                WHERE object_id = $1
-                AND is_latest
-                AND $2 = ANY (users_who_can_read)
-            ",
-            object_id as ObjectId,
-            user as User,
-        )
-        .fetch_optional(&mut *transaction)
-        .await
-        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
-        let latest_snapshot = match latest_snapshot {
-            Some(s) => s,
-            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
-        };
-        Ok(SnapshotData {
-            object_id,
-            type_id: TypeId::from_uuid(latest_snapshot.type_id),
-            snapshot_version: latest_snapshot.snapshot_version,
-            snapshot: Arc::new(latest_snapshot.snapshot),
-        })
-    }
-}
-
-impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
-    async fn create<T: Object>(
-        &self,
-        object_id: ObjectId,
-        created_at: EventId,
-        object: Arc<T>,
-        updatedness: Option<Updatedness>,
-        _lock: Lock,
-    ) -> crate::Result<Option<Arc<T>>> {
-        let updatedness =
-            updatedness.expect("Called PostgresDb::create without specifying updatedness");
-        Ok(self
-            .create_and_return_rdep_changes::<T>(object_id, created_at, object, updatedness)
-            .await?
-            .map(|(snap, _)| snap))
-    }
-
-    async fn submit<T: Object>(
-        &self,
-        object_id: ObjectId,
-        event_id: EventId,
-        event: Arc<T::Event>,
-        updatedness: Option<Updatedness>,
-        _force_lock: Lock,
-    ) -> crate::Result<Option<Arc<T>>> {
-        let updatedness =
-            updatedness.expect("Called PostgresDb::create without specifying updatedness");
-        Ok(self
-            .submit_and_return_rdep_changes::<T>(object_id, event_id, event, updatedness)
-            .await?
-            .map(|(snap, _)| snap))
-    }
-
-    async fn get_latest<T: Object>(
-        &self,
-        _lock: Lock,
-        object_id: ObjectId,
-    ) -> crate::Result<Arc<T>> {
-        reord::point().await;
-        let mut transaction = self
-            .db
-            .begin()
-            .await
-            .wrap_context("acquiring postgresql transaction")?;
-
-        // First, check the existence and requested type
-        reord::point().await;
-        let latest_snapshot = sqlx::query!(
-            "
-                SELECT snapshot_id, type_id, snapshot_version, snapshot
-                FROM snapshots
-                WHERE object_id = $1
-                AND is_latest
-            ",
-            object_id as ObjectId,
-        )
-        .fetch_optional(&mut *transaction)
-        .await
-        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
-        let latest_snapshot = match latest_snapshot {
-            Some(s) => s,
-            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
-        };
-        let real_type_id = TypeId::from_uuid(latest_snapshot.type_id);
-        let expected_type_id = *T::type_ulid();
-        if real_type_id != expected_type_id {
-            return Err(crate::Error::WrongType {
-                object_id,
-                expected_type_id,
-                real_type_id,
-            });
-        }
-
-        // All good, let's parse the snapshot and return
-        reord::point().await;
-        let res = parse_snapshot::<T>(latest_snapshot.snapshot_version, latest_snapshot.snapshot)
-            .wrap_with_context(|| format!("parsing latest snapshot for {object_id:?}"))?;
-        Ok(Arc::new(res))
-    }
-
-    async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        if crdb_core::hash_binary(&data) != binary_id {
-            return Err(crate::Error::BinaryHashMismatch(binary_id));
-        }
-        reord::maybe_lock().await;
-        sqlx::query("INSERT INTO binaries VALUES ($1, $2) ON CONFLICT DO NOTHING")
-            .bind(binary_id)
-            .bind(&*data)
-            .execute(&self.db)
-            .await
-            .wrap_with_context(|| format!("inserting binary {binary_id:?} into database"))?;
-        reord::point().await;
-        Ok(())
-    }
-
-    async fn get_binary(&self, binary_id: BinPtr) -> crate::Result<Option<Arc<[u8]>>> {
-        reord::point().await;
-        Ok(sqlx::query!(
-            "SELECT data FROM binaries WHERE binary_id = $1",
-            binary_id as BinPtr
-        )
-        .fetch_optional(&self.db)
-        .await
-        .wrap_with_context(|| format!("getting {binary_id:?} from database"))?
-        .map(|res| res.data.into_boxed_slice().into()))
-    }
-
-    /// Returns the number of errors that happened while re-encoding
-    async fn reencode_old_versions<T: Object>(&self) -> usize {
-        let mut num_errors = 0;
-        let mut old_snapshots = sqlx::query(
-            "
-                SELECT object_id, snapshot_id
-                FROM snapshots
-                WHERE type_id = $1
-                AND (snapshot_version < $2 OR normalizer_version < $3)
-            ",
-        )
-        .bind(T::type_ulid())
-        .bind(T::snapshot_version())
-        .bind(normalizer_version())
-        .fetch(&self.db);
-        while let Some(s) = old_snapshots.next().await {
-            let s = match s {
-                Ok(s) => s,
-                Err(err) => {
-                    num_errors += 1;
-                    tracing::error!(?err, "failed retrieving one snapshot for upgrade");
-                    continue;
-                }
-            };
-            let object_id = ObjectId::from_uuid(s.get(0));
-            let snapshot_id = EventId::from_uuid(s.get(1));
-            if let Err(err) = self.reencode::<T>(object_id, snapshot_id).await {
-                num_errors += 1;
-                tracing::error!(
-                    ?err,
-                    ?object_id,
-                    ?snapshot_id,
-                    "failed reencoding snapshot with newer version",
-                );
-            }
-        }
-        num_errors
-    }
 }
 
 type TrackedLock<'cb> = (
@@ -1417,7 +1214,8 @@ impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
 }
 
 impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
-    type Transaction = sqlx::PgConnection;
+    type Connection = sqlx::PgConnection;
+    type Transaction<'a> = sqlx::Transaction<'a, sqlx::Postgres>;
 
     /// This function assumes that the lock on `object_id` is already taken.
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
@@ -1453,6 +1251,56 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
                 locks.push(l);
             }
             Ok((users_who_can_read, users_who_can_read_depends_on, locks))
+        })
+    }
+
+    async fn get_transaction(&self) -> crate::Result<sqlx::Transaction<'_, sqlx::Postgres>> {
+        let mut transaction = self
+            .db
+            .begin()
+            .await
+            .wrap_context("acquiring postgresql transaction")?;
+
+        // Atomically perform all the reads in this transaction
+        reord::point().await;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .wrap_context("setting transaction as repeatable read")?;
+
+        Ok(transaction)
+    }
+
+    async fn get_latest_snapshot(
+        &self,
+        transaction: &mut sqlx::PgConnection,
+        user: User,
+        object_id: ObjectId,
+    ) -> crate::Result<SnapshotData> {
+        reord::point().await;
+        let latest_snapshot = sqlx::query!(
+            "
+                SELECT snapshot_id, type_id, snapshot_version, snapshot
+                FROM snapshots
+                WHERE object_id = $1
+                AND is_latest
+                AND $2 = ANY (users_who_can_read)
+            ",
+            object_id as ObjectId,
+            user as User,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .wrap_with_context(|| format!("fetching latest snapshot for object {object_id:?}"))?;
+        let latest_snapshot = match latest_snapshot {
+            Some(s) => s,
+            None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
+        };
+        Ok(SnapshotData {
+            object_id,
+            type_id: TypeId::from_uuid(latest_snapshot.type_id),
+            snapshot_version: latest_snapshot.snapshot_version,
+            snapshot: Arc::new(latest_snapshot.snapshot),
         })
     }
 
@@ -2057,6 +1905,154 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
                 Ok(None)
             }
         }
+    }
+
+    async fn update_pending_rdeps(&self) -> crate::Result<()> {
+        let cache_db = self
+            .cache_db
+            .upgrade()
+            .expect("Called PostgresDb::create after CacheDb went away");
+        let cache_db = &*cache_db;
+
+        let mut rdep_update_res = sqlx::query!(
+            "
+                SELECT object_id
+                FROM snapshots
+                WHERE array_length(reverse_dependents_to_update, 1) IS NOT NULL
+            "
+        )
+        .map(|r| ObjectId::from_uuid(r.object_id))
+        .fetch(&self.db)
+        .map(|object_id| async move {
+            let object_id = object_id.wrap_context("listing updates with rdeps to update")?;
+            self.update_rdeps(object_id, cache_db)
+                .await
+                .wrap_with_context(|| format!("updating rdeps of {object_id:?}"))
+        })
+        .buffered(32);
+        while let Some(res) = rdep_update_res.next().await {
+            res?;
+        }
+        Ok(())
+    }
+
+    async fn login_session(&self, session: Session) -> crate::Result<(SessionToken, SessionRef)> {
+        let token = SessionToken::new();
+        sqlx::query("INSERT INTO sessions VALUES ($1, $2, $3, $4, $5, $6, $7)")
+            .bind(token)
+            .bind(session.session_ref)
+            .bind(session.user_id)
+            .bind(&session.session_name)
+            .bind(session.login_time.ms_since_posix()?)
+            .bind(session.last_active.ms_since_posix()?)
+            .bind(
+                session
+                    .expiration_time
+                    .map(|t| t.ms_since_posix())
+                    .transpose()?,
+            )
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| {
+                format!("logging in new session {token:?} with data {session:?}")
+            })?;
+        Ok((token, session.session_ref))
+    }
+
+    async fn resume_session(&self, token: SessionToken) -> crate::Result<Session> {
+        // TODO(server-high): actually implement expiration_time validation
+        let res = sqlx::query!(
+            "SELECT * FROM sessions WHERE session_token = $1",
+            token as SessionToken
+        )
+        .fetch_optional(&self.db)
+        .await
+        .wrap_with_context(|| format!("resuming session for {token:?}"))?;
+        let Some(res) = res else {
+            return Err(crate::Error::InvalidToken(token));
+        };
+        Ok(Session {
+            user_id: User::from_uuid(res.user_id),
+            session_ref: SessionRef::from_uuid(res.session_ref),
+            session_name: res.name,
+            login_time: SystemTime::from_ms_since_posix(res.login_time)
+                .expect("negative timestamp made its way into database"),
+            last_active: SystemTime::from_ms_since_posix(res.last_active)
+                .expect("negative timestamp made its way into database"),
+            expiration_time: res
+                .expiration_time
+                .map(SystemTime::from_ms_since_posix)
+                .transpose()
+                .expect("negative timestamp made its way into database"),
+        })
+    }
+
+    async fn mark_session_active(&self, token: SessionToken, at: SystemTime) -> crate::Result<()> {
+        let affected = sqlx::query("UPDATE sessions SET last_active = $1 WHERE session_token = $2")
+            .bind(at.ms_since_posix()?)
+            .bind(token)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("marking session {token:?} as active as of {at:?}"))?
+            .rows_affected();
+        if affected != 1 {
+            return Err(crate::Error::InvalidToken(token));
+        }
+        Ok(())
+    }
+
+    async fn rename_session<'a>(
+        &'a self,
+        token: SessionToken,
+        new_name: &'a str,
+    ) -> crate::Result<()> {
+        let affected = sqlx::query("UPDATE sessions SET name = $1 WHERE session_token = $2")
+            .bind(new_name)
+            .bind(token)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("renaming session {token:?} into {new_name:?}"))?
+            .rows_affected();
+        if affected != 1 {
+            return Err(crate::Error::InvalidToken(token));
+        }
+        Ok(())
+    }
+
+    async fn list_sessions(&self, user: User) -> crate::Result<Vec<Session>> {
+        let rows = sqlx::query!("SELECT * FROM sessions WHERE user_id = $1", user as User)
+            .fetch_all(&self.db)
+            .await
+            .wrap_with_context(|| format!("listing sessions for {user:?}"))?;
+        let sessions = rows
+            .into_iter()
+            .map(|r| Session {
+                user_id: User::from_uuid(r.user_id),
+                session_ref: SessionRef::from_uuid(r.session_ref),
+                session_name: r.name,
+                login_time: SystemTime::from_ms_since_posix(r.login_time)
+                    .expect("negative timestamp made its way into database"),
+                last_active: SystemTime::from_ms_since_posix(r.last_active)
+                    .expect("negative timestamp made its way into database"),
+                expiration_time: r
+                    .expiration_time
+                    .map(SystemTime::from_ms_since_posix)
+                    .transpose()
+                    .expect("negative timestamp made its way into database"),
+            })
+            .collect();
+        Ok(sessions)
+    }
+
+    async fn disconnect_session(&self, user: User, session: SessionRef) -> crate::Result<()> {
+        sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND session_ref = $2")
+            .bind(user)
+            .bind(session)
+            .execute(&self.db)
+            .await
+            .wrap_with_context(|| format!("disconnecting session {session:?}"))?;
+        // If nothing to delete it's fine, the session was probably already disconnected
+        Ok(())
     }
 }
 

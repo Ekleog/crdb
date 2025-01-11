@@ -51,7 +51,7 @@ impl FuzzState {
     }
 }
 
-async fn apply_op(db: &PostgresDb<Config>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(db: &CacheDb<PostgresDb<Config>>, s: &FuzzState, op: &Op) -> anyhow::Result<()> {
     match op {
         Op::Create {
             object_id,

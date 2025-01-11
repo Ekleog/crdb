@@ -232,205 +232,6 @@ impl IndexedDb {
         Ok(res)
     }
 
-    #[cfg(feature = "_tests")]
-    pub async fn assert_invariants_generic(&self) {
-        use std::collections::hash_map;
-
-        self.db
-            .transaction(&[
-                "snapshots_meta",
-                "events_meta",
-                "upload_queue_meta",
-                "binaries",
-            ])
-            .run(move |transaction| async move {
-                let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
-                let events_meta = transaction.object_store("events_meta").unwrap();
-                let binaries = transaction.object_store("binaries").unwrap();
-
-                let creation_object = snapshots_meta.index("creation_object").unwrap();
-
-                // All binaries are present
-                let required_binaries = Self::list_required_binaries(&transaction).await.unwrap();
-                for b in required_binaries {
-                    if !binaries.contains(&to_js(b).unwrap()).await.unwrap() {
-                        panic!("missing required binary {b:?}");
-                    }
-                }
-
-                // No event references an object without a creation snapshot
-                let mut event_cursor = events_meta.cursor().open().await.unwrap();
-                while let Some(e) = event_cursor.value() {
-                    let e = serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap();
-                    if !creation_object
-                        .contains(&Array::from_iter([
-                            &JsValue::from(1),
-                            &e.object_id.to_js_string(),
-                        ]))
-                        .await
-                        .unwrap()
-                    {
-                        panic!(
-                            "event {:?} references object {:?} that has no creation snapshot",
-                            e.event_id, e.object_id
-                        );
-                    }
-                    event_cursor.advance(1).await.unwrap();
-                }
-
-                // All non-creation snapshots match an event, on the same object
-                let mut snapshot_cursor = snapshots_meta.cursor().open().await.unwrap();
-                while let Some(s) = snapshot_cursor.value() {
-                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap();
-                    let e = events_meta
-                        .get(&s.snapshot_id.to_js_string())
-                        .await
-                        .unwrap();
-                    if s.is_creation.is_none() && !e.is_some() {
-                        panic!("snapshot {:?} has no corresponding event", s.snapshot_id);
-                    }
-                    if let Some(e) = e {
-                        let e = serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap();
-                        if e.object_id != s.object_id {
-                            panic!(
-                                "object for snapshot and event at {:?} does not match",
-                                s.snapshot_id
-                            );
-                        }
-                    }
-                    snapshot_cursor.advance(1).await.unwrap();
-                }
-
-                // All objects have a single type
-                let mut snapshot_cursor = snapshots_meta.cursor().open().await.unwrap();
-                let mut types = HashMap::new();
-                while let Some(s) = snapshot_cursor.value() {
-                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap();
-                    match types.entry(s.object_id) {
-                        hash_map::Entry::Occupied(o) => {
-                            if *o.get() != s.type_id {
-                                panic!("object {:?} has multiple type ids", s.object_id);
-                            }
-                        }
-                        hash_map::Entry::Vacant(v) => {
-                            v.insert(s.type_id);
-                        }
-                    }
-                    snapshot_cursor.advance(1).await.unwrap();
-                }
-
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
-    #[cfg(feature = "_tests")]
-    pub async fn assert_invariants_for<T: Object>(&self) {
-        use std::collections::BTreeMap;
-
-        self.db
-            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
-            .run(move |transaction| async move {
-                let snapshots_store = transaction.object_store("snapshots").unwrap();
-                let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
-                let events_store = transaction.object_store("events").unwrap();
-                let events_meta = transaction.object_store("events_meta").unwrap();
-
-                // Fetch all snapshots
-                let snapshots = snapshots_meta.get_all(None).await.unwrap();
-                let snapshots = snapshots
-                    .into_iter()
-                    .map(|s| serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap())
-                    .collect::<Vec<_>>();
-                let objects = snapshots
-                    .iter()
-                    .filter_map(|s| (s.type_id == *T::type_ulid()).then(|| s.object_id))
-                    .collect::<HashSet<_>>();
-                let mut object_snapshots_map = HashMap::new();
-                for o in objects.iter() {
-                    object_snapshots_map.insert(*o, BTreeMap::new());
-                }
-                for s in snapshots {
-                    if let Some(o) = object_snapshots_map.get_mut(&s.object_id) {
-                        o.insert(s.snapshot_id, s);
-                    }
-                }
-
-                // Fetch all events
-                let events = events_meta.get_all(None).await.unwrap();
-                let events = events
-                    .into_iter()
-                    .map(|e| serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap())
-                    .collect::<Vec<_>>();
-                let mut object_events_map = HashMap::new();
-                for o in objects.iter() {
-                    object_events_map.insert(*o, BTreeMap::new());
-                }
-                for e in events {
-                    if let Some(o) = object_events_map.get_mut(&e.object_id) {
-                        o.insert(e.event_id, e);
-                    }
-                }
-
-                // For each object
-                for object_id in objects {
-                    let snapshots = object_snapshots_map.get(&object_id).unwrap();
-                    let events = object_events_map.get(&object_id).unwrap();
-
-                    // It has a creation and a latest snapshot that surround all other snapshots
-                    let creation = snapshots.first_key_value().unwrap().1;
-                    let latest = snapshots.last_key_value().unwrap().1;
-                    assert!(creation.is_creation == Some(1));
-                    assert!(latest.is_latest == Some(1));
-                    assert!(creation.is_locked.is_some());
-                    if creation.snapshot_id == latest.snapshot_id {
-                        continue;
-                    }
-
-                    // Creation and latest snapshots surround all other events
-                    assert!(events.first_key_value().unwrap().0 > &creation.snapshot_id);
-                    assert!(events.last_key_value().unwrap().0 == &latest.snapshot_id);
-
-                    // Rebuilding the object gives the same snapshots
-                    let object = snapshots_store
-                        .get(&creation.snapshot_id.to_js_string())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    let mut object =
-                        parse_snapshot_js::<T>(creation.snapshot_version, object).unwrap();
-                    for (event_id, event_meta) in events.iter() {
-                        let e = events_store
-                            .get(&event_id.to_js_string())
-                            .await
-                            .unwrap()
-                            .unwrap();
-                        let e = serde_wasm_bindgen::from_value::<T::Event>(e).unwrap();
-                        assert_eq!(event_meta.required_binaries, e.required_binaries());
-                        object.apply(DbPtr::from(object_id), &e);
-                        if let Some(snapshot_meta) = snapshots.get(&event_id) {
-                            let s = snapshots_store
-                                .get(&event_id.to_js_string())
-                                .await
-                                .unwrap()
-                                .unwrap();
-                            let s =
-                                parse_snapshot_js::<T>(snapshot_meta.snapshot_version, s).unwrap();
-                            assert!(object == s);
-                            assert!(snapshot_meta.required_binaries == object.required_binaries());
-                            assert!(snapshot_meta.type_id == *T::type_ulid());
-                            assert!(snapshot_meta.is_locked.is_none());
-                        }
-                    }
-                }
-
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
     async fn create_impl<T: Object>(
         transaction: indexed_db::Transaction<crate::Error>,
         object_id: ObjectId,
@@ -1091,6 +892,203 @@ impl Db for IndexedDb {
                 1
             }
         }
+    }
+
+    async fn assert_invariants_generic(&self) {
+        use std::collections::hash_map;
+
+        self.db
+            .transaction(&[
+                "snapshots_meta",
+                "events_meta",
+                "upload_queue_meta",
+                "binaries",
+            ])
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
+                let events_meta = transaction.object_store("events_meta").unwrap();
+                let binaries = transaction.object_store("binaries").unwrap();
+
+                let creation_object = snapshots_meta.index("creation_object").unwrap();
+
+                // All binaries are present
+                let required_binaries = Self::list_required_binaries(&transaction).await.unwrap();
+                for b in required_binaries {
+                    if !binaries.contains(&to_js(b).unwrap()).await.unwrap() {
+                        panic!("missing required binary {b:?}");
+                    }
+                }
+
+                // No event references an object without a creation snapshot
+                let mut event_cursor = events_meta.cursor().open().await.unwrap();
+                while let Some(e) = event_cursor.value() {
+                    let e = serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap();
+                    if !creation_object
+                        .contains(&Array::from_iter([
+                            &JsValue::from(1),
+                            &e.object_id.to_js_string(),
+                        ]))
+                        .await
+                        .unwrap()
+                    {
+                        panic!(
+                            "event {:?} references object {:?} that has no creation snapshot",
+                            e.event_id, e.object_id
+                        );
+                    }
+                    event_cursor.advance(1).await.unwrap();
+                }
+
+                // All non-creation snapshots match an event, on the same object
+                let mut snapshot_cursor = snapshots_meta.cursor().open().await.unwrap();
+                while let Some(s) = snapshot_cursor.value() {
+                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap();
+                    let e = events_meta
+                        .get(&s.snapshot_id.to_js_string())
+                        .await
+                        .unwrap();
+                    if s.is_creation.is_none() && !e.is_some() {
+                        panic!("snapshot {:?} has no corresponding event", s.snapshot_id);
+                    }
+                    if let Some(e) = e {
+                        let e = serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap();
+                        if e.object_id != s.object_id {
+                            panic!(
+                                "object for snapshot and event at {:?} does not match",
+                                s.snapshot_id
+                            );
+                        }
+                    }
+                    snapshot_cursor.advance(1).await.unwrap();
+                }
+
+                // All objects have a single type
+                let mut snapshot_cursor = snapshots_meta.cursor().open().await.unwrap();
+                let mut types = HashMap::new();
+                while let Some(s) = snapshot_cursor.value() {
+                    let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap();
+                    match types.entry(s.object_id) {
+                        hash_map::Entry::Occupied(o) => {
+                            if *o.get() != s.type_id {
+                                panic!("object {:?} has multiple type ids", s.object_id);
+                            }
+                        }
+                        hash_map::Entry::Vacant(v) => {
+                            v.insert(s.type_id);
+                        }
+                    }
+                    snapshot_cursor.advance(1).await.unwrap();
+                }
+
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn assert_invariants_for<T: Object>(&self) {
+        use std::collections::BTreeMap;
+
+        self.db
+            .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"])
+            .run(move |transaction| async move {
+                let snapshots_store = transaction.object_store("snapshots").unwrap();
+                let snapshots_meta = transaction.object_store("snapshots_meta").unwrap();
+                let events_store = transaction.object_store("events").unwrap();
+                let events_meta = transaction.object_store("events_meta").unwrap();
+
+                // Fetch all snapshots
+                let snapshots = snapshots_meta.get_all(None).await.unwrap();
+                let snapshots = snapshots
+                    .into_iter()
+                    .map(|s| serde_wasm_bindgen::from_value::<SnapshotMeta>(s).unwrap())
+                    .collect::<Vec<_>>();
+                let objects = snapshots
+                    .iter()
+                    .filter_map(|s| (s.type_id == *T::type_ulid()).then(|| s.object_id))
+                    .collect::<HashSet<_>>();
+                let mut object_snapshots_map = HashMap::new();
+                for o in objects.iter() {
+                    object_snapshots_map.insert(*o, BTreeMap::new());
+                }
+                for s in snapshots {
+                    if let Some(o) = object_snapshots_map.get_mut(&s.object_id) {
+                        o.insert(s.snapshot_id, s);
+                    }
+                }
+
+                // Fetch all events
+                let events = events_meta.get_all(None).await.unwrap();
+                let events = events
+                    .into_iter()
+                    .map(|e| serde_wasm_bindgen::from_value::<EventMeta>(e).unwrap())
+                    .collect::<Vec<_>>();
+                let mut object_events_map = HashMap::new();
+                for o in objects.iter() {
+                    object_events_map.insert(*o, BTreeMap::new());
+                }
+                for e in events {
+                    if let Some(o) = object_events_map.get_mut(&e.object_id) {
+                        o.insert(e.event_id, e);
+                    }
+                }
+
+                // For each object
+                for object_id in objects {
+                    let snapshots = object_snapshots_map.get(&object_id).unwrap();
+                    let events = object_events_map.get(&object_id).unwrap();
+
+                    // It has a creation and a latest snapshot that surround all other snapshots
+                    let creation = snapshots.first_key_value().unwrap().1;
+                    let latest = snapshots.last_key_value().unwrap().1;
+                    assert!(creation.is_creation == Some(1));
+                    assert!(latest.is_latest == Some(1));
+                    assert!(creation.is_locked.is_some());
+                    if creation.snapshot_id == latest.snapshot_id {
+                        continue;
+                    }
+
+                    // Creation and latest snapshots surround all other events
+                    assert!(events.first_key_value().unwrap().0 > &creation.snapshot_id);
+                    assert!(events.last_key_value().unwrap().0 == &latest.snapshot_id);
+
+                    // Rebuilding the object gives the same snapshots
+                    let object = snapshots_store
+                        .get(&creation.snapshot_id.to_js_string())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    let mut object =
+                        parse_snapshot_js::<T>(creation.snapshot_version, object).unwrap();
+                    for (event_id, event_meta) in events.iter() {
+                        let e = events_store
+                            .get(&event_id.to_js_string())
+                            .await
+                            .unwrap()
+                            .unwrap();
+                        let e = serde_wasm_bindgen::from_value::<T::Event>(e).unwrap();
+                        assert_eq!(event_meta.required_binaries, e.required_binaries());
+                        object.apply(DbPtr::from(object_id), &e);
+                        if let Some(snapshot_meta) = snapshots.get(&event_id) {
+                            let s = snapshots_store
+                                .get(&event_id.to_js_string())
+                                .await
+                                .unwrap()
+                                .unwrap();
+                            let s =
+                                parse_snapshot_js::<T>(snapshot_meta.snapshot_version, s).unwrap();
+                            assert!(object == s);
+                            assert!(snapshot_meta.required_binaries == object.required_binaries());
+                            assert!(snapshot_meta.type_id == *T::type_ulid());
+                            assert!(snapshot_meta.is_locked.is_none());
+                        }
+                    }
+                }
+
+                Ok(())
+            })
+            .await
+            .unwrap();
     }
 }
 

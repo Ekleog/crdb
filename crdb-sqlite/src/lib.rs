@@ -152,6 +152,14 @@ impl Db for SqliteDb {
     async fn reencode_old_versions<T: Object>(&self) -> usize {
         unimplemented!() // TODO(sqlite-high)
     }
+
+    async fn assert_invariants_generic(&self) {
+        unimplemented!()
+    }
+
+    async fn assert_invariants_for<T: Object>(&self) {
+        unimplemented!()
+    }
 }
 
 #[allow(unused_variables)] // TODO(sqlite-high)

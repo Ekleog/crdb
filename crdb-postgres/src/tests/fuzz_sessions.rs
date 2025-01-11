@@ -1,7 +1,10 @@
 use super::TmpDb;
 use crate::PostgresDb;
 use anyhow::Context;
-use crdb_core::{NewSession, Session, SessionRef, SessionToken, SystemTimeExt, User};
+use crdb_cache::CacheDb;
+use crdb_core::{
+    Db, NewSession, ServerSideDb, Session, SessionRef, SessionToken, SystemTimeExt, User,
+};
 use crdb_test_utils::{cmp, Config, USER_ID_1};
 use std::{
     collections::{HashMap, HashSet},
@@ -87,7 +90,11 @@ fn floor_time(t: SystemTime) -> SystemTime {
     SystemTime::UNIX_EPOCH + d
 }
 
-async fn apply_op(db: &PostgresDb<Config>, s: &mut FuzzState, op: &Op) -> anyhow::Result<()> {
+async fn apply_op(
+    db: &CacheDb<PostgresDb<Config>>,
+    s: &mut FuzzState,
+    op: &Op,
+) -> anyhow::Result<()> {
     match op {
         Op::Login(session) => {
             let mut session = Session::new(session.clone());

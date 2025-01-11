@@ -1,14 +1,14 @@
 use super::{BinariesCache, ObjectCache};
 use crdb_core::{
-    hash_binary, BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, EventId, Lock,
-    LoginInfo, Object, ObjectId, Query, QueryId, ServerSideDb, TypeId, Updatedness, Upload,
-    UploadId, User,
+    BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, EventId, Lock, LoginInfo,
+    Object, ObjectId, Query, QueryId, ServerSideDb, Session, SessionRef, SessionToken,
+    SnapshotData, TypeId, Updatedness, Upload, UploadId, User,
 };
 use std::{
     collections::{HashMap, HashSet},
-    ops::Deref,
     sync::{Arc, Mutex, RwLock},
 };
+use web_time::SystemTime;
 
 pub struct CacheDb<D: Db> {
     db: D,
@@ -92,11 +92,12 @@ impl<D: Db> Db for CacheDb<D> {
     }
 
     async fn create_binary(&self, binary_id: BinPtr, data: Arc<[u8]>) -> crate::Result<()> {
-        debug_assert!(
-            binary_id == hash_binary(&data),
-            "Provided id {binary_id:?} does not match value hash {:?}",
-            hash_binary(&data),
-        );
+        // TODO(perf-med): this could be disabled on release builds, because downstream will re-hash anyway.
+        // Actually, most of the hashes in create_binary could likely be ignored, except for the one at the
+        // entrance of postgres.
+        if crdb_core::hash_binary(&data) != binary_id {
+            return Err(crate::Error::BinaryHashMismatch(binary_id));
+        }
         self.binaries
             .write()
             .unwrap()
@@ -122,15 +123,13 @@ impl<D: Db> Db for CacheDb<D> {
     async fn reencode_old_versions<T: Object>(&self) -> usize {
         self.db.reencode_old_versions::<T>().await
     }
-}
 
-// TODO(api-highest): If ill-kept, CacheDb could become outdated, and thus lead to wrong permissions definitions.
-// Remove this Deref and replace everything with more traits that will be implemented by the *Db types
-impl<D: Db> Deref for CacheDb<D> {
-    type Target = D;
+    async fn assert_invariants_generic(&self) {
+        self.db.assert_invariants_generic().await;
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.db
+    async fn assert_invariants_for<T: Object>(&self) {
+        self.db.assert_invariants_for::<T>().await;
     }
 }
 
@@ -288,7 +287,8 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
 }
 
 impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
-    type Transaction = D::Transaction;
+    type Connection = D::Connection;
+    type Transaction<'a> = D::Transaction<'a>;
 
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: crdb_core::CanDoCallbacks>(
         &'ret self,
@@ -310,15 +310,30 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
         self.db.get_users_who_can_read(object_id, object, cb)
     }
 
+    async fn get_transaction(&self) -> crdb_core::Result<Self::Transaction<'_>> {
+        self.db.get_transaction().await
+    }
+
+    async fn get_latest_snapshot(
+        &self,
+        transaction: &mut Self::Connection,
+        user: User,
+        object_id: ObjectId,
+    ) -> crate::Result<SnapshotData> {
+        self.db
+            .get_latest_snapshot(transaction, user, object_id)
+            .await
+    }
+
     async fn get_all(
         &self,
-        transaction: &mut Self::Transaction,
+        connection: &mut Self::Connection,
         user: crdb_core::User,
         object_id: ObjectId,
         only_updated_since: Option<Updatedness>,
     ) -> crdb_core::Result<crdb_core::ObjectData> {
         self.db
-            .get_all(transaction, user, object_id, only_updated_since)
+            .get_all(connection, user, object_id, only_updated_since)
             .await
     }
 
@@ -338,7 +353,7 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
         &self,
         no_new_changes_before: Option<EventId>,
         updatedness: Updatedness,
-        kill_sessions_older_than: Option<web_time::SystemTime>,
+        kill_sessions_older_than: Option<SystemTime>,
         notify_recreation: impl FnMut(crdb_core::Update, HashSet<crdb_core::User>),
     ) -> crdb_core::Result<()> {
         // A server vacuum cannot change the latest snapshot, so there is nothing to update in the cache
@@ -389,5 +404,44 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
         self.db
             .submit_and_return_rdep_changes(object_id, event_id, event, updatedness)
             .await
+    }
+
+    async fn update_pending_rdeps(&self) -> crdb_core::Result<()> {
+        self.db.update_pending_rdeps().await
+    }
+
+    async fn login_session(
+        &self,
+        session: Session,
+    ) -> crdb_core::Result<(SessionToken, SessionRef)> {
+        self.db.login_session(session).await
+    }
+
+    async fn resume_session(&self, token: SessionToken) -> crdb_core::Result<Session> {
+        self.db.resume_session(token).await
+    }
+
+    async fn mark_session_active(
+        &self,
+        token: SessionToken,
+        at: SystemTime,
+    ) -> crdb_core::Result<()> {
+        self.db.mark_session_active(token, at).await
+    }
+
+    async fn rename_session<'a>(
+        &'a self,
+        token: SessionToken,
+        new_name: &'a str,
+    ) -> crdb_core::Result<()> {
+        self.db.rename_session(token, new_name).await
+    }
+
+    async fn list_sessions(&self, user: User) -> crdb_core::Result<Vec<Session>> {
+        self.db.list_sessions(user).await
+    }
+
+    async fn disconnect_session(&self, user: User, session: SessionRef) -> crdb_core::Result<()> {
+        self.db.disconnect_session(user, session).await
     }
 }

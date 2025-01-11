@@ -280,6 +280,14 @@ impl Db for MemDb {
     async fn reencode_old_versions<T: Object>(&self) -> usize {
         unimplemented!() // TODO(test-med): should test it with the to-do multiple-versions object type
     }
+
+    async fn assert_invariants_generic(&self) {
+        // Always ok
+    }
+
+    async fn assert_invariants_for<T: Object>(&self) {
+        // Always ok
+    }
 }
 
 impl ClientSideDb for MemDb {
