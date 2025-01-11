@@ -312,7 +312,7 @@ macro_rules! fuzz_remote_perms {
         }
 
         #[fuzz_helpers::test]
-        #[cfg(disabled)]
+        #[cfg(any())] // disabled
         async fn impl_reproducer() {
             let cluster = setup();
             fuzz_impl(
