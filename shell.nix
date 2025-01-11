@@ -20,6 +20,7 @@ pkgs.stdenv.mkDerivation {
       trunk
       wasm-bindgen-cli
       wasm-pack
+      watchexec
 
       (fenix.combine (with fenix; [
         stable.cargo

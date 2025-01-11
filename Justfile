@@ -7,10 +7,10 @@ all *ARGS: fmt (test ARGS) clippy udeps doc
 run-example-basic-server *ARGS:
     createdb basic-crdb || true
     sqlx migrate run --source crdb-postgres/migrations --database-url "postgres:///basic-crdb"
-    cd examples/basic && CARGO_TARGET_DIR="target/host" {{macro_backtrace}} RUST_LOG="trace,tokio_tungstenite=debug,tungstenite=debug" cargo run -p basic-server -- {{ARGS}}
+    CARGO_TARGET_DIR="target/host" {{macro_backtrace}} watchexec -r -e rs,toml -E RUST_LOG="trace,tokio_tungstenite=debug,tungstenite=debug" --workdir examples/basic cargo run -p basic-server -- {{ARGS}}
 
 serve-example-basic-client-js *ARGS:
-    cd examples/basic/client-js && CARGO_TARGET_DIR="../target/wasm" {{macro_backtrace}} trunk serve
+    CARGO_TARGET_DIR="../target/wasm" {{macro_backtrace}} watchexec -r -e rs,toml,html --workdir examples/basic/client-js trunk serve
 
 fmt:
     cargo fmt
