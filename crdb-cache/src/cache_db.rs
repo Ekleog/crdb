@@ -2,7 +2,7 @@ use super::{BinariesCache, ObjectCache};
 use crdb_core::{
     BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, EventId, Lock, LoginInfo,
     Object, ObjectId, Query, QueryId, ServerSideDb, Session, SessionRef, SessionToken,
-    SnapshotData, TypeId, Updatedness, Upload, UploadId, User,
+    SnapshotData, TypeId, Updatedness, Upload, UploadId, User, UsersWhoCanRead,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -297,16 +297,7 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
         object: &'a T,
         cb: &'a C,
     ) -> std::pin::Pin<
-        Box<
-            dyn 'a
-                + waaaa::Future<
-                    Output = anyhow::Result<(
-                        HashSet<crdb_core::User>,
-                        Vec<ObjectId>,
-                        Vec<Self::Lock<'ret>>,
-                    )>,
-                >,
-        >,
+        Box<dyn 'a + waaaa::Future<Output = anyhow::Result<UsersWhoCanRead<Self::Lock<'ret>>>>>,
     > {
         self.db.get_users_who_can_read(object_id, object, cb)
     }

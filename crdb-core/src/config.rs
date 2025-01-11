@@ -85,7 +85,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         snapshot_version: i32,
         snapshot: serde_json::Value,
         cb: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<(HashSet<User>, Vec<ObjectId>, Vec<D::Lock<'a>>)>>;
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<crate::UsersWhoCanRead<D::Lock<'a>>>>;
 
     #[allow(clippy::type_complexity)] // This is only used to proxy to a real function
     fn recreate_no_lock<'a, D: ServerSideDb, C: CanDoCallbacks>(

@@ -13,6 +13,12 @@ pub struct ReadPermsChanges {
     pub gained_read: HashSet<User>,
 }
 
+pub struct UsersWhoCanRead<L> {
+    pub users: HashSet<User>,
+    pub depends_on: Vec<ObjectId>,
+    pub locks: Vec<L>,
+}
+
 pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     type Connection: waaaa::Send;
     type Transaction<'a>: waaaa::Send;
@@ -26,14 +32,7 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         object_id: ObjectId,
         object: &'a T,
         cb: &'a C,
-    ) -> Pin<
-        Box<
-            dyn 'a
-                + waaaa::Future<
-                    Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<Self::Lock<'ret>>)>,
-                >,
-        >,
-    >;
+    ) -> Pin<Box<dyn 'a + waaaa::Future<Output = anyhow::Result<UsersWhoCanRead<Self::Lock<'ret>>>>>>;
 
     fn get_transaction(&self) -> impl waaaa::Future<Output = crate::Result<Self::Transaction<'_>>>;
 

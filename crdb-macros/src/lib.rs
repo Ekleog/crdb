@@ -133,7 +133,7 @@ macro_rules! db {
                 snapshot_version: i32,
                 snapshot: $crate::serde_json::Value,
                 cb: &'a C,
-            ) -> $crate::Result<(std::collections::HashSet<$crate::User>, Vec<$crate::ObjectId>, Vec<D::Lock<'a>>)> {
+            ) -> $crate::Result<$crate::UsersWhoCanRead<D::Lock<'a>>> {
                 use $crate::{Object, ResultExt, ServerSideDb, crdb_helpers::parse_snapshot};
 
                 $(

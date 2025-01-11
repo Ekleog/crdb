@@ -3,7 +3,7 @@ use crdb_cache::CacheDb;
 use crdb_core::{
     normalizer_version, BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Lock, Object,
     ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, SnapshotData,
-    SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User,
+    SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User, UsersWhoCanRead,
 };
 use crdb_core::{Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
 use crdb_helpers::parse_snapshot;
@@ -181,21 +181,17 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
             .collect::<HashSet<User>>();
 
         // Figure out the new value of users_who_can_read
-        let (users_who_can_read, users_who_can_read_depends_on, _locks) =
-            Config::get_users_who_can_read(
-                self,
-                object_id,
-                type_id,
-                res.snapshot_version,
-                res.snapshot,
-                cb,
-            )
-            .await
-            .with_context(|| format!("updating users_who_can_read cache of {object_id:?}"))?;
-        let users_who_can_read_after = users_who_can_read
-            .iter()
-            .copied()
-            .collect::<HashSet<User>>();
+        let can_read = Config::get_users_who_can_read(
+            self,
+            object_id,
+            type_id,
+            res.snapshot_version,
+            res.snapshot,
+            cb,
+        )
+        .await
+        .with_context(|| format!("updating users_who_can_read cache of {object_id:?}"))?;
+        let users_who_can_read_after = can_read.users.iter().copied().collect::<HashSet<User>>();
 
         // Save it
         reord::maybe_lock().await;
@@ -208,8 +204,8 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
                 AND is_latest
             ",
         )
-        .bind(users_who_can_read.into_iter().collect::<Vec<_>>())
-        .bind(&users_who_can_read_depends_on)
+        .bind(can_read.users.into_iter().collect::<Vec<_>>())
+        .bind(&can_read.depends_on)
         .bind(object_id)
         .execute(&mut *transaction)
         .await
@@ -224,10 +220,7 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         );
 
         // If needed, take a lock on the requester to update its requested-updates field
-        let _lock = if !users_who_can_read_depends_on
-            .iter()
-            .any(|o| *o == requested_by)
-        {
+        let _lock = if !can_read.depends_on.iter().any(|o| *o == requested_by) {
             Some((
                 reord::Lock::take_named(format!("{requested_by:?}")),
                 self.object_locks.async_lock(requested_by).await,
@@ -340,18 +333,18 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         updatedness: Updatedness,
         cb: &'a C,
     ) -> crate::Result<Vec<ComboLock<'a>>> {
-        let (users_who_can_read, users_who_can_read_depends_on, locks) = if is_latest {
-            let (a, b, c) = self
-                .get_users_who_can_read::<T, _>(object_id, object, cb)
-                .await
-                .wrap_with_context(|| {
-                    format!(
+        let can_read = if is_latest {
+            Some(
+                self.get_users_who_can_read::<T, _>(object_id, object, cb)
+                    .await
+                    .wrap_with_context(|| {
+                        format!(
                         "listing users who can read for snapshot {snapshot_id:?} of {object_id:?}"
                     )
-                })?;
-            (Some(a), Some(b), c)
+                    })?,
+            )
         } else {
-            (None, None, Vec::new())
+            None
         };
         assert!(
             !is_latest || rdeps.is_some(),
@@ -370,8 +363,12 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         .bind(normalizer_version())
         .bind(T::snapshot_version())
         .bind(sqlx::types::Json(object))
-        .bind(users_who_can_read.map(|u| u.into_iter().collect::<Vec<_>>()))
-        .bind(users_who_can_read_depends_on)
+        .bind(
+            can_read
+                .as_ref()
+                .map(|u| u.users.iter().cloned().collect::<Vec<_>>()),
+        )
+        .bind(can_read.as_ref().map(|u| &u.depends_on))
         .bind(rdeps)
         .bind(object.required_binaries())
         .bind(updatedness)
@@ -380,7 +377,7 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         reord::point().await;
 
         match result {
-            Ok(_) => Ok(locks),
+            Ok(_) => Ok(can_read.map(|c| c.locks).unwrap_or_else(Vec::new)),
             Err(sqlx::Error::Database(err)) if err.constraint() == Some("snapshots_pkey") => {
                 Err(crate::Error::EventAlreadyExists(snapshot_id))
             }
@@ -415,7 +412,7 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
         let type_id = *T::type_ulid();
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
-        let (users_who_can_read, users_who_can_read_depends_on, _locks) = self
+        let can_read = self
             .get_users_who_can_read(object_id, &*object, cb)
             .await
             .wrap_with_context(|| format!("listing users who can read object {object_id:?}"))?;
@@ -433,8 +430,8 @@ impl<Config: crdb_core::Config> PostgresDb<Config> {
                 .bind(normalizer_version())
                 .bind(snapshot_version)
                 .bind(object_json)
-                .bind(users_who_can_read.iter().copied().collect::<Vec<_>>())
-                .bind(&users_who_can_read_depends_on)
+                .bind(can_read.users.iter().copied().collect::<Vec<_>>())
+                .bind(&can_read.depends_on)
                 .bind(&rdeps)
                 .bind(&required_binaries)
                 .bind(updatedness)
@@ -1227,14 +1224,8 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
         object_id: ObjectId,
         object: &'a T,
         cb: &'a C,
-    ) -> Pin<
-        Box<
-            dyn 'a
-                + waaaa::Future<
-                    Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>,
-                >,
-        >,
-    > {
+    ) -> Pin<Box<dyn 'a + waaaa::Future<Output = anyhow::Result<UsersWhoCanRead<Self::Lock<'ret>>>>>>
+    {
         Box::pin(async move {
             let cb = TrackingCanDoCallbacks::<'a, 'ret> {
                 cb,
@@ -1243,17 +1234,22 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
                 locks: Mutex::new(HashMap::new()),
             };
 
-            let users_who_can_read = object.users_who_can_read(&cb).await.with_context(|| {
+            let users = object.users_who_can_read(&cb).await.with_context(|| {
                 format!("figuring out the list of users who can read {object_id:?}")
             })?;
             let cb_locks = cb.locks.into_inner();
-            let mut users_who_can_read_depends_on = Vec::with_capacity(cb_locks.len());
+            let mut depends_on = Vec::with_capacity(cb_locks.len());
             let mut locks = Vec::with_capacity(cb_locks.len());
             for (o, l) in cb_locks {
-                users_who_can_read_depends_on.push(o);
+                depends_on.push(o);
                 locks.push(l);
             }
-            Ok((users_who_can_read, users_who_can_read_depends_on, locks))
+            let res = UsersWhoCanRead {
+                users,
+                depends_on,
+                locks,
+            };
+            Ok(res)
         })
     }
 
