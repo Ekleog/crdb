@@ -1235,8 +1235,6 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
                 >,
         >,
     > {
-        // TODO(blocked): remove the box::pin once rustc no longer fails on it
-        // See https://github.com/rust-lang/rust/issues/100013
         Box::pin(async move {
             let cb = TrackingCanDoCallbacks::<'a, 'ret> {
                 cb,
