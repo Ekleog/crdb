@@ -763,8 +763,6 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
     ) -> crate::Result<()> {
         for object_id in object_ids.iter() {
             self.db.remove(*object_id).await?;
-            // TODO(client-high): depending on the todo choice above unsubscribe, this should either send a notice to
-            // indicate that we removed object_id, or not actually remove object_id but just unsubscribe from it.
             self.subscribed_objects.lock().unwrap().remove(object_id);
         }
         self.api.unsubscribe(object_ids);
