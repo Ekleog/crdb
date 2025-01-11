@@ -16,7 +16,6 @@ anyhow.workspace = true
 bitflags.workspace = true
 deepsize.workspace = true
 educe.workspace = true
-futures.workspace = true
 icu_casemap.workspace = true
 icu_normalizer.workspace = true
 icu_properties.workspace = true
