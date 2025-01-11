@@ -1193,9 +1193,7 @@ struct TrackingCanDoCallbacks<'cb, 'lockpool, C: CanDoCallbacks> {
     locks: Mutex<HashMap<ObjectId, TrackedLock<'lockpool>>>,
 }
 
-impl<'cb, 'lockpool, C: CanDoCallbacks> CanDoCallbacks
-    for TrackingCanDoCallbacks<'cb, 'lockpool, C>
-{
+impl<C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'_, '_, C> {
     async fn get<T: Object>(&self, object_id: crate::DbPtr<T>) -> crate::Result<Arc<T>> {
         let id = ObjectId(object_id.id);
         if id != self.already_taken_lock {
