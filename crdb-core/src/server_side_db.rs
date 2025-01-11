@@ -6,13 +6,6 @@ use crate::{
 };
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
-// TODO(blocked): replace with an associated type of ServerSideDb once https://github.com/rust-lang/rust/pull/120700 stabilizes
-// This will allow removing the `reord` and `lockable` deps.
-pub type ComboLock<'a> = (
-    reord::Lock,
-    <lockable::LockPool<ObjectId> as lockable::Lockable<ObjectId, ()>>::Guard<'a>,
-);
-
 pub struct ReadPermsChanges {
     pub object_id: ObjectId,
     pub type_id: TypeId,
@@ -23,6 +16,7 @@ pub struct ReadPermsChanges {
 pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     type Connection: waaaa::Send;
     type Transaction<'a>: waaaa::Send;
+    type Lock<'a>: waaaa::Send;
 
     // TODO(blocked): replace with -> impl once https://github.com/rust-lang/rust/issues/100013 is fixed
     // This will also remove the clippy lint
@@ -36,7 +30,7 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         Box<
             dyn 'a
                 + waaaa::Future<
-                    Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'ret>>)>,
+                    Output = anyhow::Result<(HashSet<User>, Vec<ObjectId>, Vec<Self::Lock<'ret>>)>,
                 >,
         >,
     >;

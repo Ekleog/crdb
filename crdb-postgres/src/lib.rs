@@ -5,7 +5,7 @@ use crdb_core::{
     ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, SnapshotData,
     SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User,
 };
-use crdb_core::{ComboLock, Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
+use crdb_core::{Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
 use crdb_helpers::parse_snapshot;
 use futures::{future::Either, StreamExt, TryStreamExt};
 use lockable::{LockPool, Lockable};
@@ -1211,9 +1211,15 @@ impl<C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'_, '_, C> {
     }
 }
 
+pub type ComboLock<'a> = (
+    reord::Lock,
+    <lockable::LockPool<ObjectId> as lockable::Lockable<ObjectId, ()>>::Guard<'a>,
+);
+
 impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
     type Connection = sqlx::PgConnection;
     type Transaction<'a> = sqlx::Transaction<'a, sqlx::Postgres>;
+    type Lock<'a> = ComboLock<'a>;
 
     /// This function assumes that the lock on `object_id` is already taken.
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(

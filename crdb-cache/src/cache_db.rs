@@ -289,6 +289,7 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
 impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
     type Connection = D::Connection;
     type Transaction<'a> = D::Transaction<'a>;
+    type Lock<'a> = D::Lock<'a>;
 
     fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: crdb_core::CanDoCallbacks>(
         &'ret self,
@@ -302,7 +303,7 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
                     Output = anyhow::Result<(
                         HashSet<crdb_core::User>,
                         Vec<ObjectId>,
-                        Vec<crdb_core::ComboLock<'ret>>,
+                        Vec<Self::Lock<'ret>>,
                     )>,
                 >,
         >,

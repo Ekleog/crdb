@@ -1,6 +1,6 @@
 use crate::{
-    CanDoCallbacks, ClientSideDb, ComboLock, Db, EventId, Lock, ObjectId, ReadPermsChanges,
-    ServerSideDb, TypeId, Update, Updatedness, User,
+    CanDoCallbacks, ClientSideDb, Db, EventId, Lock, ObjectId, ReadPermsChanges, ServerSideDb,
+    TypeId, Update, Updatedness, User,
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -84,8 +84,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         snapshot_version: i32,
         snapshot: serde_json::Value,
         cb: &'a C,
-    ) -> impl 'a
-           + waaaa::Future<Output = crate::Result<(HashSet<User>, Vec<ObjectId>, Vec<ComboLock<'a>>)>>;
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<(HashSet<User>, Vec<ObjectId>, Vec<D::Lock<'a>>)>>;
 
     #[allow(clippy::type_complexity)] // This is only used to proxy to a real function
     fn recreate_no_lock<'a, D: ServerSideDb, C: CanDoCallbacks>(
