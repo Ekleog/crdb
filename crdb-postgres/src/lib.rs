@@ -1958,7 +1958,6 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
     }
 
     async fn resume_session(&self, token: SessionToken) -> crate::Result<Session> {
-        // TODO(server-high): actually implement expiration_time validation
         let res = sqlx::query!(
             "SELECT * FROM sessions WHERE session_token = $1",
             token as SessionToken
@@ -1969,6 +1968,17 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
         let Some(res) = res else {
             return Err(crate::Error::InvalidToken(token));
         };
+        let expiration_time = res
+            .expiration_time
+            .map(SystemTime::from_ms_since_posix)
+            .transpose()
+            .expect("negative timestamp made its way into database");
+        if expiration_time
+            .map(|t| t < SystemTime::now())
+            .unwrap_or(false)
+        {
+            return Err(crate::Error::InvalidToken(token));
+        }
         Ok(Session {
             user_id: User::from_uuid(res.user_id),
             session_ref: SessionRef::from_uuid(res.session_ref),
@@ -1977,11 +1987,7 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
                 .expect("negative timestamp made its way into database"),
             last_active: SystemTime::from_ms_since_posix(res.last_active)
                 .expect("negative timestamp made its way into database"),
-            expiration_time: res
-                .expiration_time
-                .map(SystemTime::from_ms_since_posix)
-                .transpose()
-                .expect("negative timestamp made its way into database"),
+            expiration_time,
         })
     }
 

@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use crdb_core::{
     ClientMessage, CrdbFn, Lock, MaybeObject, ObjectId, Query, QueryId, Request, RequestId,
-    ResponsePart, ServerMessage, SessionToken, SystemTimeExt, TypeId, Update, UpdateData,
-    Updatedness, Updates,
+    ResponsePart, SerializableError, ServerMessage, SessionToken, SystemTimeExt, TypeId, Update,
+    UpdateData, Updatedness, Updates,
 };
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
 use std::{
@@ -308,7 +308,16 @@ where
                         // Main function, must now deal with requests and updates.
                         State::Connected { expected_binaries: None, .. } => {
                             tracing::trace!(?message, "received server message");
-                            self.handle_connected_message(message).await;
+                            if let ServerMessage::Response {
+                                request_id: _,
+                                response: ResponsePart::Error(SerializableError::InvalidToken(token)),
+                                last_response: _,
+                            } = &message {
+                                self.state = self.state.disconnect();
+                                (self.event_cb)(ConnectionEvent::InvalidToken(*token));
+                            } else {
+                                self.handle_connected_message(message).await;
+                            }
                         }
 
                         // We got a new text message while still expecting a binary message. Protocol violation.

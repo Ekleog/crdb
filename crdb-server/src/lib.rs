@@ -261,6 +261,10 @@ impl<C: crdb_core::Config> Server<C> {
                 },
 
                 Some(update) = OptionFuture::from(conn.session.as_mut().map(|s| s.updates_receiver.recv())) => {
+                    if conn.has_expired() {
+                        // Do not reset conn.session, so that client gets a proper InvalidToken error on next request
+                        break;
+                    }
                     let Some((updatedness, update)) = update else {
                         tracing::error!("Update receiver broke before connection went down");
                         break;
@@ -291,6 +295,7 @@ impl<C: crdb_core::Config> Server<C> {
         conn: &mut ConnectionState,
         bin: Arc<[u8]>,
     ) -> crate::Result<()> {
+        conn.kill_session_if_expired()?;
         // Check we're waiting for binaries and count one as done
         {
             let sess = conn
@@ -313,6 +318,7 @@ impl<C: crdb_core::Config> Server<C> {
         conn: &mut ConnectionState,
         msg: &str,
     ) -> crate::Result<()> {
+        conn.kill_session_if_expired()?;
         if conn
             .session
             .as_ref()
@@ -1104,6 +1110,28 @@ impl<Tz: chrono::TimeZone> ServerVacuumSchedule<Tz> {
 struct ConnectionState {
     socket: WebSocket,
     session: Option<SessionInfo>,
+}
+
+impl ConnectionState {
+    fn has_expired(&self) -> bool {
+        self.session
+            .as_ref()
+            .and_then(|sess| sess.session.expiration_time)
+            .map(|expiration_time| expiration_time < SystemTime::now())
+            .unwrap_or(false)
+    }
+
+    /// Kills the session if it expired.
+    ///
+    /// Returns an InvalidToken error if the session was killed.
+    fn kill_session_if_expired(&mut self) -> crate::Result<()> {
+        if self.has_expired() {
+            let token = self.session.as_ref().unwrap().token;
+            self.session = None;
+            return Err(crate::Error::InvalidToken(token));
+        }
+        Ok(())
+    }
 }
 
 struct SessionInfo {
