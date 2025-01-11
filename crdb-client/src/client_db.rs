@@ -747,11 +747,10 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
     /// so that you could have a query that warns you of any new objects, and then you filter the ones you actually want
     /// locally and unsubscribe from the objects you don't care about. Note however that if you could ever start caring
     /// again about an object (eg. after it received some updates), then you probably should not do this, because
-    /// unsubscribing from an object will lead to you never receiving the future updates in the first place.
-    // TODO(api-high): this is currently not properly implemented. In particular, the server will send the object anyway
-    // upon the next event incoming to it, because it does not remember that the user explicitly unsubscribed from the
-    // object. Maybe it'd be better to unsubscribe iff no query forces the subscription to stay active? This ties into
-    // introducing a ManuallyUpdated type and having a proper semantic separation of locking and subscription
+    /// unsubscribing from an object will lead to you never receiving the future updates in the first place. Also, the
+    /// server will keep sending you updates for the objects you've unsubscribed from so long as they match the query,
+    /// but the updates will be ignored by the client, as it will have deleted the object from its storage.
+    // TODO(api-med): make the server stop sending updates for objects that the client has unsubscribed from
     pub async fn unsubscribe<T: Object>(self: &Arc<Self>, ptr: DbPtr<T>) -> crate::Result<()> {
         let mut set = HashSet::new();
         set.insert(ptr.to_object_id());
