@@ -20,3 +20,6 @@ crdb-macros.workspace = true
 crdb-client = { workspace = true, optional = true }
 crdb-indexed-db = { workspace = true, optional = true }
 crdb-server = { workspace = true, optional = true }
+
+[dev-dependencies]
+getrandom = { workspace = true, features = ["js"] }

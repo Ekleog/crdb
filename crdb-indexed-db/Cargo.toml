@@ -4,7 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-_tests = [ "arbitrary", "bolero", "console_error_panic_hook", "crdb-test-utils", "rand", "tracing-wasm", "wasm-bindgen-test" ]
+_tests = [
+    "arbitrary",
+    "bolero",
+    "console_error_panic_hook",
+    "crdb-test-utils",
+    "getrandom/js",
+    "rand",
+    "tracing-wasm",
+    "wasm-bindgen-test",
+]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 crdb-core = { workspace = true, features = ["indexed-db"] }
@@ -23,11 +32,12 @@ tracing.workspace = true
 web-sys.workspace = true
 
 # Dev-dependencies, enabled with the `_tests` feature
-crdb-test-utils = { workspace = true, optional = true}
+crdb-test-utils = { workspace = true, optional = true }
 
 arbitrary = { workspace = true, optional = true }
 bolero = { workspace = true, optional = true }
 console_error_panic_hook = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
 tracing-wasm = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 wasm-bindgen-test = { workspace = true, optional = true }

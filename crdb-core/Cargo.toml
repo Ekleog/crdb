@@ -54,3 +54,4 @@ wasm-bindgen-futures.workspace = true
 
 [dev-dependencies]
 bolero.workspace = true
+getrandom = { workspace = true, features = ["js"] }
