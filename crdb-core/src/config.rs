@@ -77,6 +77,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         event_id: EventId,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
+    #[allow(clippy::type_complexity)]
     fn get_users_who_can_read<'a, D: ServerSideDb, C: CanDoCallbacks>(
         call_on: &'a D,
         object_id: ObjectId,
