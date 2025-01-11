@@ -154,7 +154,9 @@ async fn regression_losing_and_regaining_read_rights_on_subscribed_caused_deleti
         UpdateData::LostReadRights
     ));
 
-    // TODO(api-highest): why is this getting pushed?
+    // TODO(perf-low): pushing one update to all clients on each change to an object
+    // they can read is not optimal, even if the update is empty and just consists of
+    // their new updatedness
     assert!(get_updates(&mut client2).await.data.is_empty());
 
     upload(
