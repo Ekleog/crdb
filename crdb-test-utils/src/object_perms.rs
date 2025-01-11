@@ -44,21 +44,21 @@ impl Object for TestObjectPerms {
 
     async fn can_create<'a, C: CanDoCallbacks>(
         &'a self,
-        _user: User,
+        user: User,
         _self_id: ObjectId,
         _db: &'a C,
     ) -> crate::Result<bool> {
-        unimplemented!()
+        Ok(self.0 == user)
     }
 
     async fn can_apply<'a, C: CanDoCallbacks>(
         &'a self,
-        _user: User,
+        user: User,
         _self_id: ObjectId,
         _event: &'a Self::Event,
         _db: &'a C,
     ) -> crate::Result<bool> {
-        unimplemented!()
+        Ok(self.0 == user)
     }
 
     async fn users_who_can_read<'a, C: CanDoCallbacks>(

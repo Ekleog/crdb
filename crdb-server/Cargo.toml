@@ -21,3 +21,8 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 ulid.workspace = true
+
+[dev-dependencies]
+crdb-test-utils.workspace = true
+
+axum-test.workspace = true
