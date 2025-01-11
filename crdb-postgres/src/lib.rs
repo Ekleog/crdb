@@ -1172,7 +1172,7 @@ impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
                     .users_who_can_read
                     .as_ref()
                     .unwrap()
-                    .into_iter()
+                    .iter()
                     .map(|u| User::from_uuid(*u))
                     .collect::<HashSet<_>>(),
                 object.users_who_can_read(self).await.unwrap()
