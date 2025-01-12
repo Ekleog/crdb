@@ -261,7 +261,10 @@ where
                                     self.handle_request(
                                         request_id,
                                         Arc::new(RequestWithSidecar {
-                                            request: Arc::new(Request::GetSubscribe(subscribed_objects)),
+                                            request: Arc::new(Request::Get {
+                                                object_ids: subscribed_objects,
+                                                subscribe: true,
+                                            }),
                                             sidecar: Vec::new(),
                                         }),
                                         responses_sender,
@@ -274,11 +277,12 @@ where
                                     self.handle_request(
                                         request_id,
                                         Arc::new(RequestWithSidecar {
-                                            request: Arc::new(Request::QuerySubscribe {
+                                            request: Arc::new(Request::Query {
                                                 query_id,
                                                 type_id,
                                                 query,
                                                 only_updated_since: have_all_until,
+                                                subscribe: true,
                                             }),
                                             sidecar: Vec::new(),
                                         }),

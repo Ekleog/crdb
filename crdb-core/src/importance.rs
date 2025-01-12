@@ -2,9 +2,6 @@ use crate::Lock;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Importance {
-    /// Only care about fetching the latest value once
-    Latest,
-
     /// Will want to re-use the value a few times, without a server round-trip each time
     ///
     /// However, whenever there is a client-side vacuum, this will force a server-round-trip next
@@ -16,6 +13,10 @@ pub enum Importance {
 }
 
 impl Importance {
+    pub fn nothing() -> Importance {
+        Importance::Subscribe
+    }
+
     pub fn to_object_lock(self) -> Lock {
         if self >= Importance::Lock {
             Lock::OBJECT
@@ -42,9 +43,6 @@ impl Ord for Importance {
         use std::cmp::Ordering;
 
         match (self, other) {
-            (Importance::Latest, Importance::Latest) => Ordering::Equal,
-            (Importance::Latest, _) => Ordering::Less,
-            (Importance::Subscribe, Importance::Latest) => Ordering::Greater,
             (Importance::Subscribe, Importance::Subscribe) => Ordering::Equal,
             (Importance::Subscribe, Importance::Lock) => Ordering::Less,
             (Importance::Lock, Importance::Lock) => Ordering::Equal,

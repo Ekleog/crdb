@@ -403,10 +403,6 @@ fn create<T: crdb::Object>(
             {onchange} />
         <input
             type="button"
-            value={ format!("Create {name}") }
-            onclick={create_it.reform(|_| Importance::Latest)} />
-        <input
-            type="button"
             value={ format!("Create {name} & Subscribe") }
             onclick={create_it.reform(|_| Importance::Subscribe)} />
         <input
@@ -489,10 +485,6 @@ fn query_remote_items() -> Html {
             {onchange} />
         <input
             type="button"
-            value="Query Items"
-            onclick={run_query_remote.reform(|_| Importance::Latest)} />
-        <input
-            type="button"
             value="Query Items & Subscribe"
             onclick={run_query_remote.reform(|_| Importance::Subscribe)} />
         <input
@@ -554,10 +546,7 @@ fn query_remote_tags() -> Html {
             placeholder="text"
             value={(*query).clone()}
             {onchange} />
-        <input
-            type="button"
-            value="Query Tags"
-            onclick={run_query_remote.reform(|_| Importance::Latest)} />
+        // TODO(api-high): add new Importance-based query modes for tags and objects
         <input
             type="button"
             value="Query Tags & Subscribe"

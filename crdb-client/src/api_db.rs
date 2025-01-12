@@ -5,9 +5,9 @@ use crate::connection::{
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
 use crdb_core::{
-    BinPtr, ClientSideDb, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject, MaybeSnapshot, Object,
-    ObjectData, ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, Session, SessionRef,
-    SessionToken, SnapshotData, TypeId, Updatedness, Updates, Upload, UploadId,
+    BinPtr, ClientSideDb, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject, Object, ObjectData,
+    ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, Session, SessionRef, SessionToken,
+    TypeId, Updatedness, Updates, Upload, UploadId,
 };
 use futures::{channel::mpsc, future::Either, pin_mut, stream, FutureExt, StreamExt};
 use std::{
@@ -326,10 +326,13 @@ impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
         Ok(Self::handle_upload_response(result_receiver))
     }
 
-    pub async fn get_subscribe(&self, object_id: ObjectId) -> crate::Result<ObjectData> {
+    pub async fn get(&self, object_id: ObjectId, subscribe: bool) -> crate::Result<ObjectData> {
         let mut object_ids = HashMap::new();
         object_ids.insert(object_id, None); // We do not know about this object yet, so None
-        let request = Arc::new(Request::GetSubscribe(object_ids));
+        let request = Arc::new(Request::Get {
+            object_ids,
+            subscribe,
+        });
         let mut response = self.request(request);
         match response.next().await {
             None => Err(crate::Error::Other(anyhow!(
@@ -353,44 +356,19 @@ impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
         }
     }
 
-    pub async fn get_latest(&self, object_id: ObjectId) -> crate::Result<SnapshotData> {
-        let mut object_ids = HashSet::new();
-        object_ids.insert(object_id);
-        let request = Arc::new(Request::GetLatest(object_ids));
-        let mut response = self.request(request);
-        match response.next().await {
-            None => Err(crate::Error::Other(anyhow!(
-                "Connection-handling thread went out before ApiDb"
-            ))),
-            Some(response) => match response.response {
-                ResponsePart::Error(err) => Err(err.into()),
-                ResponsePart::Snapshots { mut data, .. } if data.len() == 1 => {
-                    match data.pop().unwrap() {
-                        MaybeSnapshot::AlreadySubscribed(_) => Err(crate::Error::Other(anyhow!(
-                            "Server unexpectedly told us we already know unknown {object_id:?}"
-                        ))),
-                        MaybeSnapshot::NotSubscribed(res) => Ok(res),
-                    }
-                }
-                _ => Err(crate::Error::Other(anyhow!(
-                    "Unexpected response to GetLatest request: {:?}",
-                    response.response
-                ))),
-            },
-        }
-    }
-
-    pub fn query_subscribe<T: Object>(
+    pub fn query<T: Object>(
         &self,
         query_id: QueryId,
         only_updated_since: Option<Updatedness>,
+        subscribe: bool,
         query: Arc<Query>,
     ) -> impl waaaa::Stream<Item = crate::Result<(MaybeObject, Option<Updatedness>)>> {
-        let request = Arc::new(Request::QuerySubscribe {
+        let request = Arc::new(Request::Query {
             query_id,
             type_id: *T::type_ulid(),
             query,
             only_updated_since,
+            subscribe,
         });
         self.request(request).flat_map(move |response| {
             match response.response {
@@ -414,43 +392,6 @@ impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
                 }
                 resp => Either::Left(stream::iter(iter::once(Err(crate::Error::Other(anyhow!(
                     "Server gave unexpected answer to QuerySubscribe request: {resp:?}"
-                )))))),
-            }
-        })
-    }
-
-    pub fn query_latest<T: Object>(
-        &self,
-        only_updated_since: Option<Updatedness>,
-        query: Arc<Query>,
-    ) -> impl waaaa::Stream<Item = crate::Result<(MaybeSnapshot, Option<Updatedness>)>> {
-        let request = Arc::new(Request::QueryLatest {
-            type_id: *T::type_ulid(),
-            query,
-            only_updated_since,
-        });
-        self.request(request).flat_map(move |response| {
-            match response.response {
-                // No sidecar in answer to Request::Query
-                ResponsePart::Error(err) => Either::Left(stream::iter(iter::once(Err(err.into())))),
-                ResponsePart::Snapshots {
-                    data,
-                    now_have_all_until,
-                } => {
-                    let data_len = data.len();
-                    Either::Right(stream::iter(data.into_iter().enumerate().map(
-                        move |(i, d)| {
-                            let now_have_all_until = if i + 1 == data_len {
-                                now_have_all_until
-                            } else {
-                                None
-                            };
-                            Ok((d, now_have_all_until))
-                        },
-                    )))
-                }
-                resp => Either::Left(stream::iter(iter::once(Err(crate::Error::Other(anyhow!(
-                    "Server gave unexpected answer to QueryLatest request: {resp:?}"
                 )))))),
             }
         })

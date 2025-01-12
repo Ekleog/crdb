@@ -3,15 +3,12 @@ use axum::extract::ws::{self, WebSocket};
 use bytes::Bytes;
 use crdb_cache::CacheDb;
 use crdb_core::{
-    BinPtr, ClientMessage, Db, EventId, MaybeObject, MaybeSnapshot, ObjectId, Query, QueryId,
-    ReadPermsChanges, Request, RequestId, ResponsePart, ResultExt, ServerMessage, ServerSideDb,
-    Session, SessionRef, SessionToken, SystemTimeExt, Update, UpdateData, Updatedness, Updates,
-    UpdatesWithSnap, Upload, User,
+    BinPtr, ClientMessage, Db, EventId, MaybeObject, ObjectId, Query, QueryId, ReadPermsChanges,
+    Request, RequestId, ResponsePart, ResultExt, ServerMessage, ServerSideDb, Session, SessionRef,
+    SessionToken, SystemTimeExt, Update, UpdateData, Updatedness, Updates, UpdatesWithSnap, Upload,
+    User,
 };
-use futures::{
-    future::{self, Either, OptionFuture},
-    pin_mut, stream, FutureExt, StreamExt,
-};
+use futures::{future::OptionFuture, pin_mut, stream, FutureExt, StreamExt};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex, RwLock},
@@ -425,18 +422,24 @@ impl<C: crdb_core::Config> Server<C> {
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
-            Request::GetSubscribe(object_ids) => {
-                // TODO(blocked): remove this copy once https://github.com/rust-lang/rust/issues/110338 is fixed
+            Request::Get {
+                object_ids,
+                subscribe,
+            } => {
+                assert!(subscribe); // TODO(api-highest): implement non-subscribing gets
+                                    // TODO(blocked): remove this copy once https://github.com/rust-lang/rust/issues/110338 is fixed
                 let object_ids = object_ids.iter().map(|(o, u)| (*o, *u)).collect::<Vec<_>>();
-                self.send_objects(conn, msg.request_id, None, object_ids.into_iter())
+                self.subscribe_and_send_objects(conn, msg.request_id, None, object_ids.into_iter())
                     .await
             }
-            Request::QuerySubscribe {
+            Request::Query {
                 query_id,
                 type_id,
                 query,
                 only_updated_since,
+                subscribe,
             } => {
+                assert!(subscribe); // TODO(api-highest): implement non-subscribing gets
                 let sess = conn
                     .session
                     .as_ref()
@@ -458,45 +461,13 @@ impl<C: crdb_core::Config> Server<C> {
                     )
                     .await
                     .wrap_context("listing objects matching query")?;
-                // Note: `send_objects` will only fetch and send objects that the user has not yet subscribed upon.
+                // Note: `subscribe_and_send_objects` will only fetch and send objects that the user has not yet subscribed upon.
                 // So, setting `None` here is the right thing to do.
-                self.send_objects(
+                self.subscribe_and_send_objects(
                     conn,
                     msg.request_id,
                     Some(updatedness),
                     object_ids.into_iter().map(|o| (o, None)),
-                )
-                .await
-            }
-            Request::GetLatest(object_ids) => {
-                self.send_snapshots(conn, msg.request_id, None, object_ids.iter().copied())
-                    .await
-            }
-            Request::QueryLatest {
-                type_id,
-                query,
-                only_updated_since,
-            } => {
-                let sess = conn
-                    .session
-                    .as_ref()
-                    .ok_or(crate::Error::ProtocolViolation)?;
-                let updatedness = *self.last_completed_updatedness.lock().unwrap();
-                let object_ids = self
-                    .db
-                    .server_query(
-                        sess.session.user_id,
-                        *type_id,
-                        *only_updated_since,
-                        query.clone(),
-                    )
-                    .await
-                    .wrap_context("listing objects matching query")?;
-                self.send_snapshots(
-                    conn,
-                    msg.request_id,
-                    Some(updatedness),
-                    object_ids.into_iter(),
                 )
                 .await
             }
@@ -719,7 +690,7 @@ impl<C: crdb_core::Config> Server<C> {
         Ok(())
     }
 
-    async fn send_objects(
+    async fn subscribe_and_send_objects(
         &self,
         conn: &mut ConnectionState,
         request_id: RequestId,
@@ -804,92 +775,6 @@ impl<C: crdb_core::Config> Server<C> {
             &mut conn.socket,
             request_id,
             Ok(ResponsePart::Objects {
-                data: current_data,
-                now_have_all_until: query_updatedness,
-            }),
-        )
-        .await
-    }
-
-    async fn send_snapshots(
-        &self,
-        conn: &mut ConnectionState,
-        request_id: RequestId,
-        query_updatedness: Option<Updatedness>,
-        object_ids: impl Iterator<Item = ObjectId>,
-    ) -> crate::Result<()> {
-        let sess = conn
-            .session
-            .as_ref()
-            .ok_or(crate::Error::ProtocolViolation)?;
-        let user = sess.session.user_id;
-        let snapshots = object_ids.map(|object_id| {
-            if sess.subscribed_objects.read().unwrap().contains(&object_id) {
-                Either::Left(future::ready(Ok(MaybeSnapshot::AlreadySubscribed(
-                    object_id,
-                ))))
-            } else {
-                Either::Right(async move {
-                    let mut t = self.db.get_transaction().await?;
-                    let snapshot = self.db.get_latest_snapshot(&mut t, user, object_id).await?;
-                    Ok(MaybeSnapshot::NotSubscribed(snapshot))
-                })
-            }
-        });
-        let snapshots = stream::iter(snapshots).buffer_unordered(16); // TODO(perf-low): is 16 a good number?
-        pin_mut!(snapshots);
-        let mut size_of_message = 0;
-        let mut current_data = Vec::new();
-        // Send all the snapshots to the client, batching them by messages of a reasonable size, to both allow for better
-        // resumption after a connection loss, while not sending one message per mini-object.
-        while let Some(snapshot) = snapshots.next().await {
-            if size_of_message >= 1024 * 1024 {
-                // TODO(perf-low): is 1MiB a good number?
-                let data = std::mem::take(&mut current_data);
-                size_of_message = 0;
-                Self::send(
-                    &mut conn.socket,
-                    &ServerMessage::Response {
-                        request_id,
-                        response: ResponsePart::Snapshots {
-                            data,
-                            now_have_all_until: None,
-                        },
-                        last_response: false,
-                    },
-                )
-                .await?;
-            }
-            match snapshot {
-                Ok(snapshot) => {
-                    size_of_message += size_as_json(&snapshot)?;
-                    current_data.push(snapshot);
-                }
-                Err(err @ crate::Error::ObjectDoesNotExist(_)) => {
-                    if query_updatedness.is_some() {
-                        // User lost read access to object between query and read
-                        // Do nothing
-                    } else {
-                        // User explicitly requested a non-existing object
-                        // Return an error but keep processing the request
-                        Self::send(
-                            &mut conn.socket,
-                            &ServerMessage::Response {
-                                request_id,
-                                response: ResponsePart::Error(err.into()),
-                                last_response: false,
-                            },
-                        )
-                        .await?;
-                    }
-                }
-                Err(err) => return Self::send_res(&mut conn.socket, request_id, Err(err)).await,
-            };
-        }
-        Self::send_res(
-            &mut conn.socket,
-            request_id,
-            Ok(ResponsePart::Snapshots {
                 data: current_data,
                 now_have_all_until: query_updatedness,
             }),
