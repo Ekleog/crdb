@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 crdb-cache.workspace = true
 crdb-core.workspace = true
-crdb-helpers.workspace = true
 
 anyhow.workspace = true
 async-stream.workspace = true
