@@ -38,7 +38,7 @@ bolero = { version = "0.12.0", features = ["arbitrary"] }
 bytes = "1.9"
 chrono = "0.4.31"
 console_error_panic_hook = "0.1.7"
-cron = "0.14.0"
+cron = "0.15.0"
 deepsize = "0.2.0"
 educe = "0.6.0"
 futures = "0.3.29"
