@@ -42,7 +42,7 @@ cron = "0.15.0"
 deepsize = "0.2.0"
 educe = "0.6.0"
 futures = "0.3.29"
-getrandom = "0.2.11"
+getrandom = "0.3.0"
 gloo-net = "0.6.0"
 gloo-timers = { version = "0.3.0", features = ["futures"] }
 icu_casemap = "1.4"
