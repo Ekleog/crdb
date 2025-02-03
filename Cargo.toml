@@ -53,7 +53,7 @@ indexed-db = "0.4.2"
 js-sys = "0.3.67"
 lockable = "0.1.1"
 paste = "1.0"
-rand = "0.8.5"
+rand = "0.9.0"
 reord = "0.2.3"
 rust_decimal = { version = "1.33", features = ["serde-arbitrary-precision"] }
 rust-stemmers = "1.2"
