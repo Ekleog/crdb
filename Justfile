@@ -24,13 +24,34 @@ clippy:
     CARGO_TARGET_DIR="target/clippy" SQLX_OFFLINE="true" cargo clippy --all-features -- -D warnings
 
 udeps:
-    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --all-features
-    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
+    RUSTC_BOOTSTRAP=1 \
+    CARGO_TARGET_DIR="target/udeps" \
+    SQLX_OFFLINE="true" \
+        cargo udeps --workspace --all-features
+    RUSTC_BOOTSTRAP=1 \
+    CARGO_TARGET_DIR="target/udeps" \
+    SQLX_OFFLINE="true" \
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+        cargo udeps --workspace \
+            --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite \
+            --target wasm32-unknown-unknown
 
 udeps-full:
-    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --each-feature
-    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo hack udeps --tests --each-feature
-    RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="target/udeps" SQLX_OFFLINE="true" cargo udeps --workspace --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite --target wasm32-unknown-unknown
+    RUSTC_BOOTSTRAP=1 \
+    CARGO_TARGET_DIR="target/udeps" \
+    SQLX_OFFLINE="true" \
+        cargo hack udeps --each-feature
+    RUSTC_BOOTSTRAP=1 \
+    CARGO_TARGET_DIR="target/udeps" \
+    SQLX_OFFLINE="true" \
+        cargo hack udeps --tests --each-feature
+    RUSTC_BOOTSTRAP=1 \
+    CARGO_TARGET_DIR="target/udeps" \
+    SQLX_OFFLINE="true" \
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+        cargo udeps --workspace \
+            --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite \
+            --target wasm32-unknown-unknown
 
 doc:
     CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
@@ -58,12 +79,22 @@ test-crate-native *ARGS:
     SQLX_OFFLINE="true" cargo nextest run --workspace --all-features {{ARGS}}
 
 test-crate-wasm32 *ARGS:
-    cargo test -p crdb-indexed-db --features _tests --target wasm32-unknown-unknown {{ARGS}}
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+    cargo test -p crdb-indexed-db \
+        --features _tests \
+        --target wasm32-unknown-unknown \
+        {{ARGS}}
 
 test-example-basic *ARGS: build-example-basic-client (test-example-basic-host ARGS)
 
 build-example-basic-client:
-    cd examples/basic && CARGO_TARGET_DIR="target/wasm" {{macro_backtrace}} cargo build --target wasm32-unknown-unknown -p basic-client-js
+    cd examples/basic && \
+        CARGO_TARGET_DIR="target/wasm" \
+        RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+        {{macro_backtrace}} \
+        cargo build \
+            -p basic-client-js \
+            --target wasm32-unknown-unknown
 
 test-example-basic-host *ARGS:
     cd examples/basic && CARGO_TARGET_DIR="target/host" {{macro_backtrace}} cargo nextest run -p basic-api -p basic-server -p basic-client-native --no-tests=pass {{ARGS}}
@@ -79,6 +110,7 @@ fuzz-idb-simple ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
     cargo test \
         -p crdb-indexed-db \
         --target wasm32-unknown-unknown \
@@ -99,6 +131,7 @@ fuzz-idb-perms ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
     cargo test \
         -p crdb-indexed-db \
         --target wasm32-unknown-unknown \
@@ -133,6 +166,7 @@ fuzz-idb-full ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
     cargo test \
         -p crdb-indexed-db \
         --target wasm32-unknown-unknown \

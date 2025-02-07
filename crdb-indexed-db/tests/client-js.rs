@@ -23,7 +23,7 @@ async fn smoke_test() {
 mod fuzz_helpers {
     use bolero::{generator::bolero_generator, ValueGenerator};
     use crdb_indexed_db::IndexedDb;
-    use rand::{rngs::StdRng, SeedableRng};
+    use rand_0_8::{rngs::StdRng, SeedableRng};
     use std::{
         future::Future,
         sync::atomic::{AtomicUsize, Ordering},
@@ -97,7 +97,7 @@ mod fuzz_helpers {
 
                 loop {
                     // Get a seed
-                    let seed: u64 = rand::thread_rng().gen();
+                    let seed: u64 = rand::rng().random();
                     web_sys::console::log_1(
                         &format!("Fuzzing {} with seed {seed}", $fuzzer_name).into(),
                     );

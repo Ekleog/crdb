@@ -134,7 +134,7 @@ impl SessionToken {
     #[cfg(feature = "server")]
     pub fn new() -> SessionToken {
         use rand::Rng;
-        SessionToken(ulid::Ulid::from_bytes(rand::thread_rng().gen()))
+        SessionToken(ulid::Ulid::from_bytes(rand::rng().random()))
     }
 }
 

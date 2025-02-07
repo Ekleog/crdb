@@ -18,7 +18,7 @@ pkgs.stdenv.mkDerivation {
       samply
       sqlx-cli
       trunk
-      wasm-bindgen-cli
+      wasm-bindgen-cli_0_2_100
       wasm-pack
       watchexec
 
