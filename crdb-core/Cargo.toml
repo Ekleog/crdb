@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 arbitrary = ["dep:arbitrary", "arbitrary-json", "rust_decimal/rust-fuzz"]
 indexed-db = ["dep:indexed-db", "serde-wasm-bindgen", "web-sys"]
-server = ["axum", "getrandom-0-3", "rand", "sqlx-postgres"]
+server = ["axum", "getrandom", "rand", "sqlx-postgres"]
 sqlx-postgres = ["sqlx", "sqlx/postgres", "sqlx/uuid", "uuid"]
 sqlx-sqlite = ["sqlx", "sqlx/sqlite", "sqlx/uuid", "uuid"]
 uuid = ["dep:uuid"]
@@ -35,7 +35,7 @@ writeable.workspace = true
 arbitrary = { workspace = true, optional = true }
 arbitrary-json = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
-getrandom-0-3 = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
 indexed-db = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 serde-wasm-bindgen = { workspace = true, optional = true }
@@ -52,4 +52,4 @@ wasm-bindgen-futures.workspace = true
 
 [dev-dependencies]
 bolero.workspace = true
-getrandom = { workspace = true, features = ["js"] }
+getrandom-0-2 = { workspace = true, features = ["js"] }

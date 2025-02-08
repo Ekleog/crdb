@@ -42,8 +42,8 @@ cron = "0.15.0"
 deepsize = "0.2.0"
 educe = "0.6.0"
 futures = "0.3.29"
-getrandom = "0.2.11" # TODO(blocked): kill this and overrides once all deps are gone
-getrandom-0-3 = { package = "getrandom", version = "0.3.1", features = [
+getrandom-0-2 = { package = "getrandom", version = "0.2.11" } # TODO(blocked): kill this and overrides once all deps are gone
+getrandom = { version = "0.3.1", features = [
     "wasm_js", # Required on wasm32 and noop elsewhere
 ] }
 gloo-net = "0.6.0"

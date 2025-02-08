@@ -22,4 +22,4 @@ crdb-indexed-db = { workspace = true, optional = true }
 crdb-server = { workspace = true, optional = true }
 
 [dev-dependencies]
-getrandom = { workspace = true, features = ["js"] }
+getrandom-0-2 = { workspace = true, features = ["js"] }

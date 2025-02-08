@@ -21,4 +21,4 @@ ulid.workspace = true
 waaaa.workspace = true
 
 [dev-dependencies]
-getrandom = { workspace = true, features = ["js"] }
+getrandom-0-2 = { workspace = true, features = ["js"] }
