@@ -12,6 +12,7 @@ arbitrary.workspace = true
 deepsize.workspace = true
 educe.workspace = true
 futures.workspace = true
+getrandom.workspace = true
 paste.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true

@@ -7,6 +7,7 @@ edition = "2021"
 crdb-core = { workspace = true, features = ["sqlx-sqlite"] }
 
 anyhow.workspace = true
+getrandom.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["sqlite", "uuid"] }
 ulid.workspace = true

@@ -4,18 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-js = [
-    "crdb-core/indexed-db",
-    "getrandom-0-2/js",
-    "serde-wasm-bindgen",
-    "wasm-bindgen",
-]
+js = ["crdb-core/indexed-db", "serde-wasm-bindgen", "wasm-bindgen"]
 
 [dependencies]
 crdb-core.workspace = true
 
 anyhow.workspace = true
-getrandom-0-2.workspace = true
 serde_json.workspace = true
 
 serde-wasm-bindgen = { workspace = true, optional = true }

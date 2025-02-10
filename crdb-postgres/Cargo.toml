@@ -13,6 +13,7 @@ crdb-helpers.workspace = true
 
 anyhow.workspace = true
 futures.workspace = true
+getrandom.workspace = true
 lockable.workspace = true
 reord.workspace = true
 serde_json.workspace = true

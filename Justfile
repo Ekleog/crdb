@@ -1,16 +1,29 @@
 # export RUST_BACKTRACE := "short"
 
-macro_backtrace := 'RUSTC_BOOTSTRAP=1 RUSTFLAGS="-Zmacro-backtrace"'
+export RUSTC_BOOTSTRAP := "1"
+export RUSTFLAGS := "-Z macro-backtrace"
+export SQLX_OFFLINE := "true"
+
+flags_for_js := "RUSTFLAGS='-Z macro-backtrace --cfg getrandom_backend=\"wasm_js\"'"
 
 all *ARGS: fmt (test ARGS) clippy udeps doc
 
 run-example-basic-server *ARGS:
     createdb basic-crdb || true
-    sqlx migrate run --source crdb-postgres/migrations --database-url "postgres:///basic-crdb"
-    CARGO_TARGET_DIR="target/host" {{macro_backtrace}} watchexec -r -e rs,toml -E RUST_LOG="trace,tokio_tungstenite=debug,tungstenite=debug" --workdir examples/basic cargo run -p basic-server -- {{ARGS}}
+    sqlx migrate run \
+        --source crdb-postgres/migrations \
+        --database-url "postgres:///basic-crdb"
+    CARGO_TARGET_DIR="target/host" \
+    watchexec -r -e rs,toml \
+        -E RUST_LOG="trace,tokio_tungstenite=debug,tungstenite=debug" \
+        --workdir examples/basic \
+        cargo run -p basic-server -- {{ARGS}}
 
 serve-example-basic-client-js *ARGS:
-    CARGO_TARGET_DIR="../target/wasm" {{macro_backtrace}} watchexec -r -e rs,toml,html --workdir examples/basic/client-js trunk serve
+    CARGO_TARGET_DIR="../target/wasm" \
+    watchexec -r -e rs,toml,html \
+        --workdir examples/basic/client-js \
+        trunk serve
 
 fmt:
     cargo fmt
@@ -21,48 +34,62 @@ test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
 test-standalone *ARGS: (test-crate-native "--exclude" "crdb-postgres" ARGS) (test-example-basic ARGS)
 
 clippy:
-    CARGO_TARGET_DIR="target/clippy" SQLX_OFFLINE="true" cargo clippy --all-features -- -D warnings
+    CARGO_TARGET_DIR="target/clippy" \
+    cargo clippy --all-features -- -D warnings
 
 udeps:
-    RUSTC_BOOTSTRAP=1 \
     CARGO_TARGET_DIR="target/udeps" \
-    SQLX_OFFLINE="true" \
-        cargo udeps --workspace --all-features
-    RUSTC_BOOTSTRAP=1 \
+    cargo udeps --workspace --all-features
     CARGO_TARGET_DIR="target/udeps" \
-    SQLX_OFFLINE="true" \
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
-        cargo udeps --workspace \
-            --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite \
-            --target wasm32-unknown-unknown
+    {{flags_for_js}} \
+    cargo udeps --workspace \
+        --exclude crdb-postgres \
+        --exclude crdb-server \
+        --exclude crdb-sqlite \
+        --target wasm32-unknown-unknown
 
 udeps-full:
-    RUSTC_BOOTSTRAP=1 \
     CARGO_TARGET_DIR="target/udeps" \
-    SQLX_OFFLINE="true" \
-        cargo hack udeps --each-feature
-    RUSTC_BOOTSTRAP=1 \
+    cargo hack udeps --each-feature
+
     CARGO_TARGET_DIR="target/udeps" \
-    SQLX_OFFLINE="true" \
-        cargo hack udeps --tests --each-feature
-    RUSTC_BOOTSTRAP=1 \
+    cargo hack udeps --tests --each-feature
+
     CARGO_TARGET_DIR="target/udeps" \
-    SQLX_OFFLINE="true" \
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
-        cargo udeps --workspace \
-            --exclude crdb-postgres --exclude crdb-server --exclude crdb-sqlite \
-            --target wasm32-unknown-unknown
+    {{flags_for_js}} \
+    cargo hack udeps --each-feature \
+        --workspace \
+        --exclude crdb-postgres \
+        --exclude crdb-server \
+        --exclude crdb-sqlite \
+        --exclude-features server,sqlx-postgres,sqlx-sqlite,_tests \
+        --target wasm32-unknown-unknown
+
+    CARGO_TARGET_DIR="target/udeps" \
+    {{flags_for_js}} \
+    cargo hack udeps --tests --each-feature \
+        --workspace \
+        --exclude crdb-postgres \
+        --exclude crdb-server \
+        --exclude crdb-sqlite \
+        --exclude-features server,sqlx-postgres,sqlx-sqlite \
+        --target wasm32-unknown-unknown
 
 doc:
-    CARGO_TARGET_DIR="target/doc" SQLX_OFFLINE="true" cargo doc --all-features --workspace
+    CARGO_TARGET_DIR="target/doc" \
+    cargo doc --all-features --workspace
 
 make-test-db:
     dropdb crdb-test || true
     createdb crdb-test
-    sqlx migrate run --source crdb-postgres/migrations --database-url "postgres:///crdb-test"
+    sqlx migrate run \
+        --source crdb-postgres/migrations \
+        --database-url "postgres:///crdb-test"
 
 rebuild-offline-queries: make-test-db
-    cargo sqlx prepare --database-url "postgres:///crdb-test" -- --all-features --tests
+    cargo sqlx prepare \
+        --database-url "postgres:///crdb-test" -- \
+        --all-features --tests
 
 list-todo-types:
     rg 'TODO\(' | grep -v Justfile | sed 's/^.*TODO(//;s/).*$//' | sort | uniq -c || true
@@ -76,10 +103,10 @@ clean:
 test-crate *ARGS: (test-crate-native ARGS) (test-crate-wasm32 ARGS)
 
 test-crate-native *ARGS:
-    SQLX_OFFLINE="true" cargo nextest run --workspace --all-features {{ARGS}}
+    cargo nextest run --workspace --all-features {{ARGS}}
 
 test-crate-wasm32 *ARGS:
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+    {{flags_for_js}} \
     cargo test -p crdb-indexed-db \
         --features _tests \
         --target wasm32-unknown-unknown \
@@ -90,14 +117,19 @@ test-example-basic *ARGS: build-example-basic-client (test-example-basic-host AR
 build-example-basic-client:
     cd examples/basic && \
         CARGO_TARGET_DIR="target/wasm" \
-        RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
-        {{macro_backtrace}} \
+        {{flags_for_js}} \
         cargo build \
             -p basic-client-js \
             --target wasm32-unknown-unknown
 
 test-example-basic-host *ARGS:
-    cd examples/basic && CARGO_TARGET_DIR="target/host" {{macro_backtrace}} cargo nextest run -p basic-api -p basic-server -p basic-client-native --no-tests=pass {{ARGS}}
+    cd examples/basic && \
+        CARGO_TARGET_DIR="target/host" \
+        cargo nextest run \
+            --workspace \
+            --exclude basic-client-js \
+            --no-tests=pass \
+            {{ARGS}}
 
 fuzz-pg-simple ARGS='':
     cargo bolero test \
@@ -110,7 +142,7 @@ fuzz-idb-simple ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+    {{flags_for_js}} \
     cargo test \
         -p crdb-indexed-db \
         --target wasm32-unknown-unknown \
@@ -131,7 +163,7 @@ fuzz-idb-perms ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+    {{flags_for_js}} \
     cargo test \
         -p crdb-indexed-db \
         --target wasm32-unknown-unknown \
@@ -166,7 +198,7 @@ fuzz-idb-full ARGS='':
     # TODO(blocked): remove path override, when https://github.com/rustwasm/wasm-bindgen/pull/3800 lands?
     PATH="../wasm-bindgen/target/debug:$PATH" \
     WASM_BINDGEN_TEST_TIMEOUT=86400 \
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+    {{flags_for_js}} \
     cargo test \
         -p crdb-indexed-db \
         --target wasm32-unknown-unknown \

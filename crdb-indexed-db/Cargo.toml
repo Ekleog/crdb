@@ -10,6 +10,7 @@ _tests = [
     "console_error_panic_hook",
     "crdb-test-utils",
     "getrandom",
+    "getrandom-0-2/js",
     "rand",
     "rand-0-8",
     "tracing-wasm",
@@ -39,6 +40,7 @@ arbitrary = { workspace = true, optional = true }
 bolero = { workspace = true, optional = true }
 console_error_panic_hook = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
+getrandom-0-2 = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rand-0-8 = { workspace = true, optional = true }
 tracing-wasm = { workspace = true, optional = true }
