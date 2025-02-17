@@ -1,7 +1,7 @@
 use crate::{
-    backend_api::{ObjectGet, Reencoder},
-    ClientSideDb, EventId, Importance, ObjectId, ReadPermsChanges, ServerSideDb, TypeId, Update,
-    Updatedness, User,
+    backend_api::{ClientSideDb, ObjectGet, Reencoder},
+    EventId, Importance, ObjectId, ReadPermsChanges, ServerSideDb, TypeId, Update, Updatedness,
+    User,
 };
 use std::{collections::HashSet, sync::Arc};
 
