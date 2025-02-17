@@ -126,12 +126,19 @@ pub enum MaybeObject {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct CreationSnapshot {
+    pub created_at: EventId,
+    pub snapshot_version: i32,
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ObjectData {
     pub object_id: ObjectId,
     pub type_id: TypeId,
     // TODO(misc-med): expose some API to make it easy for client writers to notice they're getting snapshots
     // with versions higher than what their current code version supports, to suggest an upgrade
-    pub creation_snapshot: Option<(EventId, i32, Arc<serde_json::Value>)>,
+    pub creation_snapshot: Option<CreationSnapshot>,
     pub events: BTreeMap<EventId, Arc<serde_json::Value>>,
     pub now_have_all_until: Updatedness,
 }
@@ -140,14 +147,14 @@ impl ObjectData {
     pub fn into_updates(self) -> Vec<Arc<Update>> {
         let mut res =
             Vec::with_capacity(self.events.len() + self.creation_snapshot.is_some() as usize);
-        if let Some((created_at, snapshot_version, data)) = self.creation_snapshot {
+        if let Some(s) = self.creation_snapshot {
             res.push(Arc::new(Update {
                 object_id: self.object_id,
                 data: UpdateData::Creation {
                     type_id: self.type_id,
-                    created_at,
-                    snapshot_version,
-                    data,
+                    created_at: s.created_at,
+                    snapshot_version: s.snapshot_version,
+                    data: Arc::new(s.data),
                 },
             }));
         }

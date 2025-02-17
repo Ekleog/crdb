@@ -17,7 +17,7 @@ mod login_info;
 mod messages;
 mod object;
 mod query;
-mod server_side_db;
+mod server_read_perms_change;
 mod session;
 mod timestamp;
 
@@ -39,7 +39,7 @@ pub use login_info::*;
 pub use messages::*;
 pub use object::*;
 pub use query::*;
-pub use server_side_db::*;
+pub use server_read_perms_change::*;
 pub use session::*;
 pub use timestamp::*;
 

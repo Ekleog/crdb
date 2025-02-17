@@ -1,7 +1,6 @@
 use crate::{
-    backend_api::{ClientSideDb, ObjectGet, Reencoder},
-    EventId, Importance, ObjectId, ReadPermsChanges, ServerSideDb, TypeId, Update, Updatedness,
-    User,
+    backend_api::{ClientSideDb, ObjectGet, Reencoder, ServerSideDb},
+    EventId, Importance, ObjectId, ReadPermsChanges, TypeId, Update, Updatedness, User,
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -30,6 +29,17 @@ pub struct UpdatesWithSnap {
 #[doc(hidden)]
 pub mod private {
     pub trait Sealed {}
+}
+
+pub type ComboLock<'a> = (
+    reord::Lock,
+    <lockable::LockPool<ObjectId> as lockable::Lockable<ObjectId, ()>>::Guard<'a>,
+);
+
+pub struct UsersWhoCanRead<'a> {
+    pub users: HashSet<User>,
+    pub depends_on: Vec<ObjectId>,
+    pub locks: Vec<ComboLock<'a>>,
 }
 
 pub trait Config: 'static + Send + Sync + private::Sealed {
@@ -68,7 +78,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         snapshot_version: i32,
         snapshot: serde_json::Value,
         cb: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<crate::UsersWhoCanRead<D::Lock<'a>>>>;
+    ) -> impl 'a + waaaa::Future<Output = crate::Result<crate::UsersWhoCanRead<'a>>>;
 
     // TODO(api-high): rename into recreate_at?
     #[allow(clippy::type_complexity)] // This is only used to proxy to a real function

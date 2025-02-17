@@ -24,6 +24,7 @@ mod tests;
 
 pub use crdb_core::{Error, Result};
 
+// TODO(api-highest): introduce side-table instead of storing permissions in the database itself
 pub struct PostgresDb<Config: crdb_core::Config> {
     db: sqlx::PgPool,
     cache_db: Weak<CacheDb<PostgresDb<Config>>>,
@@ -1207,11 +1208,6 @@ impl<C: CanDoCallbacks> CanDoCallbacks for TrackingCanDoCallbacks<'_, '_, C> {
             .wrap_with_context(|| format!("requesting {object_id:?} from database"))
     }
 }
-
-pub type ComboLock<'a> = (
-    reord::Lock,
-    <lockable::LockPool<ObjectId> as lockable::Lockable<ObjectId, ()>>::Guard<'a>,
-);
 
 impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
     type Connection = sqlx::PgConnection;
