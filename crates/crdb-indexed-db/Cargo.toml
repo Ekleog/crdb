@@ -12,6 +12,10 @@ readme.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lints.rust]
+# TODO(blocked): this seems to stem from bolero's fuzzing cfg when in wasm32 mode
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
 [features]
 _tests = [
     "arbitrary",
