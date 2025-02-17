@@ -23,6 +23,7 @@ jobs:
         rust:
           - { name: Nightly }
           - { name: Stable, sigil: '+stable', toolchain: 'stable' }
+          # Remember to update the workspace Cargo.toml when editing this
           - { name: MSRV, sigil: '+1.81.0', toolchain: '1.81.0' }
         include:
           - hardcoded: true

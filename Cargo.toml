@@ -14,6 +14,26 @@ members = [
     "crdb-test-utils",
 ]
 
+[workspace.package]
+authors = ["Leo Gaspard <leo@casmic.fr>"]
+categories = [
+    "asynchronous",
+    "database-implementations",
+    "database",
+    "web-programming",
+    "wasm",
+]
+description = "Concurrently Replicated DataBase"
+edition = "2021"
+homepage = "https://github.com/Ekleog/crdb" # TODO(doc-med): actually make a website
+keywords = ["database", "framework", "async", "web", "native"]
+license = "AGPL3"
+license-file = "./LICENSE-AGPL-3-0.txt"
+readme = "./README.md"
+repository = "https://github.com/Ekleog/crdb"
+# Remember to update the ci.yml file when updating this
+rust-version = "1.81.0" # TODO(api-highest): this is actually 1.85.0 due to the async-closure feature
+
 [workspace.dependencies]
 crdb = { path = "./crdb" }
 crdb-cache = { path = "./crdb-cache" }

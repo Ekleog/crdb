@@ -1,7 +1,17 @@
 [package]
 name = "crdb-test-utils"
 version = "0.0.1"
-edition = "2021"
+authors.workspace = true
+categories.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+license-file.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 crdb-core = { workspace = true, features = ["arbitrary"] }
