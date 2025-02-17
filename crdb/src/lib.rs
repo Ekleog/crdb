@@ -11,3 +11,6 @@ pub use crdb_indexed_db::*;
 
 #[cfg(feature = "server")]
 pub use crdb_server::*;
+
+#[cfg(feature = "sqlite")]
+pub use crdb_sqlite::*;
