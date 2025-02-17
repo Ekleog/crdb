@@ -8,6 +8,7 @@ on:
 
 env:
   DATABASE_URL: "postgres://postgres:postgres@localhost/crdb-test"
+  RUSTC_BOOTSTRAP: "1" # TODO(api-highest): remove once the next rust compiler version has been published
 
 jobs:
   just-test:
