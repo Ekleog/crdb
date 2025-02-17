@@ -8,6 +8,7 @@ pkgs.stdenv.mkDerivation {
     cargo-hack
     cargo-nextest
     cargo-udeps
+    cargo-workspaces
     # chromedriver # TODO(misc-low): test for both gecko and chrome in ci and locally
     # chromium
     firefox
