@@ -22,17 +22,17 @@ repository = "https://github.com/Ekleog/crdb"
 rust-version = "1.81.0" # TODO(api-highest): this is actually 1.85.0 due to the async-closure feature
 
 [workspace.dependencies]
-crdb = { path = "./crates/crdb" }
-crdb-cache = { path = "./crates/crdb-cache" }
-crdb-client = { path = "./crates/crdb-client" }
-crdb-core = { path = "./crates/crdb-core" }
-crdb-helpers = { path = "./crates/crdb-helpers" }
-crdb-indexed-db = { path = "./crates/crdb-indexed-db" }
-crdb-macros = { path = "./crates/crdb-macros" }
-crdb-postgres = { path = "./crates/crdb-postgres" }
-crdb-server = { path = "./crates/crdb-server" }
-crdb-sqlite = { path = "./crates/crdb-sqlite" }
-crdb-test-utils = { path = "./crates/crdb-test-utils" }
+crdb = { path = "./crates/crdb", version = "0.0.1-alpha.0" }
+crdb-cache = { path = "./crates/crdb-cache", version = "0.0.1-alpha.0" }
+crdb-client = { path = "./crates/crdb-client", version = "0.0.1-alpha.0" }
+crdb-core = { path = "./crates/crdb-core", version = "0.0.1-alpha.0" }
+crdb-helpers = { path = "./crates/crdb-helpers", version = "0.0.1-alpha.0" }
+crdb-indexed-db = { path = "./crates/crdb-indexed-db", version = "0.0.1-alpha.0" }
+crdb-macros = { path = "./crates/crdb-macros", version = "0.0.1-alpha.0" }
+crdb-postgres = { path = "./crates/crdb-postgres", version = "0.0.1-alpha.0" }
+crdb-server = { path = "./crates/crdb-server", version = "0.0.1-alpha.0" }
+crdb-sqlite = { path = "./crates/crdb-sqlite", version = "0.0.1-alpha.0" }
+crdb-test-utils = { path = "./crates/crdb-test-utils", version = "0.0.1-alpha.0" }
 
 anyhow = "1.0"
 arbitrary = { version = "1.3", features = ["derive"] }
