@@ -84,13 +84,14 @@ make-test-db:
     dropdb crdb-test || true
     createdb crdb-test
     sqlx migrate run \
-        --source crdb-postgres/migrations \
+        --source crates/crdb-postgres/migrations \
         --database-url "postgres:///crdb-test"
 
 rebuild-offline-queries: make-test-db
-    cargo sqlx prepare \
-        --database-url "postgres:///crdb-test" -- \
-        --all-features --tests
+    cd crates/crdb-postgres && \
+        cargo sqlx prepare \
+            --database-url "postgres:///crdb-test" -- \
+            --all-features --tests
 
 list-todo-types:
     rg 'TODO\(' | grep -v Justfile | sed 's/^.*TODO(//;s/).*$//' | sort | uniq -c || true
