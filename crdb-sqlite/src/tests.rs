@@ -1,8 +1,9 @@
 #![allow(unused_variables, dead_code, unused_imports)] // TODO(sqlite-high): remove
 
 use super::SqliteDb;
-use crate::{Db, EventId, Lock, ObjectId, Updatedness};
+use crate::{Db, EventId, ObjectId, Updatedness};
 use anyhow::Context;
+use crdb_core::Importance;
 use crdb_test_utils::{
     self, TestEventSimple, TestObjectSimple, EVENT_ID_1, EVENT_ID_2, EVENT_ID_3, EVENT_ID_4,
     OBJECT_ID_1, OBJECT_ID_2,
@@ -19,7 +20,7 @@ async fn smoke_test(db: sqlx::SqlitePool) {
         EVENT_ID_1,
         Arc::new(TestObjectSimple::stub_1()),
         Some(Updatedness::from_u128(1)),
-        Lock::OBJECT,
+        Importance::LOCK,
     )
     .await
     .expect("creating test object 1 failed");

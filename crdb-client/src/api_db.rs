@@ -1,13 +1,16 @@
-use crate::connection::{
-    Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
-    ResponseSender,
+use crate::{
+    client_db::SavedObject,
+    connection::{
+        Command, Connection, ConnectionEvent, RequestWithSidecar, ResponsePartWithSidecar,
+        ResponseSender,
+    },
 };
 use anyhow::anyhow;
 use crdb_cache::CacheDb;
 use crdb_core::{
-    BinPtr, ClientSideDb, CrdbSyncFn, Db, Event, EventId, Lock, MaybeObject, Object, ObjectData,
-    ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, Session, SessionRef, SessionToken,
-    TypeId, Updatedness, Updates, Upload, UploadId,
+    BinPtr, ClientSideDb, CrdbSyncFn, Db, Event, EventId, Importance, MaybeObject, Object,
+    ObjectData, ObjectId, Query, QueryId, Request, ResponsePart, ResultExt, SavedQuery, Session,
+    SessionRef, SessionToken, Updatedness, Updates, Upload, UploadId,
 };
 use futures::{channel::mpsc, future::Either, pin_mut, stream, FutureExt, StreamExt};
 use std::{
@@ -39,19 +42,17 @@ pub struct ApiDb<LocalDb: ClientSideDb> {
 }
 
 impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
-    pub async fn new<C, GSO, GSQ, EH, EHF, RRL>(
+    pub(crate) async fn new<C, GSO, GSQ, EH, EHF, RRL>(
         db: Arc<CacheDb<LocalDb>>,
-        get_subscribed_objects: GSO,
-        get_subscribed_queries: GSQ,
+        get_saved_objects: GSO,
+        get_saved_queries: GSQ,
         error_handler: EH,
         require_relogin: RRL,
     ) -> crate::Result<(ApiDb<LocalDb>, mpsc::UnboundedReceiver<Updates>)>
     where
         C: crdb_core::Config,
-        GSO: 'static + waaaa::Send + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
-        GSQ: 'static
-            + Send
-            + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
+        GSO: 'static + waaaa::Send + FnMut() -> HashMap<ObjectId, SavedObject>,
+        GSQ: 'static + Send + FnMut() -> HashMap<QueryId, SavedQuery>,
         EH: 'static + waaaa::Send + Fn(Upload, crate::Error) -> EHF,
         EHF: 'static + waaaa::Future<Output = OnError>,
         RRL: 'static + waaaa::Send + Fn(),
@@ -86,8 +87,8 @@ impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
                 requests_receiver,
                 event_cb,
                 update_sender,
-                get_subscribed_objects,
-                get_subscribed_queries,
+                get_saved_objects,
+                get_saved_queries,
             )
             .run(),
         );
@@ -149,6 +150,7 @@ impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
             .expect("connection cannot go away before sender does")
     }
 
+    // TODO(api-highest): make this return when it's done logging out, and use it in ClientDb::logout
     pub fn logout(&self) {
         self.connection
             .unbounded_send(Command::Logout)
@@ -238,7 +240,6 @@ impl<LocalDb: ClientSideDb> ApiDb<LocalDb> {
                 ResponsePart::Sessions(_)
                 | ResponsePart::CurrentTime(_)
                 | ResponsePart::Objects { .. }
-                | ResponsePart::Snapshots { .. }
                 | ResponsePart::Binaries(_) => Err(crate::Error::Other(anyhow!(
                     "Connection returned unexpected answer while expecting a simple result"
                 ))),
@@ -731,7 +732,7 @@ async fn do_upload<C: crdb_core::Config, LocalDb: ClientSideDb>(
             *event_id,
             event,
             None,
-            Lock::NONE,
+            Importance::NONE,
         )
         .await
         .map(|_| ()),

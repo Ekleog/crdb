@@ -25,6 +25,7 @@ pub enum Query {
     // AllIn(Vec<JsonPathItem>, Box<Query>),
 
     // JSON tests
+    // TODO(api-high): allow comparing JsonPath with JsonPath
     Eq(Vec<JsonPathItem>, serde_json::Value),
 
     // Integers

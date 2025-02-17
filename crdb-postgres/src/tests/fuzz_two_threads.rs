@@ -1,7 +1,7 @@
 use super::{TmpDb, CHECK_NAMED_LOCKS_FOR, MAYBE_LOCK_TIMEOUT};
 use crate::PostgresDb;
 use crdb_cache::CacheDb;
-use crdb_core::{Db, EventId, Lock, ObjectId, ResultExt, ServerSideDb, Updatedness};
+use crdb_core::{Db, EventId, Importance, ObjectId, ResultExt, ServerSideDb, Updatedness};
 use crdb_test_utils::{Config, *};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -68,7 +68,7 @@ async fn apply_op(db: &CacheDb<PostgresDb<Config>>, s: &FuzzState, op: &Op) -> a
                     *created_at,
                     object.clone(),
                     Some(*updatedness),
-                    Lock::OBJECT,
+                    Importance::LOCK,
                 )
                 .await;
         }
@@ -91,7 +91,7 @@ async fn apply_op(db: &CacheDb<PostgresDb<Config>>, s: &FuzzState, op: &Op) -> a
                     *event_id,
                     event.clone(),
                     Some(*updatedness),
-                    Lock::OBJECT,
+                    Importance::LOCK,
                 )
                 .await;
         }
@@ -104,7 +104,7 @@ async fn apply_op(db: &CacheDb<PostgresDb<Config>>, s: &FuzzState, op: &Op) -> a
                 .copied()
                 .unwrap_or_else(|| ObjectId(Ulid::new()));
             let _pg: crate::Result<Arc<TestObjectFull>> = db
-                .get_latest::<TestObjectFull>(Lock::OBJECT, o)
+                .get_latest::<TestObjectFull>(o, Importance::LOCK)
                 .await
                 .wrap_context(&format!("getting {o:?} in database"));
         }

@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Context};
 use crdb_cache::CacheDb;
 use crdb_core::{
-    normalizer_version, BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Lock, Object,
-    ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, SnapshotData,
-    SystemTimeExt, TypeId, Update, UpdateData, Updatedness, User, UsersWhoCanRead,
+    normalizer_version, BinPtr, CanDoCallbacks, Db, DbPtr, Event, EventId, Importance, Object,
+    ObjectData, ObjectId, Query, ResultExt, Session, SessionRef, SessionToken, SystemTimeExt,
+    TypeId, Update, UpdateData, Updatedness, User, UsersWhoCanRead,
 };
 use crdb_core::{Decimal, JsonPathItem, ReadPermsChanges, ServerSideDb};
 use crdb_helpers::parse_snapshot;
@@ -795,7 +795,7 @@ impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        _lock: Lock,
+        _importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let updatedness =
             updatedness.expect("Called PostgresDb::create without specifying updatedness");
@@ -811,7 +811,7 @@ impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        _force_lock: Lock,
+        _additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let updatedness =
             updatedness.expect("Called PostgresDb::create without specifying updatedness");
@@ -823,8 +823,8 @@ impl<Config: crdb_core::Config> Db for PostgresDb<Config> {
 
     async fn get_latest<T: Object>(
         &self,
-        _lock: Lock,
         object_id: ObjectId,
+        _importance: Importance,
     ) -> crate::Result<Arc<T>> {
         reord::point().await;
         let mut transaction = self
@@ -1275,7 +1275,7 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
         transaction: &mut sqlx::PgConnection,
         user: User,
         object_id: ObjectId,
-    ) -> crate::Result<SnapshotData> {
+    ) -> crate::Result<Arc<serde_json::Value>> {
         reord::point().await;
         let latest_snapshot = sqlx::query!(
             "
@@ -1295,12 +1295,7 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
             Some(s) => s,
             None => return Err(crate::Error::ObjectDoesNotExist(object_id)),
         };
-        Ok(SnapshotData {
-            object_id,
-            type_id: TypeId::from_uuid(latest_snapshot.type_id),
-            snapshot_version: latest_snapshot.snapshot_version,
-            snapshot: Arc::new(latest_snapshot.snapshot),
-        })
+        Ok(Arc::new(latest_snapshot.snapshot))
     }
 
     // TODO(test-high): introduce in server-side fuzzer

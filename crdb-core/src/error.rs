@@ -1,4 +1,4 @@
-use crate::{BinPtr, EventId, ObjectId, SessionToken, TypeId};
+use crate::{BinPtr, EventId, ObjectId, QueryId, SessionToken, TypeId};
 use anyhow::anyhow;
 use web_time::SystemTime;
 
@@ -18,6 +18,9 @@ pub enum Error {
 
     #[error("{0:?} does not exist in database")]
     ObjectDoesNotExist(ObjectId),
+
+    #[error("{0:?} does not exist in database")]
+    QueryDoesNotExist(QueryId),
 
     #[error("{0:?} does not exist in datapase")]
     TypeDoesNotExist(TypeId),
@@ -81,6 +84,9 @@ pub enum SerializableError {
     #[error("{0:?} does not exist in database")]
     ObjectDoesNotExist(ObjectId),
 
+    #[error("{0:?} does not exist in database")]
+    QueryDoesNotExist(QueryId),
+
     #[error("{0:?} does not exist in datapase")]
     TypeDoesNotExist(TypeId),
 
@@ -135,6 +141,7 @@ impl From<Error> for SerializableError {
             Error::ObjectAlreadyExists(e) => SerializableError::ObjectAlreadyExists(e),
             Error::EventAlreadyExists(e) => SerializableError::EventAlreadyExists(e),
             Error::ObjectDoesNotExist(e) => SerializableError::ObjectDoesNotExist(e),
+            Error::QueryDoesNotExist(e) => SerializableError::QueryDoesNotExist(e),
             Error::TypeDoesNotExist(e) => SerializableError::TypeDoesNotExist(e),
             Error::BinaryHashMismatch(e) => SerializableError::BinaryHashMismatch(e),
             Error::NullByteInString => SerializableError::NullByteInString,
@@ -177,6 +184,7 @@ impl From<SerializableError> for Error {
             SerializableError::ObjectAlreadyExists(e) => Error::ObjectAlreadyExists(e),
             SerializableError::EventAlreadyExists(e) => Error::EventAlreadyExists(e),
             SerializableError::ObjectDoesNotExist(e) => Error::ObjectDoesNotExist(e),
+            SerializableError::QueryDoesNotExist(e) => Error::QueryDoesNotExist(e),
             SerializableError::TypeDoesNotExist(e) => Error::TypeDoesNotExist(e),
             SerializableError::BinaryHashMismatch(e) => Error::BinaryHashMismatch(e),
             SerializableError::NullByteInString => Error::NullByteInString,

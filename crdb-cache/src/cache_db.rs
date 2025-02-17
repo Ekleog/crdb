@@ -1,8 +1,9 @@
 use super::{BinariesCache, ObjectCache};
 use crdb_core::{
-    BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, EventId, Lock, LoginInfo,
-    Object, ObjectId, Query, QueryId, ServerSideDb, Session, SessionRef, SessionToken,
-    SnapshotData, TypeId, Updatedness, Upload, UploadId, User, UsersWhoCanRead,
+    BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, EventId, Importance,
+    LoginInfo, Object, ObjectId, Query, QueryId, SavedObjectMeta, SavedQuery, ServerSideDb,
+    Session, SessionRef, SessionToken, TypeId, Updatedness, Upload, UploadId, User,
+    UsersWhoCanRead,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -44,12 +45,18 @@ impl<D: Db> Db for CacheDb<D> {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: Lock,
+        importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         self.cache.write().unwrap().remove(&object_id);
         let res = self
             .db
-            .create(object_id, created_at, object.clone(), updatedness, lock)
+            .create(
+                object_id,
+                created_at,
+                object.clone(),
+                updatedness,
+                importance,
+            )
             .await?;
         if let Some(value) = res.clone() {
             self.cache.write().unwrap().set(object_id, value);
@@ -63,11 +70,17 @@ impl<D: Db> Db for CacheDb<D> {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
-            .submit::<T>(object_id, event_id, event.clone(), updatedness, force_lock)
+            .submit::<T>(
+                object_id,
+                event_id,
+                event.clone(),
+                updatedness,
+                additional_importance,
+            )
             .await?;
         if let Some(value) = res.clone() {
             self.cache.write().unwrap().set(object_id, value);
@@ -77,16 +90,17 @@ impl<D: Db> Db for CacheDb<D> {
 
     async fn get_latest<T: Object>(
         &self,
-        lock: Lock,
         object_id: ObjectId,
+        importance: Importance,
     ) -> crate::Result<Arc<T>> {
         if let Some(res) = self.cache.read().unwrap().get(&object_id) {
+            // TODO(api-highest): if we need to increase the importance, this will skip it
             if let Ok(res) = Arc::downcast(DynSized::arc_to_any(res)) {
                 return Ok(res);
             }
             // Ignore wrong type errors, they'll be catched by self.db.get_latest below, where the real type will be known
         }
-        let res = self.db.get_latest::<T>(lock, object_id).await?;
+        let res = self.db.get_latest::<T>(object_id, importance).await?;
         self.cache.write().unwrap().set(object_id, res.clone() as _);
         Ok(res)
     }
@@ -150,17 +164,31 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
         self.db.remove_everything().await
     }
 
+    async fn get_json(
+        &self,
+        object_id: ObjectId,
+        importance: Importance,
+    ) -> crate::Result<serde_json::Value> {
+        self.db.get_json(object_id, importance).await
+    }
+
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
-            .recreate(object_id, new_created_at, object, updatedness, force_lock)
+            .recreate(
+                object_id,
+                new_created_at,
+                object,
+                updatedness,
+                additional_importance,
+            )
             .await?;
         if let Some(res) = res.clone() {
             self.cache.write().unwrap().set(object_id, res as _);
@@ -190,13 +218,24 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
         self.db.remove_event::<T>(object_id, event_id).await
     }
 
-    async fn change_locks(
+    async fn set_object_importance(
         &self,
-        unlock: Lock,
-        then_lock: Lock,
         object_id: ObjectId,
+        new_importance: Importance,
     ) -> crate::Result<()> {
-        self.db.change_locks(unlock, then_lock, object_id).await
+        self.db
+            .set_object_importance(object_id, new_importance)
+            .await
+    }
+
+    async fn set_importance_from_queries(
+        &self,
+        object_id: ObjectId,
+        new_importance_from_queries: Importance,
+    ) -> crate::Result<()> {
+        self.db
+            .set_importance_from_queries(object_id, new_importance_from_queries)
+            .await
     }
 
     async fn client_vacuum(
@@ -245,36 +284,43 @@ impl<D: ClientSideDb> ClientSideDb for CacheDb<D> {
         self.db.upload_finished(upload_id).await
     }
 
-    async fn get_subscribed_objects(
-        &self,
-    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
-        self.db.get_subscribed_objects().await
+    async fn get_saved_objects(&self) -> crate::Result<HashMap<ObjectId, SavedObjectMeta>> {
+        self.db.get_saved_objects().await
     }
 
-    async fn get_subscribed_queries(
-        &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
-        self.db.get_subscribed_queries().await
+    async fn get_saved_queries(&self) -> crate::Result<HashMap<QueryId, SavedQuery>> {
+        self.db.get_saved_queries().await
     }
 
-    async fn subscribe_query(
+    async fn record_query(
         &self,
         query_id: QueryId,
         query: Arc<Query>,
         type_id: TypeId,
-        lock: bool,
+        importance: Importance,
     ) -> crate::Result<()> {
         self.db
-            .subscribe_query(query_id, query, type_id, lock)
+            .record_query(query_id, query, type_id, importance)
             .await
     }
 
-    async fn unsubscribe_query(
+    async fn set_query_importance(
         &self,
         query_id: QueryId,
-        objects_to_unlock: Vec<ObjectId>,
+        importance: Importance,
+        objects_matching_query: Vec<ObjectId>,
     ) -> crate::Result<()> {
-        self.db.unsubscribe_query(query_id, objects_to_unlock).await
+        self.db
+            .set_query_importance(query_id, importance, objects_matching_query)
+            .await
+    }
+
+    async fn forget_query(
+        &self,
+        query_id: QueryId,
+        objects_matching_query: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        self.db.forget_query(query_id, objects_matching_query).await
     }
 
     async fn update_queries(
@@ -311,7 +357,7 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
         transaction: &mut Self::Connection,
         user: User,
         object_id: ObjectId,
-    ) -> crate::Result<SnapshotData> {
+    ) -> crate::Result<Arc<serde_json::Value>> {
         self.db
             .get_latest_snapshot(transaction, user, object_id)
             .await

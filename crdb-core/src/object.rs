@@ -1,4 +1,4 @@
-use crate::{BinPtr, Db, DbPtr, Lock, ObjectId, ResultExt, TypeId, User};
+use crate::{BinPtr, Db, DbPtr, Importance, ObjectId, ResultExt, TypeId, User};
 #[cfg(doc)]
 use std::collections::{BTreeMap, HashMap};
 use std::{any::Any, collections::HashSet, sync::Arc};
@@ -12,7 +12,7 @@ pub trait CanDoCallbacks: waaaa::Send + waaaa::Sync {
 
 impl<D: Db> CanDoCallbacks for D {
     async fn get<T: Object>(&self, object_id: DbPtr<T>) -> crate::Result<Arc<T>> {
-        self.get_latest::<T>(Lock::NONE, ObjectId(object_id.id))
+        self.get_latest::<T>(ObjectId(object_id.id), Importance::NONE)
             .await
             .wrap_with_context(|| format!("requesting {object_id:?} from database"))
     }

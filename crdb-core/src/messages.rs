@@ -35,6 +35,9 @@ pub enum Request {
         object_ids: HashMap<ObjectId, Option<Updatedness>>,
         subscribe: bool,
     },
+    AlreadyHave {
+        object_ids: HashMap<ObjectId, Updatedness>,
+    },
     Query {
         query_id: QueryId,
         type_id: TypeId,
@@ -111,10 +114,6 @@ pub enum ResponsePart {
         // postgresql would be able to filter more lines faster.
         now_have_all_until: Option<Updatedness>,
     },
-    Snapshots {
-        data: Vec<MaybeSnapshot>,
-        now_have_all_until: Option<Updatedness>,
-    },
     Binaries(usize),
     // Note: the server's answer to GetBinaries is a Binaries(x) message, followed by `x`
     // websocket frames of type Binary. It can be split into multiple parts.
@@ -164,20 +163,6 @@ impl ObjectData {
         }
         res
     }
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum MaybeSnapshot {
-    AlreadySubscribed(ObjectId),
-    NotSubscribed(SnapshotData),
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct SnapshotData {
-    pub object_id: ObjectId,
-    pub type_id: TypeId,
-    pub snapshot_version: i32,
-    pub snapshot: Arc<serde_json::Value>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

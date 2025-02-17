@@ -1,6 +1,4 @@
-
 -- BLOBs are ULIDs if not specified otherwise
-
 CREATE TABLE binaries (
     binary_id BLOB PRIMARY KEY NOT NULL,
     data BLOB NOT NULL
@@ -19,13 +17,10 @@ CREATE TABLE snapshots (
     -- or of the last `recreate` call.
     -- Null if no event was ever received from the server for this object.
     have_all_until BLOB,
-    -- Whether we need to keep the object in the database, because the
-    -- user explicitly required it. Meaningfully set only on the
-    -- is_creation snapshot, values on other snapshots are ignored.
-    -- This is a bitset: value 0 means unlocked, 1 means locked for the
-    -- object itself, 2 means locked for some locked query, and 3 means
-    -- locked for both
-    is_locked INTEGER NOT NULL
+    -- The importance specific to this object. See [`Importance`].
+    importance INTEGER NOT NULL,
+    -- The importance of this object that comes from queries. See [`Importance`].
+    importance_from_queries INTEGER NOT NULL
 );
 
 CREATE TABLE snapshots_binaries (
@@ -57,5 +52,10 @@ CREATE TABLE upload_queue_binaries (
     PRIMARY KEY (binary_id, upload_id)
 );
 
-CREATE UNIQUE INDEX snapshot_creations ON snapshots (object_id) WHERE is_creation;
-CREATE UNIQUE INDEX snapshot_latests ON snapshots (object_id) WHERE is_latest;
+CREATE UNIQUE INDEX snapshot_creations ON snapshots (object_id)
+WHERE
+    is_creation;
+
+CREATE UNIQUE INDEX snapshot_latests ON snapshots (object_id)
+WHERE
+    is_latest;

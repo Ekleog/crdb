@@ -1,6 +1,6 @@
 use crate::{
-    CanDoCallbacks, ClientSideDb, Db, EventId, Lock, ObjectId, ReadPermsChanges, ServerSideDb,
-    TypeId, Update, Updatedness, User,
+    CanDoCallbacks, ClientSideDb, Db, EventId, Importance, ObjectId, ReadPermsChanges,
+    ServerSideDb, TypeId, Update, Updatedness, User,
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -10,6 +10,7 @@ pub struct UploadId(pub i64);
 // Each update is both the list of updates itself, and the new latest snapshot
 // for query matching, available if the latest snapshot actually changed. Also,
 // the list of users allowed to read this object.
+// TODO(api-highest): this is only used server-side internally, move it there?
 #[derive(Debug)]
 pub struct UpdatesWithSnap {
     // The list of actual updates
@@ -17,6 +18,7 @@ pub struct UpdatesWithSnap {
 
     // The new last snapshot, if the update did change it (ie. no vacuum) and if the users affected
     // actually do have access to it. This is used for query matching.
+    // It is always on the latest snapshot version
     pub new_last_snapshot: Option<Arc<serde_json::Value>>,
 }
 
@@ -37,6 +39,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
 
     fn reencode_old_versions<D: Db>(call_on: &D) -> impl '_ + waaaa::Future<Output = usize>;
 
+    // TODO(api-high): is this unused?
     fn create<D: Db>(
         db: &D,
         type_id: TypeId,
@@ -56,7 +59,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         snapshot_version: i32,
         object: &serde_json::Value,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<Option<serde_json::Value>>>;
 
     /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
@@ -67,7 +70,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         event_id: EventId,
         event: &serde_json::Value,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<Option<serde_json::Value>>>;
 
     fn remove_event<D: ClientSideDb>(
@@ -87,6 +90,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         cb: &'a C,
     ) -> impl 'a + waaaa::Future<Output = crate::Result<crate::UsersWhoCanRead<D::Lock<'a>>>>;
 
+    // TODO(api-high): rename into recreate_at?
     #[allow(clippy::type_complexity)] // This is only used to proxy to a real function
     fn recreate_no_lock<'a, D: ServerSideDb, C: CanDoCallbacks>(
         call_on: &'a D,

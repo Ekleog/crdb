@@ -37,35 +37,35 @@ macro_rules! fuzz_simple {
                         created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectSimple(b"123".to_vec())),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     SubmitSimple {
                         object_id: 0,
                         event_id: EVENT_ID_3,
                         event: Arc::new(TestEventSimple::Clear),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     SubmitSimple {
                         object_id: 0,
                         event_id: EVENT_ID_4,
                         event: Arc::new(TestEventSimple::Clear),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     SubmitSimple {
                         object_id: 0,
                         event_id: EVENT_ID_2,
                         event: Arc::new(TestEventSimple::Clear),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     CreateSimple {
                         object_id: OBJECT_ID_2,
                         created_at: EVENT_ID_3,
                         object: Arc::new(TestObjectSimple(b"456".to_vec())),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -83,7 +83,7 @@ macro_rules! fuzz_simple {
                     new_created_at: EVENT_ID_NULL,
                     object: Arc::new(TestObjectSimple::stub_1()),
                     updatedness: Some(Updatedness::from_u128(1)),
-                    force_lock: Lock::OBJECT.bits(),
+                    additional_importance: Importance::LOCK,
                 }]),
             )
             .await;
@@ -102,14 +102,14 @@ macro_rules! fuzz_simple {
                         created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 2, 0, 252])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     CreateSimple {
                         object_id: OBJECT_ID_1,
                         created_at: EVENT_ID_2,
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 0, 0])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -133,7 +133,7 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 143, 0, 0, 0, 0, 126, 59])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     CreateSimple {
                         object_id: ObjectId(
@@ -144,7 +144,7 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 244, 0, 105, 111, 110, 0])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -168,7 +168,7 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 214, 0])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     CreateSimple {
                         object_id: ObjectId(
@@ -179,14 +179,14 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 1, 0])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     SubmitSimple {
                         object_id: 0,
                         event_id: EventId(Ulid::from_string("0000001ZZZ1BYFZZRVZZZZY000").unwrap()),
                         event: Arc::new(TestEventSimple::Set(vec![0, 0, 0, 0, 0, 0, 0, 0])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -209,14 +209,14 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![55, 0, 0, 0, 0, 0, 0, 0])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::SubmitSimple {
                         object_id: 0,
                         event_id: EventId(Ulid::from_string("00001000040000000000000000").unwrap()),
                         event: Arc::new(TestEventSimple::Set(vec![15, 0, 255, 0, 0, 255, 0, 32])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     Op::ServerVacuum {
                         recreate_at: Some(EventId(
@@ -229,7 +229,7 @@ macro_rules! fuzz_simple {
                         event_id: EventId(Ulid::from_string("00000000000000000000000200").unwrap()),
                         event: Arc::new(TestEventSimple::Set(vec![6, 0, 0, 0, 0, 0, 0, 0])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -253,14 +253,14 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 0, 0, 75, 0])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     SubmitSimple {
                         object_id: 0,
                         event_id: EventId(Ulid::from_string("00000000510002P00000000000").unwrap()),
                         event: Arc::new(TestEventSimple::Append(vec![0, 0, 0, 0, 0, 0, 0, 0])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     CreateSimple {
                         object_id: ObjectId(
@@ -271,7 +271,7 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 0, 1, 0, 0, 4])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -423,7 +423,7 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 4, 6, 75, 182, 0])),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::QuerySimple {
                         user: User(Ulid::from_string("00000000000000000000000001").unwrap()),
@@ -464,7 +464,7 @@ macro_rules! fuzz_simple {
                         new_created_at: EVENT_ID_NULL,
                         object: Arc::new(TestObjectSimple::stub_1()),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     Op::QuerySimple {
                         user: USER_ID_NULL,
@@ -520,7 +520,7 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 0, 255, 255, 255, 0, 0])),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::QuerySimple {
                         user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -555,7 +555,7 @@ macro_rules! fuzz_simple {
                         ),
                         object: Arc::new(TestObjectSimple(vec![0, 0, 3, 3, 3, 3, 3, 3])),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::QuerySimple {
                         user: User(Ulid::from_string("00000000000000000000000000").unwrap()),
@@ -582,14 +582,14 @@ macro_rules! fuzz_simple {
                         created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectSimple(vec![221, 218])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::RecreateSimple {
                         object_id: 0,
                         new_created_at: EVENT_ID_2,
                         object: Arc::new(TestObjectSimple(vec![])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -608,14 +608,14 @@ macro_rules! fuzz_simple {
                         created_at: EVENT_ID_2,
                         object: Arc::new(TestObjectSimple(vec![221, 218])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::RecreateSimple {
                         object_id: 0,
                         new_created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectSimple(vec![])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -634,7 +634,7 @@ macro_rules! fuzz_simple {
                     new_created_at: EVENT_ID_1,
                     object: Arc::new(TestObjectSimple(vec![])),
                     updatedness: Some(Updatedness::from_u128(1)),
-                    force_lock: Lock::OBJECT.bits(),
+                    additional_importance: Importance::LOCK,
                 }]),
             )
             .await;
@@ -655,10 +655,9 @@ macro_rules! fuzz_simple {
             let cluster = setup();
             fuzz_impl(
                 &cluster,
-                Arc::new(vec![Op::ChangeLocks {
-                    unlock: Lock::OBJECT.bits(),
-                    then_lock: 0,
+                Arc::new(vec![Op::SetObjectImportance {
                     object_id: 0,
+                    new_importance: Importance::NONE,
                 }]),
             )
             .await;
@@ -676,7 +675,7 @@ macro_rules! fuzz_simple {
                         created_at: EVENT_ID_2,
                         object: Arc::new(TestObjectSimple(vec![1])),
                         updatedness: make_updatedness(),
-                        lock: 0,
+                        importance: Importance::NONE,
                     },
                     Op::ClientVacuum,
                     Op::RecreateSimple {
@@ -684,7 +683,7 @@ macro_rules! fuzz_simple {
                         new_created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectSimple(vec![2])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -703,21 +702,21 @@ macro_rules! fuzz_simple {
                         created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectSimple(vec![231])),
                         updatedness: make_updatedness(),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::SubmitSimple {
                         object_id: 1296584126,
                         event_id: EVENT_ID_3,
                         event: Arc::new(TestEventSimple::Append(vec![111])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     Op::RecreateSimple {
                         object_id: 2039216500,
                         new_created_at: EVENT_ID_2,
                         object: Arc::new(TestObjectSimple(vec![])),
                         updatedness: make_updatedness(),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )

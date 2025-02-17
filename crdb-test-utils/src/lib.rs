@@ -125,18 +125,18 @@ macro_rules! make_fuzzer_stuffs {
                     created_at: EventId,
                     object: Arc<$object>,
                     updatedness: Option<Updatedness>,
-                    lock: u8,
+                    importance: Importance,
                 },
                 [< Submit $name >] {
                     object_id: usize,
                     event_id: EventId,
                     event: Arc<$event>,
                     updatedness: Option<Updatedness>,
-                    force_lock: u8,
+                    additional_importance: Importance,
                 },
                 [< GetLatest $name >] {
                     object_id: usize,
-                    lock: u8,
+                    importance: Importance,
                 },
                 // TODO(test-high): also test GetAll
                 // TODO(test-high): also test query subscription / locking for client db's
@@ -150,7 +150,7 @@ macro_rules! make_fuzzer_stuffs {
                     new_created_at: EventId,
                     object: Arc<$object>,
                     updatedness: Option<Updatedness>,
-                    force_lock: u8,
+                    additional_importance: Importance,
                 },
             )*
             CreateBinary {
@@ -161,9 +161,11 @@ macro_rules! make_fuzzer_stuffs {
                 binary_id: usize,
             },
             Remove { object_id: usize },
-            ChangeLocks { unlock: u8, then_lock: u8, object_id: usize },
+            SetObjectImportance { object_id: usize, new_importance: Importance },
+            SetImportanceFromQueries { object_id: usize, new_importance_from_queries: Importance },
             ClientVacuum,
             ServerVacuum { recreate_at: Option<EventId>, updatedness: Updatedness },
+            // TODO(test-high): test all methods of *Db
         }
 
         impl Op {
@@ -175,22 +177,21 @@ macro_rules! make_fuzzer_stuffs {
                             created_at,
                             object,
                             updatedness,
-                            lock,
+                            mut importance,
                         } => {
-                            let mut lock = Lock::from_bits_truncate(*lock);
                             let updatedness = s.updatedness(updatedness);
                             let mut object = object.clone();
                             Arc::make_mut(&mut object).standardize(*object_id);
                             s.add_object(*object_id);
                             if s.is_server {
-                                lock |= Lock::OBJECT;
+                                importance |= Importance::LOCK;
                             }
                             let db = db
-                                .create(*object_id, *created_at, object.clone(), updatedness, lock)
+                                .create(*object_id, *created_at, object.clone(), updatedness, importance)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .create(*object_id, *created_at, object.clone(), updatedness, lock)
+                                .create(*object_id, *created_at, object.clone(), updatedness, importance)
                                 .await;
                             cmp(db, mem)?;
                         }
@@ -199,33 +200,31 @@ macro_rules! make_fuzzer_stuffs {
                             event_id,
                             event,
                             updatedness,
-                            force_lock,
+                            additional_importance,
                         } => {
-                            let force_lock = Lock::from_bits_truncate(*force_lock);
                             let updatedness = s.updatedness(updatedness);
                             let object_id = s.object(*object_id);
                             let db = db
-                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, force_lock)
+                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, *additional_importance)
                                 .await;
                             let mem = s
                                 .mem_db
-                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, force_lock)
+                                .submit::<$object>(object_id, *event_id, event.clone(), updatedness, *additional_importance)
                                 .await;
                             cmp(db, mem)?;
                         }
                         Op::[< GetLatest $name >] {
                             object_id,
-                            lock,
+                            importance,
                         } => {
-                            let lock = Lock::from_bits_truncate(*lock);
                             let object_id = s.object(*object_id);
                             let db = db
-                                .get_latest::<$object>(lock, object_id)
+                                .get_latest::<$object>(object_id, *importance)
                                 .await
                                 .wrap_context(&format!("getting {object_id:?} in database"));
                             let mem = s
                                 .mem_db
-                                .get_latest::<$object>(lock, object_id)
+                                .get_latest::<$object>(object_id, *importance)
                                 .await
                                 .wrap_context(&format!("getting {object_id:?} in mem db"));
                             cmp(db, mem)?;
@@ -264,10 +263,9 @@ macro_rules! make_fuzzer_stuffs {
                             new_created_at,
                             object,
                             updatedness,
-                            force_lock,
+                            additional_importance,
                         } => {
                             $crate::make_fuzzer_stuffs!(@if-client $db_type {
-                                let force_lock = Lock::from_bits_truncate(*force_lock);
                                 let updatedness = s.updatedness(updatedness);
                                 let object_id = s.object(*object_id);
                                 let mut object = object.clone();
@@ -278,7 +276,7 @@ macro_rules! make_fuzzer_stuffs {
                                         *new_created_at,
                                         object.clone(),
                                         updatedness,
-                                        force_lock,
+                                        *additional_importance,
                                     )
                                     .await;
                                 let mem = s
@@ -288,7 +286,7 @@ macro_rules! make_fuzzer_stuffs {
                                         *new_created_at,
                                         object.clone(),
                                         updatedness,
-                                        force_lock,
+                                        *additional_importance,
                                     )
                                     .await;
                                 cmp(db, mem)?;
@@ -323,13 +321,19 @@ macro_rules! make_fuzzer_stuffs {
                             cmp(db, mem)?;
                         });
                     }
-                    Op::ChangeLocks { unlock, then_lock, object_id } => {
+                    Op::SetObjectImportance { object_id, new_importance } => {
                         $crate::make_fuzzer_stuffs!(@if-client $db_type {
-                            let unlock = Lock::from_bits_truncate(*unlock);
-                            let then_lock = Lock::from_bits_truncate(*then_lock);
                             let object_id = s.object(*object_id);
-                            let db = db.change_locks(unlock, then_lock, object_id).await;
-                            let mem = s.mem_db.change_locks(unlock, then_lock, object_id).await;
+                            let db = db.set_object_importance(object_id, *new_importance).await;
+                            let mem = s.mem_db.set_object_importance(object_id, *new_importance).await;
+                            cmp(db, mem)?;
+                        });
+                    }
+                    Op::SetImportanceFromQueries { object_id, new_importance_from_queries } => {
+                        $crate::make_fuzzer_stuffs!(@if-client $db_type {
+                            let object_id = s.object(*object_id);
+                            let db = db.set_importance_from_queries(object_id, *new_importance_from_queries).await;
+                            let mem = s.mem_db.set_importance_from_queries(object_id, *new_importance_from_queries).await;
                             cmp(db, mem)?;
                         });
                     }

@@ -1,4 +1,4 @@
-use crate::{BinPtr, EventId, Lock, Object, ObjectId, Updatedness};
+use crate::{BinPtr, EventId, Importance, Object, ObjectId, Updatedness};
 use std::sync::Arc;
 
 // TODO(api-high): Review what's in this trait (and in Client/ServerSideDb), and verify that everything is necessary
@@ -14,7 +14,7 @@ pub trait Db: 'static + waaaa::Send + waaaa::Sync {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: Lock,
+        additional_importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
 
     /// Returns the new latest snapshot if it actually changed
@@ -27,13 +27,13 @@ pub trait Db: 'static + waaaa::Send + waaaa::Sync {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
 
     fn get_latest<T: Object>(
         &self,
-        lock: Lock,
         object_id: ObjectId,
+        importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<Arc<T>>>;
 
     fn create_binary(

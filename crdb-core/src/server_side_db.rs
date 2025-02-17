@@ -2,7 +2,7 @@ use web_time::SystemTime;
 
 use crate::{
     CanDoCallbacks, Db, EventId, Object, ObjectData, ObjectId, Query, Session, SessionRef,
-    SessionToken, SnapshotData, TypeId, Update, Updatedness, User,
+    SessionToken, TypeId, Update, Updatedness, User,
 };
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
@@ -41,7 +41,7 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         transaction: &mut Self::Connection,
         user: User,
         object_id: ObjectId,
-    ) -> impl waaaa::Future<Output = crate::Result<SnapshotData>>;
+    ) -> impl waaaa::Future<Output = crate::Result<Arc<serde_json::Value>>>;
 
     // TODO(test-high): introduce in server-side fuzzer
     fn get_all(

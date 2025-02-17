@@ -29,7 +29,8 @@ fmt:
     cargo fmt
     cd examples/basic && cargo fmt
 
-test *ARGS: (test-crate ARGS) (test-example-basic ARGS)
+# TODO(test-highest): re-introduce test-example-basic test, temporarily put aside for API iteration
+test *ARGS: (test-crate ARGS)
 
 test-standalone *ARGS: (test-crate-native "--exclude" "crdb-postgres" ARGS) (test-example-basic ARGS)
 
@@ -103,10 +104,12 @@ clean:
 test-crate *ARGS: (test-crate-native ARGS) (test-crate-wasm32 ARGS)
 
 test-crate-native *ARGS:
+    CARGO_TARGET_DIR="target/test-native" \
     cargo nextest run --workspace --all-features {{ARGS}}
 
 test-crate-wasm32 *ARGS:
     {{flags_for_js}} \
+    CARGO_TARGET_DIR="target/test-wasm" \
     cargo test -p crdb-indexed-db \
         --features _tests \
         --target wasm32-unknown-unknown \

@@ -1,15 +1,31 @@
 use crate::{
-    BinPtr, ClientStorageInfo, CrdbSyncFn, Db, EventId, Lock, LoginInfo, Object, ObjectId, Query,
-    QueryId, TypeId, Updatedness, Upload, UploadId,
+    BinPtr, ClientStorageInfo, CrdbSyncFn, Db, EventId, Importance, LoginInfo, Object, ObjectId,
+    Query, QueryId, TypeId, Updatedness, Upload, UploadId,
 };
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 
-// TODO(misc-med): refactor these into proper structs
-pub type SubscribedObject = (TypeId, serde_json::Value, Option<Updatedness>);
-pub type SubscribedQuery = (Arc<Query>, TypeId, Option<Updatedness>, Lock);
+pub struct SavedObjectMeta {
+    pub type_id: TypeId,
+    pub have_all_until: Option<Updatedness>,
+    pub importance: Importance,
+}
+
+#[derive(Clone)]
+pub struct SavedQuery {
+    pub query: Arc<Query>,
+    pub type_id: TypeId,
+    pub have_all_until: Option<Updatedness>,
+    pub importance: Importance,
+}
+
+impl SavedQuery {
+    pub fn now_have_all_until(&mut self, until: Updatedness) {
+        self.have_all_until = std::cmp::max(self.have_all_until, Some(until));
+    }
+}
 
 pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     fn storage_info(&self) -> impl waaaa::Future<Output = crate::Result<ClientStorageInfo>>;
@@ -17,6 +33,12 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     fn save_login(&self, _info: LoginInfo) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     fn get_saved_login(&self) -> impl waaaa::Future<Output = crate::Result<Option<LoginInfo>>>;
+
+    fn get_json(
+        &self,
+        object_id: ObjectId,
+        importance: Importance,
+    ) -> impl waaaa::Future<Output = crate::Result<serde_json::Value>>;
 
     fn remove_everything(&self) -> impl waaaa::Future<Output = crate::Result<()>>;
 
@@ -32,7 +54,7 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         new_created_at: EventId,
         creation_value: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<Option<Arc<T>>>>;
 
     fn client_query(
@@ -50,11 +72,16 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         event_id: EventId,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
-    fn change_locks(
+    fn set_object_importance(
         &self,
-        unlock: Lock,
-        then_lock: Lock,
         object_id: ObjectId,
+        new_importance: Importance,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn set_importance_from_queries(
+        &self,
+        object_id: ObjectId,
+        new_importance_from_queries: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     fn client_vacuum(
@@ -81,31 +108,38 @@ pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
         upload_id: UploadId,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
-    fn get_subscribed_objects(
+    fn get_saved_objects(
         &self,
-    ) -> impl waaaa::Future<Output = crate::Result<HashMap<ObjectId, SubscribedObject>>>;
+    ) -> impl waaaa::Future<Output = crate::Result<HashMap<ObjectId, SavedObjectMeta>>>;
 
-    fn get_subscribed_queries(
+    fn get_saved_queries(
         &self,
-    ) -> impl waaaa::Future<Output = crate::Result<HashMap<QueryId, SubscribedQuery>>>;
+    ) -> impl waaaa::Future<Output = crate::Result<HashMap<QueryId, SavedQuery>>>;
 
-    fn subscribe_query(
+    fn record_query(
         &self,
-        _query_id: QueryId,
-        _query: Arc<Query>,
-        _type_id: TypeId,
-        _lock: bool,
+        query_id: QueryId,
+        query: Arc<Query>,
+        type_id: TypeId,
+        importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
-    fn unsubscribe_query(
+    fn set_query_importance(
         &self,
-        _query_id: QueryId,
-        _objects_to_unlock: Vec<ObjectId>,
+        query_id: QueryId,
+        importance: Importance,
+        objects_matching_query: Vec<ObjectId>,
+    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+
+    fn forget_query(
+        &self,
+        query_id: QueryId,
+        objects_matching_query: Vec<ObjectId>,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     fn update_queries(
         &self,
-        _queries: &HashSet<QueryId>,
-        _now_have_all_until: Updatedness,
+        queries: &HashSet<QueryId>,
+        now_have_all_until: Updatedness,
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 }

@@ -4,6 +4,12 @@ pub use serde;
 pub use serde_json;
 pub use waaaa;
 
+// TODO(api-high): add one-per-user and one-per-server object types
+// one-per-user: hash("one-per-user", type_id, user_id)
+// one-per-server: hash("one-per-server", type_id)
+// both must be Default
+// take a lock on the user, so that if a user makes two first logins at the same time,
+// they do see the same one-per-user object
 #[macro_export]
 macro_rules! db {
     (
@@ -41,13 +47,13 @@ macro_rules! db {
                 object: &$crate::serde_json::Value,
             ) -> $crate::Result<()> {
                 use std::sync::Arc;
-                use $crate::{Lock, Object, ResultExt, crdb_helpers::parse_snapshot_ref};
+                use $crate::{Importance, Object, ResultExt, crdb_helpers::parse_snapshot_ref};
 
                 $(
                     if type_id == *<$object as Object>::type_ulid() {
                         let object = parse_snapshot_ref::<$object>(snapshot_version, object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        db.create::<$object>(object_id, created_at, Arc::new(object), None, Lock::NONE).await?;
+                        db.create::<$object>(object_id, created_at, Arc::new(object), None, Importance::NONE).await?;
                         return Ok(());
                     }
                 )*
@@ -63,7 +69,7 @@ macro_rules! db {
                 snapshot_version: i32,
                 object: &$crate::serde_json::Value,
                 updatedness: Option<$crate::Updatedness>,
-                force_lock: $crate::Lock,
+                additional_importance: $crate::Importance,
             ) -> $crate::Result<Option<$crate::serde_json::Value>> {
                 use $crate::{Object, ResultExt, crdb_helpers::parse_snapshot_ref, serde_json};
                 use std::sync::Arc;
@@ -72,7 +78,7 @@ macro_rules! db {
                     if type_id == *<$object as Object>::type_ulid() {
                         let object = parse_snapshot_ref::<$object>(snapshot_version, object)
                             .wrap_with_context(|| format!("failed deserializing object of {type_id:?}"))?;
-                        let res = db.recreate::<$object>(object_id, created_at, Arc::new(object), updatedness, force_lock).await?;
+                        let res = db.recreate::<$object>(object_id, created_at, Arc::new(object), updatedness, additional_importance).await?;
                         let Some(res) = res else {
                             return Ok(None);
                         };
@@ -91,7 +97,7 @@ macro_rules! db {
                 event_id: $crate::EventId,
                 event: &$crate::serde_json::Value,
                 updatedness: Option<$crate::Updatedness>,
-                force_lock: $crate::Lock,
+                additional_importance: $crate::Importance,
             ) -> $crate::Result<Option<$crate::serde_json::Value>> {
                 use $crate::{Object, ResultExt, serde, serde_json};
                 use std::sync::Arc;
@@ -100,7 +106,7 @@ macro_rules! db {
                     if type_id == *<$object as Object>::type_ulid() {
                         let event = <<$object as Object>::Event as serde::Deserialize>::deserialize(event)
                             .wrap_with_context(|| format!("failed deserializing event of {type_id:?}"))?;
-                        let res = db.submit::<$object>(object_id, event_id, Arc::new(event), updatedness, force_lock).await?;
+                        let res = db.submit::<$object>(object_id, event_id, Arc::new(event), updatedness, additional_importance).await?;
                         let Some(res) = res else {
                             return Ok(None);
                         };
@@ -236,14 +242,14 @@ macro_rules! db {
                 event_id: $crate::EventId,
                 event_data: std::sync::Arc<$crate::serde_json::Value>,
             ) -> $crate::Result<Option<(std::sync::Arc<$crate::UpdatesWithSnap>, Vec<$crate::User>, Vec<$crate::ReadPermsChanges>)>> {
-                use $crate::{Object, ResultExt, Lock, ServerSideDb, ReadPermsChanges, UpdatesWithSnap, Update, UpdateData, serde, serde_json};
+                use $crate::{Importance, Object, ResultExt, ServerSideDb, ReadPermsChanges, UpdatesWithSnap, Update, UpdateData, serde, serde_json};
                 use std::sync::Arc;
 
                 $(
                     if type_id == *<$object as Object>::type_ulid() {
                         let event = Arc::new(<<$object as Object>::Event as serde::Deserialize>::deserialize(&*event_data)
                             .wrap_context("parsing uploaded snapshot data")?);
-                        let object = call_on.get_latest::<$object>(Lock::NONE, object_id).await
+                        let object = call_on.get_latest::<$object>(object_id, Importance::NONE).await
                             .wrap_context("retrieving requested object id")?;
                         let can_apply = object.can_apply(user, object_id, &event, call_on).await.wrap_context("checking whether user can apply submitted event")?;
                         if !can_apply {

@@ -1,8 +1,8 @@
 use super::{eq, FullObject};
 use crdb_core::{
-    BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, Event, EventId, Lock,
-    LoginInfo, Object, ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
-    User,
+    BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, DynSized, Event, EventId, Importance,
+    LoginInfo, Object, ObjectId, Query, QueryId, ResultExt, SavedObjectMeta, SavedQuery, TypeId,
+    Updatedness, Upload, UploadId, User,
 };
 use futures::{stream, StreamExt};
 use std::{
@@ -17,9 +17,18 @@ struct MemDbImpl {
     // Some(e) for a real event, None for a creation snapshot
     events: MemDbEvents,
     // The set is the list of required_binaries
-    objects: HashMap<ObjectId, (TypeId, Lock, HashSet<BinPtr>, FullObject)>,
+    objects: HashMap<ObjectId, MemDbObj>,
     binaries: HashMap<BinPtr, Arc<[u8]>>,
     is_server: bool,
+}
+
+#[derive(Clone)]
+struct MemDbObj {
+    type_id: TypeId,
+    importance: Importance,
+    required_binaries: HashSet<BinPtr>,
+    data: FullObject,
+    importance_from_queries: Importance,
 }
 
 pub struct MemDb(Arc<Mutex<MemDbImpl>>);
@@ -41,26 +50,30 @@ impl MemDb {
     ) -> crate::Result<()> {
         let mut this = self.0.lock().await;
         let this = &mut *this; // disable auto-deref-and-reborrow, get a real mutable borrow
-        for (ty, _, required_binaries, o) in this.objects.values_mut() {
-            if ty == T::type_ulid() {
-                recreate_at::<T>(o, event_id, updatedness, &mut this.events)?;
-                *required_binaries = o.required_binaries::<T>();
+        for o in this.objects.values_mut() {
+            if o.type_id == *T::type_ulid() {
+                recreate_at::<T>(&o.data, event_id, updatedness, &mut this.events)?;
+                o.required_binaries = o.data.required_binaries::<T>();
             }
         }
         Ok(())
     }
 
-    async fn get<T: Object>(&self, lock: Lock, object_id: ObjectId) -> crate::Result<FullObject> {
+    async fn get<T: Object>(
+        &self,
+        object_id: ObjectId,
+        importance: Importance,
+    ) -> crate::Result<FullObject> {
         match self.0.lock().await.objects.get_mut(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
-            Some((ty, _, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+            Some(o) if o.type_id != *T::type_ulid() => Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
-                real_type_id: *ty,
+                real_type_id: o.type_id,
             }),
-            Some((_, locked, _, o)) => {
-                *locked |= lock;
-                Ok(o.clone())
+            Some(o) => {
+                o.importance |= importance;
+                Ok(o.data.clone())
             }
         }
     }
@@ -75,33 +88,33 @@ impl MemDb {
         let objects = self.0.lock().await.objects.clone(); // avoid deadlock with users_who_can_read below
         let is_server = self.0.lock().await.is_server; // avoid deadlock with users_who_can_read below
         stream::iter(objects.into_iter())
-            .filter_map(|(_, (t, _, _, full_object))| async move {
-                if t != *T::type_ulid() {
+            .filter_map(|(_, o)| async move {
+                if o.type_id != *T::type_ulid() {
                     return None;
                 }
                 if let Some(only_updated_since) = only_updated_since {
-                    let last_updated = full_object
+                    let last_updated = o.data
                         .last_updated()
                         .expect("Query with only_updated_since.is_some() (ie. server) but one object in database had no Updatedness (ie. client)");
                     if last_updated <= only_updated_since {
                         return None;
                     }
                 }
-                let o = full_object
+                let data = o.data
                     .last_snapshot::<T>()
                     .expect("type error inside MemDb");
                 if (is_server
-                    && !o
+                    && !data
                         .users_who_can_read(self)
                         .await
                         .unwrap()
                         .iter()
                         .any(|u| *u == user))
-                    || !query.matches(&*o).unwrap()
+                    || !query.matches(&*data).unwrap()
                 {
                     return None;
                 }
-                Some(Ok(full_object.id()))
+                Some(Ok(o.data.id()))
             })
             .collect::<Vec<crate::Result<ObjectId>>>()
             .await
@@ -138,21 +151,21 @@ impl Db for MemDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: Lock,
+        importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 
         // First, check for duplicates
-        if let Some((ty, locked, _, o)) = this.objects.get_mut(&object_id) {
+        if let Some(o) = this.objects.get_mut(&object_id) {
             crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
-            let c = o.creation_info();
-            if ty != T::type_ulid()
+            let c = o.data.creation_info();
+            if o.type_id != *T::type_ulid()
                 || created_at != c.created_at
                 || !eq::<T>(&*c.creation, &*object as _).unwrap()
             {
                 return Err(crate::Error::ObjectAlreadyExists(object_id));
             }
-            *locked |= lock;
+            o.importance |= importance;
             return Ok(None);
         }
         if this.events.contains_key(&created_at) {
@@ -178,12 +191,13 @@ impl Db for MemDb {
         // This is a new insert, do it
         this.objects.insert(
             object_id,
-            (
-                *T::type_ulid(),
-                lock,
-                required_binaries.into_iter().collect(),
-                FullObject::new(object_id, updatedness, created_at, object.clone()),
-            ),
+            MemDbObj {
+                type_id: *T::type_ulid(),
+                importance,
+                required_binaries: required_binaries.into_iter().collect(),
+                data: FullObject::new(object_id, updatedness, created_at, object.clone()),
+                importance_from_queries: Importance::NONE,
+            },
         );
         this.events.insert(created_at, (object_id, None));
 
@@ -196,36 +210,38 @@ impl Db for MemDb {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
         match this.objects.get(&object_id) {
             None => Err(crate::Error::ObjectDoesNotExist(object_id)),
-            Some((ty, _, _, _)) if ty != T::type_ulid() => Err(crate::Error::WrongType {
+            Some(o) if o.type_id != *T::type_ulid() => Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
-                real_type_id: *ty,
+                real_type_id: o.type_id,
             }),
-            Some((_, _, _, o)) if o.creation_info().created_at >= event_id => {
+            Some(o) if o.data.creation_info().created_at >= event_id => {
                 Err(crate::Error::EventTooEarly {
                     object_id,
                     event_id,
-                    created_at: o.creation_info().created_at,
+                    created_at: o.data.creation_info().created_at,
                 })
             }
-            Some((_, _, _, o)) => {
+            Some(o) => {
                 // First, check for duplicates
-                if let Some((o, e)) = this.events.get(&event_id) {
+                if let Some((prev_object_id, e)) = this.events.get(&event_id) {
                     crdb_core::check_strings(&serde_json::to_value(&*event).unwrap())?;
                     let Some(e) = e else {
                         // else if creation snapshot
                         return Err(crate::Error::EventAlreadyExists(event_id));
                     };
-                    if *o != object_id || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false) {
+                    if *prev_object_id != object_id
+                        || !eq::<T::Event>(&**e, &*event as _).unwrap_or(false)
+                    {
                         return Err(crate::Error::EventAlreadyExists(event_id));
                     }
                     // Just lock the object if requested
-                    this.objects.get_mut(&object_id).unwrap().1 |= force_lock;
+                    this.objects.get_mut(&object_id).unwrap().importance |= additional_importance;
                     return Ok(None);
                 }
 
@@ -245,10 +261,11 @@ impl Db for MemDb {
                 }
 
                 // All is good, we can insert
-                o.apply::<T>(event_id, event.clone(), updatedness)?;
-                let last_snapshot = o.last_snapshot::<T>().unwrap();
-                this.objects.get_mut(&object_id).unwrap().2 = o.required_binaries::<T>();
-                this.objects.get_mut(&object_id).unwrap().1 |= force_lock;
+                o.data.apply::<T>(event_id, event.clone(), updatedness)?;
+                let last_snapshot = o.data.last_snapshot::<T>().unwrap();
+                this.objects.get_mut(&object_id).unwrap().required_binaries =
+                    o.data.required_binaries::<T>();
+                this.objects.get_mut(&object_id).unwrap().importance |= additional_importance;
                 this.events.insert(event_id, (object_id, Some(event)));
                 Ok(Some(last_snapshot))
             }
@@ -257,10 +274,10 @@ impl Db for MemDb {
 
     async fn get_latest<T: Object>(
         &self,
-        lock: Lock,
         object_id: ObjectId,
+        importance: Importance,
     ) -> crate::Result<Arc<T>> {
-        let res = self.get::<T>(lock, object_id).await?;
+        let res = self.get::<T>(object_id, importance).await?;
         res.last_snapshot::<T>()
             .wrap_context("retrieving last snapshot")
     }
@@ -303,6 +320,14 @@ impl ClientSideDb for MemDb {
         unimplemented!() // TODO(test-high)
     }
 
+    async fn get_json(
+        &self,
+        _object_id: ObjectId,
+        _importance: Importance,
+    ) -> crate::Result<serde_json::Value> {
+        unimplemented!()
+    }
+
     async fn remove_everything(&self) -> crate::Result<()> {
         unimplemented!() // TODO(test-high)
     }
@@ -313,33 +338,39 @@ impl ClientSideDb for MemDb {
         new_created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut this = self.0.lock().await;
 
         // First, check for preconditions
-        let Some(&(real_type_id, _, _, ref o)) = this.objects.get(&object_id) else {
+        let Some(o) = this.objects.get(&object_id) else {
             std::mem::drop(this);
             return self
-                .create(object_id, new_created_at, object, updatedness, force_lock)
+                .create(
+                    object_id,
+                    new_created_at,
+                    object,
+                    updatedness,
+                    additional_importance,
+                )
                 .await;
         };
-        if real_type_id != *T::type_ulid() {
+        if o.type_id != *T::type_ulid() {
             return Err(crate::Error::WrongType {
                 object_id,
                 expected_type_id: *T::type_ulid(),
-                real_type_id,
+                real_type_id: o.type_id,
             });
         }
-        if o.created_at() > new_created_at {
+        if o.data.created_at() > new_created_at {
             return Err(crate::Error::EventTooEarly {
                 event_id: new_created_at,
                 object_id,
-                created_at: o.created_at(),
+                created_at: o.data.created_at(),
             });
         }
-        if let Some(e) = this.events.get(&new_created_at) {
-            if e.0 != object_id {
+        if let Some((prev_object_id, _)) = this.events.get(&new_created_at) {
+            if *prev_object_id != object_id {
                 crdb_core::check_strings(&serde_json::to_value(&*object).unwrap())?;
                 return Err(crate::Error::EventAlreadyExists(new_created_at));
             }
@@ -361,12 +392,13 @@ impl ClientSideDb for MemDb {
         }
 
         // All good, do the recreation
-        o.recreate_with::<T>(new_created_at, object, updatedness);
-        let required_binaries = o.required_binaries::<T>();
-        let last_snapshot = o.last_snapshot::<T>().unwrap();
+        o.data
+            .recreate_with::<T>(new_created_at, object, updatedness);
+        let required_binaries = o.data.required_binaries::<T>();
+        let last_snapshot = o.data.last_snapshot::<T>().unwrap();
         let this_object = this.objects.get_mut(&object_id).unwrap();
-        this_object.1 |= force_lock;
-        this_object.2 = required_binaries;
+        this_object.importance |= additional_importance;
+        this_object.required_binaries = required_binaries;
 
         Ok(Some(last_snapshot))
     }
@@ -392,15 +424,25 @@ impl ClientSideDb for MemDb {
         unimplemented!() // TODO(test-high)
     }
 
-    async fn change_locks(
+    async fn set_object_importance(
         &self,
-        unlock: Lock,
-        then_lock: Lock,
         object_id: ObjectId,
+        new_importance: Importance,
     ) -> crate::Result<()> {
-        if let Some((_, locked, _, _)) = self.0.lock().await.objects.get_mut(&object_id) {
-            *locked -= unlock;
-            *locked |= then_lock;
+        if let Some(o) = self.0.lock().await.objects.get_mut(&object_id) {
+            o.importance = new_importance;
+        }
+        // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
+        Ok(())
+    }
+
+    async fn set_importance_from_queries(
+        &self,
+        object_id: ObjectId,
+        new_importance_from_queries: Importance,
+    ) -> crate::Result<()> {
+        if let Some(o) = self.0.lock().await.objects.get_mut(&object_id) {
+            o.importance_from_queries = new_importance_from_queries;
         }
         // Always return Ok, even if there's no object it just means it was already unlocked and vacuumed
         Ok(())
@@ -415,9 +457,12 @@ impl ClientSideDb for MemDb {
         let mut this = self.0.lock().await;
         let this = &mut *this; // get a real, splittable borrow
         this.objects
-            .retain(|_, (_, locked, _, _)| *locked != Lock::NONE);
-        this.binaries
-            .retain(|b, _| this.objects.values().any(|(_, _, req, _)| req.contains(b)));
+            .retain(|_, o| o.importance.lock() || o.importance_from_queries.lock());
+        this.binaries.retain(|b, _| {
+            this.objects
+                .values()
+                .any(|o| o.required_binaries.contains(b))
+        });
         Ok(())
     }
 
@@ -441,34 +486,39 @@ impl ClientSideDb for MemDb {
         unimplemented!() // TODO(test-high)
     }
 
-    async fn get_subscribed_objects(
-        &self,
-    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
+    async fn get_saved_objects(&self) -> crate::Result<HashMap<ObjectId, SavedObjectMeta>> {
         unimplemented!() // TODO(test-high)
     }
 
-    async fn get_subscribed_queries(
-        &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
+    async fn get_saved_queries(&self) -> crate::Result<HashMap<QueryId, SavedQuery>> {
         unimplemented!() // TODO(test-high)
     }
 
-    async fn subscribe_query(
+    async fn record_query(
         &self,
         _query_id: QueryId,
         _query: Arc<Query>,
         _type_id: TypeId,
-        _lock: bool,
+        _importance: Importance,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(test-high)
     }
 
-    async fn unsubscribe_query(
+    async fn set_query_importance(
+        &self,
+        _query_id: QueryId,
+        _importance: Importance,
+        _objects_matching_query: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        unimplemented!()
+    }
+
+    async fn forget_query(
         &self,
         _query_id: QueryId,
         _objects_to_unlock: Vec<ObjectId>,
     ) -> crate::Result<()> {
-        unimplemented!() // TODO(test-high)
+        unimplemented!()
     }
 
     async fn update_queries(

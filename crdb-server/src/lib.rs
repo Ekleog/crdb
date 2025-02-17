@@ -25,6 +25,7 @@ pub use chrono;
 pub use cron;
 pub use sqlx;
 
+// TODO(api-highest): kill the concept of snapshot version, replace with always using protobuf and it doing its stuff internally
 pub use crdb_core::{Error, Result};
 pub use crdb_postgres::PostgresDb;
 
@@ -422,6 +423,10 @@ impl<C: crdb_core::Config> Server<C> {
                 };
                 Self::send_res(&mut conn.socket, msg.request_id, res).await
             }
+            Request::AlreadyHave { object_ids: _ } => {
+                // TODO(api-highest): actually record the information to avoid re-sending the objects' contents
+                Ok(())
+            }
             Request::Get {
                 object_ids,
                 subscribe,
@@ -647,6 +652,8 @@ impl<C: crdb_core::Config> Server<C> {
         }
     }
 
+    // TODO(api-high): This uses get_latest_snapshot, and thus assumes that the latest snapshot
+    // was just written in this run, with the latest snapshot version
     async fn add_rdeps_updates(
         &self,
         updates: &mut EditableUpdatesMap,
@@ -681,7 +688,7 @@ impl<C: crdb_core::Config> Server<C> {
                         c.object_id,
                         Arc::new(UpdatesWithSnap {
                             updates: new_updates.clone(),
-                            new_last_snapshot: Some(last_snapshot.snapshot.clone()),
+                            new_last_snapshot: Some(last_snapshot.clone()),
                         }),
                     );
                 }
@@ -967,6 +974,7 @@ impl<C: crdb_core::Config> Server<C> {
 pub struct ServerVacuumSchedule<Tz: chrono::TimeZone> {
     schedule: cron::Schedule,
     timezone: Tz,
+    // TODO(api-high): recreate different object types at different frequencies
     recreate_older_than: Option<Duration>,
     kill_sessions_older_than: Option<Duration>,
 }

@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use crdb_core::{
-    ClientMessage, CrdbFn, Lock, MaybeObject, ObjectId, Query, QueryId, Request, RequestId,
-    ResponsePart, SerializableError, ServerMessage, SessionToken, SystemTimeExt, TypeId, Update,
-    UpdateData, Updatedness, Updates,
+    ClientMessage, CrdbFn, MaybeObject, ObjectId, QueryId, Request, RequestId, ResponsePart,
+    SavedQuery, SerializableError, ServerMessage, SessionToken, SystemTimeExt, Update, UpdateData,
+    Updatedness, Updates,
 };
 use futures::{channel::mpsc, future::OptionFuture, SinkExt, StreamExt};
 use std::{
@@ -13,6 +13,8 @@ use std::{
 use waaaa::{WebSocket, WsMessage};
 use web_time::Instant;
 use web_time::SystemTime;
+
+use crate::client_db::SavedObject;
 
 const RECONNECT_INTERVAL: Duration = Duration::from_secs(10);
 const PING_INTERVAL: Duration = Duration::from_secs(10);
@@ -120,7 +122,7 @@ impl State {
 
 pub type ResponseSender = mpsc::UnboundedSender<ResponsePartWithSidecar>;
 
-pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
+pub struct Connection<GetSavedObjects, GetSavedQueries> {
     state: State,
     last_request_id: RequestId,
     commands: mpsc::UnboundedReceiver<Command>,
@@ -134,22 +136,22 @@ pub struct Connection<GetSubscribedObjects, GetSubscribedQueries> {
     last_ping: i64, // Milliseconds since unix epoch
     next_ping: Option<Instant>,
     next_pong_deadline: Option<(RequestId, Instant)>,
-    get_subscribed_objects: GetSubscribedObjects,
-    get_subscribed_queries: GetSubscribedQueries,
+    get_saved_objects: GetSavedObjects,
+    get_saved_queries: GetSavedQueries,
 }
 
 impl<GSO, GSQ> Connection<GSO, GSQ>
 where
-    GSO: 'static + FnMut() -> HashMap<ObjectId, Option<Updatedness>>,
-    GSQ: 'static + FnMut() -> HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>,
+    GSO: 'static + FnMut() -> HashMap<ObjectId, SavedObject>,
+    GSQ: 'static + FnMut() -> HashMap<QueryId, SavedQuery>,
 {
     pub fn new(
         commands: mpsc::UnboundedReceiver<Command>,
         requests: mpsc::UnboundedReceiver<(ResponseSender, Arc<RequestWithSidecar>)>,
         event_cb: Box<dyn CrdbFn<ConnectionEvent>>,
         update_sender: mpsc::UnboundedSender<Updates>,
-        get_subscribed_objects: GSO,
-        get_subscribed_queries: GSQ,
+        get_saved_objects: GSO,
+        get_saved_queries: GSQ,
     ) -> Connection<GSO, GSQ> {
         Connection {
             state: State::NoValidInfo,
@@ -163,8 +165,8 @@ where
             last_ping: SystemTime::now().ms_since_posix().unwrap(),
             next_ping: None,
             next_pong_deadline: None,
-            get_subscribed_objects,
-            get_subscribed_queries,
+            get_saved_objects,
+            get_saved_queries,
         }
     }
 
@@ -201,7 +203,7 @@ where
                 }
 
                 // Listen for any incoming commands (including end-of-run)
-                // Note: StreamExt::next is cancellation-safe on any Stream
+                // Note: StreamExt::next is cancellation-safe on any Stream
                 command = self.commands.next() => {
                     tracing::trace!(?command, "received command");
                     let Some(command) = command else {
@@ -253,11 +255,20 @@ where
                                 // Re-subscribe to the previously subscribed queries and objects
                                 // Start with subscribed objects, so that we easily tell the server what we already know about them.
                                 // Only then re-subscribe to queries, this way the server can answer AlreadySubscribed whenever relevant.
-                                let subscribed_objects = (self.get_subscribed_objects)();
-                                let subscribed_queries = (self.get_subscribed_queries)();
-                                if !subscribed_objects.is_empty() {
+                                let saved_objects = (self.get_saved_objects)();
+                                let saved_queries = (self.get_saved_queries)();
+                                if !saved_objects.is_empty() {
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
+                                    let subscribed_objects = saved_objects
+                                        .iter()
+                                        .filter(|(_, o)| o.importance.subscribe())
+                                        .map(|(id, o)| (*id, o.have_all_until))
+                                        .collect();
+                                    let not_subscribed_objects = saved_objects
+                                        .iter()
+                                        .filter_map(|(id, o)| o.have_all_until.and_then(|u| (!o.importance.subscribe()).then_some((*id, u))))
+                                        .collect();
                                     self.handle_request(
                                         request_id,
                                         Arc::new(RequestWithSidecar {
@@ -270,8 +281,25 @@ where
                                         responses_sender,
                                     ).await;
                                     waaaa::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                    let (ignore_sender, _receiver) = mpsc::unbounded();
+                                    self.handle_request(
+                                        request_id,
+                                        Arc::new(RequestWithSidecar {
+                                            request: Arc::new(Request::AlreadyHave {
+                                                object_ids: not_subscribed_objects,
+                                            }),
+                                            sidecar: Vec::new(),
+                                        }),
+                                        ignore_sender,
+                                    ).await;
                                 }
-                                for (query_id, (query, type_id, have_all_until, _)) in subscribed_queries {
+                                for (query_id, q) in saved_queries {
+                                    if !q.importance.subscribe() {
+                                        // Only subscribe to queries; not-subscribed queries are not interesting
+                                        // to send to the server as it will not automatically send us new stuff
+                                        // anyway
+                                        continue;
+                                    }
                                     let (responses_sender, responses_receiver) = mpsc::unbounded();
                                     let request_id = self.next_request_id();
                                     self.handle_request(
@@ -279,9 +307,9 @@ where
                                         Arc::new(RequestWithSidecar {
                                             request: Arc::new(Request::Query {
                                                 query_id,
-                                                type_id,
-                                                query,
-                                                only_updated_since: have_all_until,
+                                                type_id: q.type_id,
+                                                query: q.query,
+                                                only_updated_since: q.have_all_until,
                                                 subscribe: true,
                                             }),
                                             sidecar: Vec::new(),

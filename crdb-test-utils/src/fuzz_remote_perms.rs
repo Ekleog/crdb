@@ -33,11 +33,11 @@ macro_rules! fuzz_remote_perms {
                             Ulid::from_string("002C00C00000001280RG0G0000").unwrap(),
                         ))),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     GetLatestDelegator {
                         object_id: 0,
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -62,7 +62,7 @@ macro_rules! fuzz_remote_perms {
                             DbPtr::from_string("00000000000000000000000000").unwrap(),
                         )),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     CreatePerm {
                         object_id: ObjectId(
@@ -75,7 +75,7 @@ macro_rules! fuzz_remote_perms {
                             Ulid::from_string("00000002004G0004007G054MJJ").unwrap(),
                         ))),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -95,7 +95,7 @@ macro_rules! fuzz_remote_perms {
                         DbPtr::from_string("00008000000030000000000000").unwrap(),
                     )),
                     updatedness: Some(Updatedness::from_u128(1)),
-                    lock: Lock::OBJECT.bits(),
+                    importance: Importance::LOCK,
                 }]),
             )
             .await;
@@ -119,7 +119,7 @@ macro_rules! fuzz_remote_perms {
                             DbPtr::from_string("0000062VK4C5S68QV3DXQ6CAG7").unwrap(),
                         )),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     SubmitPerm {
                         object_id: 0,
@@ -128,7 +128,7 @@ macro_rules! fuzz_remote_perms {
                             Ulid::from_string("00000000000000000000000000").unwrap(),
                         ))),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -152,7 +152,7 @@ macro_rules! fuzz_remote_perms {
                             Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap(),
                         ))),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::QueryPerm {
                         user: User(Ulid::from_string("060R30C1G60R30C1G60R30C1G6").unwrap()),
@@ -178,14 +178,14 @@ macro_rules! fuzz_remote_perms {
                         created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectPerms(USER_ID_1)),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::RecreateDelegator {
                         object_id: 0,
                         new_created_at: EVENT_ID_2,
                         object: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -203,21 +203,21 @@ macro_rules! fuzz_remote_perms {
                         created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectPerms(USER_ID_1)),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::SubmitPerm {
                         object_id: 0,
                         event_id: EVENT_ID_2,
                         event: Arc::new(TestEventPerms::Set(USER_ID_2)),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     Op::RecreateDelegator {
                         object_id: 0,
                         new_created_at: EVENT_ID_3,
                         object: Arc::new(TestObjectDelegatePerms(DbPtr::from(OBJECT_ID_2))),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -235,7 +235,7 @@ macro_rules! fuzz_remote_perms {
                         created_at: EVENT_ID_1,
                         object: Arc::new(TestObjectPerms(USER_ID_1)),
                         updatedness: Some(UPDATEDNESS_1),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::ServerVacuum {
                         recreate_at: Some(EVENT_ID_2),
@@ -270,7 +270,7 @@ macro_rules! fuzz_remote_perms {
                         updatedness: Some(Updatedness(
                             Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
                         )),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::SubmitDelegator {
                         object_id: 0,
@@ -281,7 +281,7 @@ macro_rules! fuzz_remote_perms {
                         updatedness: Some(Updatedness(
                             Ulid::from_string("37CXKPESV7CXKPESV7CXKPESV7").unwrap(),
                         )),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                     Op::ServerVacuum {
                         recreate_at: Some(EventId(
@@ -304,7 +304,7 @@ macro_rules! fuzz_remote_perms {
                         updatedness: Some(Updatedness(
                             Ulid::from_string("33CDHP6RV3CDHP6RWXKJE9JRV3").unwrap(),
                         )),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )

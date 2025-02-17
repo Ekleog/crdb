@@ -1,10 +1,10 @@
 #![cfg(target_arch = "wasm32")]
 
 use anyhow::anyhow;
-use crdb_core::{check_strings, ClientStorageInfo, LoginInfo};
+use crdb_core::{check_strings, ClientStorageInfo, LoginInfo, SavedObjectMeta, SavedQuery};
 use crdb_core::{
-    normalizer_version, BinPtr, ClientSideDb, Db, DbPtr, Event, EventId, Lock, Object, ObjectId,
-    Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
+    normalizer_version, BinPtr, ClientSideDb, Db, DbPtr, Event, EventId, Importance, Object,
+    ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
 };
 use crdb_helpers::parse_snapshot_js;
 use futures::{future, TryFutureExt};
@@ -43,10 +43,11 @@ struct SnapshotMeta {
     is_latest: Option<usize>,   // So, use None for "false" and Some(1) for "true"
     normalizer_version: i32,
     snapshot_version: i32,
+    // TODO(api-highest): introduce a side-table for all the metadata: have_all_until, importance*, is_creation/latest
     have_all_until: Option<Updatedness>, // This value is always up-to-date on the latest snapshot
-    // Only set on creation snapshot. Bitset: Some(1) if locked for the object itself, Some(2) if
-    // locked for some (set of) queries that are locked, Some(3) if both
-    is_locked: Option<u8>,
+    // The two below are only set on creation snapshot.
+    importance: Option<Importance>,
+    importance_from_queries: Option<Importance>,
     required_binaries: Vec<BinPtr>,
 }
 
@@ -63,7 +64,7 @@ struct QueryMeta {
     query: Arc<Query>,
     type_id: TypeId,
     have_all_until: Option<Updatedness>,
-    lock: bool,
+    importance: Importance,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -133,10 +134,6 @@ impl IndexedDb {
                     .create()?;
                 snapshots_meta
                     .build_compound_index("creation_object", &["is_creation", "object_id"])
-                    .unique()
-                    .create()?;
-                snapshots_meta
-                    .build_compound_index("locked_object", &["is_locked", "object_id"])
                     .unique()
                     .create()?;
                 snapshots_meta
@@ -238,9 +235,10 @@ impl IndexedDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: Lock,
+        importance: Importance,
+        importance_from_queries: Importance,
     ) -> std::result::Result<Option<Arc<T>>, indexed_db::Error<crate::Error>> {
-        let new_snapshot_meta = SnapshotMeta {
+        let mut new_snapshot_meta = SnapshotMeta {
             snapshot_id: created_at,
             type_id: *T::type_ulid(),
             object_id,
@@ -249,7 +247,8 @@ impl IndexedDb {
             normalizer_version: normalizer_version(),
             snapshot_version: T::snapshot_version(),
             have_all_until: updatedness,
-            is_locked: Some(lock.bits()),
+            importance: Some(importance),
+            importance_from_queries: Some(importance_from_queries),
             required_binaries: object.required_binaries(),
         };
         let object_id_js = object_id.to_js_string();
@@ -291,9 +290,19 @@ impl IndexedDb {
                     format!("deserializing preexisting snapshot metadata for {object_id:?}")
                 })?;
             // Ignore a few fields in comparison below
-            old_meta.is_latest = Some(1);
-            old_meta.have_all_until = updatedness;
-            old_meta.is_locked = Some(lock.bits());
+            new_snapshot_meta.is_latest = old_meta.is_latest;
+            old_meta.have_all_until = std::cmp::max(old_meta.have_all_until, updatedness);
+            new_snapshot_meta.have_all_until = old_meta.have_all_until;
+            let importance_before = old_meta.importance.unwrap_or(Importance::NONE);
+            let importance_from_queries_before =
+                old_meta.importance_from_queries.unwrap_or(Importance::NONE);
+            let importance_after = importance_before | importance;
+            let importance_from_queries_after =
+                importance_from_queries_before | importance_from_queries;
+            old_meta.importance = Some(importance_after);
+            old_meta.importance_from_queries = Some(importance_from_queries_after);
+            new_snapshot_meta.importance = Some(importance_after);
+            new_snapshot_meta.importance_from_queries = Some(importance_from_queries_after);
             if old_meta != new_snapshot_meta {
                 return Err(crate::Error::ObjectAlreadyExists(object_id).into());
             }
@@ -316,7 +325,13 @@ impl IndexedDb {
                 return Err(crate::Error::ObjectAlreadyExists(object_id).into());
             }
 
-            // The old snapshot and data were the same, we're good to go
+            // The old snapshot and data were the same, we only need to increase the importance if required
+            if importance_before != importance_after {
+                todo!() // TODO(api-highest): set_object_importance_impl(transaction, object_id, importance_after)
+            }
+            if importance_from_queries_before != importance_from_queries_after {
+                todo!() // TODO(api-highest): set_query_importance_impl(transaction, object_id, importance_from_queries_after)
+            }
             return Ok(None);
         }
 
@@ -363,7 +378,7 @@ impl Db for IndexedDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: Lock,
+        importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let res = self
             .db
@@ -376,12 +391,13 @@ impl Db for IndexedDb {
                     created_at,
                     object,
                     updatedness,
-                    lock,
+                    importance,
+                    Importance::NONE, // TODO(api-highest): this is definitely wrong, rethink the API
                 )
             })
             .await
             .wrap_with_context(|| format!("running creation transaction for {object_id:?}"));
-        if res.is_ok() && lock == Lock::NONE {
+        if res.is_ok() && importance == Importance::NONE {
             self.objects_unlocked_this_run
                 .set(self.objects_unlocked_this_run.get() + 1);
         }
@@ -394,7 +410,7 @@ impl Db for IndexedDb {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let new_event_meta = EventMeta {
             event_id,
@@ -509,9 +525,9 @@ impl Db for IndexedDb {
                         }
 
                         // The old snapshot and data were the same, we just need to lock the object if requested
-                        let old_is_locked = creation_snapshot.is_locked;
-                        creation_snapshot.is_locked = Some((old_is_locked.map(Lock::from_bits_truncate).unwrap_or(Lock::NONE) | force_lock).bits());
-                        if old_is_locked != creation_snapshot.is_locked {
+                        let importance_before = creation_snapshot.importance;
+                        creation_snapshot.importance = Some(importance_before.unwrap_or(Importance::NONE) | additional_importance);
+                        if importance_before != creation_snapshot.importance {
                             let creation_snapshot_js = to_js(creation_snapshot)
                                 .wrap_context("serializing snapshot metadata")?;
                             snapshots_meta.put(&creation_snapshot_js)
@@ -527,9 +543,9 @@ impl Db for IndexedDb {
                 }
 
                 // Lock the object if requested to
-                let old_is_locked = creation_snapshot.is_locked;
-                creation_snapshot.is_locked = Some((old_is_locked.map(Lock::from_bits_truncate).unwrap_or(Lock::NONE) | force_lock).bits());
-                if old_is_locked != creation_snapshot.is_locked {
+                let importance_before = creation_snapshot.importance;
+                creation_snapshot.importance = Some(importance_before.unwrap_or(Importance::NONE) | additional_importance);
+                if importance_before != creation_snapshot.importance {
                     let creation_snapshot_js = to_js(creation_snapshot)
                         .wrap_context("serializing snapshot metadata")?;
                     snapshots_meta.put(&creation_snapshot_js)
@@ -629,7 +645,8 @@ impl Db for IndexedDb {
                     normalizer_version: normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     have_all_until: now_have_all_until,
-                    is_locked: None,
+                    importance: None,
+                    importance_from_queries: None,
                     required_binaries: last_snapshot.required_binaries(),
                 };
                 let last_applied_event_id_js = to_js(last_applied_event_id)
@@ -661,15 +678,15 @@ impl Db for IndexedDb {
 
     async fn get_latest<T: Object>(
         &self,
-        lock: Lock,
         object_id: ObjectId,
+        importance: Importance,
     ) -> crate::Result<Arc<T>> {
         let object_id_js = object_id.to_js_string();
         let type_id_js = T::type_ulid().to_js_string();
         let mut transaction =
             self.db
                 .transaction(&["snapshots", "snapshots_meta", "events", "events_meta"]);
-        if lock != Lock::NONE {
+        if importance != Importance::NONE {
             transaction = transaction.rw();
         }
         transaction
@@ -711,15 +728,10 @@ impl Db for IndexedDb {
                 }
 
                 // Rewrite the creation snapshot if needed
-                let old_is_locked = creation_snapshot_meta.is_locked;
-                creation_snapshot_meta.is_locked = Some(
-                    (old_is_locked
-                        .map(Lock::from_bits_truncate)
-                        .unwrap_or(Lock::NONE)
-                        | lock)
-                        .bits(),
-                );
-                if old_is_locked != creation_snapshot_meta.is_locked {
+                let importance_before = creation_snapshot_meta.importance;
+                creation_snapshot_meta.importance =
+                    Some(importance_before.unwrap_or(Importance::NONE) | importance);
+                if importance_before != creation_snapshot_meta.importance {
                     let new_snapshot_js = to_js(creation_snapshot_meta)
                         .wrap_context("serializing snapshot metadata")?;
                     snapshots_meta
@@ -850,6 +862,7 @@ impl Db for IndexedDb {
                     .await
                     .wrap_context("opening cursor over all snapshots")?;
                 let mut num_errors = 0;
+                // TODO(perf-high): only re-encode creation and latest snapshots, deleting intermediate snapshots
                 while let Some(snapshot_meta_js) = cursor.value() {
                     let snapshot_meta =
                         serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
@@ -1043,7 +1056,9 @@ impl Db for IndexedDb {
                     let latest = snapshots.last_key_value().unwrap().1;
                     assert!(creation.is_creation == Some(1));
                     assert!(latest.is_latest == Some(1));
-                    assert!(creation.is_locked.is_some());
+                    assert!(creation.importance.is_some());
+                    // TODO(test-high): assert importance_from_queries is well-set
+                    assert!(creation.importance_from_queries.is_some());
                     if creation.snapshot_id == latest.snapshot_id {
                         continue;
                     }
@@ -1080,7 +1095,8 @@ impl Db for IndexedDb {
                             assert!(object == s);
                             assert!(snapshot_meta.required_binaries == object.required_binaries());
                             assert!(snapshot_meta.type_id == *T::type_ulid());
-                            assert!(snapshot_meta.is_locked.is_none());
+                            assert!(snapshot_meta.importance.is_none());
+                            assert!(snapshot_meta.importance_from_queries.is_none());
                         }
                     }
                 }
@@ -1192,7 +1208,7 @@ impl ClientSideDb for IndexedDb {
         new_created_at: EventId,
         mut object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let object_id_js = object_id.to_js_string();
         let type_id_js = T::type_ulid().to_js_string();
@@ -1254,7 +1270,8 @@ impl ClientSideDb for IndexedDb {
                         new_created_at,
                         object,
                         updatedness,
-                        force_lock,
+                        additional_importance,
+                        Importance::NONE, // TODO(api-highest): this is definitely wrong, and must be fixed with rethinking the API
                     )
                     .await;
                 };
@@ -1371,14 +1388,13 @@ impl ClientSideDb for IndexedDb {
                     normalizer_version: normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     have_all_until: updatedness,
-                    is_locked: Some(
-                        (creation_meta
-                            .is_locked
-                            .map(Lock::from_bits_truncate)
-                            .unwrap_or(Lock::NONE)
-                            | force_lock)
-                            .bits(),
+                    importance: Some(
+                        creation_meta.importance.unwrap_or(Importance::NONE)
+                            | additional_importance,
                     ),
+                    // TODO(api-high): is this actually correct? Maybe recreate can
+                    // edit the latest snapshot, thus changing queries?
+                    importance_from_queries: creation_meta.importance_from_queries,
                     required_binaries: required_binaries.clone(),
                 };
                 let new_creation_snapshot_meta_js = to_js(new_creation_snapshot_meta)
@@ -1437,7 +1453,8 @@ impl ClientSideDb for IndexedDb {
                         normalizer_version: normalizer_version(),
                         snapshot_version: T::snapshot_version(),
                         have_all_until: updatedness,
-                        is_locked: None,
+                        importance: None,
+                        importance_from_queries: None,
                         required_binaries: object.required_binaries(),
                     };
                     let new_latest_snapshot_meta_js = to_js(new_latest_snapshot_meta)
@@ -1466,6 +1483,14 @@ impl ClientSideDb for IndexedDb {
             .wrap_with_context(|| {
                 format!("recreating {object_id:?} with new data from {new_created_at:?}")
             })
+    }
+
+    async fn get_json(
+        &self,
+        _object_id: ObjectId,
+        _importance: Importance,
+    ) -> crate::Result<serde_json::Value> {
+        todo!() // TODO(api-highest): implement if it's still here after the API rethinking
     }
 
     async fn client_query(
@@ -1786,7 +1811,8 @@ impl ClientSideDb for IndexedDb {
                     normalizer_version: normalizer_version(),
                     snapshot_version: T::snapshot_version(),
                     have_all_until: now_have_all_until,
-                    is_locked: None,
+                    importance: None,
+                    importance_from_queries: None,
                     required_binaries: last_snapshot.required_binaries(),
                 };
                 let last_applied_event_id_js = to_js(last_applied_event_id)
@@ -1808,11 +1834,10 @@ impl ClientSideDb for IndexedDb {
             })
     }
 
-    async fn change_locks(
+    async fn set_object_importance(
         &self,
-        unlock: Lock,
-        then_lock: Lock,
         object_id: ObjectId,
+        importance: Importance,
     ) -> crate::Result<()> {
         let object_id_js = object_id.to_js_string();
 
@@ -1840,17 +1865,10 @@ impl ClientSideDb for IndexedDb {
 
                 let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
                     .wrap_context("deserializing snapshot metadata")?;
-                let old_is_locked = snapshot_meta.is_locked;
-                snapshot_meta.is_locked = Some(
-                    ((old_is_locked
-                        .map(Lock::from_bits_truncate)
-                        .unwrap_or(Lock::NONE)
-                        - unlock)
-                        | then_lock)
-                        .bits(),
-                );
+                let importance_before = snapshot_meta.importance;
+                snapshot_meta.importance = Some(importance);
 
-                if old_is_locked != snapshot_meta.is_locked {
+                if importance_before != snapshot_meta.importance {
                     let snapshot_js =
                         to_js(snapshot_meta).wrap_context("reserializing snapshot metadata")?;
                     snapshots_meta
@@ -1868,6 +1886,69 @@ impl ClientSideDb for IndexedDb {
                 .set(self.objects_unlocked_this_run.get() + 1);
         }
         res
+    }
+
+    async fn set_importance_from_queries(
+        &self,
+        object_id: ObjectId,
+        importance_from_queries: Importance,
+    ) -> crate::Result<()> {
+        let object_id_js = object_id.to_js_string();
+
+        let res = self
+            .db
+            .transaction(&["snapshots_meta"])
+            .rw()
+            .run(move |transaction| async move {
+                let snapshots_meta = transaction
+                    .object_store("snapshots_meta")
+                    .wrap_context("retrieving the 'snapshots_meta' object store")?;
+
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving the 'creation_object' index")?;
+
+                let Some(snapshot_js) = creation_object
+                    .get(&Array::from_iter([&JsValue::from(1), &object_id_js]))
+                    .await
+                    .wrap_context("retrieving creation snapshot")?
+                else {
+                    // Object was already removed from database, so it was already unlocked
+                    return Ok(());
+                };
+
+                let mut snapshot_meta = serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_js)
+                    .wrap_context("deserializing snapshot metadata")?;
+                let importance_from_queries_before = snapshot_meta.importance_from_queries;
+                snapshot_meta.importance_from_queries = Some(importance_from_queries);
+
+                if importance_from_queries_before != snapshot_meta.importance_from_queries {
+                    let snapshot_js =
+                        to_js(snapshot_meta).wrap_context("reserializing snapshot metadata")?;
+                    snapshots_meta
+                        .put(&snapshot_js)
+                        .await
+                        .wrap_context("saving the unlocked creation snapshot metadata")?;
+                }
+
+                Ok(())
+            })
+            .await
+            .wrap_with_context(|| format!("unlocking {object_id:?} from IndexedDB"));
+        if res.is_ok() {
+            self.objects_unlocked_this_run
+                .set(self.objects_unlocked_this_run.get() + 1);
+        }
+        res
+    }
+
+    async fn set_query_importance(
+        &self,
+        _query_id: QueryId,
+        _importance: Importance,
+        _objects_matched_by_query: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        todo!() // TODO(api-highest): implement once API has been rethought
     }
 
     async fn client_vacuum(
@@ -1910,12 +1991,12 @@ impl ClientSideDb for IndexedDb {
                     .object_store("binaries")
                     .wrap_context("retrieving the 'binaries' object store")?;
 
-                let locked_object = snapshots_meta
-                    .index("locked_object")
-                    .wrap_context("retrieving the 'locked_object' index")?;
                 let object_snapshot = snapshots_meta
                     .index("object_snapshot")
                     .wrap_context("retrieving the 'object_snapshot' index")?;
+                let creation_object = snapshots_meta
+                    .index("creation_object")
+                    .wrap_context("retrieving the 'creation_object' index")?;
 
                 let object_event = events_meta
                     .index("object_event")
@@ -1930,7 +2011,7 @@ impl ClientSideDb for IndexedDb {
                 while let Some(query_meta_js) = cursor.value() {
                     let query_meta = serde_wasm_bindgen::from_value::<QueryMeta>(query_meta_js)
                         .wrap_context("deserializing query metadata")?;
-                    if !query_meta.lock {
+                    if !query_meta.importance.lock() {
                         notify_query_removals(query_meta.query_id);
                         cursor
                             .delete()
@@ -1944,13 +2025,9 @@ impl ClientSideDb for IndexedDb {
                 }
 
                 // Remove all unlocked objects
-                let mut to_remove = locked_object
+                // TODO(perf-high): index on importance(s).lock = 0
+                let mut to_remove = creation_object
                     .cursor()
-                    .range(
-                        &**Array::from_iter([&JsValue::from(0), &zero_id])
-                            ..=&**Array::from_iter([&JsValue::from(0), &max_id]),
-                    )
-                    .wrap_context("limiting cursor to only unlocked objects")?
                     .open()
                     .await
                     .wrap_context("listing unlocked objects")?;
@@ -1959,6 +2036,15 @@ impl ClientSideDb for IndexedDb {
                 while let Some(s) = to_remove.value() {
                     let s = serde_wasm_bindgen::from_value::<SnapshotMeta>(s)
                         .wrap_context("deserializing unlocked object")?;
+                    // TODO(api-highest): the unwrap should go with the side-table
+                    if s.importance.unwrap().lock() || s.importance_from_queries.unwrap().lock() {
+                        // Do not delete locked objects
+                        to_remove
+                            .advance(1)
+                            .await
+                            .wrap_context("going to next to-remove object")?;
+                        continue;
+                    }
                     let object_id = s.object_id;
                     let object_id_js = object_id.to_js_string();
 
@@ -2165,9 +2251,8 @@ impl ClientSideDb for IndexedDb {
         res
     }
 
-    async fn get_subscribed_objects(
-        &self,
-    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
+    // TODO(api-highest): go through all the crates' API, one by one, and check that eg. all trait methods are indeed required
+    async fn get_saved_objects(&self) -> crate::Result<HashMap<ObjectId, SavedObjectMeta>> {
         // TODO(test-high): fuzz this, and all other LocalDb functions
         // TODO(test-high): fuzz connection handling
         let zero_id = TypeId::from_u128(0).to_js_string();
@@ -2178,46 +2263,33 @@ impl ClientSideDb for IndexedDb {
                 let snapshots_meta = transaction
                     .object_store("snapshots_meta")
                     .wrap_context("retrieving snapshots_meta object store")?;
-                let snapshots = transaction
-                    .object_store("snapshots")
-                    .wrap_context("retrieving snapshots object store")?;
-                let latest_type_object = snapshots_meta
-                    .index("latest_type_object")
-                    .wrap_context("opening 'latest_type_object' snapshot index")?;
-                let mut cursor = latest_type_object
+                let creation_type_object = snapshots_meta
+                    .index("creation_type_object")
+                    .wrap_context("opening 'creation_type_object' snapshot index")?;
+                let mut cursor = creation_type_object
                     .cursor()
                     .range(
                         &**Array::from_iter([&JsValue::from(1), &zero_id, &zero_id])
                             ..=&**Array::from_iter([&JsValue::from(1), &max_id, &max_id]),
                     )
-                    .wrap_context("limiting cursor to only latest snapshots")?
+                    .wrap_context("limiting cursor to only creation snapshots")?
                     .open()
                     .await
-                    .wrap_context("opening cursor over all latest objects")?;
+                    .wrap_context("opening cursor over all creation objects")?;
                 let mut res = HashMap::new();
                 while let Some(snapshot_meta_js) = cursor.value() {
                     let snapshot_meta =
                         serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
                             .wrap_context("deserializing snapshot metadata")?;
-                    let snapshot_js = snapshots
-                        .get(&snapshot_meta.snapshot_id.to_js_string())
-                        .await
-                        .wrap_context("retrieving snapshot data")?
-                        .ok_or_else(|| {
-                            crate::Error::Other(anyhow!(
-                                "no snapshot data for known snapshot metadata"
-                            ))
-                        })?;
-                    let snapshot_json =
-                        serde_wasm_bindgen::from_value::<serde_json::Value>(snapshot_js)
-                            .wrap_context("deserializing snapshot")?;
                     res.insert(
                         snapshot_meta.object_id,
-                        (
-                            snapshot_meta.type_id,
-                            snapshot_json,
-                            snapshot_meta.have_all_until,
-                        ),
+                        SavedObjectMeta {
+                            type_id: snapshot_meta.type_id,
+                            // TODO(api-highest): this is wrong, see todo about using a side-table
+                            have_all_until: snapshot_meta.have_all_until,
+                            // TODO(api-highest): check this is correct
+                            importance: snapshot_meta.importance.unwrap(),
+                        },
                     );
                     cursor
                         .advance(1)
@@ -2230,9 +2302,7 @@ impl ClientSideDb for IndexedDb {
             .wrap_context("listing subscribed objects")
     }
 
-    async fn get_subscribed_queries(
-        &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
+    async fn get_saved_queries(&self) -> crate::Result<HashMap<QueryId, SavedQuery>> {
         self.db
             .transaction(&["queries_meta"])
             .run(|transaction| async move {
@@ -2250,12 +2320,12 @@ impl ClientSideDb for IndexedDb {
                             .wrap_context("deserializing query metadata")?;
                         Ok((
                             q.query_id,
-                            (
-                                q.query,
-                                q.type_id,
-                                q.have_all_until,
-                                Lock::from_query_lock(q.lock),
-                            ),
+                            SavedQuery {
+                                query: q.query,
+                                type_id: q.type_id,
+                                have_all_until: q.have_all_until,
+                                importance: q.importance,
+                            },
                         ))
                     })
                     .collect();
@@ -2265,18 +2335,18 @@ impl ClientSideDb for IndexedDb {
             .wrap_context("listing subscribed objects")
     }
 
-    async fn subscribe_query(
+    async fn record_query(
         &self,
         query_id: QueryId,
         query: Arc<Query>,
         type_id: TypeId,
-        lock: bool,
+        importance: Importance,
     ) -> crate::Result<()> {
         let new_query = QueryMeta {
             query_id,
             query,
             type_id,
-            lock,
+            importance,
             have_all_until: None,
         };
         let new_query_js = to_js(new_query).wrap_context("serializing query metadata")?;
@@ -2297,10 +2367,10 @@ impl ClientSideDb for IndexedDb {
             .wrap_context("subscribing to query")
     }
 
-    async fn unsubscribe_query(
+    async fn forget_query(
         &self,
         query_id: QueryId,
-        objects_to_unlock: Vec<ObjectId>,
+        objects_matching_query: Vec<ObjectId>,
     ) -> crate::Result<()> {
         let query_id_js = query_id.to_js_string();
         self.db
@@ -2321,7 +2391,7 @@ impl ClientSideDb for IndexedDb {
                     .delete(&query_id_js)
                     .await
                     .wrap_context("removing the unsubscribed query")?;
-                for object_id in objects_to_unlock {
+                for object_id in objects_matching_query {
                     let Some(snapshot_meta_js) = creation_object
                         .get(&**Array::from_iter([
                             &JsValue::from(1),
@@ -2339,15 +2409,10 @@ impl ClientSideDb for IndexedDb {
                     let mut snapshot_meta =
                         serde_wasm_bindgen::from_value::<SnapshotMeta>(snapshot_meta_js)
                             .wrap_context("deserializing snapshot metadata")?;
-                    let old_is_locked = snapshot_meta.is_locked;
-                    snapshot_meta.is_locked = Some(
-                        (old_is_locked
-                            .map(Lock::from_bits_truncate)
-                            .unwrap_or(Lock::NONE)
-                            - Lock::FOR_QUERIES)
-                            .bits(),
-                    );
-                    if old_is_locked != snapshot_meta.is_locked {
+                    // TODO(api-highest): this is definitely wrong.
+                    let importance_from_queries_before = snapshot_meta.importance_from_queries;
+                    snapshot_meta.importance_from_queries = Some(Importance::NONE);
+                    if importance_from_queries_before != snapshot_meta.importance_from_queries {
                         let snapshot_meta_js =
                             to_js(snapshot_meta).wrap_context("serializing snapshot metadata")?;
                         snapshots_meta

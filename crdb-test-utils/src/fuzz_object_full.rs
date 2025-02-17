@@ -61,7 +61,7 @@ macro_rules! fuzz_object_full {
                         users: BTreeSet::new(),
                     }),
                     updatedness: Some(Updatedness::from_u128(1)),
-                    lock: Lock::OBJECT.bits(),
+                    importance: Importance::LOCK,
                 }]),
             )
             .await;
@@ -88,14 +88,14 @@ macro_rules! fuzz_object_full {
                             users: BTreeSet::new(),
                         }),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     SubmitFull {
                         object_id: 0,
                         event_id: EventId(Ulid::from_string("00000000000000000000000000").unwrap()),
                         event: Arc::new(TestEventFull::Rename(String::from("bar\0foo"))),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -151,7 +151,7 @@ macro_rules! fuzz_object_full {
                             users: BTreeSet::new(),
                         }),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::CreateFull {
                         object_id: OBJECT_ID_2,
@@ -163,7 +163,7 @@ macro_rules! fuzz_object_full {
                             users: BTreeSet::new(),
                         }),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: 0,
+                        importance: Importance::NONE,
                     },
                 ]),
             )
@@ -186,7 +186,7 @@ macro_rules! fuzz_object_full {
                             users: BTreeSet::new(),
                         }),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::RecreateFull {
                         object_id: 0,
@@ -198,7 +198,7 @@ macro_rules! fuzz_object_full {
                             users: BTreeSet::new(),
                         }),
                         updatedness: Some(Updatedness::from_u128(1)),
-                        force_lock: Lock::OBJECT.bits(),
+                        additional_importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -221,7 +221,7 @@ macro_rules! fuzz_object_full {
                             bins: vec![],
                             users: BTreeSet::new(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::CreateFull {
                         object_id: OBJECT_ID_2,
@@ -233,7 +233,7 @@ macro_rules! fuzz_object_full {
                             bins: vec![],
                             users: [USER_ID_1].into_iter().collect(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -259,7 +259,7 @@ macro_rules! fuzz_object_full {
                                 .into_iter()
                                 .collect(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::CreateFull {
                         object_id: OBJECT_ID_1,
@@ -273,7 +273,7 @@ macro_rules! fuzz_object_full {
                                 .into_iter()
                                 .collect(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::CreateFull {
                         object_id: OBJECT_ID_1,
@@ -287,7 +287,7 @@ macro_rules! fuzz_object_full {
                                 .into_iter()
                                 .collect(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::CreateFull {
                         object_id: OBJECT_ID_1,
@@ -301,7 +301,7 @@ macro_rules! fuzz_object_full {
                                 .into_iter()
                                 .collect(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::CreateFull {
                         object_id: OBJECT_ID_1,
@@ -315,7 +315,7 @@ macro_rules! fuzz_object_full {
                                 .into_iter()
                                 .collect(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                 ]),
             )
@@ -341,7 +341,7 @@ macro_rules! fuzz_object_full {
                             bins: vec![],
                             users: BTreeSet::new(),
                         }),
-                        lock: Lock::OBJECT.bits(),
+                        importance: Importance::LOCK,
                     },
                     Op::QueryFull {
                         user: USER_ID_NULL,

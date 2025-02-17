@@ -1,12 +1,15 @@
 use anyhow::Context;
 use crdb_core::{
-    normalizer_version, BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, EventId, Lock,
-    LoginInfo, Object, ObjectId, Query, QueryId, ResultExt, TypeId, Updatedness, Upload, UploadId,
+    normalizer_version, BinPtr, ClientSideDb, ClientStorageInfo, CrdbSyncFn, Db, EventId,
+    Importance, LoginInfo, Object, ObjectId, Query, QueryId, ResultExt, SavedObjectMeta,
+    SavedQuery, TypeId, Updatedness, Upload, UploadId,
 };
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+
+// TODO(sqlite-high): store Importance and importance_from_queries
 
 #[cfg(test)]
 mod tests;
@@ -39,7 +42,7 @@ impl Db for SqliteDb {
         created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        lock: Lock,
+        importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         let mut t = self
             .db
@@ -52,7 +55,7 @@ impl Db for SqliteDb {
         let snapshot_version = T::snapshot_version();
         let object_json = sqlx::types::Json(&object);
         let affected = sqlx::query(
-            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8)
+            "INSERT INTO snapshots VALUES ($1, $2, $3, TRUE, TRUE, $4, $5, $6, $7, $8, $9)
                          ON CONFLICT DO NOTHING",
         )
         .bind(created_at)
@@ -62,7 +65,8 @@ impl Db for SqliteDb {
         .bind(snapshot_version)
         .bind(object_json)
         .bind(updatedness)
-        .bind(lock.bits())
+        .bind(importance.bits())
+        .bind(Importance::NONE.bits())
         .execute(&mut *t)
         .await
         .wrap_with_context(|| format!("inserting snapshot {created_at:?}"))?
@@ -127,15 +131,15 @@ impl Db for SqliteDb {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite-high): implement
     }
 
     async fn get_latest<T: Object>(
         &self,
-        lock: Lock,
         object_id: ObjectId,
+        importance: Importance,
     ) -> crate::Result<Arc<T>> {
         unimplemented!() // TODO(sqlite-high): implement
     }
@@ -180,13 +184,21 @@ impl ClientSideDb for SqliteDb {
         unimplemented!() // TODO(sqlite-high)
     }
 
+    async fn get_json(
+        &self,
+        object_id: ObjectId,
+        importance: Importance,
+    ) -> crate::Result<serde_json::Value> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
     async fn recreate<T: Object>(
         &self,
         object_id: ObjectId,
         new_created_at: EventId,
         object: Arc<T>,
         updatedness: Option<Updatedness>,
-        force_lock: Lock,
+        additional_importance: Importance,
     ) -> crate::Result<Option<Arc<T>>> {
         unimplemented!() // TODO(sqlite-high): implement
     }
@@ -211,11 +223,18 @@ impl ClientSideDb for SqliteDb {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    async fn change_locks(
+    async fn set_object_importance(
         &self,
-        _unlock: Lock,
-        _then_lock: Lock,
-        _object_id: ObjectId,
+        object_id: ObjectId,
+        new_importance: Importance,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn set_importance_from_queries(
+        &self,
+        object_id: ObjectId,
+        new_importance_from_queries: Importance,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }
@@ -248,29 +267,34 @@ impl ClientSideDb for SqliteDb {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    async fn get_subscribed_objects(
-        &self,
-    ) -> crate::Result<HashMap<ObjectId, (TypeId, serde_json::Value, Option<Updatedness>)>> {
+    async fn get_saved_objects(&self) -> crate::Result<HashMap<ObjectId, SavedObjectMeta>> {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    async fn get_subscribed_queries(
-        &self,
-    ) -> crate::Result<HashMap<QueryId, (Arc<Query>, TypeId, Option<Updatedness>, Lock)>> {
+    async fn get_saved_queries(&self) -> crate::Result<HashMap<QueryId, SavedQuery>> {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    async fn subscribe_query(
+    async fn record_query(
         &self,
         _query_id: QueryId,
         _query: Arc<Query>,
         _type_id: TypeId,
-        _lock: bool,
+        _importance: Importance,
     ) -> crate::Result<()> {
         unimplemented!() // TODO(sqlite-high)
     }
 
-    async fn unsubscribe_query(
+    async fn set_query_importance(
+        &self,
+        query_id: QueryId,
+        importance: Importance,
+        objects_matching_query: Vec<ObjectId>,
+    ) -> crate::Result<()> {
+        unimplemented!() // TODO(sqlite-high)
+    }
+
+    async fn forget_query(
         &self,
         _query_id: QueryId,
         _objects_to_unlock: Vec<ObjectId>,
