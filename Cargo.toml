@@ -1,18 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "crdb",
-    "crdb-cache",
-    "crdb-client",
-    "crdb-core",
-    "crdb-helpers",
-    "crdb-indexed-db",
-    "crdb-macros",
-    "crdb-postgres",
-    "crdb-server",
-    "crdb-sqlite",
-    "crdb-test-utils",
-]
+members = ["crates/*"]
 
 [workspace.package]
 authors = ["Leo Gaspard <leo@casmic.fr>"]
@@ -28,24 +16,23 @@ edition = "2021"
 homepage = "https://github.com/Ekleog/crdb" # TODO(doc-med): actually make a website
 keywords = ["database", "framework", "async", "web", "native"]
 license = "AGPL3"
-license-file = "./LICENSE-AGPL-3-0.txt"
 readme = "./README.md"
 repository = "https://github.com/Ekleog/crdb"
 # Remember to update the ci.yml file when updating this
 rust-version = "1.81.0" # TODO(api-highest): this is actually 1.85.0 due to the async-closure feature
 
 [workspace.dependencies]
-crdb = { path = "./crdb" }
-crdb-cache = { path = "./crdb-cache" }
-crdb-client = { path = "./crdb-client" }
-crdb-core = { path = "./crdb-core" }
-crdb-helpers = { path = "./crdb-helpers" }
-crdb-indexed-db = { path = "./crdb-indexed-db" }
-crdb-macros = { path = "./crdb-macros" }
-crdb-postgres = { path = "./crdb-postgres" }
-crdb-server = { path = "./crdb-server" }
-crdb-sqlite = { path = "./crdb-sqlite" }
-crdb-test-utils = { path = "./crdb-test-utils" }
+crdb = { path = "./crates/crdb" }
+crdb-cache = { path = "./crates/crdb-cache" }
+crdb-client = { path = "./crates/crdb-client" }
+crdb-core = { path = "./crates/crdb-core" }
+crdb-helpers = { path = "./crates/crdb-helpers" }
+crdb-indexed-db = { path = "./crates/crdb-indexed-db" }
+crdb-macros = { path = "./crates/crdb-macros" }
+crdb-postgres = { path = "./crates/crdb-postgres" }
+crdb-server = { path = "./crates/crdb-server" }
+crdb-sqlite = { path = "./crates/crdb-sqlite" }
+crdb-test-utils = { path = "./crates/crdb-test-utils" }
 
 anyhow = "1.0"
 arbitrary = { version = "1.3", features = ["derive"] }

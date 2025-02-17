@@ -1,5 +1,5 @@
 [package]
-name = "crdb-sqlite"
+name = "crdb-client"
 version = "0.0.1"
 authors.workspace = true
 categories.workspace = true
@@ -8,19 +8,23 @@ edition.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
-license-file.workspace = true
 readme.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-crdb-core = { workspace = true, features = ["sqlx-sqlite"] }
+crdb-cache.workspace = true
+crdb-core.workspace = true
 
 anyhow.workspace = true
+async-stream.workspace = true
+educe.workspace = true
+futures.workspace = true
 getrandom.workspace = true
 serde_json.workspace = true
-sqlx = { workspace = true, features = ["sqlite", "uuid"] }
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
 ulid.workspace = true
-
-[dev-dependencies]
-crdb-test-utils.workspace = true
+waaaa.workspace = true
+web-time.workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "basic-api"
+edition.workspace = true
+publish.workspace = true
+version.workspace = true
+
+[dependencies]
+crdb.workspace = true
+
+anyhow.workspace = true
+deepsize.workspace = true
+serde.workspace = true
+ulid.workspace = true

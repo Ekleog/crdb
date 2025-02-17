@@ -1,5 +1,5 @@
 [package]
-name = "crdb-test-utils"
+name = "crdb-sqlite"
 version = "0.0.1"
 authors.workspace = true
 categories.workspace = true
@@ -8,28 +8,18 @@ edition.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
-license-file.workspace = true
 readme.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-crdb-core = { workspace = true, features = ["arbitrary"] }
-crdb-macros.workspace = true
+crdb-core = { workspace = true, features = ["sqlx-sqlite"] }
 
 anyhow.workspace = true
-arbitrary.workspace = true
-deepsize.workspace = true
-educe.workspace = true
-futures.workspace = true
 getrandom.workspace = true
-paste.workspace = true
-rust_decimal.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
+sqlx = { workspace = true, features = ["sqlite", "uuid"] }
 ulid.workspace = true
-waaaa.workspace = true
 
 [dev-dependencies]
-getrandom-0-2 = { workspace = true, features = ["js"] }
+crdb-test-utils.workspace = true
