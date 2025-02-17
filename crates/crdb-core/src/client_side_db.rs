@@ -1,6 +1,7 @@
 use crate::{
-    BinPtr, ClientStorageInfo, CrdbSyncFn, Db, EventId, Importance, LoginInfo, Object, ObjectId,
-    Query, QueryId, TypeId, Updatedness, Upload, UploadId,
+    backend_api::{BinaryStore, ObjectGet, Reencoder},
+    BinPtr, ClientStorageInfo, CrdbSyncFn, EventId, Importance, LoginInfo, Object, ObjectId, Query,
+    QueryId, TypeId, Updatedness, Upload, UploadId,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -27,7 +28,9 @@ impl SavedQuery {
     }
 }
 
-pub trait ClientSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
+pub trait ClientSideDb:
+    'static + waaaa::Send + waaaa::Sync + BinaryStore + ObjectGet + Reencoder
+{
     fn storage_info(&self) -> impl waaaa::Future<Output = crate::Result<ClientStorageInfo>>;
 
     fn save_login(&self, _info: LoginInfo) -> impl waaaa::Future<Output = crate::Result<()>>;

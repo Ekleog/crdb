@@ -1,6 +1,7 @@
 use crate::{
-    CanDoCallbacks, ClientSideDb, Db, EventId, Importance, ObjectId, ReadPermsChanges,
-    ServerSideDb, TypeId, Update, Updatedness, User,
+    backend_api::{ObjectGet, Reencoder},
+    ClientSideDb, EventId, Importance, ObjectId, ReadPermsChanges, ServerSideDb, TypeId, Update,
+    Updatedness, User,
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -37,17 +38,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
     /// Panics if there are two types with the same ULID configured
     fn check_ulids();
 
-    fn reencode_old_versions<D: Db>(call_on: &D) -> impl '_ + waaaa::Future<Output = usize>;
-
-    // TODO(api-high): is this unused?
-    fn create<D: Db>(
-        db: &D,
-        type_id: TypeId,
-        object_id: ObjectId,
-        created_at: EventId,
-        snapshot_version: i32,
-        object: &serde_json::Value,
-    ) -> impl waaaa::Future<Output = crate::Result<()>>;
+    fn reencode_old_versions<D: Reencoder>(call_on: &D) -> impl '_ + waaaa::Future<Output = usize>;
 
     /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
     #[allow(clippy::too_many_arguments)] // Used only for relaying to a more specific function
@@ -62,17 +53,6 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
         additional_importance: Importance,
     ) -> impl waaaa::Future<Output = crate::Result<Option<serde_json::Value>>>;
 
-    /// The returned serde_json::Value is guaranteed to be a serialization of the latest snapshot of the object at the current snapshot version
-    fn submit<D: Db>(
-        db: &D,
-        type_id: TypeId,
-        object_id: ObjectId,
-        event_id: EventId,
-        event: &serde_json::Value,
-        updatedness: Option<Updatedness>,
-        additional_importance: Importance,
-    ) -> impl waaaa::Future<Output = crate::Result<Option<serde_json::Value>>>;
-
     fn remove_event<D: ClientSideDb>(
         db: &D,
         type_id: TypeId,
@@ -81,7 +61,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
     ) -> impl waaaa::Future<Output = crate::Result<()>>;
 
     #[allow(clippy::type_complexity)]
-    fn get_users_who_can_read<'a, D: ServerSideDb, C: CanDoCallbacks>(
+    fn get_users_who_can_read<'a, D: ServerSideDb, C: ObjectGet>(
         call_on: &'a D,
         object_id: ObjectId,
         type_id: TypeId,
@@ -92,7 +72,7 @@ pub trait Config: 'static + Send + Sync + private::Sealed {
 
     // TODO(api-high): rename into recreate_at?
     #[allow(clippy::type_complexity)] // This is only used to proxy to a real function
-    fn recreate_no_lock<'a, D: ServerSideDb, C: CanDoCallbacks>(
+    fn recreate_no_lock<'a, D: ServerSideDb, C: ObjectGet>(
         call_on: &'a D,
         type_id: TypeId,
         object_id: ObjectId,

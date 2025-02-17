@@ -1,8 +1,9 @@
 use web_time::SystemTime;
 
 use crate::{
-    CanDoCallbacks, Db, EventId, Object, ObjectData, ObjectId, Query, Session, SessionRef,
-    SessionToken, TypeId, Update, Updatedness, User,
+    backend_api::{BinaryStore, ObjectGet, Reencoder, TestDb},
+    EventId, Object, ObjectData, ObjectId, Query, Session, SessionRef, SessionToken, TypeId,
+    Update, Updatedness, User,
 };
 use std::{collections::HashSet, pin::Pin, sync::Arc};
 
@@ -19,7 +20,9 @@ pub struct UsersWhoCanRead<L> {
     pub locks: Vec<L>,
 }
 
-pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
+pub trait ServerSideDb:
+    'static + waaaa::Send + waaaa::Sync + BinaryStore + ObjectGet + Reencoder + TestDb
+{
     type Connection: waaaa::Send;
     type Transaction<'a>: waaaa::Send;
     type Lock<'a>: waaaa::Send;
@@ -27,7 +30,7 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     // TODO(blocked): replace with -> impl once https://github.com/rust-lang/rust/issues/100013 is fixed
     // This will also remove the clippy lint
     #[allow(clippy::type_complexity)]
-    fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: CanDoCallbacks>(
+    fn get_users_who_can_read<'a, 'ret: 'a, T: Object, C: ObjectGet>(
         &'ret self,
         object_id: ObjectId,
         object: &'a T,
@@ -75,7 +78,7 @@ pub trait ServerSideDb: 'static + waaaa::Send + waaaa::Sync + Db {
     /// This function assumes that the lock on `object_id` is already taken
     ///
     /// Returns `Some` iff the object actually changed
-    fn recreate_at<'a, T: Object, C: CanDoCallbacks>(
+    fn recreate_at<'a, T: Object, C: ObjectGet>(
         &'a self,
         object_id: ObjectId,
         event_id: EventId,

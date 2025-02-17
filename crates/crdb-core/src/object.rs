@@ -1,22 +1,7 @@
-use crate::{BinPtr, Db, DbPtr, Importance, ObjectId, ResultExt, TypeId, User};
+use crate::{backend_api::ObjectGet, BinPtr, DbPtr, ObjectId, TypeId, User};
 #[cfg(doc)]
 use std::collections::{BTreeMap, HashMap};
-use std::{any::Any, collections::HashSet, sync::Arc};
-
-pub trait CanDoCallbacks: waaaa::Send + waaaa::Sync {
-    fn get<T: Object>(
-        &self,
-        ptr: DbPtr<T>,
-    ) -> impl '_ + waaaa::Future<Output = crate::Result<Arc<T>>>;
-}
-
-impl<D: Db> CanDoCallbacks for D {
-    async fn get<T: Object>(&self, object_id: DbPtr<T>) -> crate::Result<Arc<T>> {
-        self.get_latest::<T>(ObjectId(object_id.id), Importance::NONE)
-            .await
-            .wrap_with_context(|| format!("requesting {object_id:?} from database"))
-    }
-}
+use std::{any::Any, collections::HashSet};
 
 pub trait Event:
     Any + Eq + Send + Sync + deepsize::DeepSizeOf + for<'a> serde::Deserialize<'a> + serde::Serialize
@@ -64,7 +49,7 @@ pub trait Object:
         unimplemented!()
     }
 
-    fn can_create<'a, C: CanDoCallbacks>(
+    fn can_create<'a, C: ObjectGet>(
         &'a self,
         user: User,
         self_id: ObjectId,
@@ -76,7 +61,7 @@ pub trait Object:
     /// so for security, because otherwise a user who lost permissions would still be allowed to
     /// submit events antidated to before the permission loss, which would be bad as users could
     /// re-grant themselves permissions.
-    fn can_apply<'a, C: CanDoCallbacks>(
+    fn can_apply<'a, C: ObjectGet>(
         &'a self,
         user: User,
         self_id: ObjectId,
@@ -103,8 +88,9 @@ pub trait Object:
     /// must exist a total order for which the vector, consisting of `self` and then all the `C::get`
     /// calls in-order, is sorted.
     ///
-    /// In particular, any recursive call of `users_who_can_read` is most likely wrong.
-    fn users_who_can_read<'a, C: CanDoCallbacks>(
+    /// In particular, any recursive call of `users_who_can_read` with the same object type is most
+    /// likely wrong.
+    fn users_who_can_read<'a, C: ObjectGet>(
         &'a self,
         db: &'a C,
     ) -> impl 'a + waaaa::Future<Output = crate::Result<HashSet<User>>>;
