@@ -20,7 +20,7 @@ pub trait ObjectManager {
     ) -> impl waaaa::Future<Output = crate::Result<ObjectData>>;
 
     /// Returns the new latest snapshot in `Some` iff the object actually changed
-    fn server_create<T: Object>(
+    fn create<T: Object>(
         &self,
         object_id: ObjectId,
         created_at: EventId,
@@ -29,7 +29,7 @@ pub trait ObjectManager {
     ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
 
     /// Returns the new latest snapshot in `Some` iff the object actually changed
-    fn server_submit<T: Object>(
+    fn submit<T: Object>(
         &self,
         object_id: ObjectId,
         event_id: EventId,
@@ -37,7 +37,7 @@ pub trait ObjectManager {
         updatedness: Updatedness,
     ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
 
-    fn server_recreate_at<'a, T: Object>(
+    fn recreate_at<'a, T: Object>(
         &'a self,
         object_id: ObjectId,
         event_id: EventId,

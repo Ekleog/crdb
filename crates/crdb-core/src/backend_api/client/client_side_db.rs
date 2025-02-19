@@ -10,15 +10,15 @@ pub trait ClientSideDb:
     + waaaa::Send
     + waaaa::Sync
     + BinaryStore
-    + ObjectGet
-    + Reencoder
-    + TestDb
     + ClientObjectManager
-    + QueryManager
     + LocalQuery
     + LoginManager
+    + ObjectGet
+    + QueryManager
+    + Reencoder
     + ServerObjectManager
     + StorageInfo
+    + TestDb
     + UploadQueue
     + Vacuum
 {

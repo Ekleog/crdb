@@ -3,15 +3,15 @@ use crate::backend_api::{BinaryStore, ObjectGet, Reencoder, TestDb};
 
 pub trait ServerSideDb:
     'static
-    + waaaa::Send
-    + waaaa::Sync
+    + Send
+    + Sync
     + BinaryStore
     + ObjectGet
-    + Reencoder
-    + TestDb
     + ObjectManager
+    + Reencoder
     + ServerQuery
-    + Vacuum
     + SessionManager
+    + TestDb
+    + Vacuum
 {
 }
