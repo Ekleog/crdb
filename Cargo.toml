@@ -41,7 +41,7 @@ async-stream = "0.3.5"
 axum = { version = "0.8.1", features = ["ws"] }
 axum-test = { version = "17.0", features = ["ws"] }
 bitflags = { version = "2.4", features = ["serde"] }
-bolero = { version = "0.12.0", features = ["arbitrary"] }
+bolero = { version = "0.13.0", features = ["arbitrary"] }
 bytes = "1.9"
 chrono = "0.4.31"
 console_error_panic_hook = "0.1.7"
