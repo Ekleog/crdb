@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use waaaa::{WebSocket, WsMessage};
+use waaa::{WebSocket, WsMessage};
 use web_time::Instant;
 use web_time::SystemTime;
 
@@ -177,13 +177,13 @@ where
                 // Retry connecting if we're looping there
                 // TODO(perf-low): this should probably listen on network status, with eg. window.ononline, to not retry
                 // when network is down?
-                _reconnect_attempt_interval = waaaa::sleep(RECONNECT_INTERVAL),
+                _reconnect_attempt_interval = waaa::sleep(RECONNECT_INTERVAL),
                     if self.is_trying_to_connect() => {
                     tracing::trace!("reconnect interval elapsed");
                 },
 
                 // Send the next ping, if it's time to do it
-                Some(_) = OptionFuture::from(self.next_ping.map(waaaa::sleep_until)), if self.is_connected() => {
+                Some(_) = OptionFuture::from(self.next_ping.map(waaa::sleep_until)), if self.is_connected() => {
                     tracing::trace!("sending ping request");
                     let request_id = self.next_request_id();
                     let _ = self.send_connected(&ClientMessage {
@@ -196,7 +196,7 @@ where
                 }
 
                 // Next pong did not come in time, disconnect
-                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| waaaa::sleep_until(t))), if self.is_connecting() => {
+                Some(_) = OptionFuture::from(self.next_pong_deadline.map(|(_, t)| waaa::sleep_until(t))), if self.is_connecting() => {
                     tracing::trace!("pong did not come in time, disconnecting");
                     self.state = self.state.disconnect();
                     self.next_pong_deadline = None;
@@ -280,7 +280,7 @@ where
                                         }),
                                         responses_sender,
                                     ).await;
-                                    waaaa::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                    waaa::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                     let (ignore_sender, _receiver) = mpsc::unbounded();
                                     self.handle_request(
                                         request_id,
@@ -316,7 +316,7 @@ where
                                         }),
                                         responses_sender,
                                     ).await;
-                                    waaaa::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
+                                    waaa::spawn(Self::send_responses_as_updates(self.update_sender.clone(), responses_receiver));
                                 }
                             }
                             ServerMessage::Response {

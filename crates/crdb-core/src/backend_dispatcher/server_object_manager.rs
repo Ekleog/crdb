@@ -12,7 +12,7 @@ pub trait ServerObjectManager: private::Sealed {
         object_id: ObjectId,
         event_id: EventId,
         updatedness: Updatedness,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<()>>;
+    ) -> impl 'a + waaa::Future<Output = crate::Result<()>>;
 
     /// Returns all the updates to send if the state changed.
     fn server_create<D: backend_api::server::ObjectManager>(
@@ -22,7 +22,7 @@ pub trait ServerObjectManager: private::Sealed {
         created_at: EventId,
         object: JsonSnapshot,
         updatedness: Updatedness,
-    ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<ServerObjectUpdate>>>;
+    ) -> impl '_ + waaa::Future<Output = crate::Result<Option<ServerObjectUpdate>>>;
 
     /// Returns all the updates to send if the state changed.
     fn server_submit<D: backend_api::server::ObjectManager>(
@@ -32,5 +32,5 @@ pub trait ServerObjectManager: private::Sealed {
         event_id: EventId,
         event: serde_json::Value,
         updatedness: Updatedness,
-    ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<ServerObjectUpdate>>>;
+    ) -> impl '_ + waaa::Future<Output = crate::Result<Option<ServerObjectUpdate>>>;
 }

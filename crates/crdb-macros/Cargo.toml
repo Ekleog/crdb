@@ -17,7 +17,7 @@ crdb-core.workspace = true
 crdb-helpers.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-waaaa.workspace = true
+waaa.workspace = true
 
 [dev-dependencies]
 getrandom-0-2 = { workspace = true, features = ["js"] }

@@ -54,7 +54,7 @@ pub trait Object:
         user: User,
         self_id: ObjectId,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<bool>>;
+    ) -> impl 'a + waaa::Future<Output = crate::Result<bool>>;
 
     /// Note that permissions are always checked with the latest version of the object on the server.
     /// So, due to this, CRDB objects are not strictly speaking a CRDT. However, it is required to do
@@ -67,7 +67,7 @@ pub trait Object:
         self_id: ObjectId,
         event: &'a Self::Event,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<bool>>;
+    ) -> impl 'a + waaa::Future<Output = crate::Result<bool>>;
 
     /// Note that `db.get` calls will be cached. So:
     /// - Use `db.get` as little as possible, to avoid useless cache thrashing
@@ -93,7 +93,7 @@ pub trait Object:
     fn users_who_can_read<'a, C: ObjectGet>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<HashSet<User>>>;
+    ) -> impl 'a + waaa::Future<Output = crate::Result<HashSet<User>>>;
 
     fn apply(&mut self, self_id: DbPtr<Self>, event: &Self::Event);
 

@@ -1220,7 +1220,7 @@ impl<Config: crdb_core::Config> ServerSideDb for PostgresDb<Config> {
         object_id: ObjectId,
         object: &'a T,
         cb: &'a C,
-    ) -> Pin<Box<dyn 'a + waaaa::Future<Output = anyhow::Result<UsersWhoCanRead<Self::Lock<'ret>>>>>>
+    ) -> Pin<Box<dyn 'a + waaa::Future<Output = anyhow::Result<UsersWhoCanRead<Self::Lock<'ret>>>>>>
     {
         Box::pin(async move {
             let cb = TrackingCanDoCallbacks::<'a, 'ret> {

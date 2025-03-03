@@ -82,7 +82,7 @@ impl Object for TestObjectFull {
     fn users_who_can_read<'a, C: CanDoCallbacks>(
         &'a self,
         db: &'a C,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<HashSet<User>>> {
+    ) -> impl 'a + waaa::Future<Output = crate::Result<HashSet<User>>> {
         async move {
             let mut res = self.users.iter().copied().collect::<HashSet<_>>();
             res.insert(USER_ID_NULL);

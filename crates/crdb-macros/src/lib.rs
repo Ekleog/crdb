@@ -2,7 +2,7 @@ pub use crdb_core::*;
 pub use crdb_helpers;
 pub use serde;
 pub use serde_json;
-pub use waaaa;
+pub use waaa;
 
 // TODO(api-high): add one-per-user and one-per-server object types
 // one-per-user: hash("one-per-user", type_id, user_id)

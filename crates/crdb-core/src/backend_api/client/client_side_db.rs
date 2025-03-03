@@ -7,8 +7,8 @@ use super::{
 
 pub trait ClientSideDb:
     'static
-    + waaaa::Send
-    + waaaa::Sync
+    + waaa::Send
+    + waaa::Sync
     + BinaryStore
     + ClientObjectManager
     + LocalQuery

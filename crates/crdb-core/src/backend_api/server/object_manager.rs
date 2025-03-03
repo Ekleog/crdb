@@ -9,7 +9,7 @@ pub trait ObjectManager {
         &self,
         user: User,
         object_id: ObjectId,
-    ) -> impl waaaa::Future<Output = crate::Result<JsonSnapshot>>;
+    ) -> impl waaa::Future<Output = crate::Result<JsonSnapshot>>;
 
     // TODO(test-high): make sure fuzzers encompass all functions
     fn get_all_json(
@@ -17,7 +17,7 @@ pub trait ObjectManager {
         user: User,
         object_id: ObjectId,
         only_updated_since: Option<Updatedness>,
-    ) -> impl waaaa::Future<Output = crate::Result<ObjectData>>;
+    ) -> impl waaa::Future<Output = crate::Result<ObjectData>>;
 
     /// Returns the new latest snapshot in `Some` iff the object actually changed
     fn create<T: Object>(
@@ -26,7 +26,7 @@ pub trait ObjectManager {
         created_at: EventId,
         object: &Arc<T>,
         updatedness: Updatedness,
-    ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
+    ) -> impl '_ + waaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
 
     /// Returns the new latest snapshot in `Some` iff the object actually changed
     fn submit<T: Object>(
@@ -35,15 +35,15 @@ pub trait ObjectManager {
         event_id: EventId,
         event: Arc<T::Event>,
         updatedness: Updatedness,
-    ) -> impl '_ + waaaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
+    ) -> impl '_ + waaa::Future<Output = crate::Result<Option<(Arc<T>, Vec<ReadPermsChanges>)>>>;
 
     fn recreate_at<'a, T: Object>(
         &'a self,
         object_id: ObjectId,
         event_id: EventId,
         updatedness: Updatedness,
-    ) -> impl 'a + waaaa::Future<Output = crate::Result<()>>;
+    ) -> impl 'a + waaa::Future<Output = crate::Result<()>>;
 
     /// Update all the read rdeps that were still pending from the previous run
-    fn update_pending_rdeps(&self) -> impl '_ + waaaa::Future<Output = crate::Result<()>>;
+    fn update_pending_rdeps(&self) -> impl '_ + waaa::Future<Output = crate::Result<()>>;
 }

@@ -83,12 +83,12 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
         require_relogin: RRL,
         error_handler: EH,
         vacuum_schedule: ClientVacuumSchedule<VS>,
-    ) -> crate::Result<(Arc<ClientDb<LocalDb>>, impl waaaa::Future<Output = usize>)>
+    ) -> crate::Result<(Arc<ClientDb<LocalDb>>, impl waaa::Future<Output = usize>)>
     where
         C: crdb_core::Config,
-        RRL: 'static + waaaa::Send + Fn(),
-        EH: 'static + waaaa::Send + Fn(Upload, crate::Error) -> EHF,
-        EHF: 'static + waaaa::Future<Output = OnError>,
+        RRL: 'static + waaa::Send + Fn(),
+        EH: 'static + waaa::Send + Fn(Upload, crate::Error) -> EHF,
+        EHF: 'static + waaa::Future<Output = OnError>,
         VS: 'static + Send + Fn(ClientStorageInfo) -> bool,
     {
         let _ = config; // mark used
@@ -195,7 +195,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
         this.setup_autovacuum(vacuum_schedule, cancellation_token);
         this.setup_data_saver::<C>(data_saver_receiver, updates_broadcaster);
         let (upgrade_finished_sender, upgrade_finished) = oneshot::channel();
-        waaaa::spawn({
+        waaa::spawn({
             let db = this.db.clone();
             async move {
                 let num_errors = C::reencode_old_versions(&*db).await;
@@ -243,7 +243,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
     ) {
         // No need for a cancellation token: this task will automatically end as soon as the stream
         // coming from `ApiDb` closes, which will happen when `ApiDb` gets dropped.
-        waaaa::spawn({
+        waaa::spawn({
             let data_saver = self.data_saver.clone();
             async move {
                 while let Some(updates) = updates_receiver.next().await {
@@ -274,7 +274,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
         let saved_objects = self.saved_objects.clone();
         let saved_queries = self.saved_queries.clone();
         let api = self.api.clone();
-        waaaa::spawn(async move {
+        waaa::spawn(async move {
             loop {
                 match db.storage_info().await {
                     Ok(storage_info) => {
@@ -321,7 +321,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
                 };
 
                 tokio::select! {
-                    _ = waaaa::sleep(vacuum_schedule.frequency) => (),
+                    _ = waaa::sleep(vacuum_schedule.frequency) => (),
                     _ = cancellation_token.cancelled() => break,
                 }
             }
@@ -340,7 +340,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
         let vacuum_guard = self.vacuum_guard.clone();
         let query_updates_broadcasters = self.query_updates_broadcastees.clone();
         let data_saver_skipper = self.data_saver_skipper.subscribe();
-        waaaa::spawn(async move {
+        waaa::spawn(async move {
             Self::data_saver::<C>(
                 data_receiver,
                 data_saver_skipper,
@@ -744,7 +744,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
 
     pub fn on_connection_event(
         self: &Arc<Self>,
-        cb: impl 'static + waaaa::Send + waaaa::Sync + Fn(ConnectionEvent),
+        cb: impl 'static + waaa::Send + waaa::Sync + Fn(ConnectionEvent),
     ) {
         self.api.on_connection_event(cb)
     }
@@ -1138,7 +1138,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
     pub async fn query_local<'a, T: Object>(
         self: &'a Arc<Self>,
         query: Arc<Query>,
-    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T, LocalDb>>>> {
+    ) -> crate::Result<impl 'a + waaa::Stream<Item = crate::Result<Obj<T, LocalDb>>>> {
         let object_ids = self
             .db
             .client_query(*T::type_ulid(), query)
@@ -1167,7 +1167,7 @@ impl<LocalDb: ClientSideDb> ClientDb<LocalDb> {
         importance: Importance,
         query_id: QueryId,
         query: Arc<Query>,
-    ) -> crate::Result<impl 'a + waaaa::Stream<Item = crate::Result<Obj<T, LocalDb>>>> {
+    ) -> crate::Result<impl 'a + waaa::Stream<Item = crate::Result<Obj<T, LocalDb>>>> {
         self.query_updates_broadcastees
             .lock()
             .unwrap()

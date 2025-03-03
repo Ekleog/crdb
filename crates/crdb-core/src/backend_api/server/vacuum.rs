@@ -2,7 +2,7 @@ use crate::{EventId, Update, User};
 use std::collections::HashSet;
 use web_time::SystemTime;
 
-pub trait Vacuum: 'static + waaaa::Send + waaaa::Sync {
+pub trait Vacuum: 'static + waaa::Send + waaa::Sync {
     /// Clean up and optimize the database
     ///
     /// After running this, the database will reject any new change that would happen before

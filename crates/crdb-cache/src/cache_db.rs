@@ -343,7 +343,7 @@ impl<D: ServerSideDb> ServerSideDb for CacheDb<D> {
         object: &'a T,
         cb: &'a C,
     ) -> std::pin::Pin<
-        Box<dyn 'a + waaaa::Future<Output = anyhow::Result<UsersWhoCanRead<Self::Lock<'ret>>>>>,
+        Box<dyn 'a + waaa::Future<Output = anyhow::Result<UsersWhoCanRead<Self::Lock<'ret>>>>>,
     > {
         self.db.get_users_who_can_read(object_id, object, cb)
     }
