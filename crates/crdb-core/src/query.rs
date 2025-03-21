@@ -2,6 +2,7 @@ use rust_decimal::Decimal;
 
 use crate::fts;
 
+// TODO(api-highest): abstract as a user-provided trait impl
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum JsonPathItem {

@@ -17,6 +17,8 @@ pub trait Event:
 /// Note that due to postgresql limitations reasons, this type MUST NOT include any
 /// null byte in the serialized JSON. Including them will result in internal server
 /// errors.
+// TODO(api-highest): should we have an Object struct that wraps the object? We don't want the
+// user to end up modifying the object without going through an Event
 pub trait Object:
     Any
     + Clone

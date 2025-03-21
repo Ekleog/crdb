@@ -4,6 +4,8 @@ use crate::{
     EventId, JsonSnapshot, Object, ObjectData, ObjectId, ReadPermsChanges, Updatedness, User,
 };
 
+// TODO(api-highest): replace ULID with UUIDv7
+// TODO(api-highest): replace Object::type_ulid with some const fn instead of &'static TypeId? (https://github.com/rust-lang/rfcs/pull/3762)
 pub trait ObjectManager {
     fn get_latest_json(
         &self,
