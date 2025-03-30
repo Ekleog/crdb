@@ -164,6 +164,7 @@ fn refresher(
     }: &RefresherProps,
 ) -> Html {
     // TODO(misc-high): write a crdb-yew to hide that and only refresh each individual query when required
+    // API should be something like fetch(Fn(Change<NewEvent, State>) -> (State, Fetched)) -> Fetched)
     let counter = use_mut_ref(|| 0); // Counter used only to force a refresh of each component that uses DbContext
     let force_update = use_force_update();
     *counter.borrow_mut() += 1;
