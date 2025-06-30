@@ -15,7 +15,7 @@ description = "Concurrently Replicated DataBase"
 edition = "2021"
 homepage = "https://github.com/Ekleog/crdb" # TODO(doc-med): actually make a website
 keywords = ["database", "framework", "async", "web", "native"]
-license = "AGPL-3.0"
+license = "SSPL-1.0"
 readme = "./README.md"
 repository = "https://github.com/Ekleog/crdb"
 # Remember to update the ci.yml file when updating this
